@@ -141,7 +141,7 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid c
 
 	sort.Slice(queries, func(i, j int) bool {
 		a := queries[i].response
-		b := queries[i].response
+		b := queries[j].response
 
 		// Always prefer unsealed to sealed, no matter what
 		if a.UnsealPrice.IsZero() && !b.UnsealPrice.IsZero() {
