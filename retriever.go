@@ -2,12 +2,8 @@ package filecoin
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/url"
-	"path"
 	"sort"
 	"sync"
 	"time"
@@ -17,7 +13,6 @@ import (
 	"github.com/application-research/filclient"
 	"github.com/application-research/filclient/retrievehelper"
 	"github.com/dustin/go-humanize"
-	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lotus/api"
@@ -25,15 +20,13 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	"github.com/libp2p/go-libp2p-core/host"
+	"github.com/libp2p/go-libp2p-core/peer"
 )
 
 var (
 	ErrNoCandidates                = errors.New("no candidates")
 	ErrRetrievalAlreadyRunning     = errors.New("retrieval already running")
 	ErrHitRetrievalLimit           = errors.New("hit retrieval limit")
-	ErrInvalidEndpointURL          = errors.New("invalid endpoint URL")
-	ErrEndpointRequestFailed       = errors.New("endpoint request failed")
-	ErrEndpointBodyInvalid         = errors.New("endpoint body invalid")
 	ErrProposalCreationFailed      = errors.New("proposal creation failed")
 	ErrRetrievalRegistrationFailed = errors.New("retrieval registration failed")
 	ErrRetrievalFailed             = errors.New("retrieval failed")
@@ -42,8 +35,8 @@ var (
 
 // All config values should be safe to leave uninitialized
 type RetrieverConfig struct {
-	MinerBlacklist         map[address.Address]bool
-	MinerWhitelist         map[address.Address]bool
+	MinerBlacklist         map[peer.ID]bool
+	MinerWhitelist         map[peer.ID]bool
 	PerMinerRetrievalLimit uint
 	RetrievalTimeout       time.Duration // Set to zero to disable
 	Metrics                metrics.Metrics
@@ -51,23 +44,26 @@ type RetrieverConfig struct {
 
 type Retriever struct {
 	config    RetrieverConfig
-	endpoint  string
+	endpoint  Endpoint
 	filClient *filclient.FilClient
 
 	runningRetrievals        map[cid.Cid]bool
-	activeRetrievalsPerMiner map[address.Address]uint
+	activeRetrievalsPerMiner map[peer.ID]uint
 	runningRetrievalsLk      sync.Mutex
 }
 
-type retrievalCandidate struct {
-	Miner   address.Address
-	RootCid cid.Cid
-	DealID  uint
+type candidateQuery struct {
+	candidate RetrievalCandidate
+	response  *retrievalmarket.QueryResponse
 }
 
-type candidateQuery struct {
-	candidate retrievalCandidate
-	response  *retrievalmarket.QueryResponse
+type RetrievalCandidate struct {
+	MinerPeer peer.AddrInfo
+	RootCid   cid.Cid
+}
+
+type Endpoint interface {
+	FindCandidates(context.Context, cid.Cid) ([]RetrievalCandidate, error)
 }
 
 // Possible errors: ErrInitKeystoreFailed, ErrInitWalletFailed,
@@ -75,7 +71,7 @@ type candidateQuery struct {
 func NewRetriever(
 	config RetrieverConfig,
 	filClient *filclient.FilClient,
-	endpoint string,
+	endpoint Endpoint,
 	host host.Host,
 	api api.Gateway,
 	datastore datastore.Batching,
@@ -91,7 +87,7 @@ func NewRetriever(
 		endpoint:                 endpoint,
 		filClient:                filClient,
 		runningRetrievals:        make(map[cid.Cid]bool),
-		activeRetrievalsPerMiner: make(map[address.Address]uint),
+		activeRetrievalsPerMiner: make(map[peer.ID]uint),
 	}
 
 	return retriever, nil
@@ -117,7 +113,7 @@ func (retriever *Retriever) Request(cid cid.Cid) error {
 	// candidates and use that cached info. We only really have to look up an
 	// up-to-date candidate list from the endpoint if we need to begin a new
 	// retrieval.
-	candidates, err := retriever.lookupCandidates(cid)
+	candidates, err := retriever.lookupCandidates(context.Background(), cid)
 	retriever.config.Metrics.RecordGetCandidatesResult(requestInfo, metrics.GetCandidatesResult{
 		Err: err,
 	})
@@ -136,7 +132,7 @@ func (retriever *Retriever) Request(cid cid.Cid) error {
 // serial until one succeeds.
 //
 // Possible errors: ErrAllRetrievalsFailed
-func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid cid.Cid, candidates []retrievalCandidate) error {
+func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid cid.Cid, candidates []RetrievalCandidate) error {
 	queries := retriever.queryCandidates(ctx, cid, candidates)
 
 	sort.Slice(queries, func(i, j int) bool {
@@ -170,9 +166,9 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid c
 		candidateInfo := metrics.CandidateInfo{
 			RequestInfo: metrics.RequestInfo{RequestCid: cid},
 			RootCid:     query.candidate.RootCid,
-			Miner:       query.candidate.Miner,
+			PeerID:      query.candidate.MinerPeer.ID,
 		}
-		if err := retriever.tryRegisterRunningRetrieval(query.candidate.RootCid, query.candidate.Miner); err != nil {
+		if err := retriever.tryRegisterRunningRetrieval(query.candidate.RootCid, query.candidate.MinerPeer.ID); err != nil {
 			// TODO: send some info to metrics about this
 
 			if errors.Is(err, ErrRetrievalAlreadyRunning) {
@@ -191,7 +187,7 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid c
 			Err:           err,
 		})
 
-		retriever.unregisterRunningRetrieval(query.candidate.RootCid, query.candidate.Miner)
+		retriever.unregisterRunningRetrieval(query.candidate.RootCid, query.candidate.MinerPeer.ID)
 
 		if err != nil {
 			continue
@@ -236,7 +232,7 @@ func (retriever *Retriever) retrieve(ctx context.Context, query candidateQuery) 
 			timedOut = true
 		})
 	}
-	stats, err := retriever.filClient.RetrieveContentWithProgressCallback(retrieveCtx, query.candidate.Miner, proposal, func(bytesReceived uint64) {
+	stats, err := retriever.filClient.RetrieveContextFromPeerWithProgressCallback(retrieveCtx, query.candidate.MinerPeer.ID, query.response.PaymentAddress, proposal, func(bytesReceived uint64) {
 		if lastBytesReceivedTimer != nil {
 			doneLk.Lock()
 			if !done {
@@ -283,7 +279,7 @@ func (retriever *Retriever) retrieve(ctx context.Context, query candidateQuery) 
 }
 
 // Possible errors: ErrRetrievalAlreadyRunning, ErrHitRetrievalLimit
-func (retriever *Retriever) tryRegisterRunningRetrieval(cid cid.Cid, miner address.Address) error {
+func (retriever *Retriever) tryRegisterRunningRetrieval(cid cid.Cid, miner peer.ID) error {
 	retriever.runningRetrievalsLk.Lock()
 	defer retriever.runningRetrievalsLk.Unlock()
 
@@ -306,7 +302,7 @@ func (retriever *Retriever) tryRegisterRunningRetrieval(cid cid.Cid, miner addre
 }
 
 // Unregisters a running retrieval. No-op if no retrieval is running.
-func (retriever *Retriever) unregisterRunningRetrieval(cid cid.Cid, miner address.Address) {
+func (retriever *Retriever) unregisterRunningRetrieval(cid cid.Cid, miner peer.ID) {
 	retriever.runningRetrievalsLk.Lock()
 	defer retriever.runningRetrievalsLk.Unlock()
 
@@ -322,40 +318,23 @@ func (retriever *Retriever) unregisterRunningRetrieval(cid cid.Cid, miner addres
 //
 // Possible errors - ErrInvalidEndpointURL, ErrEndpointRequestFailed, ErrEndpointBodyInvalid,
 // ErrNoCandidates
-func (retriever *Retriever) lookupCandidates(cid cid.Cid) ([]retrievalCandidate, error) {
-	// Create URL with CID
-	endpointURL, err := url.Parse(retriever.endpoint)
+func (retriever *Retriever) lookupCandidates(ctx context.Context, cid cid.Cid) ([]RetrievalCandidate, error) {
+	unfiltered, err := retriever.endpoint.FindCandidates(ctx, cid)
 	if err != nil {
-		return nil, fmt.Errorf("%w: '%s'", ErrInvalidEndpointURL, retriever.endpoint)
-	}
-	endpointURL.Path = path.Join(endpointURL.Path, cid.String())
-
-	// Request candidates from endpoint
-	resp, err := http.Get(endpointURL.String())
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrEndpointRequestFailed, err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%w: %s sent status %v", ErrEndpointRequestFailed, endpointURL, resp.StatusCode)
-	}
-
-	// Read candidate list from response body
-	var unfiltered []retrievalCandidate
-	if err := json.NewDecoder(resp.Body).Decode(&unfiltered); err != nil {
-		return nil, ErrEndpointBodyInvalid
+		return nil, err
 	}
 
 	// Remove blacklisted miners, or non-whitelisted miners
-	var res []retrievalCandidate
+	var res []RetrievalCandidate
 	for _, candidate := range unfiltered {
+
 		// Skip blacklist
-		if retriever.config.MinerBlacklist[candidate.Miner] {
+		if retriever.config.MinerBlacklist[candidate.MinerPeer.ID] {
 			continue
 		}
 
 		// Skip non-whitelist IF the whitelist isn't empty
-		if len(retriever.config.MinerWhitelist) > 0 && !retriever.config.MinerWhitelist[candidate.Miner] {
+		if len(retriever.config.MinerWhitelist) > 0 && !retriever.config.MinerWhitelist[candidate.MinerPeer.ID] {
 			continue
 		}
 
@@ -365,7 +344,7 @@ func (retriever *Retriever) lookupCandidates(cid cid.Cid) ([]retrievalCandidate,
 	return res, nil
 }
 
-func (retriever *Retriever) queryCandidates(ctx context.Context, cid cid.Cid, candidates []retrievalCandidate) []candidateQuery {
+func (retriever *Retriever) queryCandidates(ctx context.Context, cid cid.Cid, candidates []RetrievalCandidate) []candidateQuery {
 	var queries []candidateQuery
 	var queriesLk sync.Mutex
 
@@ -373,17 +352,17 @@ func (retriever *Retriever) queryCandidates(ctx context.Context, cid cid.Cid, ca
 	wg.Add(len(candidates))
 
 	for i, candidate := range candidates {
-		go func(i int, candidate retrievalCandidate) {
+		go func(i int, candidate RetrievalCandidate) {
 			defer wg.Done()
 
 			candidateInfo := metrics.CandidateInfo{
 				RequestInfo: metrics.RequestInfo{RequestCid: cid},
 				RootCid:     candidate.RootCid,
-				Miner:       candidate.Miner,
+				PeerID:      candidate.MinerPeer.ID,
 			}
 
 			retriever.config.Metrics.RecordQuery(candidateInfo)
-			query, err := retriever.filClient.RetrievalQuery(ctx, candidate.Miner, candidate.RootCid)
+			query, err := retriever.filClient.RetrievalQueryToPeer(ctx, candidate.MinerPeer, candidate.RootCid)
 			retriever.config.Metrics.RecordQueryResult(candidateInfo, metrics.QueryResult{
 				Err: err,
 			})
