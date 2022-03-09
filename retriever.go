@@ -79,7 +79,7 @@ func NewRetriever(
 ) (*Retriever, error) {
 
 	if config.Metrics == nil {
-		config.Metrics = &metrics.Noop{}
+		config.Metrics = metrics.NewNoop()
 	}
 
 	retriever := &Retriever{
