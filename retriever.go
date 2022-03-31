@@ -21,6 +21,7 @@ import (
 	"github.com/ipfs/go-datastore"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"go.opencensus.io/stats"
 )
 
 var (
@@ -159,9 +160,9 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid c
 		return false
 	})
 
-	// stats will be nil after the loop if none of the retrievals successfully
+	// retrievalStats will be nil after the loop if none of the retrievals successfully
 	// complete
-	var stats *filclient.RetrievalStats
+	var retrievalStats *filclient.RetrievalStats
 	for _, query := range queries {
 		candidateInfo := metrics.CandidateInfo{
 			RequestInfo: metrics.RequestInfo{RequestCid: cid},
@@ -177,13 +178,31 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid c
 
 			continue
 		}
+
+		// TODO: Determine if we still need this log
 		retriever.config.Metrics.RecordRetrieval(candidateInfo)
-		stats_, err := retriever.retrieve(ctx, query)
-		stats = stats_
+
+		stats.Record(ctx, metrics.RetrievalDealCount.M(1))
+		stats.Record(ctx, metrics.RetrievalDealActiveCount.M(1))
+
+		// Make the retrieval
+		retrievalStats, err := retriever.retrieve(ctx, query)
+
+		stats.Record(ctx, metrics.RetrievalDealActiveCount.M(-1))
+		if err != nil {
+			stats.Record(ctx, metrics.RetrievalDealFailCount.M(1))
+		} else {
+			stats.Record(ctx, metrics.RetrievalDealSuccessCount.M(1))
+			stats.Record(ctx, metrics.RetrievalDealDuration.M(retrievalStats.Duration.Seconds()))
+			stats.Record(ctx, metrics.RetrievalDealSize.M(int64(retrievalStats.Size)))
+			stats.Record(ctx, metrics.RetrievalDealCost.M(retrievalStats.TotalPayment.Int64()))
+		}
+
+		// TODO: Determine if we still need this log
 		retriever.config.Metrics.RecordRetrievalResult(candidateInfo, metrics.RetrievalResult{
-			Duration:      stats.Duration,
-			BytesReceived: stats.Size,
-			TotalPayment:  types.FIL(stats.TotalPayment),
+			Duration:      retrievalStats.Duration,
+			BytesReceived: retrievalStats.Size,
+			TotalPayment:  types.FIL(retrievalStats.TotalPayment),
 			Err:           err,
 		})
 
@@ -196,7 +215,7 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid c
 		break
 	}
 
-	if stats == nil {
+	if retrievalStats == nil {
 		return ErrAllRetrievalsFailed
 	}
 
