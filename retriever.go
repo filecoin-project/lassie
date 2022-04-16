@@ -205,7 +205,7 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid c
 		// TODO: Determine if we still need this log
 		retriever.config.Metrics.RecordRetrieval(candidateInfo)
 
-		stats.Record(ctx, metrics.RetrievalDealCount.M(1))
+		stats.Record(ctx, metrics.RetrievalRequestCount.M(1))
 		stats.Record(ctx, metrics.RetrievalDealActiveCount.M(1))
 
 		// Make the retrieval
