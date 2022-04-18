@@ -34,17 +34,40 @@ var (
 	ErrAllRetrievalsFailed         = errors.New("all retrievals failed")
 )
 
+type MinerConfig struct {
+	RetrievalTimeout        time.Duration
+	MaxConcurrentRetrievals uint
+}
+
 // All config values should be safe to leave uninitialized
 type RetrieverConfig struct {
-	MinerBlacklist         map[peer.ID]bool
-	MinerWhitelist         map[peer.ID]bool
-	PerMinerRetrievalLimit uint
-	RetrievalTimeout       time.Duration // Set to zero to disable
-	Metrics                metrics.Metrics
+	MinerBlacklist     map[peer.ID]bool
+	MinerWhitelist     map[peer.ID]bool
+	DefaultMinerConfig MinerConfig
+	MinerConfigs       map[peer.ID]MinerConfig
+	Metrics            metrics.Metrics
+}
+
+func (cfg *RetrieverConfig) MinerConfig(peer peer.ID) MinerConfig {
+	minerCfg := cfg.DefaultMinerConfig
+
+	if individual, ok := cfg.MinerConfigs[peer]; ok {
+		if individual.MaxConcurrentRetrievals != 0 {
+			minerCfg.MaxConcurrentRetrievals = individual.MaxConcurrentRetrievals
+		}
+
+		if individual.RetrievalTimeout != 0 {
+			minerCfg.RetrievalTimeout = individual.RetrievalTimeout
+		}
+	}
+
+	return minerCfg
 }
 
 type Retriever struct {
-	config    RetrieverConfig
+	// Assumed immutable during operation
+	config RetrieverConfig
+
 	endpoint  Endpoint
 	filClient *filclient.FilClient
 
@@ -240,9 +263,11 @@ func (retriever *Retriever) retrieve(ctx context.Context, query candidateQuery) 
 	timedOut := false
 	var lastBytesReceivedTimer *time.Timer
 
+	minerCfgs := retriever.config.MinerConfigs[query.candidate.MinerPeer.ID]
+
 	// Start the timeout tracker only if retrieval timeout isn't 0
-	if retriever.config.RetrievalTimeout != 0 {
-		lastBytesReceivedTimer = time.AfterFunc(retriever.config.RetrievalTimeout, func() {
+	if minerCfgs.RetrievalTimeout != 0 {
+		lastBytesReceivedTimer = time.AfterFunc(minerCfgs.RetrievalTimeout, func() {
 			doneLk.Lock()
 			done = true
 			doneLk.Unlock()
@@ -259,7 +284,7 @@ func (retriever *Retriever) retrieve(ctx context.Context, query candidateQuery) 
 					if !lastBytesReceivedTimer.Stop() {
 						<-lastBytesReceivedTimer.C
 					}
-					lastBytesReceivedTimer.Reset(retriever.config.RetrievalTimeout)
+					lastBytesReceivedTimer.Reset(minerCfgs.RetrievalTimeout)
 					lastBytesReceived = bytesReceived
 				}
 			}
@@ -269,7 +294,7 @@ func (retriever *Retriever) retrieve(ctx context.Context, query candidateQuery) 
 	if timedOut {
 		err = fmt.Errorf(
 			"timed out after not receiving data for %s (started %s ago, stopped at %s)",
-			retriever.config.RetrievalTimeout,
+			minerCfgs.RetrievalTimeout,
 			time.Since(startTime),
 			humanize.IBytes(lastBytesReceived),
 		)
@@ -302,10 +327,12 @@ func (retriever *Retriever) tryRegisterRunningRetrieval(cid cid.Cid, miner peer.
 	retriever.runningRetrievalsLk.Lock()
 	defer retriever.runningRetrievalsLk.Unlock()
 
+	minerConfig := retriever.config.MinerConfigs[miner]
+
 	// If limit is enabled (non-zero) and we have already hit it, we can't
 	// allow this retrieval to start
-	noLimit := retriever.config.PerMinerRetrievalLimit == 0
-	atLimit := retriever.activeRetrievalsPerMiner[miner] >= retriever.config.PerMinerRetrievalLimit
+	noLimit := minerConfig.MaxConcurrentRetrievals == 0
+	atLimit := retriever.activeRetrievalsPerMiner[miner] >= minerConfig.MaxConcurrentRetrievals
 	if !noLimit && atLimit {
 		return ErrHitRetrievalLimit
 	}
