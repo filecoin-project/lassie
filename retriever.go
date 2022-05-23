@@ -416,6 +416,10 @@ func (retriever *Retriever) queryCandidates(ctx context.Context, cid cid.Cid, ca
 				return
 			}
 
+			if query.Status != retrievalmarket.QueryResponseAvailable {
+				return
+			}
+
 			queriesLk.Lock()
 			queries = append(queries, candidateQuery{candidate: candidate, response: query})
 			queriesLk.Unlock()
