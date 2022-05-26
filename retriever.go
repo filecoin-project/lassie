@@ -281,9 +281,6 @@ func (retriever *Retriever) retrieve(ctx context.Context, query candidateQuery) 
 			doneLk.Lock()
 			if !done {
 				if lastBytesReceived != bytesReceived {
-					if !lastBytesReceivedTimer.Stop() {
-						<-lastBytesReceivedTimer.C
-					}
 					lastBytesReceivedTimer.Reset(minerCfgs.RetrievalTimeout)
 					lastBytesReceived = bytesReceived
 				}
