@@ -324,7 +324,7 @@ func (retriever *Retriever) tryRegisterRunningRetrieval(cid cid.Cid, miner peer.
 	retriever.runningRetrievalsLk.Lock()
 	defer retriever.runningRetrievalsLk.Unlock()
 
-	minerConfig := retriever.config.MinerConfigs[miner]
+	minerConfig := retriever.config.MinerConfig(miner)
 
 	// If limit is enabled (non-zero) and we have already hit it, we can't
 	// allow this retrieval to start
@@ -339,7 +339,9 @@ func (retriever *Retriever) tryRegisterRunningRetrieval(cid cid.Cid, miner peer.
 	}
 
 	retriever.runningRetrievals[cid] = true
-	retriever.activeRetrievalsPerMiner[miner] = retriever.activeRetrievalsPerMiner[miner] + 1
+	retriever.activeRetrievalsPerMiner[miner] += 1
+
+	fmt.Printf("running retrievals: %d (at limit: %v, no limit: %v)\n", retriever.activeRetrievalsPerMiner[miner], atLimit, noLimit)
 
 	return nil
 }
