@@ -11,6 +11,7 @@ import (
 	"github.com/application-research/autoretrieve/blocks"
 	"github.com/application-research/autoretrieve/metrics"
 	"github.com/application-research/filclient"
+	"github.com/application-research/filclient/rep"
 	"github.com/application-research/filclient/retrievehelper"
 	"github.com/dustin/go-humanize"
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
@@ -19,6 +20,7 @@ import (
 	"github.com/filecoin-project/lotus/chain/types"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
+	"github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"go.opencensus.io/stats"
@@ -33,6 +35,8 @@ var (
 	ErrRetrievalFailed             = errors.New("retrieval failed")
 	ErrAllRetrievalsFailed         = errors.New("all retrievals failed")
 )
+
+var logger = log.Logger("autoretrieve")
 
 type MinerConfig struct {
 	RetrievalTimeout        time.Duration
@@ -113,6 +117,8 @@ func NewRetriever(
 		runningRetrievals:        make(map[cid.Cid]bool),
 		activeRetrievalsPerMiner: make(map[peer.ID]uint),
 	}
+
+	retriever.filClient.SubscribeToRetrievalEvents(retriever)
 
 	return retriever, nil
 }
@@ -276,7 +282,7 @@ func (retriever *Retriever) retrieve(ctx context.Context, query candidateQuery) 
 			timedOut = true
 		})
 	}
-	stats, err := retriever.filClient.RetrieveContextFromPeerWithProgressCallback(retrieveCtx, query.candidate.MinerPeer.ID, query.response.PaymentAddress, proposal, func(bytesReceived uint64) {
+	stats, err := retriever.filClient.RetrieveContentFromPeerWithProgressCallback(retrieveCtx, query.candidate.MinerPeer.ID, query.response.PaymentAddress, proposal, func(bytesReceived uint64) {
 		if lastBytesReceivedTimer != nil {
 			doneLk.Lock()
 			if !done {
@@ -432,4 +438,13 @@ func (retriever *Retriever) queryCandidates(ctx context.Context, cid cid.Cid, ca
 
 func totalCost(qres *retrievalmarket.QueryResponse) big.Int {
 	return big.Add(big.Mul(qres.MinPricePerByte, big.NewIntUnsigned(qres.Size)), qres.UnsealPrice)
+}
+
+// Implement rep.RetrievalSubscriber
+func (retriever *Retriever) OnRetrievalEvent(event rep.RetrievalEvent) {
+	logger.Debugf("%s %s", event.Code, event.Status)
+}
+
+func (retriever *Retriever) RetrievalSubscriberId() interface{} {
+	return "autoretrieve"
 }
