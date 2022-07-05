@@ -74,6 +74,8 @@ type Retriever struct {
 	runningRetrievals        map[cid.Cid]bool
 	activeRetrievalsPerMiner map[peer.ID]uint
 	runningRetrievalsLk      sync.Mutex
+
+	minerMonitor *minerMonitor
 }
 
 type candidateQuery struct {
@@ -107,6 +109,11 @@ func NewRetriever(
 		filClient:                filClient,
 		runningRetrievals:        make(map[cid.Cid]bool),
 		activeRetrievalsPerMiner: make(map[peer.ID]uint),
+		minerMonitor: newMinerMonitor(minerMonitorConfig{
+			maxFailuresBeforeSuspend: 5,
+			suspensionDuration:       time.Minute,
+			failureHistoryDuration:   time.Second * 15,
+		}),
 	}
 
 	retriever.filClient.SubscribeToRetrievalEvents(retriever)
@@ -293,6 +300,9 @@ func (retriever *Retriever) retrieve(ctx context.Context, query candidateQuery) 
 			humanize.IBytes(lastBytesReceived),
 		)
 	}
+	if err != nil {
+		retriever.minerMonitor.recordFailure(query.candidate.MinerPeer.ID)
+	}
 	// TODO: temporary measure, remove when filclient properly returns data on
 	// failure
 	if stats == nil {
@@ -380,6 +390,11 @@ func (retriever *Retriever) lookupCandidates(ctx context.Context, cid cid.Cid) (
 			continue
 		}
 
+		// Skip suspended miners from the miner monitor
+		if retriever.minerMonitor.suspended(candidate.MinerPeer.ID) {
+			continue
+		}
+
 		res = append(res, candidate)
 	}
 
@@ -405,6 +420,7 @@ func (retriever *Retriever) queryCandidates(ctx context.Context, cid cid.Cid, ca
 					formatCidAndRoot(cid, candidate.RootCid, false),
 					err,
 				)
+				retriever.minerMonitor.recordFailure(candidate.MinerPeer.ID)
 				return
 			}
 
