@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/application-research/autoretrieve/blocks"
 	"github.com/application-research/autoretrieve/metrics"
 	"github.com/application-research/filclient"
 	"github.com/application-research/filclient/rep"
@@ -16,11 +15,9 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-state-types/big"
-	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/chain/types"
+	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-datastore"
-	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"go.opencensus.io/stats"
 )
@@ -68,8 +65,9 @@ type Retriever struct {
 	// Assumed immutable during operation
 	config RetrieverConfig
 
-	endpoint  Endpoint
-	filClient *filclient.FilClient
+	endpoint      Endpoint
+	filClient     *filclient.FilClient
+	eventRecorder EventRecorder
 
 	runningRetrievals        map[cid.Cid]bool
 	activeRetrievalsPerMiner map[peer.ID]uint
@@ -88,6 +86,11 @@ type RetrievalCandidate struct {
 	RootCid   cid.Cid
 }
 
+type EventRecorder interface {
+	RecordSuccess(uuid.UUID, cid.Cid, cid.Cid, time.Time, *filclient.RetrievalStats) error
+	RecordFailure(uuid.UUID, peer.ID, cid.Cid, cid.Cid, time.Time, error) error
+}
+
 type Endpoint interface {
 	FindCandidates(context.Context, cid.Cid) ([]RetrievalCandidate, error)
 }
@@ -98,15 +101,13 @@ func NewRetriever(
 	config RetrieverConfig,
 	filClient *filclient.FilClient,
 	endpoint Endpoint,
-	host host.Host,
-	api api.Gateway,
-	datastore datastore.Batching,
-	blockManager *blocks.Manager,
+	eventRecorder EventRecorder,
 ) (*Retriever, error) {
 	retriever := &Retriever{
 		config:                   config,
 		endpoint:                 endpoint,
 		filClient:                filClient,
+		eventRecorder:            eventRecorder,
 		runningRetrievals:        make(map[cid.Cid]bool),
 		activeRetrievalsPerMiner: make(map[peer.ID]uint),
 		minerMonitor: newMinerMonitor(minerMonitorConfig{
@@ -183,6 +184,11 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid c
 		return false
 	})
 
+	retrievalId, err := uuid.NewRandom()
+	if err != nil {
+		return err
+	}
+
 	// retrievalStats will be nil after the loop if none of the retrievals successfully
 	// complete
 	var retrievalStats *filclient.RetrievalStats
@@ -206,6 +212,8 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid c
 		stats.Record(ctx, metrics.RetrievalRequestCount.M(1))
 		stats.Record(ctx, metrics.RetrievalDealActiveCount.M(1))
 
+		startTime := time.Now()
+
 		// Make the retrieval
 		retrievalStats, err := retriever.retrieve(ctx, query)
 
@@ -218,6 +226,19 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid c
 				err,
 			)
 			stats.Record(ctx, metrics.RetrievalDealFailCount.M(1))
+			if retriever.eventRecorder != nil {
+				if err := retriever.eventRecorder.RecordFailure(
+					retrievalId,
+					query.candidate.MinerPeer.ID,
+					cid,
+					query.candidate.RootCid,
+					startTime,
+					err,
+					// TODO: instance name? from where?
+				); err != nil {
+					log.Errorf("Failed to post event to recorder:", err)
+				}
+			}
 		} else {
 			log.Infof(
 				"Successfully retrieved from miner %s for %s\n"+
@@ -235,6 +256,18 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid c
 			stats.Record(ctx, metrics.RetrievalDealDuration.M(retrievalStats.Duration.Seconds()))
 			stats.Record(ctx, metrics.RetrievalDealSize.M(int64(retrievalStats.Size)))
 			stats.Record(ctx, metrics.RetrievalDealCost.M(retrievalStats.TotalPayment.Int64()))
+			if retriever.eventRecorder != nil {
+				if err := retriever.eventRecorder.RecordSuccess(
+					retrievalId,
+					cid,
+					query.candidate.RootCid,
+					startTime,
+					retrievalStats,
+					// TODO: instance name? from where?
+				); err != nil {
+					log.Errorf("Failed to post event to recorder:", err)
+				}
+			}
 		}
 
 		retriever.unregisterRunningRetrieval(query.candidate.RootCid, query.candidate.MinerPeer.ID)
