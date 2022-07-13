@@ -17,6 +17,9 @@ import (
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/codec/dagjson"
 	"github.com/ipld/go-ipld-prime/datamodel"
+	"github.com/ipld/go-ipld-prime/fluent/qp"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/libp2p/go-libp2p-core/peer"
 )
 
@@ -66,51 +69,25 @@ func TestEventRecorder_Success(t *testing.T) {
 			pathSegments := strings.Split(path, "/")
 			qt.Assert(t, pathSegments, qt.DeepEquals, []string{"", "retrieval-event", id.String(), "providers", minerId.String()})
 
-			gotCidNode, err := req.LookupByString("cid")
+			expectedMessage, err := qp.BuildMap(basicnode.Prototype.Any, -1, func(ma datamodel.MapAssembler) {
+				qp.MapEntry(ma, "askPrice", qp.String("3030"))
+				qp.MapEntry(ma, "cid", qp.Link(cidlink.Link{Cid: testCid1}))
+				qp.MapEntry(ma, "durationMs", qp.Int(0))
+				qp.MapEntry(ma, "numPayments", qp.Int(2))
+				if !testCid1.Equals(rootCid) {
+					qp.MapEntry(ma, "rootCid", qp.Link(cidlink.Link{Cid: rootCid}))
+				}
+				qp.MapEntry(ma, "size", qp.Int(2020))
+				qp.MapEntry(ma, "startTime", qp.String(startTime.Format(time.RFC3339Nano)))
+				qp.MapEntry(ma, "totalPayment", qp.String("4040"))
+			})
 			qt.Assert(t, err, qt.IsNil)
-			gotCid, err := gotCidNode.AsLink()
-			qt.Assert(t, err, qt.IsNil)
-			qt.Assert(t, gotCid.String(), qt.Equals, testCid1.String())
 
-			gotRootCidNode, err := req.LookupByString("rootCid")
-			if rootCid.Equals(testCid1) {
-				qt.Assert(t, err, qt.IsNotNil)
-			} else {
-				qt.Assert(t, err, qt.IsNil)
-				gotRootCid, err := gotRootCidNode.AsLink()
-				qt.Assert(t, err, qt.IsNil)
-				qt.Assert(t, gotRootCid.String(), qt.Equals, rootCid.String())
+			equal := ipld.DeepEqual(req, expectedMessage)
+			if !equal {
+				t.Logf("\nwant: %s\n got: %s", mustDagJson(expectedMessage), mustDagJson(req))
 			}
-
-			gotStartTimeNode, err := req.LookupByString("startTime")
-			qt.Assert(t, err, qt.IsNil)
-			gotStartTime, err := gotStartTimeNode.AsString()
-			qt.Assert(t, err, qt.IsNil)
-			qt.Assert(t, gotStartTime, qt.Equals, startTime.Format(time.RFC3339Nano))
-
-			gotSizeNode, err := req.LookupByString("size")
-			qt.Assert(t, err, qt.IsNil)
-			gotSize, err := gotSizeNode.AsInt()
-			qt.Assert(t, err, qt.IsNil)
-			qt.Assert(t, gotSize, qt.Equals, int64(2020))
-
-			gotAskPriceNode, err := req.LookupByString("askPrice")
-			qt.Assert(t, err, qt.IsNil)
-			gotAskPrice, err := gotAskPriceNode.AsString()
-			qt.Assert(t, err, qt.IsNil)
-			qt.Assert(t, gotAskPrice, qt.Equals, "3030")
-
-			gotTotalPaymentNode, err := req.LookupByString("totalPayment")
-			qt.Assert(t, err, qt.IsNil)
-			gotTotalPayment, err := gotTotalPaymentNode.AsString()
-			qt.Assert(t, err, qt.IsNil)
-			qt.Assert(t, gotTotalPayment, qt.Equals, "4040")
-
-			gotNumPaymentsNode, err := req.LookupByString("numPayments")
-			qt.Assert(t, err, qt.IsNil)
-			gotNumPayments, err := gotNumPaymentsNode.AsInt()
-			qt.Assert(t, err, qt.IsNil)
-			qt.Assert(t, gotNumPayments, qt.Equals, int64(2))
+			qt.Assert(t, equal, qt.IsTrue)
 		}
 	}
 
@@ -152,45 +129,21 @@ func TestEventRecorder_Failure(t *testing.T) {
 			pathSegments := strings.Split(path, "/")
 			qt.Assert(t, pathSegments, qt.DeepEquals, []string{"", "retrieval-event", id.String(), "providers", minerId.String()})
 
-			gotCidNode, err := req.LookupByString("cid")
+			expectedMessage, err := qp.BuildMap(basicnode.Prototype.Any, -1, func(ma datamodel.MapAssembler) {
+				qp.MapEntry(ma, "cid", qp.Link(cidlink.Link{Cid: testCid1}))
+				qp.MapEntry(ma, "error", qp.String("some error message here"))
+				if !testCid1.Equals(rootCid) {
+					qp.MapEntry(ma, "rootCid", qp.Link(cidlink.Link{Cid: rootCid}))
+				}
+				qp.MapEntry(ma, "startTime", qp.String(startTime.Format(time.RFC3339Nano)))
+			})
 			qt.Assert(t, err, qt.IsNil)
-			gotCid, err := gotCidNode.AsLink()
-			qt.Assert(t, err, qt.IsNil)
-			qt.Assert(t, gotCid.String(), qt.Equals, testCid1.String())
 
-			gotRootCidNode, err := req.LookupByString("rootCid")
-			if rootCid.Equals(testCid1) {
-				qt.Assert(t, err, qt.IsNotNil)
-			} else {
-				qt.Assert(t, err, qt.IsNil)
-				gotRootCid, err := gotRootCidNode.AsLink()
-				qt.Assert(t, err, qt.IsNil)
-				qt.Assert(t, gotRootCid.String(), qt.Equals, rootCid.String())
+			equal := ipld.DeepEqual(req, expectedMessage)
+			if !equal {
+				t.Logf("\nwant: %s\n got: %s", mustDagJson(expectedMessage), mustDagJson(req))
 			}
-
-			gotStartTimeNode, err := req.LookupByString("startTime")
-			qt.Assert(t, err, qt.IsNil)
-			gotStartTime, err := gotStartTimeNode.AsString()
-			qt.Assert(t, err, qt.IsNil)
-			qt.Assert(t, gotStartTime, qt.Equals, startTime.Format(time.RFC3339Nano))
-
-			getErrorNode, err := req.LookupByString("error")
-			qt.Assert(t, err, qt.IsNil)
-			getError, err := getErrorNode.AsString()
-			qt.Assert(t, err, qt.IsNil)
-			qt.Assert(t, getError, qt.Equals, "some error message here")
-
-			_, err = req.LookupByString("size")
-			qt.Assert(t, err, qt.IsNotNil)
-
-			_, err = req.LookupByString("askPrice")
-			qt.Assert(t, err, qt.IsNotNil)
-
-			_, err = req.LookupByString("totalPayment")
-			qt.Assert(t, err, qt.IsNotNil)
-
-			_, err = req.LookupByString("numPayments")
-			qt.Assert(t, err, qt.IsNotNil)
+			qt.Assert(t, equal, qt.IsTrue)
 		}
 	}
 
@@ -204,4 +157,12 @@ func mustCid(cstr string) cid.Cid {
 		panic(err)
 	}
 	return c
+}
+
+func mustDagJson(node datamodel.Node) string {
+	byts, err := ipld.Encode(node, dagjson.Encode)
+	if err != nil {
+		panic(err)
+	}
+	return string(byts)
 }

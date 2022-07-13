@@ -256,6 +256,14 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid c
 			stats.Record(ctx, metrics.RetrievalDealDuration.M(retrievalStats.Duration.Seconds()))
 			stats.Record(ctx, metrics.RetrievalDealSize.M(int64(retrievalStats.Size)))
 			stats.Record(ctx, metrics.RetrievalDealCost.M(retrievalStats.TotalPayment.Int64()))
+
+			// TODO: this is a _final_ report, we want a _start_ report before we start the retrieval and then we
+			// want to register one for each of the events that come out of filclient
+			// see `func (fc *FilClient) OnRetrievalEvent(event rep.RetrievalEvent, state rep.RetrievalState)` in
+			// filclient/filclient.go
+			// need to decide what to do with the final report for both success and failure - we could either use
+			// it coming out of the event or do it here, perhaps we have more information here? want to avoid
+			// anything racy though
 			if retriever.eventRecorder != nil {
 				if err := retriever.eventRecorder.RecordSuccess(
 					retrievalId,
@@ -263,7 +271,9 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid c
 					query.candidate.RootCid,
 					startTime,
 					retrievalStats,
-					// TODO: instance name? from where?
+					// TODO: instance name:
+					// put an option in the config with a sensible default, we can update it later
+					// to something meaningful if we care, for now we're just using a placeholder
 				); err != nil {
 					log.Errorf("Failed to post event to recorder:", err)
 				}
