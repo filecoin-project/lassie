@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/application-research/autoretrieve/filecoin/eventrecorder"
 	"github.com/application-research/autoretrieve/metrics"
 	"github.com/application-research/filclient"
 	"github.com/application-research/filclient/rep"
@@ -67,7 +68,7 @@ type Retriever struct {
 
 	endpoint      Endpoint
 	filClient     *filclient.FilClient
-	eventRecorder EventRecorder
+	eventRecorder *eventrecorder.EventRecorder
 
 	runningRetrievals        map[cid.Cid]bool
 	activeRetrievalsPerMiner map[peer.ID]uint
@@ -86,11 +87,6 @@ type RetrievalCandidate struct {
 	RootCid   cid.Cid
 }
 
-type EventRecorder interface {
-	RecordSuccess(uuid.UUID, cid.Cid, cid.Cid, time.Time, *filclient.RetrievalStats) error
-	RecordFailure(uuid.UUID, peer.ID, cid.Cid, cid.Cid, time.Time, error) error
-}
-
 type Endpoint interface {
 	FindCandidates(context.Context, cid.Cid) ([]RetrievalCandidate, error)
 }
@@ -101,7 +97,7 @@ func NewRetriever(
 	config RetrieverConfig,
 	filClient *filclient.FilClient,
 	endpoint Endpoint,
-	eventRecorder EventRecorder,
+	eventRecorder *eventrecorder.EventRecorder,
 ) (*Retriever, error) {
 	retriever := &Retriever{
 		config:                   config,
