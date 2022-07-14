@@ -127,7 +127,7 @@ func (er *EventRecorder) RecordFailure(
 }
 
 func (er *EventRecorder) recordEvent(retrievalId uuid.UUID, minerId peer.ID, evt event) error {
-	// https://.../event/~uuid~/providers/~peerID
+	// https://.../retrieval-event/~uuid~/providers/~peerID~
 	url := fmt.Sprintf("%s/retrieval-event/%s/providers/%s", er.endpointURL, retrievalId.String(), minerId.String())
 
 	node := bindnode.Wrap(&evt, eventType)
@@ -135,18 +135,16 @@ func (er *EventRecorder) recordEvent(retrievalId uuid.UUID, minerId peer.ID, evt
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequest("PUT", url, bytes.NewReader(byts))
+	req, err := http.NewRequest("PUT", url, bytes.NewBufferString(string(byts)))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
 	}
-	_ = resp.Body.Close() // error not so important at this point
+	defer resp.Body.Close() // error not so important at this point
 	return nil
 }
 
