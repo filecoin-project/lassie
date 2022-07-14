@@ -507,8 +507,17 @@ func formatCid(cid cid.Cid, short bool) string {
 }
 
 // Implement rep.RetrievalSubscriber
-func (retriever *Retriever) OnRetrievalEvent(event rep.RetrievalEvent) {
-	log.Debugf("%s %s", event.Code, event.Status)
+func (retriever *Retriever) OnRetrievalEvent(event rep.RetrievalEvent, state rep.RetrievalState) {
+	log.Debugw("retrieval-event",
+		"code", event.Code,
+		"status", event.Status,
+		"storage-provider-id", state.StorageProviderID,
+		"storage-provider-address", state.StorageProviderAddr,
+		"client-address", state.ClientID,
+		"payload-cid", state.PayloadCid,
+		"piece-cid", state.PieceCid,
+		"finished-time", state.FinishedTime,
+	)
 }
 
 func (retriever *Retriever) RetrievalSubscriberId() interface{} {
