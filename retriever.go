@@ -26,6 +26,7 @@ import (
 var (
 	ErrNoCandidates                = errors.New("no candidates")
 	ErrRetrievalAlreadyRunning     = errors.New("retrieval already running")
+	ErrUnexpectedRetrieval         = errors.New("unexpected active retrieval")
 	ErrHitRetrievalLimit           = errors.New("hit retrieval limit")
 	ErrProposalCreationFailed      = errors.New("proposal creation failed")
 	ErrRetrievalRegistrationFailed = errors.New("retrieval registration failed")
@@ -63,8 +64,9 @@ func (cfg *RetrieverConfig) MinerConfig(peer peer.ID) MinerConfig {
 }
 
 type activeRetrieval struct {
-	retrievalId       uuid.UUID
-	storageProviderId peer.ID
+	retrievalId              uuid.UUID
+	rootCid                  cid.Cid
+	currentStorageProviderId peer.ID
 }
 
 type Retriever struct {
@@ -75,9 +77,8 @@ type Retriever struct {
 	filClient     *filclient.FilClient
 	eventRecorder *eventrecorder.EventRecorder
 
-	activeRetrievals         map[cid.Cid]activeRetrieval
-	activeRetrievalsLk       sync.Mutex
-	activeRetrievalsPerMiner map[peer.ID]uint
+	activeRetrievals   map[cid.Cid]*activeRetrieval
+	activeRetrievalsLk sync.Mutex
 
 	minerMonitor *minerMonitor
 }
@@ -105,12 +106,11 @@ func NewRetriever(
 	eventRecorder *eventrecorder.EventRecorder,
 ) (*Retriever, error) {
 	retriever := &Retriever{
-		config:                   config,
-		endpoint:                 endpoint,
-		filClient:                filClient,
-		eventRecorder:            eventRecorder,
-		activeRetrievals:         make(map[cid.Cid]activeRetrieval),
-		activeRetrievalsPerMiner: make(map[peer.ID]uint),
+		config:           config,
+		endpoint:         endpoint,
+		filClient:        filClient,
+		eventRecorder:    eventRecorder,
+		activeRetrievals: make(map[cid.Cid]*activeRetrieval),
 		minerMonitor: newMinerMonitor(minerMonitorConfig{
 			maxFailuresBeforeSuspend: 5,
 			suspensionDuration:       time.Minute,
@@ -159,7 +159,22 @@ func (retriever *Retriever) Request(cid cid.Cid) error {
 //
 // Possible errors: ErrAllRetrievalsFailed
 func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid cid.Cid, candidates []RetrievalCandidate) error {
+	retrievalId, err := uuid.NewRandom()
+	if err != nil {
+		return err
+	}
+
+	if err := retriever.registerActiveRetrieval(retrievalId, cid); err != nil {
+		// TODO: send some info to metrics about this case:
+		// if errors.Is(err, ErrRetrievalAlreadyRunning)
+		return err
+	}
+	defer retriever.unregisterActiveRetrieval(cid)
+
 	queries := retriever.queryCandidates(ctx, cid, candidates)
+	if len(queries) == 0 {
+		return nil
+	}
 
 	sort.Slice(queries, func(i, j int) bool {
 		a := queries[i].response
@@ -189,15 +204,8 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid c
 	// complete
 	var retrievalStats *filclient.RetrievalStats
 	for _, query := range queries {
-		retrievalId, err := retriever.tryRegisterActiveRetrieval(query.candidate.RootCid, query.candidate.MinerPeer.ID)
-		if err != nil {
-			// TODO: send some info to metrics about this
-
-			if errors.Is(err, ErrRetrievalAlreadyRunning) {
-				break
-			}
-
-			continue
+		if err := retriever.updateActiveRetrieval(retrievalId, cid, query.candidate.RootCid, query.candidate.MinerPeer.ID); err != nil {
+			continue // likely an ErrHitRetrievalLimit, move on to next candidate
 		}
 
 		log.Infof(
@@ -273,7 +281,7 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid c
 			}
 		}
 
-		retriever.unregisterActiveRetrieval(query.candidate.RootCid, query.candidate.MinerPeer.ID)
+		retriever.updateActiveRetrieval(retrievalId, cid, query.candidate.RootCid, "")
 
 		if err != nil {
 			continue
@@ -366,48 +374,79 @@ func (retriever *Retriever) retrieve(ctx context.Context, query candidateQuery) 
 	return stats, nil
 }
 
-// Possible errors: ErrRetrievalAlreadyRunning, ErrHitRetrievalLimit
-func (retriever *Retriever) tryRegisterActiveRetrieval(cid cid.Cid, storageProviderId peer.ID) (uuid.UUID, error) {
+// registerActiveRetrieval will create the activeRetrievals map. Initially the
+// storageProviderId is empty and rootCid is the same as the initial CID, but
+// these can both change during the lifetime of this retrieval (see
+// updateActiveRetrieval).
+// Possible errors: ErrRetrievalAlreadyRunning
+func (retriever *Retriever) registerActiveRetrieval(retrievalId uuid.UUID, cid cid.Cid) error {
 	retriever.activeRetrievalsLk.Lock()
 	defer retriever.activeRetrievalsLk.Unlock()
 
-	if _, ok := retriever.activeRetrievals[cid]; ok {
-		return uuid.UUID{}, ErrRetrievalAlreadyRunning
+	if _, exists := retriever.activeRetrievals[cid]; exists {
+		return ErrRetrievalAlreadyRunning
+	}
+	// we may have a retrieval for this CID where it's not the initial CID but is
+	// the rootCid, so check for that
+	for _, ar := range retriever.activeRetrievals {
+		if cid.Equals(ar.rootCid) {
+			return ErrRetrievalAlreadyRunning
+		}
+	}
+	retriever.activeRetrievals[cid] = &activeRetrieval{retrievalId, cid, ""}
+	return nil
+}
+
+// updateActiveRetrieval will update the activeRetrievals map for a new
+// storage provider. The number of simultaneous connections to that SP will be
+// checked so we don't exceed the requested maximum. If the connection can
+// proceed, the storageProviderId will be updated and the rootCid will
+// also be updated if it's different from the initial CID.
+// Calling updateActiveRetrieval with a blank storageProviderId will keep the
+// activeRetrieval alive but remove the current storage provider from its
+// record.
+// Possible errors: ErrUnexpectedRetrieval, ErrHitRetrievalLimit
+func (retriever *Retriever) updateActiveRetrieval(retrievalId uuid.UUID, cid, rootCid cid.Cid, storageProviderId peer.ID) error {
+	retriever.activeRetrievalsLk.Lock()
+	defer retriever.activeRetrievalsLk.Unlock()
+
+	ar, exists := retriever.activeRetrievals[cid]
+	if !exists {
+		return ErrUnexpectedRetrieval
 	}
 
 	minerConfig := retriever.config.MinerConfig(storageProviderId)
 
 	// If limit is enabled (non-zero) and we have already hit it, we can't
 	// allow this retrieval to start
-	noLimit := minerConfig.MaxConcurrentRetrievals == 0
-	atLimit := retriever.activeRetrievalsPerMiner[storageProviderId] >= minerConfig.MaxConcurrentRetrievals
-	if !noLimit && atLimit {
-		return uuid.UUID{}, ErrHitRetrievalLimit
+	if minerConfig.MaxConcurrentRetrievals > 0 {
+		var currentRetrievals uint
+		for _, ret := range retriever.activeRetrievals {
+			if ret.currentStorageProviderId == storageProviderId {
+				currentRetrievals++
+			}
+		}
+		if currentRetrievals >= minerConfig.MaxConcurrentRetrievals {
+			return ErrHitRetrievalLimit
+		}
 	}
 
-	retrievalId, err := uuid.NewRandom()
-	if err != nil {
-		return uuid.UUID{}, err
+	// good to go with this storage provider
+	ar.currentStorageProviderId = storageProviderId
+	if storageProviderId == "" {
+		rootCid = cid // set it back to default
 	}
+	ar.rootCid = rootCid
 
-	retriever.activeRetrievals[cid] = activeRetrieval{retrievalId, storageProviderId}
-	retriever.activeRetrievalsPerMiner[storageProviderId] += 1
-
-	fmt.Printf("active retrievals: %d (at limit: %v, no limit: %v)\n", retriever.activeRetrievalsPerMiner[storageProviderId], atLimit, noLimit)
-
-	return retrievalId, nil
+	return nil
 }
 
-// Unregisters an active retrieval. No-op if no retrieval is running.
-func (retriever *Retriever) unregisterActiveRetrieval(cid cid.Cid, storageProviderId peer.ID) {
+// unregisterActiveRetrieval unregisters an active retrieval.
+func (retriever *Retriever) unregisterActiveRetrieval(cid cid.Cid) {
 	retriever.activeRetrievalsLk.Lock()
 	defer retriever.activeRetrievalsLk.Unlock()
 
 	delete(retriever.activeRetrievals, cid)
-	retriever.activeRetrievalsPerMiner[storageProviderId] = retriever.activeRetrievalsPerMiner[storageProviderId] - 1
-	if retriever.activeRetrievalsPerMiner[storageProviderId] == 0 {
-		delete(retriever.activeRetrievalsPerMiner, storageProviderId)
-	}
 }
 
 // Returns a list of miners known to have the requested block, with blacklisted
@@ -517,28 +556,46 @@ func (retriever *Retriever) OnRetrievalEvent(event rep.RetrievalEvent, state rep
 		"finished-time", state.FinishedTime,
 	)
 
-	retriever.activeRetrievalsLk.Lock()
-	defer retriever.activeRetrievalsLk.Unlock()
-
-	retrieval, ok := retriever.activeRetrievals[state.PayloadCid]
-	if !ok {
-		log.Errorf("Received event for unexpected retrieval, no such payload-cid: payload-cid=%v, storage-provider-id=%v", state.PayloadCid, state.StorageProviderID)
-		return
-	}
-	if retrieval.storageProviderId != state.StorageProviderID {
-		log.Errorf("Received event for unexpected retrieval, storage-provider-id does not match: payload-cid=%v, storage-provider-id=%v (expected %v)", state.PayloadCid, state.StorageProviderID, retrieval.storageProviderId)
-		return
-	}
-
-	// retrieval-event {"code": "success", "status": "data transfer for retrieval complete", "storage-provider-id": "12D3KooWBwUERBhJPtZ7hg5N3q1DesvJ67xx9RLdSaStBz9Y6Ny8", "storage-provider-address": "<empty>", "client-address": "", "payload-cid": "bafkreierk262ngztwz2apnmxrpe5hh2wn4ncj3fvf7xylrhhwtqomv53j4", "piece-cid": "<nil>", "finished-time": "2022-07-15T04:35:56.916Z"}
+	// NOTE that for success and failure events, we have a race where
+	// retrieveFromBestCandidate() may have either unset
+	// activeRetrieval#currentStorageProviderId so it dosn't match this
+	// retrieval's event, or it's removed the activeRetrieval entirely for this
+	// PayloadCID.
+	// We also have less information here than in retrieveFromBestCandidate() for
+	// those two conditions so we can safely ignore them here.
+	// For other events, in most cases, we should have enough time between events
+	// and success or failure conditions to be able to report properly. But we'll
+	// check that everything is as expected anyway.
 
 	if retriever.eventRecorder != nil {
 		switch event.Code {
-		// ignore the success and failure events and handle that in retrieveFromBestCandidate()
-		// where we have more information
 		case rep.RetrievalEventSuccess:
 		case rep.RetrievalEventFailure:
+		case rep.RetrievalEventQueryAsk: // ignore query-ask as not part of retrieval-proper
 		default:
+			retriever.activeRetrievalsLk.Lock()
+			defer retriever.activeRetrievalsLk.Unlock()
+
+			retrieval, ok := retriever.activeRetrievals[state.PayloadCid]
+			if !ok {
+				// it's not the primary CID, but it could be the rootCid of an
+				// activeRetrieval, so check in there too
+				for _, ar := range retriever.activeRetrievals {
+					if state.PayloadCid.Equals(ar.rootCid) {
+						retrieval = ar
+						ok = true
+					}
+				}
+				if !ok {
+					log.Errorf("Received event [%s] for unexpected retrieval, no such payload-cid: %s, storage-provider-id=%s", event.Code, state.PayloadCid, state.StorageProviderID)
+					return
+				}
+			}
+			if retrieval.currentStorageProviderId != state.StorageProviderID && event.Code != rep.RetrievalEventConnect { // 'connect' can fail to match this as part of a query-ask, ignore that
+				log.Errorf("Received event [%s] for unexpected retrieval, storage-provider-id does not match: payload-cid=%s, storage-provider-id=%s (expected %s)", event.Code, state.PayloadCid, state.StorageProviderID, retrieval.currentStorageProviderId)
+				return
+			}
+
 			if err := retriever.eventRecorder.RecordProgress(
 				retrieval.retrievalId,
 				state.PayloadCid,
