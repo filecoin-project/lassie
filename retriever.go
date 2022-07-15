@@ -62,6 +62,11 @@ func (cfg *RetrieverConfig) MinerConfig(peer peer.ID) MinerConfig {
 	return minerCfg
 }
 
+type activeRetrieval struct {
+	retrievalId       uuid.UUID
+	storageProviderId peer.ID
+}
+
 type Retriever struct {
 	// Assumed immutable during operation
 	config RetrieverConfig
@@ -70,9 +75,9 @@ type Retriever struct {
 	filClient     *filclient.FilClient
 	eventRecorder *eventrecorder.EventRecorder
 
-	runningRetrievals        map[cid.Cid]bool
+	activeRetrievals         map[cid.Cid]activeRetrieval
+	activeRetrievalsLk       sync.Mutex
 	activeRetrievalsPerMiner map[peer.ID]uint
-	runningRetrievalsLk      sync.Mutex
 
 	minerMonitor *minerMonitor
 }
@@ -104,7 +109,7 @@ func NewRetriever(
 		endpoint:                 endpoint,
 		filClient:                filClient,
 		eventRecorder:            eventRecorder,
-		runningRetrievals:        make(map[cid.Cid]bool),
+		activeRetrievals:         make(map[cid.Cid]activeRetrieval),
 		activeRetrievalsPerMiner: make(map[peer.ID]uint),
 		minerMonitor: newMinerMonitor(minerMonitorConfig{
 			maxFailuresBeforeSuspend: 5,
@@ -180,16 +185,12 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid c
 		return false
 	})
 
-	retrievalId, err := uuid.NewRandom()
-	if err != nil {
-		return err
-	}
-
 	// retrievalStats will be nil after the loop if none of the retrievals successfully
 	// complete
 	var retrievalStats *filclient.RetrievalStats
 	for _, query := range queries {
-		if err := retriever.tryRegisterRunningRetrieval(query.candidate.RootCid, query.candidate.MinerPeer.ID); err != nil {
+		retrievalId, err := retriever.tryRegisterActiveRetrieval(query.candidate.RootCid, query.candidate.MinerPeer.ID)
+		if err != nil {
 			// TODO: send some info to metrics about this
 
 			if errors.Is(err, ErrRetrievalAlreadyRunning) {
@@ -210,6 +211,18 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid c
 
 		startTime := time.Now()
 
+		if retriever.eventRecorder != nil {
+			if err := retriever.eventRecorder.RecordStart(
+				retrievalId,
+				cid,
+				query.candidate.RootCid,
+				query.candidate.MinerPeer.ID,
+				startTime,
+			); err != nil {
+				log.Errorf("Failed to post event to recorder:", err)
+			}
+		}
+
 		// Make the retrieval
 		retrievalStats, err := retriever.retrieve(ctx, query)
 
@@ -225,12 +238,9 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid c
 			if retriever.eventRecorder != nil {
 				if err := retriever.eventRecorder.RecordFailure(
 					retrievalId,
-					query.candidate.MinerPeer.ID,
 					cid,
-					query.candidate.RootCid,
-					startTime,
+					query.candidate.MinerPeer.ID,
 					err,
-					// TODO: instance name? from where?
 				); err != nil {
 					log.Errorf("Failed to post event to recorder:", err)
 				}
@@ -253,30 +263,17 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid c
 			stats.Record(ctx, metrics.RetrievalDealSize.M(int64(retrievalStats.Size)))
 			stats.Record(ctx, metrics.RetrievalDealCost.M(retrievalStats.TotalPayment.Int64()))
 
-			// TODO: this is a _final_ report, we want a _start_ report before we start the retrieval and then we
-			// want to register one for each of the events that come out of filclient
-			// see `func (fc *FilClient) OnRetrievalEvent(event rep.RetrievalEvent, state rep.RetrievalState)` in
-			// filclient/filclient.go
-			// need to decide what to do with the final report for both success and failure - we could either use
-			// it coming out of the event or do it here, perhaps we have more information here? want to avoid
-			// anything racy though
-			if retriever.eventRecorder != nil {
-				if err := retriever.eventRecorder.RecordSuccess(
-					retrievalId,
-					cid,
-					query.candidate.RootCid,
-					startTime,
-					retrievalStats,
-					// TODO: instance name:
-					// put an option in the config with a sensible default, we can update it later
-					// to something meaningful if we care, for now we're just using a placeholder
-				); err != nil {
-					log.Errorf("Failed to post event to recorder:", err)
-				}
+			if err := retriever.eventRecorder.RecordSuccess(
+				retrievalId,
+				cid,
+				query.candidate.MinerPeer.ID,
+				retrievalStats,
+			); err != nil {
+				log.Errorf("Failed to post event to recorder:", err)
 			}
 		}
 
-		retriever.unregisterRunningRetrieval(query.candidate.RootCid, query.candidate.MinerPeer.ID)
+		retriever.unregisterActiveRetrieval(query.candidate.RootCid, query.candidate.MinerPeer.ID)
 
 		if err != nil {
 			continue
@@ -370,41 +367,46 @@ func (retriever *Retriever) retrieve(ctx context.Context, query candidateQuery) 
 }
 
 // Possible errors: ErrRetrievalAlreadyRunning, ErrHitRetrievalLimit
-func (retriever *Retriever) tryRegisterRunningRetrieval(cid cid.Cid, miner peer.ID) error {
-	retriever.runningRetrievalsLk.Lock()
-	defer retriever.runningRetrievalsLk.Unlock()
+func (retriever *Retriever) tryRegisterActiveRetrieval(cid cid.Cid, storageProviderId peer.ID) (uuid.UUID, error) {
+	retriever.activeRetrievalsLk.Lock()
+	defer retriever.activeRetrievalsLk.Unlock()
 
-	minerConfig := retriever.config.MinerConfig(miner)
+	if _, ok := retriever.activeRetrievals[cid]; ok {
+		return uuid.UUID{}, ErrRetrievalAlreadyRunning
+	}
+
+	minerConfig := retriever.config.MinerConfig(storageProviderId)
 
 	// If limit is enabled (non-zero) and we have already hit it, we can't
 	// allow this retrieval to start
 	noLimit := minerConfig.MaxConcurrentRetrievals == 0
-	atLimit := retriever.activeRetrievalsPerMiner[miner] >= minerConfig.MaxConcurrentRetrievals
+	atLimit := retriever.activeRetrievalsPerMiner[storageProviderId] >= minerConfig.MaxConcurrentRetrievals
 	if !noLimit && atLimit {
-		return ErrHitRetrievalLimit
+		return uuid.UUID{}, ErrHitRetrievalLimit
 	}
 
-	if retriever.runningRetrievals[cid] {
-		return ErrRetrievalAlreadyRunning
+	retrievalId, err := uuid.NewRandom()
+	if err != nil {
+		return uuid.UUID{}, err
 	}
 
-	retriever.runningRetrievals[cid] = true
-	retriever.activeRetrievalsPerMiner[miner] += 1
+	retriever.activeRetrievals[cid] = activeRetrieval{retrievalId, storageProviderId}
+	retriever.activeRetrievalsPerMiner[storageProviderId] += 1
 
-	fmt.Printf("running retrievals: %d (at limit: %v, no limit: %v)\n", retriever.activeRetrievalsPerMiner[miner], atLimit, noLimit)
+	fmt.Printf("active retrievals: %d (at limit: %v, no limit: %v)\n", retriever.activeRetrievalsPerMiner[storageProviderId], atLimit, noLimit)
 
-	return nil
+	return retrievalId, nil
 }
 
-// Unregisters a running retrieval. No-op if no retrieval is running.
-func (retriever *Retriever) unregisterRunningRetrieval(cid cid.Cid, miner peer.ID) {
-	retriever.runningRetrievalsLk.Lock()
-	defer retriever.runningRetrievalsLk.Unlock()
+// Unregisters an active retrieval. No-op if no retrieval is running.
+func (retriever *Retriever) unregisterActiveRetrieval(cid cid.Cid, storageProviderId peer.ID) {
+	retriever.activeRetrievalsLk.Lock()
+	defer retriever.activeRetrievalsLk.Unlock()
 
-	delete(retriever.runningRetrievals, cid)
-	retriever.activeRetrievalsPerMiner[miner] = retriever.activeRetrievalsPerMiner[miner] - 1
-	if retriever.activeRetrievalsPerMiner[miner] == 0 {
-		delete(retriever.activeRetrievalsPerMiner, miner)
+	delete(retriever.activeRetrievals, cid)
+	retriever.activeRetrievalsPerMiner[storageProviderId] = retriever.activeRetrievalsPerMiner[storageProviderId] - 1
+	if retriever.activeRetrievalsPerMiner[storageProviderId] == 0 {
+		delete(retriever.activeRetrievalsPerMiner, storageProviderId)
 	}
 }
 
@@ -514,6 +516,39 @@ func (retriever *Retriever) OnRetrievalEvent(event rep.RetrievalEvent, state rep
 		"piece-cid", state.PieceCid,
 		"finished-time", state.FinishedTime,
 	)
+
+	retriever.activeRetrievalsLk.Lock()
+	defer retriever.activeRetrievalsLk.Unlock()
+
+	retrieval, ok := retriever.activeRetrievals[state.PayloadCid]
+	if !ok {
+		log.Errorf("Received event for unexpected retrieval, no such payload-cid: payload-cid=%v, storage-provider-id=%v", state.PayloadCid, state.StorageProviderID)
+		return
+	}
+	if retrieval.storageProviderId != state.StorageProviderID {
+		log.Errorf("Received event for unexpected retrieval, storage-provider-id does not match: payload-cid=%v, storage-provider-id=%v (expected %v)", state.PayloadCid, state.StorageProviderID, retrieval.storageProviderId)
+		return
+	}
+
+	// retrieval-event {"code": "success", "status": "data transfer for retrieval complete", "storage-provider-id": "12D3KooWBwUERBhJPtZ7hg5N3q1DesvJ67xx9RLdSaStBz9Y6Ny8", "storage-provider-address": "<empty>", "client-address": "", "payload-cid": "bafkreierk262ngztwz2apnmxrpe5hh2wn4ncj3fvf7xylrhhwtqomv53j4", "piece-cid": "<nil>", "finished-time": "2022-07-15T04:35:56.916Z"}
+
+	if retriever.eventRecorder != nil {
+		switch event.Code {
+		// ignore the success and failure events and handle that in retrieveFromBestCandidate()
+		// where we have more information
+		case rep.RetrievalEventSuccess:
+		case rep.RetrievalEventFailure:
+		default:
+			if err := retriever.eventRecorder.RecordProgress(
+				retrieval.retrievalId,
+				state.PayloadCid,
+				state.StorageProviderID,
+				event.Code,
+			); err != nil {
+				log.Errorf("Failed to post event to recorder:", err)
+			}
+		}
+	}
 }
 
 func (retriever *Retriever) RetrievalSubscriberId() interface{} {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/application-research/filclient"
+	"github.com/application-research/filclient/rep"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
@@ -17,33 +18,42 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 )
 
-func NewEventRecorder(endpointURL string) *EventRecorder {
-	return &EventRecorder{endpointURL: endpointURL}
+func NewEventRecorder(instanceId string, endpointURL string) *EventRecorder {
+	return &EventRecorder{instanceId, endpointURL}
 }
 
 type EventRecorder struct {
+	instanceId  string
 	endpointURL string
 }
 
 var eventSchema string = `
 type event struct {
-	cid                   Link
-	rootCid      optional Link
-	startTime             String
-	durationMs   optional Int
-	size         optional Int
-	askPrice     optional String
-	totalPayment optional String
-	numPayments  optional Int
-	error        optional String
+	instanceId             String # Set in the autoretrieve config
+	cid                    Link   # The CID that was originally requested
+	rootCid       optional Link   # The CID that we are retrieving _if_ it's different to the originally requested CID (only set on "start" event)
+	time                   String # The timestamp of this event
+	stage                  String # The stage of this event (see filclient/rep/RetrievalEventCode - plus a custom "start" event)
+
+	# For a successful retrieval
+	size          optional Int    # Size in bytes of the transfer
+	askPrice      optional String # The asking price from the storage provider
+	totalPayment  optional String # The total payment that was transferred to the miner
+	numPayments   optional Int    # The number of separate payments made during the retrieval
+
+	# For an unsuccessful retrieval
+	error         optional String # The full error message
 }
 `
 
+// TODO: use time.Time and abi.TokenAmount and use bindnode converters to convert to strings
+// when we can upgrade to >=go-ipld-prime@v0.17.0
 type event struct {
+	InstanceId   string
 	Cid          cid.Cid  // will use dag-json CID style thanks to Cid#MarshalJSON
 	RootCid      *cid.Cid // ditto ^
-	StartTime    string   // time.RFC3339Nano format
-	DurationMs   *uint64
+	Time         string   // time.RFC3339Nano format
+	Stage        string
 	Size         *uint64
 	AskPrice     *string // abi.TokenAmount / big.Int
 	TotalPayment *string // abi.TokenAmount / big.Int
@@ -53,13 +63,26 @@ type event struct {
 
 var eventType schema.Type
 
-func newEvent(
+// RecordSuccess PUTs a notification of the retrieval to
+// http://.../retrieval-event/~retrievalId~/providers/~storageProviderId. The body of the
+// PUT will look something like:
+//
+// 	{
+// 	  "cid":{"/":"bafybeihrqe2hmfauph5yfbd6ucv7njqpiy4tvbewlvhzjl4bhnyiu6h7pm"},
+// 	  "time":"2022-07-12T19:57:53.112375079+10:00",
+// 	  "size":2020,
+// 	  "askPrice":"3030",
+// 	  "totalPayment":"4040",
+// 	  "numPayments":2
+// 	}
+
+func (er *EventRecorder) RecordStart(
+	retrievalId uuid.UUID,
 	requestCid cid.Cid,
 	rootCid cid.Cid,
-	startTime time.Time,
-	retrievalStats *filclient.RetrievalStats,
-	retrievalError error,
-) event {
+	storageProviderId peer.ID,
+	startTime time.Time, // the only event where we take a time, so we can match logs & other metrics
+) error {
 
 	var rcid *cid.Cid
 	if !requestCid.Equals(rootCid) {
@@ -67,68 +90,81 @@ func newEvent(
 	}
 
 	evt := event{
-		Cid:       requestCid,
-		RootCid:   rcid,
-		StartTime: startTime.Format(time.RFC3339Nano),
+		InstanceId: er.instanceId,
+		Stage:      "start",
+		Cid:        requestCid,
+		RootCid:    rcid,
+		Time:       startTime.Format(time.RFC3339Nano),
 	}
-	if retrievalStats != nil {
-		dms := uint64(retrievalStats.Duration.Milliseconds())
-		evt.DurationMs = &dms
-		evt.Size = &retrievalStats.Size
-		ap := retrievalStats.AskPrice.String()
-		evt.AskPrice = &ap
-		tp := retrievalStats.TotalPayment.String()
-		evt.TotalPayment = &tp
-		np := uint(retrievalStats.NumPayments)
-		evt.NumPayments = &np
-	}
-	if retrievalError != nil {
-		es := retrievalError.Error()
-		evt.Error = &es
-	}
-	return evt
+
+	return er.recordEvent(retrievalId, storageProviderId, evt)
 }
 
-// RecordSuccess PUTs a notification of the retrieval to
-// http://.../retrieval-event/~retrievalId~/providers/~minerId. The body of the
-// PUT will look something like:
-//
-// 	{
-// 	  "cid":{"/":"bafybeihrqe2hmfauph5yfbd6ucv7njqpiy4tvbewlvhzjl4bhnyiu6h7pm"},
-// 	  "startTime":"2022-07-12T19:57:53.112375079+10:00",
-// 	  "size":2020,
-// 	  "askPrice":"3030",
-// 	  "totalPayment":"4040",
-// 	  "numPayments":2
-// 	}
+func (er *EventRecorder) RecordProgress(
+	retrievalId uuid.UUID,
+	requestCid cid.Cid,
+	storageProviderId peer.ID,
+	stage rep.RetrievalEventCode,
+) error {
+
+	evt := event{
+		InstanceId: er.instanceId,
+		Stage:      string(stage),
+		Cid:        requestCid,
+		Time:       time.Now().Format(time.RFC3339Nano),
+	}
+
+	return er.recordEvent(retrievalId, storageProviderId, evt)
+}
+
 func (er *EventRecorder) RecordSuccess(
 	retrievalId uuid.UUID,
-	cid cid.Cid,
-	rootCid cid.Cid,
-	startTime time.Time,
-	retrievalStats *filclient.RetrievalStats) error {
+	requestCid cid.Cid,
+	storageProviderId peer.ID,
+	retrievalStats *filclient.RetrievalStats,
+) error {
 
-	return er.recordEvent(retrievalId, retrievalStats.Peer, newEvent(cid, rootCid, startTime, retrievalStats, nil))
+	ap := retrievalStats.AskPrice.String()
+	tp := retrievalStats.TotalPayment.String()
+	np := uint(retrievalStats.NumPayments)
+	evt := event{
+		InstanceId:   er.instanceId,
+		Stage:        string(rep.RetrievalEventSuccess),
+		Cid:          requestCid,
+		Time:         time.Now().Format(time.RFC3339Nano),
+		Size:         &retrievalStats.Size,
+		AskPrice:     &ap,
+		TotalPayment: &tp,
+		NumPayments:  &np,
+	}
+
+	return er.recordEvent(retrievalId, storageProviderId, evt)
 }
 
 // RecordFailure PUTs a notification of the retrieval failure to
-// http://.../retrieval-event/~retrievalId~/providers/~minerId. In this case,
+// http://.../retrieval-event/~retrievalId~/providers/~storageProviderId. In this case,
 // most of the body is omitted but an "error" field is present with the error
 // message.
 func (er *EventRecorder) RecordFailure(
 	retrievalId uuid.UUID,
-	minerId peer.ID,
-	cid cid.Cid,
-	rootCid cid.Cid,
-	startTime time.Time,
+	requestCid cid.Cid,
+	storageProviderId peer.ID,
 	retrievalError error) error {
 
-	return er.recordEvent(retrievalId, minerId, newEvent(cid, rootCid, startTime, nil, retrievalError))
+	es := retrievalError.Error()
+	evt := event{
+		InstanceId: er.instanceId,
+		Stage:      string(rep.RetrievalEventFailure),
+		Cid:        requestCid,
+		Time:       time.Now().Format(time.RFC3339Nano),
+		Error:      &es,
+	}
+	return er.recordEvent(retrievalId, storageProviderId, evt)
 }
 
-func (er *EventRecorder) recordEvent(retrievalId uuid.UUID, minerId peer.ID, evt event) error {
+func (er *EventRecorder) recordEvent(retrievalId uuid.UUID, storageProviderId peer.ID, evt event) error {
 	// https://.../retrieval-event/~uuid~/providers/~peerID~
-	url := fmt.Sprintf("%s/retrieval-event/%s/providers/%s", er.endpointURL, retrievalId.String(), minerId.String())
+	url := fmt.Sprintf("%s/retrieval-event/%s/providers/%s", er.endpointURL, retrievalId.String(), storageProviderId.String())
 
 	node := bindnode.Wrap(&evt, eventType)
 	byts, err := ipld.Encode(node.Representation(), dagjson.Encode)
