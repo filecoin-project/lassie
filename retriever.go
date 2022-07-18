@@ -141,6 +141,10 @@ func (retriever *Retriever) Request(cid cid.Cid) error {
 		return fmt.Errorf("could not get retrieval candidates for %s: %w", cid, err)
 	}
 
+	if len(candidates) == 0 {
+		return ErrNoCandidates
+	}
+
 	// If we got to this point, one or more candidates have been found and we
 	// are good to go ahead with the retrieval
 	go retriever.retrieveFromBestCandidate(context.Background(), cid, candidates)
@@ -368,8 +372,7 @@ func (retriever *Retriever) unregisterRunningRetrieval(cid cid.Cid, miner peer.I
 // Returns a list of miners known to have the requested block, with blacklisted
 // miners filtered out.
 //
-// Possible errors - ErrInvalidEndpointURL, ErrEndpointRequestFailed, ErrEndpointBodyInvalid,
-// ErrNoCandidates
+// Possible errors - ErrInvalidEndpointURL, ErrEndpointRequestFailed, ErrEndpointBodyInvalid
 func (retriever *Retriever) lookupCandidates(ctx context.Context, cid cid.Cid) ([]RetrievalCandidate, error) {
 	unfiltered, err := retriever.endpoint.FindCandidates(ctx, cid)
 	if err != nil {
