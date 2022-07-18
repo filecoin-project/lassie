@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/application-research/autoretrieve/filecoin/eventrecorder"
 	"github.com/application-research/autoretrieve/metrics"
 	"github.com/application-research/filclient"
 	"github.com/application-research/filclient/rep"
@@ -65,6 +64,7 @@ func (cfg *RetrieverConfig) MinerConfig(peer peer.ID) MinerConfig {
 
 type activeRetrieval struct {
 	retrievalId              uuid.UUID
+	queryMode                bool
 	rootCid                  cid.Cid
 	currentStorageProviderId peer.ID
 }
@@ -73,12 +73,12 @@ type Retriever struct {
 	// Assumed immutable during operation
 	config RetrieverConfig
 
-	endpoint      Endpoint
-	filClient     *filclient.FilClient
-	eventRecorder *eventrecorder.EventRecorder
+	endpoint     Endpoint
+	filClient    *filclient.FilClient
+	eventManager *eventManager
 
 	activeRetrievals   map[cid.Cid]*activeRetrieval
-	activeRetrievalsLk sync.Mutex
+	activeRetrievalsLk sync.RWMutex
 
 	minerMonitor *minerMonitor
 }
@@ -103,13 +103,12 @@ func NewRetriever(
 	config RetrieverConfig,
 	filClient *filclient.FilClient,
 	endpoint Endpoint,
-	eventRecorder *eventrecorder.EventRecorder,
 ) (*Retriever, error) {
 	retriever := &Retriever{
 		config:           config,
 		endpoint:         endpoint,
 		filClient:        filClient,
-		eventRecorder:    eventRecorder,
+		eventManager:     newEventManager(),
 		activeRetrievals: make(map[cid.Cid]*activeRetrieval),
 		minerMonitor: newMinerMonitor(minerMonitorConfig{
 			maxFailuresBeforeSuspend: 5,
@@ -121,6 +120,13 @@ func NewRetriever(
 	retriever.filClient.SubscribeToRetrievalEvents(retriever)
 
 	return retriever, nil
+}
+
+// RegisterListener registers a listener to receive all events fired during the
+// process of making a retrieval, including the process of querying available
+// storage providers to find compatible ones to attempt retrieval from.
+func (retriever *Retriever) RegisterListener(listener RetrievalEventListener) func() {
+	return retriever.eventManager.RegisterListener(listener)
 }
 
 // Request will tell the retriever to start trying to retrieve a certain CID. If
@@ -150,7 +156,6 @@ func (retriever *Retriever) Request(cid cid.Cid) error {
 	// If we got to this point, one or more candidates have been found and we
 	// are good to go ahead with the retrieval
 	go retriever.retrieveFromBestCandidate(context.Background(), cid, candidates)
-
 	return nil
 }
 
@@ -171,7 +176,7 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid c
 	}
 	defer retriever.unregisterActiveRetrieval(cid)
 
-	queries := retriever.queryCandidates(ctx, cid, candidates)
+	queries := retriever.queryCandidates(ctx, retrievalId, cid, candidates)
 	if len(queries) == 0 {
 		return nil
 	}
@@ -217,19 +222,12 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid c
 		stats.Record(ctx, metrics.RetrievalRequestCount.M(1))
 		stats.Record(ctx, metrics.RetrievalDealActiveCount.M(1))
 
-		startTime := time.Now()
-
-		if retriever.eventRecorder != nil {
-			if err := retriever.eventRecorder.RecordStart(
-				retrievalId,
-				cid,
-				query.candidate.RootCid,
-				query.candidate.MinerPeer.ID,
-				startTime,
-			); err != nil {
-				log.Errorf("Failed to post event to recorder:", err)
-			}
-		}
+		retriever.eventManager.FireRetrievalStart(
+			retrievalId,
+			cid,
+			query.candidate.RootCid,
+			query.candidate.MinerPeer.ID,
+		)
 
 		// Make the retrieval
 		retrievalStats, err := retriever.retrieve(ctx, query)
@@ -243,16 +241,12 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid c
 				err,
 			)
 			stats.Record(ctx, metrics.RetrievalDealFailCount.M(1))
-			if retriever.eventRecorder != nil {
-				if err := retriever.eventRecorder.RecordFailure(
-					retrievalId,
-					cid,
-					query.candidate.MinerPeer.ID,
-					err,
-				); err != nil {
-					log.Errorf("Failed to post event to recorder:", err)
-				}
-			}
+			retriever.eventManager.FireRetrievalFailure(
+				retrievalId,
+				cid,
+				query.candidate.MinerPeer.ID,
+				err,
+			)
 		} else {
 			log.Infof(
 				"Successfully retrieved from miner %s for %s\n"+
@@ -271,14 +265,12 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid c
 			stats.Record(ctx, metrics.RetrievalDealSize.M(int64(retrievalStats.Size)))
 			stats.Record(ctx, metrics.RetrievalDealCost.M(retrievalStats.TotalPayment.Int64()))
 
-			if err := retriever.eventRecorder.RecordSuccess(
+			retriever.eventManager.FireRetrievalSuccess(
 				retrievalId,
 				cid,
 				query.candidate.MinerPeer.ID,
-				retrievalStats,
-			); err != nil {
-				log.Errorf("Failed to post event to recorder:", err)
-			}
+				*retrievalStats,
+			)
 		}
 
 		retriever.updateActiveRetrieval(retrievalId, cid, query.candidate.RootCid, "")
@@ -393,7 +385,7 @@ func (retriever *Retriever) registerActiveRetrieval(retrievalId uuid.UUID, cid c
 			return ErrRetrievalAlreadyRunning
 		}
 	}
-	retriever.activeRetrievals[cid] = &activeRetrieval{retrievalId, cid, ""}
+	retriever.activeRetrievals[cid] = &activeRetrieval{retrievalId, true, cid, ""}
 	return nil
 }
 
@@ -437,6 +429,7 @@ func (retriever *Retriever) updateActiveRetrieval(retrievalId uuid.UUID, cid, ro
 		rootCid = cid // set it back to default
 	}
 	ar.rootCid = rootCid
+	ar.queryMode = false // if we're with an SP ID then we're beyond queryAsk mode
 
 	return nil
 }
@@ -484,12 +477,14 @@ func (retriever *Retriever) lookupCandidates(ctx context.Context, cid cid.Cid) (
 	return res, nil
 }
 
-func (retriever *Retriever) queryCandidates(ctx context.Context, cid cid.Cid, candidates []RetrievalCandidate) []candidateQuery {
+func (retriever *Retriever) queryCandidates(ctx context.Context, retrievalId uuid.UUID, cid cid.Cid, candidates []RetrievalCandidate) []candidateQuery {
 	var queries []candidateQuery
 	var queriesLk sync.Mutex
 
 	var wg sync.WaitGroup
 	wg.Add(len(candidates))
+
+	retriever.eventManager.FireRetrievalQueryStart(retrievalId, cid, len(candidates))
 
 	for i, candidate := range candidates {
 		go func(i int, candidate RetrievalCandidate) {
@@ -503,9 +498,12 @@ func (retriever *Retriever) queryCandidates(ctx context.Context, cid cid.Cid, ca
 					formatCidAndRoot(cid, candidate.RootCid, false),
 					err,
 				)
+				retriever.eventManager.FireRetrievalQueryFailure(retrievalId, cid, candidate.MinerPeer.ID, err)
 				retriever.minerMonitor.recordFailure(candidate.MinerPeer.ID)
 				return
 			}
+
+			retriever.eventManager.FireRetrievalQuerySuccess(retrievalId, cid, candidate.MinerPeer.ID, *query)
 
 			if query.Status != retrievalmarket.QueryResponseAvailable {
 				return
@@ -567,43 +565,51 @@ func (retriever *Retriever) OnRetrievalEvent(event rep.RetrievalEvent, state rep
 	// and success or failure conditions to be able to report properly. But we'll
 	// check that everything is as expected anyway.
 
-	if retriever.eventRecorder != nil {
-		switch event.Code {
-		case rep.RetrievalEventSuccess:
-		case rep.RetrievalEventFailure:
-		case rep.RetrievalEventQueryAsk: // ignore query-ask as not part of retrieval-proper
-		default:
-			retriever.activeRetrievalsLk.Lock()
-			defer retriever.activeRetrievalsLk.Unlock()
+	switch event.Code {
+	case rep.RetrievalEventSuccess:
+	case rep.RetrievalEventFailure:
+	default:
+		retriever.activeRetrievalsLk.RLock()
+		defer retriever.activeRetrievalsLk.RUnlock()
 
-			retrieval, ok := retriever.activeRetrievals[state.PayloadCid]
+		retrieval, ok := retriever.activeRetrievals[state.PayloadCid]
+		if !ok {
+			// it's not the primary CID, but it could be the rootCid of an
+			// activeRetrieval, so check in there too
+			for _, ar := range retriever.activeRetrievals {
+				if state.PayloadCid.Equals(ar.rootCid) {
+					retrieval = ar
+					ok = true
+				}
+			}
 			if !ok {
-				// it's not the primary CID, but it could be the rootCid of an
-				// activeRetrieval, so check in there too
-				for _, ar := range retriever.activeRetrievals {
-					if state.PayloadCid.Equals(ar.rootCid) {
-						retrieval = ar
-						ok = true
-					}
-				}
-				if !ok {
-					log.Errorf("Received event [%s] for unexpected retrieval, no such payload-cid: %s, storage-provider-id=%s", event.Code, state.PayloadCid, state.StorageProviderID)
-					return
-				}
+				log.Errorf("Received event [%s] for unexpected retrieval, no such payload-cid: %s, storage-provider-id=%s", event.Code, state.PayloadCid, state.StorageProviderID)
+				return
+			}
+		}
+
+		if retrieval.queryMode {
+			retriever.eventManager.FireRetrievalQueryProgress(
+				retrieval.retrievalId,
+				state.PayloadCid,
+				state.StorageProviderID,
+				event.Code,
+			)
+		} else {
+			if event.Code == rep.RetrievalEventQueryAsk {
+				log.Errorf("Received unexpected event [%s] for retrieval, not in query mode: payload-cid=%s, storage-provider-id=%s (expected %s)", event.Code, state.PayloadCid, state.StorageProviderID, retrieval.currentStorageProviderId)
+				return
 			}
 			if retrieval.currentStorageProviderId != state.StorageProviderID && event.Code != rep.RetrievalEventConnect { // 'connect' can fail to match this as part of a query-ask, ignore that
 				log.Errorf("Received event [%s] for unexpected retrieval, storage-provider-id does not match: payload-cid=%s, storage-provider-id=%s (expected %s)", event.Code, state.PayloadCid, state.StorageProviderID, retrieval.currentStorageProviderId)
 				return
 			}
-
-			if err := retriever.eventRecorder.RecordProgress(
+			retriever.eventManager.FireRetrievalProgress(
 				retrieval.retrievalId,
 				state.PayloadCid,
 				state.StorageProviderID,
 				event.Code,
-			); err != nil {
-				log.Errorf("Failed to post event to recorder:", err)
-			}
+			)
 		}
 	}
 }

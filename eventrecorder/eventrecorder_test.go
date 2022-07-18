@@ -42,7 +42,7 @@ func TestEventRecorder_Success(t *testing.T) {
 	id, err := uuid.NewRandom()
 	qt.Assert(t, err, qt.IsNil)
 	storageProviderId := peer.NewPeerRecord().PeerID
-	stats := &filclient.RetrievalStats{
+	stats := filclient.RetrievalStats{
 		Peer:         storageProviderId,
 		Duration:     time.Duration(1010),
 		Size:         2020,
@@ -50,7 +50,7 @@ func TestEventRecorder_Success(t *testing.T) {
 		TotalPayment: big.NewInt(4040),
 		NumPayments:  2,
 	}
-	qt.Assert(t, er.RecordSuccess(id, testCid1, storageProviderId, stats), qt.IsNil)
+	er.RetrievalSuccess(id, time.Now(), testCid1, storageProviderId, stats)
 
 	qt.Assert(t, req, qt.IsNotNil)
 
@@ -108,7 +108,7 @@ func TestEventRecorder_Progress(t *testing.T) {
 	id, err := uuid.NewRandom()
 	qt.Assert(t, err, qt.IsNil)
 	storageProviderId := peer.NewPeerRecord().PeerID
-	qt.Assert(t, er.RecordProgress(id, testCid1, storageProviderId, rep.RetrievalEventFirstByte), qt.IsNil)
+	er.RetrievalProgress(id, time.Now(), testCid1, storageProviderId, rep.RetrievalEventFirstByte)
 
 	qt.Assert(t, req, qt.IsNotNil)
 
@@ -163,7 +163,7 @@ func TestEventRecorder_Start(t *testing.T) {
 			qt.Assert(t, err, qt.IsNil)
 			storageProviderId := peer.NewPeerRecord().PeerID
 			startTime := time.Now().Add(time.Duration(-500))
-			qt.Assert(t, er.RecordStart(id, testCid1, rootCid, storageProviderId, startTime), qt.IsNil)
+			er.RetrievalStart(id, startTime, testCid1, rootCid, storageProviderId)
 
 			qt.Assert(t, req, qt.IsNotNil)
 
@@ -220,7 +220,7 @@ func TestEventRecorder_Failure(t *testing.T) {
 	storageProviderId := peer.NewPeerRecord().PeerID
 	err = errors.New("some error message here")
 
-	qt.Assert(t, er.RecordFailure(id, testCid1, storageProviderId, err), qt.IsNil)
+	er.RetrievalFailure(id, time.Now(), testCid1, storageProviderId, err)
 
 	// expect something like this:
 	// {

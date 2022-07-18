@@ -45,23 +45,44 @@ func main() {
 			http.Error(w, "Expected request body", http.StatusBadRequest)
 			return
 		}
+
+		// validate path
 		urlSegments := strings.Split(r.URL.Path, "/")
-		if len(urlSegments) != 5 || urlSegments[1] != "retrieval-event" || urlSegments[3] != "providers" {
-			log.Errorf("Malformed URL, expected /retrieval-event/~uuid~/providers/~peerid~, got: %s", r.URL.Path)
-			http.Error(w, "Malformed URL, expected /retrieval-event/~uuid~/providers/~peerid~", http.StatusBadRequest)
+		errAction := func() {
+			log.Errorf("Malformed URL, expected /(retrieval|query)-event/~uuid~[/providers/~peerid~], got: %s", r.URL.Path)
+			http.Error(w, "Malformed URL, expected /(retrieval|query)-event/~uuid~[/providers/~peerid~]", http.StatusBadRequest)
+		}
+		switch len(urlSegments) {
+		case 3:
+			if urlSegments[1] != "query-event" {
+				errAction()
+				return
+			}
+		case 5:
+			if !(urlSegments[1] == "retrieval-event" || urlSegments[1] == "query-event") || urlSegments[3] != "providers" {
+				errAction()
+				return
+			}
+		default:
+			errAction()
 			return
 		}
+
 		retrievalId, err := uuid.Parse(urlSegments[2])
 		if err != nil {
 			log.Errorf("Malformed URL, expected /retrieval-event/~uuid~/providers/~peerid~, got bad uuid: %s", err.Error())
 			http.Error(w, "Malformed URL, expected /retrieval-event/~uuid~/providers/~peerid~", http.StatusBadRequest)
 			return
 		}
-		peerId, err := peer.Decode(urlSegments[4])
-		if err != nil {
-			log.Errorf("Malformed URL, expected /retrieval-event/~uuid~/providers/~peerid~, got bad peerID: %s", err.Error())
-			http.Error(w, "Malformed URL, expected /retrieval-event/~uuid~/providers/~peerid~", http.StatusBadRequest)
-			return
+		var peerId peer.ID
+
+		if len(urlSegments) > 3 {
+			peerId, err = peer.Decode(urlSegments[4])
+			if err != nil {
+				log.Errorf("Malformed URL, expected /(retrieval|query)-event/~uuid~/providers/~peerid~, got bad peerID: %s", err.Error())
+				http.Error(w, "Malformed URL, expected /(retrieval|query)-event/~uuid~/providers/~peerid~", http.StatusBadRequest)
+				return
+			}
 		}
 		body, err := ioutil.ReadAll(r.Body)
 		if err != nil {
@@ -77,7 +98,10 @@ func main() {
 		}
 		logNode, err := qp.BuildMap(basicnode.Prototype.Any, -1, func(ma datamodel.MapAssembler) {
 			qp.MapEntry(ma, "retrievalId", qp.String(retrievalId.String()))
-			qp.MapEntry(ma, "peerId", qp.String(peerId.String()))
+			qp.MapEntry(ma, "mode", qp.String(strings.Split(urlSegments[1], "-")[0]))
+			if peerId != "" {
+				qp.MapEntry(ma, "peerId", qp.String(peerId.String()))
+			}
 			qp.MapEntry(ma, "event", qp.Node(node))
 		})
 		if err != nil {
