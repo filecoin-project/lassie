@@ -39,9 +39,6 @@ type eventReport struct {
 	Event             rep.RetrievalEventCode `json:"event"`
 	EventTime         time.Time              `json:"eventTime"`
 	EventDetails      interface{}            `json:"eventDetails"`
-	/*
-		QueryResponse *retrievalmarket.QueryResponse `json:"queryResponse,omitempty"`
-	*/
 }
 
 type eventDetailsSuccess struct {
