@@ -412,6 +412,13 @@ func (retriever *Retriever) queryCandidates(ctx context.Context, cid cid.Cid, ca
 		go func(i int, candidate RetrievalCandidate) {
 			defer wg.Done()
 
+			minerCfgs := retriever.config.MinerConfigs[candidate.MinerPeer.ID]
+			if minerCfgs.RetrievalTimeout != 0 {
+				var cancelFunc func()
+				ctx, cancelFunc = context.WithDeadline(ctx, time.Now().Add(minerCfgs.RetrievalTimeout))
+				defer cancelFunc()
+			}
+
 			query, err := retriever.filClient.RetrievalQueryToPeer(ctx, candidate.MinerPeer, candidate.RootCid)
 			if err != nil {
 				log.Errorf(
