@@ -477,7 +477,7 @@ func (retriever *Retriever) OnRetrievalEvent(event rep.RetrievalEvent, state rep
 	case rep.RetrievalEventFailure:
 		if event.Phase == rep.QueryPhase {
 			retriever.activeRetrievals.QueryCandidatedFinished(retrievalCid)
-			retriever.eventManager.FireRetrievalQueryFailure(
+			retriever.eventManager.FireQueryFailure(
 				retrievalId,
 				state.PayloadCid,
 				phaseStartTime,
@@ -496,7 +496,7 @@ func (retriever *Retriever) OnRetrievalEvent(event rep.RetrievalEvent, state rep
 		}
 	case rep.RetrievalEventQueryAsk: // query-ask success
 		retriever.activeRetrievals.QueryCandidatedFinished(retrievalCid)
-		retriever.eventManager.FireRetrievalQuerySuccess(
+		retriever.eventManager.FireQuerySuccess(
 			retrievalId,
 			state.PayloadCid,
 			phaseStartTime,
@@ -514,7 +514,7 @@ func (retriever *Retriever) OnRetrievalEvent(event rep.RetrievalEvent, state rep
 		)
 	default:
 		if event.Phase == rep.QueryPhase {
-			retriever.eventManager.FireRetrievalQueryProgress(
+			retriever.eventManager.FireQueryProgress(
 				retrievalId,
 				state.PayloadCid,
 				phaseStartTime,

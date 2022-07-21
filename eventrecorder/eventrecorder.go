@@ -3,7 +3,6 @@ package eventrecorder
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -20,10 +19,14 @@ var _ filecoin.RetrievalEventListener = (*EventRecorder)(nil)
 
 var log = logging.Logger("eventrecorder")
 
+// NewEventRecorder creates a new event recorder with the ID of this instance
+// and the URL to POST to
 func NewEventRecorder(instanceId string, endpointURL string) *EventRecorder {
-	return &EventRecorder{instanceId, fmt.Sprintf("%s/retrieval-events", endpointURL)}
+	return &EventRecorder{instanceId, endpointURL}
 }
 
+// EventRecorder receives events from the retrieval manager and posts event data
+// to a given endpoint as POSTs with JSON bodies
 type EventRecorder struct {
 	instanceId  string
 	endpointURL string
@@ -38,17 +41,23 @@ type eventReport struct {
 	PhaseStartTime    time.Time              `json:"phaseStartTime"`
 	Event             rep.RetrievalEventCode `json:"event"`
 	EventTime         time.Time              `json:"eventTime"`
-	EventDetails      interface{}            `json:"eventDetails"`
+	EventDetails      interface{}            `json:"eventDetails,omitempty"`
 }
 
+// eventDetailsSuccess is for the EventDetails in the case of a retrieval
+// success
 type eventDetailsSuccess struct {
-	ReceivedSize uint64 `json:"receivedSize,omitempty"`
+	ReceivedSize uint64 `json:"receivedSize"`
 }
 
+// eventDetailsError is for the EventDetails in the case of a query or retrieval
+// failure
 type eventDetailsError struct {
-	Error string `json:"error,omitempty"`
+	Error string `json:"error"`
 }
 
+// newEventReport is just a utility to make sure we are properly filling up the
+// struct and not forgetting any properties
 func (er EventRecorder) newEventReport(
 	retrievalId uuid.UUID,
 	retrievalCid cid.Cid,
@@ -61,29 +70,28 @@ func (er EventRecorder) newEventReport(
 	return eventReport{retrievalId, er.instanceId, retrievalCid.String(), storageProviderId, phase, phaseStartTime, event, eventTime, nil}
 }
 
-// RetrievalQueryProgress events occur during the query process, events
-// include: connect and query-ask
-func (er *EventRecorder) RetrievalQueryProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, retrievalCid cid.Cid, storageProviderId peer.ID, event rep.RetrievalEventCode) {
+// QueryProgress events occur during the query process
+func (er *EventRecorder) QueryProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, retrievalCid cid.Cid, storageProviderId peer.ID, event rep.RetrievalEventCode) {
 	evt := er.newEventReport(retrievalId, retrievalCid, storageProviderId, rep.QueryPhase, phaseStartTime, event, eventTime)
-	er.recordEvent("RetrievalQueryProgress", evt)
+	er.recordEvent("QueryProgress", evt)
 }
 
-// RetrievalQueryFailure events occur on the failure of querying a storage
-// provider. A query will result in either a RetrievalQueryFailure or
-// a RetrievalQuerySuccess event.
-func (er *EventRecorder) RetrievalQueryFailure(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, retrievalCid cid.Cid, storageProviderId peer.ID, errorString string) {
+// QueryFailure events occur on the failure of querying a storage
+// provider. A query will result in either a QueryFailure or
+// a QuerySuccess event.
+func (er *EventRecorder) QueryFailure(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, retrievalCid cid.Cid, storageProviderId peer.ID, errorString string) {
 	evt := er.newEventReport(retrievalId, retrievalCid, storageProviderId, rep.QueryPhase, phaseStartTime, rep.RetrievalEventFailure, eventTime)
 	evt.EventDetails = &eventDetailsError{errorString}
-	er.recordEvent("RetrievalQueryFailure", evt)
+	er.recordEvent("QueryFailure", evt)
 }
 
-// RetrievalQuerySuccess events occur on successfully querying a storage
-// provider. A query will result in either a RetrievalQueryFailure or
-// a RetrievalQuerySuccess event.
-func (er *EventRecorder) RetrievalQuerySuccess(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, retrievalCid cid.Cid, storageProviderId peer.ID, queryResponse retrievalmarket.QueryResponse) {
+// QuerySuccess events occur on successfully querying a storage
+// provider. A query will result in either a QueryFailure or
+// a QuerySuccess event.
+func (er *EventRecorder) QuerySuccess(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, retrievalCid cid.Cid, storageProviderId peer.ID, queryResponse retrievalmarket.QueryResponse) {
 	evt := er.newEventReport(retrievalId, retrievalCid, storageProviderId, rep.QueryPhase, phaseStartTime, rep.RetrievalEventQueryAsk, eventTime)
 	evt.EventDetails = &queryResponse
-	er.recordEvent("RetrievalQuerySuccess", evt)
+	er.recordEvent("QuerySuccess", evt)
 }
 
 // RetrievalProgress events occur during the process of a retrieval. The
@@ -95,7 +103,7 @@ func (er *EventRecorder) RetrievalProgress(retrievalId uuid.UUID, phaseStartTime
 }
 
 // RetrievalSuccess events occur on the success of a retrieval. A retrieval
-// will result in either a RetrievalQueryFailure or a RetrievalQuerySuccess
+// will result in either a QueryFailure or a QuerySuccess
 // event.
 func (er *EventRecorder) RetrievalSuccess(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, retrievalCid cid.Cid, storageProviderId peer.ID, retrievedSize uint64) {
 	evt := er.newEventReport(retrievalId, retrievalCid, storageProviderId, rep.RetrievalPhase, phaseStartTime, rep.RetrievalEventSuccess, eventTime)
@@ -104,7 +112,7 @@ func (er *EventRecorder) RetrievalSuccess(retrievalId uuid.UUID, phaseStartTime,
 }
 
 // RetrievalFailure events occur on the failure of a retrieval. A retrieval
-// will result in either a RetrievalQueryFailure or a RetrievalQuerySuccess
+// will result in either a QueryFailure or a QuerySuccess
 // event.
 func (er *EventRecorder) RetrievalFailure(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, retrievalCid cid.Cid, storageProviderId peer.ID, errorString string) {
 	evt := er.newEventReport(retrievalId, retrievalCid, storageProviderId, rep.RetrievalPhase, phaseStartTime, rep.RetrievalEventFailure, eventTime)

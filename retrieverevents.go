@@ -16,19 +16,19 @@ import (
 // retrieval process, including the process of querying available storage
 // providers to find compatible ones to attempt retrieval from.
 type RetrievalEventListener interface {
-	// RetrievalQueryProgress events occur during the query process, stages.
+	// QueryProgress events occur during the query process, stages.
 	// Currently this should just include a "connect" event.
-	RetrievalQueryProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage rep.RetrievalEventCode)
+	QueryProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage rep.RetrievalEventCode)
 
-	// RetrievalQueryFailure events occur on the failure of querying a storage
-	// provider. A query will result in either a RetrievalQueryFailure or
-	// a RetrievalQuerySuccess event.
-	RetrievalQueryFailure(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, errString string)
+	// QueryFailure events occur on the failure of querying a storage
+	// provider. A query will result in either a QueryFailure or
+	// a QuerySuccess event.
+	QueryFailure(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, errString string)
 
-	// RetrievalQueryFailure events occur on successfully querying a storage
-	// provider. A query will result in either a RetrievalQueryFailure or
-	// a RetrievalQuerySuccess event.
-	RetrievalQuerySuccess(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, queryResponse retrievalmarket.QueryResponse)
+	// QuerySuccess ("query-ask") events occur on successfully querying a storage
+	// provider. A query will result in either a QueryFailure or
+	// a QuerySuccess event.
+	QuerySuccess(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, queryResponse retrievalmarket.QueryResponse)
 
 	// RetrievalProgress events occur during the process of a retrieval. The
 	// Success and failure progress event types are not reported here, but are
@@ -36,12 +36,12 @@ type RetrievalEventListener interface {
 	RetrievalProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage rep.RetrievalEventCode)
 
 	// RetrievalSuccess events occur on the success of a retrieval. A retrieval
-	// will result in either a RetrievalQueryFailure or a RetrievalQuerySuccess
+	// will result in either a QueryFailure or a QuerySuccess
 	// event.
 	RetrievalSuccess(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, receivedSize uint64)
 
 	// RetrievalFailure events occur on the failure of a retrieval. A retrieval
-	// will result in either a RetrievalQueryFailure or a RetrievalQuerySuccess
+	// will result in either a QueryFailure or a QuerySuccess
 	// event.
 	RetrievalFailure(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, errString string)
 }
@@ -113,24 +113,24 @@ func (em *EventManager) queueEvent(cb func(timestamp time.Time, listener Retriev
 	}
 }
 
-// FireRetrievalQueryProgress calls RetrievalQueryProgress for all listeners
-func (em *EventManager) FireRetrievalQueryProgress(retrievalId uuid.UUID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, stage rep.RetrievalEventCode) {
+// FireQueryProgress calls QueryProgress for all listeners
+func (em *EventManager) FireQueryProgress(retrievalId uuid.UUID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, stage rep.RetrievalEventCode) {
 	em.queueEvent(func(timestamp time.Time, listener RetrievalEventListener) {
-		listener.RetrievalQueryProgress(retrievalId, phaseStartTime, timestamp, requestedCid, storageProviderId, stage)
+		listener.QueryProgress(retrievalId, phaseStartTime, timestamp, requestedCid, storageProviderId, stage)
 	})
 }
 
-// FireRetrievalQueryFailure calls RetrievalQueryFailure for all listeners
-func (em *EventManager) FireRetrievalQueryFailure(retrievalId uuid.UUID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, errString string) {
+// FireQueryFailure calls QueryFailure for all listeners
+func (em *EventManager) FireQueryFailure(retrievalId uuid.UUID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, errString string) {
 	em.queueEvent(func(timestamp time.Time, listener RetrievalEventListener) {
-		listener.RetrievalQueryFailure(retrievalId, phaseStartTime, timestamp, requestedCid, storageProviderId, errString)
+		listener.QueryFailure(retrievalId, phaseStartTime, timestamp, requestedCid, storageProviderId, errString)
 	})
 }
 
-// FireRetrievalQuerySuccess calls RetrievalQuerySuccess for all listeners
-func (em *EventManager) FireRetrievalQuerySuccess(retrievalId uuid.UUID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, queryResponse retrievalmarket.QueryResponse) {
+// FireQuerySuccess calls QuerySuccess ("query-ask") for all listeners
+func (em *EventManager) FireQuerySuccess(retrievalId uuid.UUID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, queryResponse retrievalmarket.QueryResponse) {
 	em.queueEvent(func(timestamp time.Time, listener RetrievalEventListener) {
-		listener.RetrievalQuerySuccess(retrievalId, phaseStartTime, timestamp, requestedCid, storageProviderId, queryResponse)
+		listener.QuerySuccess(retrievalId, phaseStartTime, timestamp, requestedCid, storageProviderId, queryResponse)
 	})
 }
 
