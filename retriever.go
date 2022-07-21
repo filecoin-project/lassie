@@ -64,18 +64,12 @@ func (cfg *RetrieverConfig) MinerConfig(peer peer.ID) MinerConfig {
 
 type Retriever struct {
 	// Assumed immutable during operation
-	config RetrieverConfig
-
-	endpoint     Endpoint
-	filClient    *filclient.FilClient
-	eventManager *eventManager
-
-	activeRetrievals *activeRetrievalsManager
-
-	minerMonitor *minerMonitor
-
-	runningRetrievals   map[cid.Cid]bool
-	runningRetrievalsLk sync.Mutex
+	config           RetrieverConfig
+	endpoint         Endpoint
+	filClient        *filclient.FilClient
+	eventManager     *EventManager
+	activeRetrievals *ActiveRetrievalsManager
+	minerMonitor     *minerMonitor
 }
 
 type candidateQuery struct {
@@ -103,14 +97,13 @@ func NewRetriever(
 		config:           config,
 		endpoint:         endpoint,
 		filClient:        filClient,
-		eventManager:     newEventManager(),
-		activeRetrievals: newActiveRetrievalsManager(),
+		eventManager:     NewEventManager(),
+		activeRetrievals: NewActiveRetrievalsManager(),
 		minerMonitor: newMinerMonitor(minerMonitorConfig{
 			maxFailuresBeforeSuspend: 5,
 			suspensionDuration:       time.Minute,
 			failureHistoryDuration:   time.Second * 15,
 		}),
-		runningRetrievals: make(map[cid.Cid]bool),
 	}
 
 	retriever.filClient.SubscribeToRetrievalEvents(retriever)
@@ -136,25 +129,16 @@ func (retriever *Retriever) RegisterListener(listener RetrievalEventListener) fu
 // Possible errors: ErrInvalidEndpointURL, ErrEndpointRequestFailed,
 // ErrEndpointBodyInvalid, ErrNoCandidates
 func (retriever *Retriever) Request(cid cid.Cid) error {
-	retriever.runningRetrievalsLk.Lock()
-	retriever.runningRetrievals[cid] = true
-	retriever.runningRetrievalsLk.Unlock()
 	// TODO: before looking up candidates from the endpoint, we could cache
 	// candidates and use that cached info. We only really have to look up an
 	// up-to-date candidate list from the endpoint if we need to begin a new
 	// retrieval.
 	candidates, err := retriever.lookupCandidates(context.Background(), cid)
 	if err != nil {
-		retriever.runningRetrievalsLk.Lock()
-		delete(retriever.runningRetrievals, cid)
-		retriever.runningRetrievalsLk.Unlock()
 		return fmt.Errorf("could not get retrieval candidates for %s: %w", cid, err)
 	}
 
 	if len(candidates) == 0 {
-		retriever.runningRetrievalsLk.Lock()
-		delete(retriever.runningRetrievals, cid)
-		retriever.runningRetrievalsLk.Unlock()
 		return ErrNoCandidates
 	}
 
@@ -171,15 +155,8 @@ func (retriever *Retriever) Request(cid cid.Cid) error {
 	// count
 	retrievalId, err := retriever.activeRetrievals.New(cid, len(candidates), 1)
 	if err != nil {
-		retriever.runningRetrievalsLk.Lock()
-		delete(retriever.runningRetrievals, cid)
-		retriever.runningRetrievalsLk.Unlock()
 		return err
 	}
-
-	retriever.runningRetrievalsLk.Lock()
-	log.Debugf("Running(%d)", len(retriever.runningRetrievals))
-	retriever.runningRetrievalsLk.Unlock()
 
 	// If we got to this point, one or more candidates have been found and we
 	// are good to go ahead with the retrieval
@@ -192,14 +169,6 @@ func (retriever *Retriever) Request(cid cid.Cid) error {
 //
 // Possible errors: ErrAllRetrievalsFailed
 func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, retrievalId uuid.UUID, retrievalCid cid.Cid, candidates []RetrievalCandidate) error {
-	defer func() {
-		retriever.runningRetrievalsLk.Lock()
-		delete(retriever.runningRetrievals, retrievalCid)
-		log.Debugf("Running(%d) ... calling DebugActiveCids", len(retriever.runningRetrievals))
-		retriever.activeRetrievals.DebugActiveCids(retriever.runningRetrievals)
-		retriever.runningRetrievalsLk.Unlock()
-	}()
-
 	queries := retriever.queryCandidates(ctx, retrievalId, retrievalCid, candidates)
 	// register that we have this many candidates to retrieve from, so that when we
 	// receive success or failures from that many we know the phase is completed,
@@ -287,8 +256,6 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, retri
 			stats.Record(ctx, metrics.RetrievalDealCost.M(retrievalStats.TotalPayment.Int64()))
 		}
 
-		retriever.activeRetrievals.UnsetRetrievalCandidate(retrievalCid)
-
 		if err != nil {
 			continue
 		}
@@ -330,9 +297,9 @@ func (retriever *Retriever) retrieve(ctx context.Context, query candidateQuery) 
 			done = true
 			doneLk.Unlock()
 
-			// since we're prematurely ending the retrieval, we need to simulate a
-			// failure event that would otherwise come from filclient so we can
-			// properly report it and perform clean-up
+			// since we're prematurely ending the retrieval due to timeout, we need to
+			// simulate a failure event that would otherwise come from filclient so we
+			// can properly report it and perform clean-up
 			retriever.OnRetrievalEvent(rep.RetrievalEvent{
 				Phase:  rep.RetrievalPhase,
 				Code:   rep.RetrievalEventFailure,
@@ -567,225 +534,4 @@ func (retriever *Retriever) OnRetrievalEvent(event rep.RetrievalEvent, state rep
 
 func (retriever *Retriever) RetrievalSubscriberId() interface{} {
 	return "autoretrieve"
-}
-
-type activeRetrieval struct {
-	retrievalId              uuid.UUID
-	retrievalCid             cid.Cid
-	rootCid                  cid.Cid // for Estuary candidates, this can be different to retrievalCid & retrievals will report it so we have to track it
-	currentStorageProviderId peer.ID // for tracking concurrent SP counts
-	queryStartTime           time.Time
-	queryCandidateCount      int // number we expect queriesFinished to reach before query phase ends
-	queriesFinished          int
-	retrievalStartTime       time.Time
-	retrievalCandidateCount  int // number we expect retrievalsFinished to reach before retrieval phase ends
-	retrievalsFinished       int
-}
-
-type activeRetrievalsManager struct {
-	arMap map[cid.Cid]*activeRetrieval
-	lk    sync.RWMutex
-}
-
-func newActiveRetrievalsManager() *activeRetrievalsManager {
-	return &activeRetrievalsManager{arMap: make(map[cid.Cid]*activeRetrieval)}
-}
-
-func (arm *activeRetrievalsManager) New(retrievalCid cid.Cid, queryCandidateCount int, retrievalCandidateCount int) (uuid.UUID, error) {
-	retrievalId, err := uuid.NewRandom()
-	if err != nil {
-		return uuid.UUID{}, err
-	}
-
-	arm.lk.Lock()
-	defer arm.lk.Unlock()
-
-	if arm.findActiveRetrievalFor(retrievalCid) != nil {
-		return uuid.UUID{}, ErrRetrievalAlreadyRunning
-	}
-
-	arm.arMap[retrievalCid] = &activeRetrieval{
-		retrievalId:              retrievalId,
-		retrievalCid:             retrievalCid,
-		rootCid:                  retrievalCid,
-		currentStorageProviderId: "",
-		queryStartTime:           time.Now(),
-		queryCandidateCount:      queryCandidateCount,
-		queriesFinished:          0,
-		retrievalStartTime:       time.Time{},
-		retrievalCandidateCount:  retrievalCandidateCount,
-		retrievalsFinished:       0,
-	}
-
-	log.Debugf("Registered new active retrieval for %s (%d active, %d/%d query candidates)", retrievalCid, len(arm.arMap), 0, queryCandidateCount)
-
-	return retrievalId, nil
-}
-
-func (arm *activeRetrievalsManager) QueryCandidateCount(retrievalCid cid.Cid, candidateCount int) {
-	arm.lk.Lock()
-	defer arm.lk.Unlock()
-
-	ar := arm.findActiveRetrievalFor(retrievalCid)
-	if ar == nil {
-		log.Errorf("Unexpected active retrieval QueryCandidateCount for %s", retrievalCid)
-		return
-	}
-	ar.queryCandidateCount = candidateCount
-	arm.maybeFinish(retrievalCid, ar)
-}
-
-func (arm *activeRetrievalsManager) RetrievalCandidateCount(retrievalCid cid.Cid, candidateCount int) {
-	arm.lk.Lock()
-	defer arm.lk.Unlock()
-
-	ar := arm.findActiveRetrievalFor(retrievalCid)
-	if ar == nil {
-		log.Errorf("Unexpected active retrieval RetrievalCandidateCount for %s", retrievalCid)
-		return
-	}
-	ar.retrievalCandidateCount = candidateCount
-	ar.retrievalStartTime = time.Now()
-	log.Debugf("Updated active retrieval for %s to retrieval phase (%d active, %d/%d query candidates, %d/%d retrieval candidates)", retrievalCid, len(arm.arMap), ar.queriesFinished, ar.queryCandidateCount, ar.retrievalsFinished, ar.retrievalCandidateCount)
-	arm.maybeFinish(retrievalCid, ar)
-}
-
-func (arm *activeRetrievalsManager) StatusFor(retrievalCid cid.Cid, phase rep.Phase) (uuid.UUID, cid.Cid, time.Time, bool) {
-	arm.lk.RLock()
-	defer arm.lk.RUnlock()
-	ar := arm.findActiveRetrievalFor(retrievalCid)
-	if ar == nil {
-		return uuid.UUID{}, cid.Undef, time.Time{}, false
-	}
-	phaseStart := ar.queryStartTime
-	if phase == rep.RetrievalPhase {
-		phaseStart = ar.retrievalStartTime
-	}
-	return ar.retrievalId, ar.retrievalCid, phaseStart, true
-}
-
-func (arm *activeRetrievalsManager) DebugActiveCids(running map[cid.Cid]bool) {
-	arm.lk.RLock()
-	defer arm.lk.RUnlock()
-	seenMap := make(map[cid.Cid]int)
-	for _, ar := range arm.arMap {
-		if _, ok := seenMap[ar.retrievalCid]; !ok {
-			seenMap[ar.retrievalCid] = 1
-		} else {
-			seenMap[ar.retrievalCid]++
-			log.Debugf("DebugActiveCids: multiple CIDs running: %s [%d]", ar.retrievalCid, seenMap[ar.retrievalCid])
-		}
-		if has, ok := running[ar.retrievalCid]; !ok || !has {
-			log.Debugf("DebugActiveCids: running CID mismatch: %s", ar.retrievalCid)
-		}
-	}
-}
-
-func (arm *activeRetrievalsManager) findActiveRetrievalFor(cid cid.Cid) *activeRetrieval {
-	ar, ok := arm.arMap[cid]
-	if !ok {
-		for _, ar := range arm.arMap {
-			if cid.Equals(ar.rootCid) {
-				return ar
-			}
-		}
-	}
-	return ar
-}
-
-// check whether we've completed all expected queries and retrievals, if so, clean-up
-func (arm *activeRetrievalsManager) maybeFinish(retrievalCid cid.Cid, ar *activeRetrieval) {
-	// this function expects the lock to be held by the caller
-	if ar.queriesFinished >= ar.queryCandidateCount && ar.retrievalsFinished >= ar.retrievalCandidateCount {
-		if ar.retrievalCid.Equals(retrievalCid) {
-			delete(arm.arMap, retrievalCid)
-		} else {
-			for _, ar := range arm.arMap {
-				if retrievalCid.Equals(ar.rootCid) {
-					delete(arm.arMap, ar.retrievalCid)
-					break
-				}
-			}
-		}
-		log.Debugf("Unregistered active retrieval for %s (%d active, %d/%d query candidates, %d/%d retrieval candidates)", retrievalCid, len(arm.arMap), ar.queriesFinished, ar.queryCandidateCount, ar.retrievalsFinished, ar.retrievalCandidateCount)
-	}
-}
-
-func (arm *activeRetrievalsManager) SetRetrievalCandidate(retrievalCid, rootCid cid.Cid, storageProviderId peer.ID, maxConcurrent uint) error {
-	arm.lk.Lock()
-	defer arm.lk.Unlock()
-
-	ar := arm.findActiveRetrievalFor(retrievalCid)
-	if ar == nil {
-		log.Errorf("Unexpected active retrieval SetRetrievalCandidate for %s", retrievalCid)
-		return ErrUnexpectedRetrieval
-	}
-
-	// If limit is enabled (non-zero) and we have already hit it, we can't
-	// allow this retrieval to start
-	if maxConcurrent > 0 {
-		var currentRetrievals uint
-		for _, ret := range arm.arMap {
-			if ret.currentStorageProviderId == storageProviderId {
-				currentRetrievals++
-			}
-		}
-		if currentRetrievals >= maxConcurrent {
-			ar.retrievalsFinished++ // this retrieval won't start so we won't get events for it, treat it as finished
-			arm.maybeFinish(retrievalCid, ar)
-			return ErrHitRetrievalLimit
-		}
-	}
-
-	ar.currentStorageProviderId = storageProviderId
-	ar.rootCid = rootCid
-
-	return nil
-}
-
-func (arm *activeRetrievalsManager) UnsetRetrievalCandidate(retrievalCid cid.Cid) {
-	arm.lk.Lock()
-	defer arm.lk.Unlock()
-
-	ar := arm.findActiveRetrievalFor(retrievalCid)
-	if ar == nil {
-		// this can fail for the last retrieval when we've already received the
-		// success or failure event and performed clean-up already, so noop is fine
-		return
-	}
-
-	ar.rootCid = retrievalCid // set it back to default
-	ar.currentStorageProviderId = ""
-}
-
-func (arm *activeRetrievalsManager) QueryCandidatedFinished(retrievalCid cid.Cid) {
-	arm.lk.Lock()
-	defer arm.lk.Unlock()
-
-	ar := arm.findActiveRetrievalFor(retrievalCid)
-	if ar == nil {
-		log.Errorf("Unexpected active retrieval QueryCandidatedFinished for %s (%d active, %d/%d query candidates, %d/%d retrieval candidates)", retrievalCid, len(arm.arMap), ar.queriesFinished, ar.queryCandidateCount, ar.retrievalsFinished, ar.retrievalCandidateCount)
-		return
-	}
-	ar.queriesFinished++
-	log.Errorf("QueryCandidatedFinished for %s (%d active, %d/%d query candidates, %d/%d retrieval candidates)", retrievalCid, len(arm.arMap), ar.queriesFinished, ar.queryCandidateCount, ar.retrievalsFinished, ar.retrievalCandidateCount)
-	arm.maybeFinish(retrievalCid, ar)
-}
-
-func (arm *activeRetrievalsManager) RetrievalCandidatedFinished(retrievalCid cid.Cid, success bool) {
-	arm.lk.Lock()
-	defer arm.lk.Unlock()
-
-	ar := arm.findActiveRetrievalFor(retrievalCid)
-	if ar == nil {
-		log.Errorf("Unexpected active retrieval RetrievalCandidatedFinished for %s (%d active, %d/%d query candidates, %d/%d retrieval candidates)", retrievalCid, len(arm.arMap), ar.queriesFinished, ar.queryCandidateCount, ar.retrievalsFinished, ar.retrievalCandidateCount)
-		return
-	}
-	ar.retrievalsFinished++
-	if success {
-		// if success, there won't be any more retrieval attempts so we can short-circuit clean-up
-		ar.retrievalCandidateCount = ar.retrievalsFinished
-	}
-	log.Errorf("RetrievalCandidatedFinished for %s (%d active, %d/%d query candidates, %d/%d retrieval candidates)", retrievalCid, len(arm.arMap), ar.queriesFinished, ar.queryCandidateCount, ar.retrievalsFinished, ar.retrievalCandidateCount)
-	arm.maybeFinish(retrievalCid, ar)
 }

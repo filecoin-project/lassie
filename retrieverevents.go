@@ -45,17 +45,17 @@ type RetrievalEventListener interface {
 	RetrievalFailure(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, errString string)
 }
 
-type eventManager struct {
+type EventManager struct {
 	lk        sync.RWMutex
 	idx       int
 	listeners map[int]RetrievalEventListener
 }
 
-func newEventManager() *eventManager {
-	return &eventManager{listeners: make(map[int]RetrievalEventListener)}
+func NewEventManager() *EventManager {
+	return &EventManager{listeners: make(map[int]RetrievalEventListener)}
 }
 
-func (em *eventManager) RegisterListener(listener RetrievalEventListener) func() {
+func (em *EventManager) RegisterListener(listener RetrievalEventListener) func() {
 	em.lk.Lock()
 	defer em.lk.Unlock()
 
@@ -71,7 +71,7 @@ func (em *eventManager) RegisterListener(listener RetrievalEventListener) func()
 	}
 }
 
-func (em *eventManager) fireEvent(cb func(timestamp time.Time, listener RetrievalEventListener)) {
+func (em *EventManager) fireEvent(cb func(timestamp time.Time, listener RetrievalEventListener)) {
 	timestamp := time.Now()
 	go func() {
 		em.lk.RLock()
@@ -87,37 +87,37 @@ func (em *eventManager) fireEvent(cb func(timestamp time.Time, listener Retrieva
 	}()
 }
 
-func (em *eventManager) FireRetrievalQueryProgress(retrievalId uuid.UUID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, stage rep.RetrievalEventCode) {
+func (em *EventManager) FireRetrievalQueryProgress(retrievalId uuid.UUID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, stage rep.RetrievalEventCode) {
 	em.fireEvent(func(timestamp time.Time, listener RetrievalEventListener) {
 		listener.RetrievalQueryProgress(retrievalId, phaseStartTime, timestamp, requestedCid, storageProviderId, stage)
 	})
 }
 
-func (em *eventManager) FireRetrievalQueryFailure(retrievalId uuid.UUID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, errString string) {
+func (em *EventManager) FireRetrievalQueryFailure(retrievalId uuid.UUID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, errString string) {
 	em.fireEvent(func(timestamp time.Time, listener RetrievalEventListener) {
 		listener.RetrievalQueryFailure(retrievalId, phaseStartTime, timestamp, requestedCid, storageProviderId, errString)
 	})
 }
 
-func (em *eventManager) FireRetrievalQuerySuccess(retrievalId uuid.UUID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, queryResponse retrievalmarket.QueryResponse) {
+func (em *EventManager) FireRetrievalQuerySuccess(retrievalId uuid.UUID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, queryResponse retrievalmarket.QueryResponse) {
 	em.fireEvent(func(timestamp time.Time, listener RetrievalEventListener) {
 		listener.RetrievalQuerySuccess(retrievalId, phaseStartTime, timestamp, requestedCid, storageProviderId, queryResponse)
 	})
 }
 
-func (em *eventManager) FireRetrievalProgress(retrievalId uuid.UUID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, stage rep.RetrievalEventCode) {
+func (em *EventManager) FireRetrievalProgress(retrievalId uuid.UUID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, stage rep.RetrievalEventCode) {
 	em.fireEvent(func(timestamp time.Time, listener RetrievalEventListener) {
 		listener.RetrievalProgress(retrievalId, phaseStartTime, timestamp, requestedCid, storageProviderId, stage)
 	})
 }
 
-func (em *eventManager) FireRetrievalSuccess(retrievalId uuid.UUID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, receivedSize uint64) {
+func (em *EventManager) FireRetrievalSuccess(retrievalId uuid.UUID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, receivedSize uint64) {
 	em.fireEvent(func(timestamp time.Time, listener RetrievalEventListener) {
 		listener.RetrievalSuccess(retrievalId, phaseStartTime, timestamp, requestedCid, storageProviderId, receivedSize)
 	})
 }
 
-func (em *eventManager) FireRetrievalFailure(retrievalId uuid.UUID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, errString string) {
+func (em *EventManager) FireRetrievalFailure(retrievalId uuid.UUID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, errString string) {
 	em.fireEvent(func(timestamp time.Time, listener RetrievalEventListener) {
 		listener.RetrievalFailure(retrievalId, phaseStartTime, timestamp, requestedCid, storageProviderId, errString)
 	})
