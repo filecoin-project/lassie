@@ -89,6 +89,7 @@ type Endpoint interface {
 // Possible errors: ErrInitKeystoreFailed, ErrInitWalletFailed,
 // ErrInitFilClientFailed
 func NewRetriever(
+	ctx context.Context,
 	config RetrieverConfig,
 	filClient *filclient.FilClient,
 	endpoint Endpoint,
@@ -97,7 +98,7 @@ func NewRetriever(
 		config:           config,
 		endpoint:         endpoint,
 		filClient:        filClient,
-		eventManager:     NewEventManager(),
+		eventManager:     NewEventManager(ctx),
 		activeRetrievals: NewActiveRetrievalsManager(),
 		minerMonitor: newMinerMonitor(minerMonitorConfig{
 			maxFailuresBeforeSuspend: 5,
