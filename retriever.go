@@ -174,7 +174,7 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, retri
 	// register that we have this many candidates to retrieve from, so that when we
 	// receive success or failures from that many we know the phase is completed,
 	// if zero at this point then clean-up will occur
-	retriever.activeRetrievals.RetrievalCandidateCount(retrievalCid, len(queries))
+	retriever.activeRetrievals.SetRetrievalCandidateCount(retrievalCid, len(queries))
 	if len(queries) == 0 {
 		return nil
 	}
@@ -466,7 +466,7 @@ func (retriever *Retriever) OnRetrievalEvent(event rep.RetrievalEvent, state rep
 		"finished-time", state.FinishedTime,
 	)
 
-	retrievalId, retrievalCid, phaseStartTime, has := retriever.activeRetrievals.StatusFor(state.PayloadCid, event.Phase)
+	retrievalId, retrievalCid, phaseStartTime, has := retriever.activeRetrievals.GetStatusFor(state.PayloadCid, event.Phase)
 
 	if !has {
 		log.Errorf("Received event [%s] for unexpected retrieval: payload-cid=%s, storage-provider-id=%s", event.Code, state.PayloadCid, state.StorageProviderID)

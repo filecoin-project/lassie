@@ -60,7 +60,7 @@ func NewActiveRetrievalsManager() *ActiveRetrievalsManager {
 // provider candidates for each phase. Typically the retrievalCandidateCount
 // is unknown but setting it to zero may mean that a retrieval is considered
 // finished before we have a chance to set the correct number using a
-// subsequent call to RetrievalCandidateCount().
+// subsequent call to SetRetrievalCandidateCount().
 //
 // A unique ID is returned for the new retrieval that can be used to identify it
 // over the entire lifecycle.
@@ -95,17 +95,17 @@ func (arm *ActiveRetrievalsManager) New(retrievalCid cid.Cid, queryCandidateCoun
 	return retrievalId, nil
 }
 
-// RetrievalCandidateCount updates the number of storage provider candidates
+// SetRetrievalCandidateCount updates the number of storage provider candidates
 // once we know the number. When the number of finished retrievals equals this
 // number and the number of finished queries equals the query candidate count
 // the full retrieval is considered complete and can be cleaned up.
-func (arm *ActiveRetrievalsManager) RetrievalCandidateCount(retrievalCid cid.Cid, candidateCount int) {
+func (arm *ActiveRetrievalsManager) SetRetrievalCandidateCount(retrievalCid cid.Cid, candidateCount int) {
 	arm.lk.Lock()
 	defer arm.lk.Unlock()
 
 	ar := arm.findActiveRetrievalFor(retrievalCid)
 	if ar == nil {
-		log.Errorf("Unexpected active retrieval RetrievalCandidateCount for %s", retrievalCid)
+		log.Errorf("Unexpected active retrieval SetRetrievalCandidateCount for %s", retrievalCid)
 		return
 	}
 	ar.retrievalCandidateCount = candidateCount
@@ -114,11 +114,11 @@ func (arm *ActiveRetrievalsManager) RetrievalCandidateCount(retrievalCid cid.Cid
 	arm.maybeFinish(retrievalCid, ar)
 }
 
-// StatusFor fetches basic information for a retrieval, identified by the
+// GetStatusFor fetches basic information for a retrieval, identified by the
 // original retrieval CID (which may be different to the CID a storage provider
 // is being asked for). The phase is provided here in order to determine which
 // start time to return (query or retrieval).
-func (arm *ActiveRetrievalsManager) StatusFor(retrievalCid cid.Cid, phase rep.Phase) (uuid.UUID, cid.Cid, time.Time, bool) {
+func (arm *ActiveRetrievalsManager) GetStatusFor(retrievalCid cid.Cid, phase rep.Phase) (uuid.UUID, cid.Cid, time.Time, bool) {
 	arm.lk.RLock()
 	defer arm.lk.RUnlock()
 	ar := arm.findActiveRetrievalFor(retrievalCid)
