@@ -73,7 +73,7 @@ func (arm *ActiveRetrievalsManager) New(retrievalCid cid.Cid, queryCandidateCoun
 	arm.lk.Lock()
 	defer arm.lk.Unlock()
 
-	if arm.findActiveRetrievalFor(retrievalCid) != nil {
+	if _, ok := arm.findActiveRetrievalFor(retrievalCid); ok {
 		return uuid.UUID{}, ErrRetrievalAlreadyRunning
 	}
 
@@ -103,8 +103,8 @@ func (arm *ActiveRetrievalsManager) SetRetrievalCandidateCount(retrievalCid cid.
 	arm.lk.Lock()
 	defer arm.lk.Unlock()
 
-	ar := arm.findActiveRetrievalFor(retrievalCid)
-	if ar == nil {
+	ar, found := arm.findActiveRetrievalFor(retrievalCid)
+	if !found {
 		log.Errorf("Unexpected active retrieval SetRetrievalCandidateCount for %s", retrievalCid)
 		return
 	}
@@ -121,8 +121,8 @@ func (arm *ActiveRetrievalsManager) SetRetrievalCandidateCount(retrievalCid cid.
 func (arm *ActiveRetrievalsManager) GetStatusFor(retrievalCid cid.Cid, phase rep.Phase) (uuid.UUID, cid.Cid, time.Time, bool) {
 	arm.lk.RLock()
 	defer arm.lk.RUnlock()
-	ar := arm.findActiveRetrievalFor(retrievalCid)
-	if ar == nil {
+	ar, found := arm.findActiveRetrievalFor(retrievalCid)
+	if !found {
 		return uuid.UUID{}, cid.Undef, time.Time{}, false
 	}
 	phaseStart := ar.queryStartTime
@@ -144,8 +144,8 @@ func (arm *ActiveRetrievalsManager) SetRetrievalCandidate(retrievalCid, rootCid 
 	arm.lk.Lock()
 	defer arm.lk.Unlock()
 
-	ar := arm.findActiveRetrievalFor(retrievalCid)
-	if ar == nil {
+	ar, found := arm.findActiveRetrievalFor(retrievalCid)
+	if !found {
 		log.Errorf("Unexpected active retrieval SetRetrievalCandidate for %s", retrievalCid)
 		return ErrUnexpectedRetrieval
 	}
@@ -179,8 +179,8 @@ func (arm *ActiveRetrievalsManager) QueryCandidatedFinished(retrievalCid cid.Cid
 	arm.lk.Lock()
 	defer arm.lk.Unlock()
 
-	ar := arm.findActiveRetrievalFor(retrievalCid)
-	if ar == nil {
+	ar, found := arm.findActiveRetrievalFor(retrievalCid)
+	if !found {
 		log.Errorf("Unexpected active retrieval QueryCandidatedFinished for %s (%d active, %d/%d query candidates, %d/%d retrieval candidates)", retrievalCid, len(arm.arMap), ar.queriesFinished, ar.queryCandidateCount, ar.retrievalsFinished, ar.retrievalCandidateCount)
 		return
 	}
@@ -198,8 +198,8 @@ func (arm *ActiveRetrievalsManager) RetrievalCandidatedFinished(retrievalCid cid
 	arm.lk.Lock()
 	defer arm.lk.Unlock()
 
-	ar := arm.findActiveRetrievalFor(retrievalCid)
-	if ar == nil {
+	ar, found := arm.findActiveRetrievalFor(retrievalCid)
+	if !found {
 		log.Errorf("Unexpected active retrieval RetrievalCandidatedFinished for %s (%d active, %d/%d query candidates, %d/%d retrieval candidates)", retrievalCid, len(arm.arMap), ar.queriesFinished, ar.queryCandidateCount, ar.retrievalsFinished, ar.retrievalCandidateCount)
 		return
 	}
@@ -219,16 +219,18 @@ func (arm *ActiveRetrievalsManager) RetrievalCandidatedFinished(retrievalCid cid
 // New() will return ErrRetrievalAlreadyRunning if that CID is involved as
 // either a primary CID or a root CID. But this is reasonable since a successful
 // retrieval will yield the newly requested CID regardless.
-func (arm *ActiveRetrievalsManager) findActiveRetrievalFor(cid cid.Cid) *activeRetrieval {
+func (arm *ActiveRetrievalsManager) findActiveRetrievalFor(cid cid.Cid) (*activeRetrieval, bool) {
 	ar, ok := arm.arMap[cid]
-	if !ok {
-		for _, ar := range arm.arMap {
-			if cid.Equals(ar.rootCid) {
-				return ar
-			}
+	if ok {
+		return ar, true
+	}
+	// look for the CID as rootCid across all running retrievals
+	for _, ar := range arm.arMap {
+		if cid.Equals(ar.rootCid) {
+			return ar, true
 		}
 	}
-	return ar
+	return nil, false
 }
 
 // maybeFinish checks whether we've completed all expected queries and

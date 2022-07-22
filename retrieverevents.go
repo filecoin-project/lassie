@@ -17,7 +17,7 @@ import (
 // providers to find compatible ones to attempt retrieval from.
 type RetrievalEventListener interface {
 	// QueryProgress events occur during the query process, stages.
-	// Currently this should just include a "connect" event.
+	// Currently this should just include a "connected" event.
 	QueryProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage rep.RetrievalEventCode)
 
 	// QueryFailure events occur on the failure of querying a storage
@@ -25,7 +25,7 @@ type RetrievalEventListener interface {
 	// a QuerySuccess event.
 	QueryFailure(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, errString string)
 
-	// QuerySuccess ("query-ask") events occur on successfully querying a storage
+	// QuerySuccess ("query-asked") events occur on successfully querying a storage
 	// provider. A query will result in either a QueryFailure or
 	// a QuerySuccess event.
 	QuerySuccess(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, queryResponse retrievalmarket.QueryResponse)
@@ -63,7 +63,7 @@ func NewEventManager(ctx context.Context) *EventManager {
 	em := &EventManager{
 		ctx:       ctx,
 		listeners: make(map[int]RetrievalEventListener),
-		events:    make(chan eventExecution, 1),
+		events:    make(chan eventExecution, 16),
 	}
 	go em.loop()
 	return em
@@ -127,7 +127,7 @@ func (em *EventManager) FireQueryFailure(retrievalId uuid.UUID, requestedCid cid
 	})
 }
 
-// FireQuerySuccess calls QuerySuccess ("query-ask") for all listeners
+// FireQuerySuccess calls QuerySuccess ("query-asked") for all listeners
 func (em *EventManager) FireQuerySuccess(retrievalId uuid.UUID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, queryResponse retrievalmarket.QueryResponse) {
 	em.queueEvent(func(timestamp time.Time, listener RetrievalEventListener) {
 		listener.QuerySuccess(retrievalId, phaseStartTime, timestamp, requestedCid, storageProviderId, queryResponse)
