@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/application-research/autoretrieve/blocks"
 	"github.com/application-research/autoretrieve/metrics"
 	"github.com/application-research/filclient"
 	"github.com/application-research/filclient/rep"
@@ -16,11 +15,9 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-state-types/big"
-	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/chain/types"
+	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-datastore"
-	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"go.opencensus.io/stats"
 )
@@ -28,6 +25,7 @@ import (
 var (
 	ErrNoCandidates                = errors.New("no candidates")
 	ErrRetrievalAlreadyRunning     = errors.New("retrieval already running")
+	ErrUnexpectedRetrieval         = errors.New("unexpected active retrieval")
 	ErrHitRetrievalLimit           = errors.New("hit retrieval limit")
 	ErrProposalCreationFailed      = errors.New("proposal creation failed")
 	ErrRetrievalRegistrationFailed = errors.New("retrieval registration failed")
@@ -66,16 +64,12 @@ func (cfg *RetrieverConfig) MinerConfig(peer peer.ID) MinerConfig {
 
 type Retriever struct {
 	// Assumed immutable during operation
-	config RetrieverConfig
-
-	endpoint  Endpoint
-	filClient *filclient.FilClient
-
-	runningRetrievals        map[cid.Cid]bool
-	activeRetrievalsPerMiner map[peer.ID]uint
-	runningRetrievalsLk      sync.Mutex
-
-	minerMonitor *minerMonitor
+	config           RetrieverConfig
+	endpoint         Endpoint
+	filClient        *filclient.FilClient
+	eventManager     *EventManager
+	activeRetrievals *ActiveRetrievalsManager
+	minerMonitor     *minerMonitor
 }
 
 type candidateQuery struct {
@@ -95,20 +89,17 @@ type Endpoint interface {
 // Possible errors: ErrInitKeystoreFailed, ErrInitWalletFailed,
 // ErrInitFilClientFailed
 func NewRetriever(
+	ctx context.Context,
 	config RetrieverConfig,
 	filClient *filclient.FilClient,
 	endpoint Endpoint,
-	host host.Host,
-	api api.Gateway,
-	datastore datastore.Batching,
-	blockManager *blocks.Manager,
 ) (*Retriever, error) {
 	retriever := &Retriever{
-		config:                   config,
-		endpoint:                 endpoint,
-		filClient:                filClient,
-		runningRetrievals:        make(map[cid.Cid]bool),
-		activeRetrievalsPerMiner: make(map[peer.ID]uint),
+		config:           config,
+		endpoint:         endpoint,
+		filClient:        filClient,
+		eventManager:     NewEventManager(ctx),
+		activeRetrievals: NewActiveRetrievalsManager(),
 		minerMonitor: newMinerMonitor(minerMonitorConfig{
 			maxFailuresBeforeSuspend: 5,
 			suspensionDuration:       time.Minute,
@@ -119,6 +110,13 @@ func NewRetriever(
 	retriever.filClient.SubscribeToRetrievalEvents(retriever)
 
 	return retriever, nil
+}
+
+// RegisterListener registers a listener to receive all events fired during the
+// process of making a retrieval, including the process of querying available
+// storage providers to find compatible ones to attempt retrieval from.
+func (retriever *Retriever) RegisterListener(listener RetrievalEventListener) func() {
+	return retriever.eventManager.RegisterListener(listener)
 }
 
 // Request will tell the retriever to start trying to retrieve a certain CID. If
@@ -145,10 +143,25 @@ func (retriever *Retriever) Request(cid cid.Cid) error {
 		return ErrNoCandidates
 	}
 
+	// when we want to include the indexer "phase", this should move to the top of
+	// Retrieve(), but for now we can avoid unnecessary new+cleanup for negative
+	// indexer calls.
+	// We register that we have len(candidates) candidates to query, so that when
+	// we receive success or failures from that many we know the phase is
+	// completed. We also pre-emptively suggest we're expecting at least one
+	// retrieval to occur. But this number will be updated with a proper count
+	// before we start any retrievals, but at this point we want to avoid a
+	// (unlikely) race condition where we get all expected success/failures for
+	// queries and trigger a clean-up before we have a chance to set the correct
+	// count
+	retrievalId, err := retriever.activeRetrievals.New(cid, len(candidates), 1)
+	if err != nil {
+		return err
+	}
+
 	// If we got to this point, one or more candidates have been found and we
 	// are good to go ahead with the retrieval
-	go retriever.retrieveFromBestCandidate(context.Background(), cid, candidates)
-
+	go retriever.retrieveFromBestCandidate(context.Background(), retrievalId, cid, candidates)
 	return nil
 }
 
@@ -156,8 +169,15 @@ func (retriever *Retriever) Request(cid cid.Cid) error {
 // serial until one succeeds.
 //
 // Possible errors: ErrAllRetrievalsFailed
-func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid cid.Cid, candidates []RetrievalCandidate) error {
-	queries := retriever.queryCandidates(ctx, cid, candidates)
+func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, retrievalId uuid.UUID, retrievalCid cid.Cid, candidates []RetrievalCandidate) error {
+	queries := retriever.queryCandidates(ctx, retrievalId, retrievalCid, candidates)
+	// register that we have this many candidates to retrieve from, so that when we
+	// receive success or failures from that many we know the phase is completed,
+	// if zero at this point then clean-up will occur
+	retriever.activeRetrievals.SetRetrievalCandidateCount(retrievalCid, len(queries))
+	if len(queries) == 0 {
+		return nil
+	}
 
 	sort.Slice(queries, func(i, j int) bool {
 		a := queries[i].response
@@ -187,20 +207,20 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid c
 	// complete
 	var retrievalStats *filclient.RetrievalStats
 	for _, query := range queries {
-		if err := retriever.tryRegisterRunningRetrieval(query.candidate.RootCid, query.candidate.MinerPeer.ID); err != nil {
-			// TODO: send some info to metrics about this
-
-			if errors.Is(err, ErrRetrievalAlreadyRunning) {
-				break
-			}
-
-			continue
+		minerConfig := retriever.config.MinerConfig(query.candidate.MinerPeer.ID)
+		if err := retriever.activeRetrievals.SetRetrievalCandidate(
+			retrievalCid,
+			query.candidate.RootCid,
+			query.candidate.MinerPeer.ID,
+			minerConfig.MaxConcurrentRetrievals,
+		); err != nil {
+			continue // likely an ErrHitRetrievalLimit, move on to next candidate
 		}
 
 		log.Infof(
 			"Attempting retrieval from miner %s for %s",
 			query.candidate.MinerPeer.ID,
-			formatCidAndRoot(cid, query.candidate.RootCid, false),
+			formatCidAndRoot(retrievalCid, query.candidate.RootCid, false),
 		)
 
 		stats.Record(ctx, metrics.RetrievalRequestCount.M(1))
@@ -214,7 +234,7 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid c
 			log.Errorf(
 				"Failed to retrieve from miner %s for %s: %v",
 				query.candidate.MinerPeer.ID,
-				formatCidAndRoot(cid, query.candidate.RootCid, false),
+				formatCidAndRoot(retrievalCid, query.candidate.RootCid, false),
 				err,
 			)
 			stats.Record(ctx, metrics.RetrievalDealFailCount.M(1))
@@ -225,7 +245,7 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid c
 					"\tBytes Received: %s\n"+
 					"\tTotal Payment: %s",
 				query.candidate.MinerPeer.ID,
-				formatCidAndRoot(cid, query.candidate.RootCid, false),
+				formatCidAndRoot(retrievalCid, query.candidate.RootCid, false),
 				retrievalStats.Duration,
 				humanize.IBytes(retrievalStats.Size),
 				types.FIL(retrievalStats.TotalPayment),
@@ -236,8 +256,6 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, cid c
 			stats.Record(ctx, metrics.RetrievalDealSize.M(int64(retrievalStats.Size)))
 			stats.Record(ctx, metrics.RetrievalDealCost.M(retrievalStats.TotalPayment.Int64()))
 		}
-
-		retriever.unregisterRunningRetrieval(query.candidate.RootCid, query.candidate.MinerPeer.ID)
 
 		if err != nil {
 			continue
@@ -280,6 +298,17 @@ func (retriever *Retriever) retrieve(ctx context.Context, query candidateQuery) 
 			done = true
 			doneLk.Unlock()
 
+			// since we're prematurely ending the retrieval due to timeout, we need to
+			// simulate a failure event that would otherwise come from filclient so we
+			// can properly report it and perform clean-up
+			retriever.OnRetrievalEvent(rep.RetrievalEvent{
+				Phase:  rep.RetrievalPhase,
+				Code:   rep.RetrievalEventFailure,
+				Status: fmt.Sprintf("timeout after %s", minerCfgs.RetrievalTimeout),
+			}, rep.RetrievalState{
+				StorageProviderID: query.candidate.MinerPeer.ID,
+				PayloadCid:        query.candidate.RootCid,
+			})
 			retrieveCancel()
 			timedOut = true
 		})
@@ -330,45 +359,6 @@ func (retriever *Retriever) retrieve(ctx context.Context, query candidateQuery) 
 	return stats, nil
 }
 
-// Possible errors: ErrRetrievalAlreadyRunning, ErrHitRetrievalLimit
-func (retriever *Retriever) tryRegisterRunningRetrieval(cid cid.Cid, miner peer.ID) error {
-	retriever.runningRetrievalsLk.Lock()
-	defer retriever.runningRetrievalsLk.Unlock()
-
-	minerConfig := retriever.config.MinerConfig(miner)
-
-	// If limit is enabled (non-zero) and we have already hit it, we can't
-	// allow this retrieval to start
-	noLimit := minerConfig.MaxConcurrentRetrievals == 0
-	atLimit := retriever.activeRetrievalsPerMiner[miner] >= minerConfig.MaxConcurrentRetrievals
-	if !noLimit && atLimit {
-		return ErrHitRetrievalLimit
-	}
-
-	if retriever.runningRetrievals[cid] {
-		return ErrRetrievalAlreadyRunning
-	}
-
-	retriever.runningRetrievals[cid] = true
-	retriever.activeRetrievalsPerMiner[miner] += 1
-
-	fmt.Printf("running retrievals: %d (at limit: %v, no limit: %v)\n", retriever.activeRetrievalsPerMiner[miner], atLimit, noLimit)
-
-	return nil
-}
-
-// Unregisters a running retrieval. No-op if no retrieval is running.
-func (retriever *Retriever) unregisterRunningRetrieval(cid cid.Cid, miner peer.ID) {
-	retriever.runningRetrievalsLk.Lock()
-	defer retriever.runningRetrievalsLk.Unlock()
-
-	delete(retriever.runningRetrievals, cid)
-	retriever.activeRetrievalsPerMiner[miner] = retriever.activeRetrievalsPerMiner[miner] - 1
-	if retriever.activeRetrievalsPerMiner[miner] == 0 {
-		delete(retriever.activeRetrievalsPerMiner, miner)
-	}
-}
-
 // Returns a list of miners known to have the requested block, with blacklisted
 // miners filtered out.
 //
@@ -404,7 +394,7 @@ func (retriever *Retriever) lookupCandidates(ctx context.Context, cid cid.Cid) (
 	return res, nil
 }
 
-func (retriever *Retriever) queryCandidates(ctx context.Context, cid cid.Cid, candidates []RetrievalCandidate) []candidateQuery {
+func (retriever *Retriever) queryCandidates(ctx context.Context, retrievalId uuid.UUID, cid cid.Cid, candidates []RetrievalCandidate) []candidateQuery {
 	var queries []candidateQuery
 	var queriesLk sync.Mutex
 
@@ -471,8 +461,83 @@ func formatCid(cid cid.Cid, short bool) string {
 }
 
 // Implement rep.RetrievalSubscriber
-func (retriever *Retriever) OnRetrievalEvent(event rep.RetrievalEvent) {
-	log.Debugf("%s %s", event.Code, event.Status)
+func (retriever *Retriever) OnRetrievalEvent(event rep.RetrievalEvent, state rep.RetrievalState) {
+	log.Debugw("retrieval-event",
+		"code", event.Code,
+		"status", event.Status,
+		"storage-provider-id", state.StorageProviderID,
+		"storage-provider-address", state.StorageProviderAddr,
+		"client-address", state.ClientID,
+		"payload-cid", state.PayloadCid,
+		"piece-cid", state.PieceCid,
+		"finished-time", state.FinishedTime,
+	)
+
+	retrievalId, retrievalCid, phaseStartTime, has := retriever.activeRetrievals.GetStatusFor(state.PayloadCid, event.Phase)
+
+	if !has {
+		log.Errorf("Received event [%s] for unexpected retrieval: payload-cid=%s, storage-provider-id=%s", event.Code, state.PayloadCid, state.StorageProviderID)
+		return
+	}
+
+	switch event.Code {
+	case rep.RetrievalEventFailure:
+		if event.Phase == rep.QueryPhase {
+			retriever.activeRetrievals.QueryCandidatedFinished(retrievalCid)
+			retriever.eventManager.FireQueryFailure(
+				retrievalId,
+				state.PayloadCid,
+				phaseStartTime,
+				state.StorageProviderID,
+				event.Status,
+			)
+		} else {
+			retriever.activeRetrievals.RetrievalCandidatedFinished(retrievalCid, false)
+			retriever.eventManager.FireRetrievalFailure(
+				retrievalId,
+				state.PayloadCid,
+				phaseStartTime,
+				state.StorageProviderID,
+				event.Status,
+			)
+		}
+	case rep.RetrievalEventQueryAsk: // query-ask success
+		retriever.activeRetrievals.QueryCandidatedFinished(retrievalCid)
+		retriever.eventManager.FireQuerySuccess(
+			retrievalId,
+			state.PayloadCid,
+			phaseStartTime,
+			state.StorageProviderID,
+			*event.QueryResponse,
+		)
+	case rep.RetrievalEventSuccess:
+		retriever.activeRetrievals.RetrievalCandidatedFinished(retrievalCid, true)
+		retriever.eventManager.FireRetrievalSuccess(
+			retrievalId,
+			state.PayloadCid,
+			phaseStartTime,
+			state.StorageProviderID,
+			state.ReceivedSize,
+		)
+	default:
+		if event.Phase == rep.QueryPhase {
+			retriever.eventManager.FireQueryProgress(
+				retrievalId,
+				state.PayloadCid,
+				phaseStartTime,
+				state.StorageProviderID,
+				event.Code,
+			)
+		} else {
+			retriever.eventManager.FireRetrievalProgress(
+				retrievalId,
+				state.PayloadCid,
+				phaseStartTime,
+				state.StorageProviderID,
+				event.Code,
+			)
+		}
+	}
 }
 
 func (retriever *Retriever) RetrievalSubscriberId() interface{} {
