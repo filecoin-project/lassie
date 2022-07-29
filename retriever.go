@@ -13,6 +13,7 @@ import (
 	"github.com/application-research/filclient/rep"
 	"github.com/application-research/filclient/retrievehelper"
 	"github.com/dustin/go-humanize"
+	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lotus/chain/types"
@@ -301,14 +302,13 @@ func (retriever *Retriever) retrieve(ctx context.Context, query candidateQuery) 
 			// since we're prematurely ending the retrieval due to timeout, we need to
 			// simulate a failure event that would otherwise come from filclient so we
 			// can properly report it and perform clean-up
-			retriever.OnRetrievalEvent(rep.RetrievalEvent{
-				Phase:  rep.RetrievalPhase,
-				Code:   rep.RetrievalEventFailure,
-				Status: fmt.Sprintf("timeout after %s", minerCfgs.RetrievalTimeout),
-			}, rep.RetrievalState{
-				StorageProviderID: query.candidate.MinerPeer.ID,
-				PayloadCid:        query.candidate.RootCid,
-			})
+			retriever.OnRetrievalEvent(rep.NewRetrievalEventFailure(
+				rep.RetrievalPhase,
+				query.candidate.RootCid,
+				query.candidate.MinerPeer.ID,
+				address.Undef,
+				fmt.Sprintf("timeout after %s", minerCfgs.RetrievalTimeout),
+			))
 			retrieveCancel()
 			timedOut = true
 		})
@@ -461,85 +461,111 @@ func formatCid(cid cid.Cid, short bool) string {
 }
 
 // Implement rep.RetrievalSubscriber
-func (retriever *Retriever) OnRetrievalEvent(event rep.RetrievalEvent, state rep.RetrievalState) {
-	log.Debugw("retrieval-event",
-		"code", event.Code,
-		"status", event.Status,
-		"storage-provider-id", state.StorageProviderID,
-		"storage-provider-address", state.StorageProviderAddr,
-		"client-address", state.ClientID,
-		"payload-cid", state.PayloadCid,
-		"piece-cid", state.PieceCid,
-		"finished-time", state.FinishedTime,
-	)
+func (retriever *Retriever) OnRetrievalEvent(event rep.RetrievalEvent) {
+	logEvent(event)
 
-	retrievalId, retrievalCid, phaseStartTime, has := retriever.activeRetrievals.GetStatusFor(state.PayloadCid, event.Phase)
+	retrievalId, retrievalCid, phaseStartTime, has := retriever.activeRetrievals.GetStatusFor(event.PayloadCid(), event.Phase())
 
 	if !has {
-		log.Errorf("Received event [%s] for unexpected retrieval: payload-cid=%s, storage-provider-id=%s", event.Code, state.PayloadCid, state.StorageProviderID)
+		log.Errorf("Received event [%s] for unexpected retrieval: payload-cid=%s, storage-provider-id=%s", event.Code, event.PayloadCid(), event.StorageProviderId())
 		return
 	}
 
-	switch event.Code {
+	switch ret := event.(type) {
 	case rep.RetrievalEventFailure:
-		if event.Phase == rep.QueryPhase {
+		if event.Phase() == rep.QueryPhase {
 			retriever.activeRetrievals.QueryCandidatedFinished(retrievalCid)
 			retriever.eventManager.FireQueryFailure(
 				retrievalId,
-				state.PayloadCid,
+				event.PayloadCid(),
 				phaseStartTime,
-				state.StorageProviderID,
-				event.Status,
+				event.StorageProviderId(),
+				ret.ErrorMessage(),
 			)
 		} else {
 			retriever.activeRetrievals.RetrievalCandidatedFinished(retrievalCid, false)
 			retriever.eventManager.FireRetrievalFailure(
 				retrievalId,
-				state.PayloadCid,
+				event.PayloadCid(),
 				phaseStartTime,
-				state.StorageProviderID,
-				event.Status,
+				event.StorageProviderId(),
+				ret.ErrorMessage(),
 			)
 		}
 	case rep.RetrievalEventQueryAsk: // query-ask success
 		retriever.activeRetrievals.QueryCandidatedFinished(retrievalCid)
 		retriever.eventManager.FireQuerySuccess(
 			retrievalId,
-			state.PayloadCid,
+			event.PayloadCid(),
 			phaseStartTime,
-			state.StorageProviderID,
-			*event.QueryResponse,
+			event.StorageProviderId(),
+			ret.QueryResponse(),
 		)
 	case rep.RetrievalEventSuccess:
 		retriever.activeRetrievals.RetrievalCandidatedFinished(retrievalCid, true)
 		retriever.eventManager.FireRetrievalSuccess(
 			retrievalId,
-			state.PayloadCid,
+			event.PayloadCid(),
 			phaseStartTime,
-			state.StorageProviderID,
-			state.ReceivedSize,
+			event.StorageProviderId(),
+			ret.ReceivedSize(),
+			ret.ReceivedCids(),
 		)
 	default:
-		if event.Phase == rep.QueryPhase {
+		if event.Phase() == rep.QueryPhase {
 			retriever.eventManager.FireQueryProgress(
 				retrievalId,
-				state.PayloadCid,
+				event.PayloadCid(),
 				phaseStartTime,
-				state.StorageProviderID,
-				event.Code,
+				event.StorageProviderId(),
+				event.Code(),
 			)
 		} else {
 			retriever.eventManager.FireRetrievalProgress(
 				retrievalId,
-				state.PayloadCid,
+				event.PayloadCid(),
 				phaseStartTime,
-				state.StorageProviderID,
-				event.Code,
+				event.StorageProviderId(),
+				event.Code(),
 			)
 		}
 	}
 }
 
-func (retriever *Retriever) RetrievalSubscriberId() interface{} {
-	return "autoretrieve"
+func logEvent(event rep.RetrievalEvent) {
+	kv := make([]interface{}, 0)
+	logadd := func(kva ...interface{}) {
+		if len(kva)%2 != 0 {
+			panic("bad number of key/value arguments")
+		}
+		for i := 0; i < len(kva); i += 2 {
+			key, ok := kva[i].(string)
+			if !ok {
+				panic("expected string key")
+			}
+			kv = append(kv, key, kva[i+1])
+		}
+	}
+	logadd("code", event.Code(),
+		"phase", event.Phase(),
+		"payloadCid", event.PayloadCid(),
+		"storageProviderId", event.StorageProviderId(),
+		"storageProviderAddr", event.StorageProviderAddr())
+	switch tevent := event.(type) {
+	case rep.RetrievalEventQueryAsk:
+		logadd("queryResponse:Status", tevent.QueryResponse().Status,
+			"queryResponse:PieceCIDFound", tevent.QueryResponse().PieceCIDFound,
+			"queryResponse:Size", tevent.QueryResponse().Size,
+			"queryResponse:PaymentAddress", tevent.QueryResponse().PaymentAddress,
+			"queryResponse:MinPricePerByte", tevent.QueryResponse().MinPricePerByte,
+			"queryResponse:MaxPaymentInterval", tevent.QueryResponse().MaxPaymentInterval,
+			"queryResponse:MaxPaymentIntervalIncrease", tevent.QueryResponse().MaxPaymentIntervalIncrease,
+			"queryResponse:Message", tevent.QueryResponse().Message,
+			"queryResponse:UnsealPrice", tevent.QueryResponse().UnsealPrice)
+	case rep.RetrievalEventFailure:
+		logadd("errorMessage", tevent.ErrorMessage())
+	case rep.RetrievalEventSuccess:
+		logadd("receivedSize", tevent.ReceivedSize())
+	}
+	log.Debugw("retrieval-event", kv...)
 }

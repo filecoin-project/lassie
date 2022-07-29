@@ -83,7 +83,7 @@ func TestEventRecorder(t *testing.T) {
 		{
 			name: "RetrievalSuccess",
 			exec: func(t *testing.T, er *eventrecorder.EventRecorder, id uuid.UUID, etime, ptime time.Time, spid peer.ID) {
-				er.RetrievalSuccess(id, ptime, etime, testCid1, spid, uint64(2020))
+				er.RetrievalSuccess(id, ptime, etime, testCid1, spid, uint64(2020), 3030)
 
 				qt.Assert(t, req.Length(), qt.Equals, int64(9))
 				verifyStringNode(t, req, "retrievalId", id.String())
@@ -97,8 +97,9 @@ func TestEventRecorder(t *testing.T) {
 
 				detailsNode, err := req.LookupByString("eventDetails")
 				qt.Assert(t, err, qt.IsNil)
-				qt.Assert(t, detailsNode.Length(), qt.Equals, int64(1))
+				qt.Assert(t, detailsNode.Length(), qt.Equals, int64(2))
 				verifyIntNode(t, detailsNode, "receivedSize", 2020)
+				verifyIntNode(t, detailsNode, "receivedCids", 3030)
 			},
 		},
 		{
@@ -146,7 +147,7 @@ func TestEventRecorder(t *testing.T) {
 		{
 			name: "QueryProgress",
 			exec: func(t *testing.T, er *eventrecorder.EventRecorder, id uuid.UUID, etime, ptime time.Time, spid peer.ID) {
-				er.QueryProgress(id, ptime, etime, testCid1, spid, rep.RetrievalEventConnect)
+				er.QueryProgress(id, ptime, etime, testCid1, spid, rep.ConnectedCode)
 
 				qt.Assert(t, req.Length(), qt.Equals, int64(8))
 				verifyStringNode(t, req, "retrievalId", id.String())
@@ -162,7 +163,7 @@ func TestEventRecorder(t *testing.T) {
 		{
 			name: "RetrievalProgress",
 			exec: func(t *testing.T, er *eventrecorder.EventRecorder, id uuid.UUID, etime, ptime time.Time, spid peer.ID) {
-				er.RetrievalProgress(id, ptime, etime, testCid1, spid, rep.RetrievalEventFirstByte)
+				er.RetrievalProgress(id, ptime, etime, testCid1, spid, rep.FirstByteCode)
 
 				qt.Assert(t, req.Length(), qt.Equals, int64(8))
 				verifyStringNode(t, req, "retrievalId", id.String())
