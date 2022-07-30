@@ -21,15 +21,16 @@ var log = logging.Logger("eventrecorder")
 
 // NewEventRecorder creates a new event recorder with the ID of this instance
 // and the URL to POST to
-func NewEventRecorder(instanceId string, endpointURL string) *EventRecorder {
-	return &EventRecorder{instanceId, endpointURL}
+func NewEventRecorder(instanceId string, endpointURL string, endpointAuthorization string) *EventRecorder {
+	return &EventRecorder{instanceId, endpointURL, endpointAuthorization}
 }
 
 // EventRecorder receives events from the retrieval manager and posts event data
 // to a given endpoint as POSTs with JSON bodies
 type EventRecorder struct {
-	instanceId  string
-	endpointURL string
+	instanceId            string
+	endpointURL           string
+	endpointAuthorization string
 }
 
 type eventReport struct {
@@ -120,6 +121,11 @@ func (er *EventRecorder) recordEvent(eventSource string, evt eventReport) {
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+
+	// set authorization header if configured
+	if er.endpointAuthorization != "" {
+		req.Header.Set("Authorization", er.endpointAuthorization)
+	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
