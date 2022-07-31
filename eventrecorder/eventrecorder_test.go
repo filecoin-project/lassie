@@ -26,11 +26,13 @@ var testCid1 cid.Cid = mustCid("bafybeihrqe2hmfauph5yfbd6ucv7njqpiy4tvbewlvhzjl4
 func TestEventRecorder(t *testing.T) {
 	var req datamodel.Node
 	var path string
+	authHeaderValue := "Basic applesauce"
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var err error
 		req, err = ipld.DecodeStreaming(r.Body, dagjson.Decode)
 		qt.Assert(t, err, qt.IsNil)
 		path = r.URL.Path
+		qt.Assert(t, r.Header.Get("Authorization"), qt.Equals, authHeaderValue)
 	}))
 	defer ts.Close()
 
@@ -177,7 +179,7 @@ func TestEventRecorder(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			er := eventrecorder.NewEventRecorder("test-instance", fmt.Sprintf("%s/test-path/here", ts.URL))
+			er := eventrecorder.NewEventRecorder("test-instance", fmt.Sprintf("%s/test-path/here", ts.URL), authHeaderValue)
 			id, err := uuid.NewRandom()
 			qt.Assert(t, err, qt.IsNil)
 			etime := time.Now()
