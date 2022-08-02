@@ -63,7 +63,7 @@ func TestEventRecorder(t *testing.T) {
 				verifyStringNode(t, req, "storageProviderId", spid.String())
 				verifyStringNode(t, req, "phase", "query")
 				verifyStringNode(t, req, "phaseStartTime", ptime.Format(time.RFC3339Nano))
-				verifyStringNode(t, req, "event", "query-asked")
+				verifyStringNode(t, req, "eventName", "query-asked")
 				verifyStringNode(t, req, "eventTime", etime.Format(time.RFC3339Nano))
 
 				detailsNode, err := req.LookupByString("eventDetails")
@@ -92,7 +92,7 @@ func TestEventRecorder(t *testing.T) {
 				verifyStringNode(t, req, "storageProviderId", spid.String())
 				verifyStringNode(t, req, "phase", "retrieval")
 				verifyStringNode(t, req, "phaseStartTime", ptime.Format(time.RFC3339Nano))
-				verifyStringNode(t, req, "event", "success")
+				verifyStringNode(t, req, "eventName", "success")
 				verifyStringNode(t, req, "eventTime", etime.Format(time.RFC3339Nano))
 
 				detailsNode, err := req.LookupByString("eventDetails")
@@ -114,7 +114,7 @@ func TestEventRecorder(t *testing.T) {
 				verifyStringNode(t, req, "storageProviderId", spid.String())
 				verifyStringNode(t, req, "phase", "query")
 				verifyStringNode(t, req, "phaseStartTime", ptime.Format(time.RFC3339Nano))
-				verifyStringNode(t, req, "event", "failure")
+				verifyStringNode(t, req, "eventName", "failure")
 				verifyStringNode(t, req, "eventTime", etime.Format(time.RFC3339Nano))
 
 				detailsNode, err := req.LookupByString("eventDetails")
@@ -135,7 +135,7 @@ func TestEventRecorder(t *testing.T) {
 				verifyStringNode(t, req, "storageProviderId", spid.String())
 				verifyStringNode(t, req, "phase", "retrieval")
 				verifyStringNode(t, req, "phaseStartTime", ptime.Format(time.RFC3339Nano))
-				verifyStringNode(t, req, "event", "failure")
+				verifyStringNode(t, req, "eventName", "failure")
 				verifyStringNode(t, req, "eventTime", etime.Format(time.RFC3339Nano))
 
 				detailsNode, err := req.LookupByString("eventDetails")
@@ -156,7 +156,7 @@ func TestEventRecorder(t *testing.T) {
 				verifyStringNode(t, req, "storageProviderId", spid.String())
 				verifyStringNode(t, req, "phase", "query")
 				verifyStringNode(t, req, "phaseStartTime", ptime.Format(time.RFC3339Nano))
-				verifyStringNode(t, req, "event", "connected")
+				verifyStringNode(t, req, "eventName", "connected")
 				verifyStringNode(t, req, "eventTime", etime.Format(time.RFC3339Nano))
 			},
 		},
@@ -172,7 +172,7 @@ func TestEventRecorder(t *testing.T) {
 				verifyStringNode(t, req, "storageProviderId", spid.String())
 				verifyStringNode(t, req, "phase", "retrieval")
 				verifyStringNode(t, req, "phaseStartTime", ptime.Format(time.RFC3339Nano))
-				verifyStringNode(t, req, "event", "first-byte-received")
+				verifyStringNode(t, req, "eventName", "first-byte-received")
 				verifyStringNode(t, req, "eventTime", etime.Format(time.RFC3339Nano))
 			},
 		},

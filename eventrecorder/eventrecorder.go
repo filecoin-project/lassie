@@ -40,7 +40,7 @@ type eventReport struct {
 	StorageProviderId peer.ID     `json:"storageProviderId"`
 	Phase             rep.Phase   `json:"phase"`
 	PhaseStartTime    time.Time   `json:"phaseStartTime"`
-	Event             rep.Code    `json:"event"`
+	EventName         rep.Code    `json:"eventName"`
 	EventTime         time.Time   `json:"eventTime"`
 	EventDetails      interface{} `json:"eventDetails,omitempty"`
 }
@@ -59,8 +59,8 @@ type eventDetailsError struct {
 }
 
 // QueryProgress events occur during the query process
-func (er *EventRecorder) QueryProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, retrievalCid cid.Cid, storageProviderId peer.ID, event rep.Code) {
-	evt := eventReport{retrievalId, er.instanceId, retrievalCid.String(), storageProviderId, rep.QueryPhase, phaseStartTime, event, eventTime, nil}
+func (er *EventRecorder) QueryProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, retrievalCid cid.Cid, storageProviderId peer.ID, eventName rep.Code) {
+	evt := eventReport{retrievalId, er.instanceId, retrievalCid.String(), storageProviderId, rep.QueryPhase, phaseStartTime, eventName, eventTime, nil}
 	er.recordEvent("QueryProgress", evt)
 }
 
@@ -85,8 +85,8 @@ func (er *EventRecorder) QuerySuccess(retrievalId uuid.UUID, phaseStartTime, eve
 // RetrievalProgress events occur during the process of a retrieval. The
 // Success and failure progress event types are not reported here, but are
 // signalled via RetrievalSuccess or RetrievalFailure.
-func (er *EventRecorder) RetrievalProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, retrievalCid cid.Cid, storageProviderId peer.ID, event rep.Code) {
-	evt := eventReport{retrievalId, er.instanceId, retrievalCid.String(), storageProviderId, rep.RetrievalPhase, phaseStartTime, event, eventTime, nil}
+func (er *EventRecorder) RetrievalProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, retrievalCid cid.Cid, storageProviderId peer.ID, eventName rep.Code) {
+	evt := eventReport{retrievalId, er.instanceId, retrievalCid.String(), storageProviderId, rep.RetrievalPhase, phaseStartTime, eventName, eventTime, nil}
 	er.recordEvent("RetrievalProgress", evt)
 }
 
