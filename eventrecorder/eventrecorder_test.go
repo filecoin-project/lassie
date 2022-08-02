@@ -26,13 +26,13 @@ var testCid1 cid.Cid = mustCid("bafybeihrqe2hmfauph5yfbd6ucv7njqpiy4tvbewlvhzjl4
 func TestEventRecorder(t *testing.T) {
 	var req datamodel.Node
 	var path string
-	authHeaderValue := "Basic applesauce"
+	authHeaderValue := "applesauce"
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var err error
 		req, err = ipld.DecodeStreaming(r.Body, dagjson.Decode)
 		qt.Assert(t, err, qt.IsNil)
 		path = r.URL.Path
-		qt.Assert(t, r.Header.Get("Authorization"), qt.Equals, authHeaderValue)
+		qt.Assert(t, r.Header.Get("Authorization"), qt.Equals, "Basic applesauce")
 	}))
 	defer ts.Close()
 

@@ -3,6 +3,7 @@ package eventrecorder
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -124,7 +125,7 @@ func (er *EventRecorder) recordEvent(eventSource string, evt eventReport) {
 
 	// set authorization header if configured
 	if er.endpointAuthorization != "" {
-		req.Header.Set("Authorization", er.endpointAuthorization)
+		req.Header.Set("Authorization", fmt.Sprintf("Basic %s", er.endpointAuthorization))
 	}
 
 	resp, err := http.DefaultClient.Do(req)
