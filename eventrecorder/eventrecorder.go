@@ -32,9 +32,11 @@ func NewEventRecorder(ctx context.Context, instanceId string, endpointURL string
 		instanceId,
 		endpointURL,
 		endpointAuthorization,
-		make(chan report, ParallelPosters*10),
+		make(chan report),
+		make(chan report),
 	}
 
+	go er.ingestReports()
 	for i := 0; i < ParallelPosters; i++ {
 		go er.postReports()
 	}
@@ -54,6 +56,7 @@ type EventRecorder struct {
 	instanceId            string
 	endpointURL           string
 	endpointAuthorization string
+	incomingReportChan    chan report
 	reportChan            chan report
 }
 
@@ -134,7 +137,39 @@ func (er *EventRecorder) RetrievalFailure(retrievalId uuid.UUID, phaseStartTime,
 func (er *EventRecorder) recordEvent(eventSource string, evt eventReport) {
 	select {
 	case <-er.ctx.Done():
-	case er.reportChan <- report{eventSource, evt}:
+	case er.incomingReportChan <- report{eventSource, evt}:
+	}
+}
+
+func (er *EventRecorder) ingestReports() {
+	var queuedReports []report
+	var nextReport report
+	var reportChan chan report = nil
+	for {
+		select {
+		case <-er.ctx.Done():
+			return
+		// read incoming report
+		case report := <-er.incomingReportChan:
+			if reportChan == nil {
+				// if queue had been idle, reactivate and set this report to publish next
+				reportChan = er.reportChan
+				nextReport = report
+			} else {
+				// otherwise, add it to the outgoing queue once the current one finishes
+				queuedReports = append(queuedReports, report)
+			}
+		// send outgoing report when queue is active (when reportChan == nil, this path is never followed)
+		case reportChan <- nextReport:
+			if len(queuedReports) > 0 {
+				// if we haven't exhausted our queue, then add the next report for posting
+				nextReport = queuedReports[0]
+				queuedReports = queuedReports[1:]
+			} else {
+				// otherwise, deactivate posting cause we are now idle
+				reportChan = nil
+			}
+		}
 	}
 }
 
