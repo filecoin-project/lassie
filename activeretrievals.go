@@ -74,7 +74,7 @@ func (arm *ActiveRetrievalsManager) New(retrievalCid cid.Cid, queryCandidateCoun
 	defer arm.lk.Unlock()
 
 	if _, ok := arm.findActiveRetrievalFor(retrievalCid); ok {
-		return uuid.UUID{}, ErrRetrievalAlreadyRunning
+		return uuid.UUID{}, ErrRetrievalAlreadyRunning{retrievalCid}
 	}
 
 	arm.arMap[retrievalCid] = &activeRetrieval{
