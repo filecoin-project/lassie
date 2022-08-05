@@ -232,7 +232,7 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, retri
 
 		stats.Record(ctx, metrics.RetrievalDealActiveCount.M(-1))
 		if err != nil {
-			log.Errorf(
+			log.Warnf(
 				"Failed to retrieve from miner %s for %s: %v",
 				query.candidate.MinerPeer.ID,
 				formatCidAndRoot(retrievalCid, query.candidate.RootCid, false),
@@ -414,7 +414,7 @@ func (retriever *Retriever) queryCandidates(ctx context.Context, retrievalId uui
 
 			query, err := retriever.filClient.RetrievalQueryToPeer(ctx, candidate.MinerPeer, candidate.RootCid)
 			if err != nil {
-				log.Errorf(
+				log.Warnf(
 					"Failed to query miner %s for %s: %v",
 					candidate.MinerPeer.ID,
 					formatCidAndRoot(cid, candidate.RootCid, false),
