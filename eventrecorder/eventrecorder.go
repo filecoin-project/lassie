@@ -135,4 +135,8 @@ func (er *EventRecorder) recordEvent(eventSource string, evt eventReport) {
 	}
 
 	defer resp.Body.Close() // error not so important at this point
+
+	if resp.StatusCode <= 200 || resp.StatusCode >= 299 {
+		log.Errorf("Expected success response code from event recorder server, got: %s", http.StatusText(resp.StatusCode))
+	}
 }
