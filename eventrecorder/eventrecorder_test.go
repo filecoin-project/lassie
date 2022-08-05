@@ -19,6 +19,7 @@ import (
 	"github.com/ipld/go-ipld-prime/codec/dagjson"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"golang.org/x/net/context"
 )
 
 var testCid1 cid.Cid = mustCid("bafybeihrqe2hmfauph5yfbd6ucv7njqpiy4tvbewlvhzjl4bhnyiu6h7pm")
@@ -26,6 +27,7 @@ var testCid1 cid.Cid = mustCid("bafybeihrqe2hmfauph5yfbd6ucv7njqpiy4tvbewlvhzjl4
 func TestEventRecorder(t *testing.T) {
 	var req datamodel.Node
 	var path string
+	receivedChan := make(chan bool, 1)
 	authHeaderValue := "applesauce"
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var err error
@@ -33,16 +35,17 @@ func TestEventRecorder(t *testing.T) {
 		qt.Assert(t, err, qt.IsNil)
 		path = r.URL.Path
 		qt.Assert(t, r.Header.Get("Authorization"), qt.Equals, "Basic applesauce")
+		receivedChan <- true
 	}))
 	defer ts.Close()
 
 	tests := []struct {
 		name string
-		exec func(t *testing.T, er *eventrecorder.EventRecorder, id uuid.UUID, etime, ptime time.Time, spid peer.ID)
+		exec func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id uuid.UUID, etime, ptime time.Time, spid peer.ID)
 	}{
 		{
 			name: "QuerySuccess",
-			exec: func(t *testing.T, er *eventrecorder.EventRecorder, id uuid.UUID, etime, ptime time.Time, spid peer.ID) {
+			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id uuid.UUID, etime, ptime time.Time, spid peer.ID) {
 				qr := retrievalmarket.QueryResponse{
 					Status:                     retrievalmarket.QueryResponseUnavailable,
 					Size:                       10101,
@@ -55,6 +58,11 @@ func TestEventRecorder(t *testing.T) {
 					PaymentAddress:             address.TestAddress,
 				}
 				er.QuerySuccess(id, ptime, etime, testCid1, spid, qr)
+
+				select {
+				case <-ctx.Done():
+				case <-receivedChan:
+				}
 
 				qt.Assert(t, req.Length(), qt.Equals, int64(9))
 				verifyStringNode(t, req, "retrievalId", id.String())
@@ -82,8 +90,13 @@ func TestEventRecorder(t *testing.T) {
 		},
 		{
 			name: "RetrievalSuccess",
-			exec: func(t *testing.T, er *eventrecorder.EventRecorder, id uuid.UUID, etime, ptime time.Time, spid peer.ID) {
+			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id uuid.UUID, etime, ptime time.Time, spid peer.ID) {
 				er.RetrievalSuccess(id, ptime, etime, testCid1, spid, uint64(2020), 3030)
+
+				select {
+				case <-ctx.Done():
+				case <-receivedChan:
+				}
 
 				qt.Assert(t, req.Length(), qt.Equals, int64(9))
 				verifyStringNode(t, req, "retrievalId", id.String())
@@ -104,8 +117,13 @@ func TestEventRecorder(t *testing.T) {
 		},
 		{
 			name: "QueryFailure",
-			exec: func(t *testing.T, er *eventrecorder.EventRecorder, id uuid.UUID, etime, ptime time.Time, spid peer.ID) {
+			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id uuid.UUID, etime, ptime time.Time, spid peer.ID) {
 				er.QueryFailure(id, ptime, etime, testCid1, spid, "ha ha no")
+
+				select {
+				case <-ctx.Done():
+				case <-receivedChan:
+				}
 
 				qt.Assert(t, req.Length(), qt.Equals, int64(9))
 				verifyStringNode(t, req, "retrievalId", id.String())
@@ -125,8 +143,13 @@ func TestEventRecorder(t *testing.T) {
 		},
 		{
 			name: "RetrievalFailure",
-			exec: func(t *testing.T, er *eventrecorder.EventRecorder, id uuid.UUID, etime, ptime time.Time, spid peer.ID) {
+			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id uuid.UUID, etime, ptime time.Time, spid peer.ID) {
 				er.RetrievalFailure(id, ptime, etime, testCid1, spid, "ha ha no, silly silly")
+
+				select {
+				case <-ctx.Done():
+				case <-receivedChan:
+				}
 
 				qt.Assert(t, req.Length(), qt.Equals, int64(9))
 				verifyStringNode(t, req, "retrievalId", id.String())
@@ -146,8 +169,13 @@ func TestEventRecorder(t *testing.T) {
 		},
 		{
 			name: "QueryProgress",
-			exec: func(t *testing.T, er *eventrecorder.EventRecorder, id uuid.UUID, etime, ptime time.Time, spid peer.ID) {
+			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id uuid.UUID, etime, ptime time.Time, spid peer.ID) {
 				er.QueryProgress(id, ptime, etime, testCid1, spid, rep.ConnectedCode)
+
+				select {
+				case <-ctx.Done():
+				case <-receivedChan:
+				}
 
 				qt.Assert(t, req.Length(), qt.Equals, int64(8))
 				verifyStringNode(t, req, "retrievalId", id.String())
@@ -162,8 +190,13 @@ func TestEventRecorder(t *testing.T) {
 		},
 		{
 			name: "RetrievalProgress",
-			exec: func(t *testing.T, er *eventrecorder.EventRecorder, id uuid.UUID, etime, ptime time.Time, spid peer.ID) {
+			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id uuid.UUID, etime, ptime time.Time, spid peer.ID) {
 				er.RetrievalProgress(id, ptime, etime, testCid1, spid, rep.FirstByteCode)
+
+				select {
+				case <-ctx.Done():
+				case <-receivedChan:
+				}
 
 				qt.Assert(t, req.Length(), qt.Equals, int64(8))
 				verifyStringNode(t, req, "retrievalId", id.String())
@@ -180,13 +213,15 @@ func TestEventRecorder(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			er := eventrecorder.NewEventRecorder("test-instance", fmt.Sprintf("%s/test-path/here", ts.URL), authHeaderValue)
+			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+			defer cancel()
+			er := eventrecorder.NewEventRecorder(ctx, "test-instance", fmt.Sprintf("%s/test-path/here", ts.URL), authHeaderValue)
 			id, err := uuid.NewRandom()
 			qt.Assert(t, err, qt.IsNil)
 			etime := time.Now()
 			ptime := time.Now().Add(time.Hour * -1)
 			spid := peer.NewPeerRecord().PeerID
-			test.exec(t, er, id, etime, ptime, spid)
+			test.exec(t, ctx, er, id, etime, ptime, spid)
 			qt.Assert(t, req, qt.IsNotNil)
 			qt.Assert(t, path, qt.Equals, "/test-path/here")
 		})
