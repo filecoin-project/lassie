@@ -291,11 +291,32 @@ func TestEventRecorderSlowPost(t *testing.T) {
 			er.RetrievalProgress(id, ptime, etime, testCid1, spid, rep.FirstByteCode)
 		}()
 	}
-	wg.Wait()
+	if !waitGroupWait(ctx, &wg) {
+		close(awaitResponse)
+		t.Fatal("did not finish posting events")
+	}
 	close(awaitResponse)
-	requestWg.Wait()
+	if !waitGroupWait(ctx, &requestWg) {
+		t.Fatal("did not finish processing events")
+	}
 	qt.Assert(t, reqs, qt.HasLen, numParallel)
 	for _, req := range reqs {
 		qt.Assert(t, req, qt.IsNotNil)
+	}
+}
+
+// waitGroupWait calls wg.Wait while respecting context cancellation
+func waitGroupWait(ctx context.Context, wg *sync.WaitGroup) bool {
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-ctx.Done():
+		return false
+	case <-done:
+		return true
 	}
 }
