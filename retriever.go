@@ -25,7 +25,6 @@ import (
 
 var (
 	ErrNoCandidates                = errors.New("no candidates")
-	ErrRetrievalAlreadyRunning     = errors.New("retrieval already running")
 	ErrUnexpectedRetrieval         = errors.New("unexpected active retrieval")
 	ErrHitRetrievalLimit           = errors.New("hit retrieval limit")
 	ErrProposalCreationFailed      = errors.New("proposal creation failed")
@@ -33,6 +32,14 @@ var (
 	ErrRetrievalFailed             = errors.New("retrieval failed")
 	ErrAllRetrievalsFailed         = errors.New("all retrievals failed")
 )
+
+type ErrRetrievalAlreadyRunning struct {
+	c cid.Cid
+}
+
+func (e ErrRetrievalAlreadyRunning) Error() string {
+	return fmt.Sprintf("retrieval already running for cid: %s", e.c)
+}
 
 type MinerConfig struct {
 	RetrievalTimeout        time.Duration
