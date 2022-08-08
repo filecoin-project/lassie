@@ -173,6 +173,9 @@ func (er *EventRecorder) ingestReports() {
 	}
 }
 
+// postReports picks reports from the reportChan and processes, them, an http
+// Client will be kept locally for each call to this function, one call per
+// desired parallelism can be made within goroutines, each with its own Client.
 func (er *EventRecorder) postReports() {
 	client := http.Client{Timeout: HttpTimeout}
 
@@ -181,35 +184,41 @@ func (er *EventRecorder) postReports() {
 		case <-er.ctx.Done():
 			return
 		case report := <-er.reportChan:
-			byts, err := json.Marshal(report.evt)
-			if err != nil {
-				log.Errorf("Failed to JSONify and encode event [%s]: %w", report.src, err.Error())
-				return
-			}
-
-			req, err := http.NewRequest("POST", er.endpointURL, bytes.NewBufferString(string(byts)))
-			if err != nil {
-				log.Errorf("Failed to create POST request [%s] for recorder [%s]: %w", report.src, er.endpointURL, err.Error())
-				return
-			}
-
-			req.Header.Set("Content-Type", "application/json")
-
-			// set authorization header if configured
-			if er.endpointAuthorization != "" {
-				req.Header.Set("Authorization", fmt.Sprintf("Basic %s", er.endpointAuthorization))
-			}
-
-			resp, err := client.Do(req)
-			if err != nil {
-				log.Errorf("Failed to POST event [%s] to recorder [%s]: %w", report.src, er.endpointURL, err.Error())
-				return
-			}
-
-			defer resp.Body.Close() // error not so important at this point
-			if resp.StatusCode <= 200 || resp.StatusCode >= 299 {
-				log.Errorf("Expected success response code from event recorder server, got: %s", http.StatusText(resp.StatusCode))
-			}
+			er.handleReport(client, report)
 		}
+	}
+}
+
+// handleReport turns a report into an HTTP post to the event reporting URL
+// using the provided Client. Errors are not returned, only logged.
+func (er *EventRecorder) handleReport(client http.Client, report report) {
+	byts, err := json.Marshal(report.evt)
+	if err != nil {
+		log.Errorf("Failed to JSONify and encode event [%s]: %w", report.src, err.Error())
+		return
+	}
+
+	req, err := http.NewRequest("POST", er.endpointURL, bytes.NewBufferString(string(byts)))
+	if err != nil {
+		log.Errorf("Failed to create POST request [%s] for recorder [%s]: %w", report.src, er.endpointURL, err.Error())
+		return
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	// set authorization header if configured
+	if er.endpointAuthorization != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Basic %s", er.endpointAuthorization))
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Errorf("Failed to POST event [%s] to recorder [%s]: %w", report.src, er.endpointURL, err.Error())
+		return
+	}
+
+	defer resp.Body.Close() // error not so important at this point
+	if resp.StatusCode <= 200 || resp.StatusCode >= 299 {
+		log.Errorf("Expected success response code from event recorder server, got: %s", http.StatusText(resp.StatusCode))
 	}
 }
