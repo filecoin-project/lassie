@@ -65,17 +65,20 @@ func TestEventRecorder(t *testing.T) {
 				case <-receivedChan:
 				}
 
-				qt.Assert(t, req.Length(), qt.Equals, int64(9))
-				verifyStringNode(t, req, "retrievalId", id.String())
-				verifyStringNode(t, req, "instanceId", "test-instance")
-				verifyStringNode(t, req, "cid", testCid1.String())
-				verifyStringNode(t, req, "storageProviderId", spid.String())
-				verifyStringNode(t, req, "phase", "query")
-				verifyStringNode(t, req, "phaseStartTime", ptime.Format(time.RFC3339Nano))
-				verifyStringNode(t, req, "eventName", "query-asked")
-				verifyStringNode(t, req, "eventTime", etime.Format(time.RFC3339Nano))
+				qt.Assert(t, req.Length(), qt.Equals, int64(1))
+				eventList := verifyListNode(t, req, "events", 1)
+				event := verifyListElement(t, eventList, 0)
+				qt.Assert(t, event.Length(), qt.Equals, int64(9))
+				verifyStringNode(t, event, "retrievalId", id.String())
+				verifyStringNode(t, event, "instanceId", "test-instance")
+				verifyStringNode(t, event, "cid", testCid1.String())
+				verifyStringNode(t, event, "storageProviderId", spid.String())
+				verifyStringNode(t, event, "phase", "query")
+				verifyStringNode(t, event, "phaseStartTime", ptime.Format(time.RFC3339Nano))
+				verifyStringNode(t, event, "eventName", "query-asked")
+				verifyStringNode(t, event, "eventTime", etime.Format(time.RFC3339Nano))
 
-				detailsNode, err := req.LookupByString("eventDetails")
+				detailsNode, err := event.LookupByString("eventDetails")
 				qt.Assert(t, err, qt.IsNil)
 				qt.Assert(t, detailsNode.Length(), qt.Equals, int64(9))
 				verifyIntNode(t, detailsNode, "Status", 1)
@@ -99,17 +102,20 @@ func TestEventRecorder(t *testing.T) {
 				case <-receivedChan:
 				}
 
-				qt.Assert(t, req.Length(), qt.Equals, int64(9))
-				verifyStringNode(t, req, "retrievalId", id.String())
-				verifyStringNode(t, req, "instanceId", "test-instance")
-				verifyStringNode(t, req, "cid", testCid1.String())
-				verifyStringNode(t, req, "storageProviderId", spid.String())
-				verifyStringNode(t, req, "phase", "retrieval")
-				verifyStringNode(t, req, "phaseStartTime", ptime.Format(time.RFC3339Nano))
-				verifyStringNode(t, req, "eventName", "success")
-				verifyStringNode(t, req, "eventTime", etime.Format(time.RFC3339Nano))
+				qt.Assert(t, req.Length(), qt.Equals, int64(1))
+				eventList := verifyListNode(t, req, "events", 1)
+				event := verifyListElement(t, eventList, 0)
+				qt.Assert(t, event.Length(), qt.Equals, int64(9))
+				verifyStringNode(t, event, "retrievalId", id.String())
+				verifyStringNode(t, event, "instanceId", "test-instance")
+				verifyStringNode(t, event, "cid", testCid1.String())
+				verifyStringNode(t, event, "storageProviderId", spid.String())
+				verifyStringNode(t, event, "phase", "retrieval")
+				verifyStringNode(t, event, "phaseStartTime", ptime.Format(time.RFC3339Nano))
+				verifyStringNode(t, event, "eventName", "success")
+				verifyStringNode(t, event, "eventTime", etime.Format(time.RFC3339Nano))
 
-				detailsNode, err := req.LookupByString("eventDetails")
+				detailsNode, err := event.LookupByString("eventDetails")
 				qt.Assert(t, err, qt.IsNil)
 				qt.Assert(t, detailsNode.Length(), qt.Equals, int64(2))
 				verifyIntNode(t, detailsNode, "receivedSize", 2020)
@@ -125,18 +131,20 @@ func TestEventRecorder(t *testing.T) {
 				case <-ctx.Done():
 				case <-receivedChan:
 				}
+				qt.Assert(t, req.Length(), qt.Equals, int64(1))
+				eventList := verifyListNode(t, req, "events", 1)
+				event := verifyListElement(t, eventList, 0)
+				qt.Assert(t, event.Length(), qt.Equals, int64(9))
+				verifyStringNode(t, event, "retrievalId", id.String())
+				verifyStringNode(t, event, "instanceId", "test-instance")
+				verifyStringNode(t, event, "cid", testCid1.String())
+				verifyStringNode(t, event, "storageProviderId", spid.String())
+				verifyStringNode(t, event, "phase", "query")
+				verifyStringNode(t, event, "phaseStartTime", ptime.Format(time.RFC3339Nano))
+				verifyStringNode(t, event, "eventName", "failure")
+				verifyStringNode(t, event, "eventTime", etime.Format(time.RFC3339Nano))
 
-				qt.Assert(t, req.Length(), qt.Equals, int64(9))
-				verifyStringNode(t, req, "retrievalId", id.String())
-				verifyStringNode(t, req, "instanceId", "test-instance")
-				verifyStringNode(t, req, "cid", testCid1.String())
-				verifyStringNode(t, req, "storageProviderId", spid.String())
-				verifyStringNode(t, req, "phase", "query")
-				verifyStringNode(t, req, "phaseStartTime", ptime.Format(time.RFC3339Nano))
-				verifyStringNode(t, req, "eventName", "failure")
-				verifyStringNode(t, req, "eventTime", etime.Format(time.RFC3339Nano))
-
-				detailsNode, err := req.LookupByString("eventDetails")
+				detailsNode, err := event.LookupByString("eventDetails")
 				qt.Assert(t, err, qt.IsNil)
 				qt.Assert(t, detailsNode.Length(), qt.Equals, int64(1))
 				verifyStringNode(t, detailsNode, "error", "ha ha no")
@@ -152,17 +160,20 @@ func TestEventRecorder(t *testing.T) {
 				case <-receivedChan:
 				}
 
-				qt.Assert(t, req.Length(), qt.Equals, int64(9))
-				verifyStringNode(t, req, "retrievalId", id.String())
-				verifyStringNode(t, req, "instanceId", "test-instance")
-				verifyStringNode(t, req, "cid", testCid1.String())
-				verifyStringNode(t, req, "storageProviderId", spid.String())
-				verifyStringNode(t, req, "phase", "retrieval")
-				verifyStringNode(t, req, "phaseStartTime", ptime.Format(time.RFC3339Nano))
-				verifyStringNode(t, req, "eventName", "failure")
-				verifyStringNode(t, req, "eventTime", etime.Format(time.RFC3339Nano))
+				qt.Assert(t, req.Length(), qt.Equals, int64(1))
+				eventList := verifyListNode(t, req, "events", 1)
+				event := verifyListElement(t, eventList, 0)
+				qt.Assert(t, event.Length(), qt.Equals, int64(9))
+				verifyStringNode(t, event, "retrievalId", id.String())
+				verifyStringNode(t, event, "instanceId", "test-instance")
+				verifyStringNode(t, event, "cid", testCid1.String())
+				verifyStringNode(t, event, "storageProviderId", spid.String())
+				verifyStringNode(t, event, "phase", "retrieval")
+				verifyStringNode(t, event, "phaseStartTime", ptime.Format(time.RFC3339Nano))
+				verifyStringNode(t, event, "eventName", "failure")
+				verifyStringNode(t, event, "eventTime", etime.Format(time.RFC3339Nano))
 
-				detailsNode, err := req.LookupByString("eventDetails")
+				detailsNode, err := event.LookupByString("eventDetails")
 				qt.Assert(t, err, qt.IsNil)
 				qt.Assert(t, detailsNode.Length(), qt.Equals, int64(1))
 				verifyStringNode(t, detailsNode, "error", "ha ha no, silly silly")
@@ -178,15 +189,18 @@ func TestEventRecorder(t *testing.T) {
 				case <-receivedChan:
 				}
 
-				qt.Assert(t, req.Length(), qt.Equals, int64(8))
-				verifyStringNode(t, req, "retrievalId", id.String())
-				verifyStringNode(t, req, "instanceId", "test-instance")
-				verifyStringNode(t, req, "cid", testCid1.String())
-				verifyStringNode(t, req, "storageProviderId", spid.String())
-				verifyStringNode(t, req, "phase", "query")
-				verifyStringNode(t, req, "phaseStartTime", ptime.Format(time.RFC3339Nano))
-				verifyStringNode(t, req, "eventName", "connected")
-				verifyStringNode(t, req, "eventTime", etime.Format(time.RFC3339Nano))
+				qt.Assert(t, req.Length(), qt.Equals, int64(1))
+				eventList := verifyListNode(t, req, "events", 1)
+				event := verifyListElement(t, eventList, 0)
+				qt.Assert(t, event.Length(), qt.Equals, int64(8))
+				verifyStringNode(t, event, "retrievalId", id.String())
+				verifyStringNode(t, event, "instanceId", "test-instance")
+				verifyStringNode(t, event, "cid", testCid1.String())
+				verifyStringNode(t, event, "storageProviderId", spid.String())
+				verifyStringNode(t, event, "phase", "query")
+				verifyStringNode(t, event, "phaseStartTime", ptime.Format(time.RFC3339Nano))
+				verifyStringNode(t, event, "eventName", "connected")
+				verifyStringNode(t, event, "eventTime", etime.Format(time.RFC3339Nano))
 			},
 		},
 		{
@@ -199,15 +213,18 @@ func TestEventRecorder(t *testing.T) {
 				case <-receivedChan:
 				}
 
-				qt.Assert(t, req.Length(), qt.Equals, int64(8))
-				verifyStringNode(t, req, "retrievalId", id.String())
-				verifyStringNode(t, req, "instanceId", "test-instance")
-				verifyStringNode(t, req, "cid", testCid1.String())
-				verifyStringNode(t, req, "storageProviderId", spid.String())
-				verifyStringNode(t, req, "phase", "retrieval")
-				verifyStringNode(t, req, "phaseStartTime", ptime.Format(time.RFC3339Nano))
-				verifyStringNode(t, req, "eventName", "first-byte-received")
-				verifyStringNode(t, req, "eventTime", etime.Format(time.RFC3339Nano))
+				qt.Assert(t, req.Length(), qt.Equals, int64(1))
+				eventList := verifyListNode(t, req, "events", 1)
+				event := verifyListElement(t, eventList, 0)
+				qt.Assert(t, event.Length(), qt.Equals, int64(8))
+				verifyStringNode(t, event, "retrievalId", id.String())
+				verifyStringNode(t, event, "instanceId", "test-instance")
+				verifyStringNode(t, event, "cid", testCid1.String())
+				verifyStringNode(t, event, "storageProviderId", spid.String())
+				verifyStringNode(t, event, "phase", "retrieval")
+				verifyStringNode(t, event, "phaseStartTime", ptime.Format(time.RFC3339Nano))
+				verifyStringNode(t, event, "eventName", "first-byte-received")
+				verifyStringNode(t, event, "eventTime", etime.Format(time.RFC3339Nano))
 			},
 		},
 	}
@@ -227,6 +244,20 @@ func TestEventRecorder(t *testing.T) {
 			qt.Assert(t, path, qt.Equals, "/test-path/here")
 		})
 	}
+}
+
+func verifyListNode(t *testing.T, node datamodel.Node, key string, expectedLength int64) datamodel.Node {
+	subNode, err := node.LookupByString(key)
+	qt.Assert(t, err, qt.IsNil)
+	qt.Assert(t, subNode.Kind(), qt.Equals, datamodel.Kind_List)
+	qt.Assert(t, subNode.Length(), qt.Equals, expectedLength)
+	return subNode
+}
+
+func verifyListElement(t *testing.T, node datamodel.Node, index int64) datamodel.Node {
+	element, err := node.LookupByIndex(index)
+	qt.Assert(t, err, qt.IsNil)
+	return element
 }
 
 func verifyStringNode(t *testing.T, node datamodel.Node, key string, expected string) {
@@ -266,9 +297,16 @@ func TestEventRecorderSlowPost(t *testing.T) {
 		reqsLk.Lock()
 		reqs = append(reqs, req)
 		reqsLk.Unlock()
+		qt.Assert(t, req.Length(), qt.Equals, int64(1))
+		events, err := req.LookupByString("events")
+		qt.Assert(t, err, qt.IsNil)
+		qt.Assert(t, events.Kind(), qt.Equals, datamodel.Kind_List)
+		eventsLen := events.Length()
 		qt.Assert(t, r.Header.Get("Authorization"), qt.Equals, "Basic applesauce")
 		<-awaitResponse
-		requestWg.Done()
+		for i := 0; i < int(eventsLen); i++ {
+			requestWg.Done()
+		}
 	}))
 	defer ts.Close()
 
@@ -299,7 +337,6 @@ func TestEventRecorderSlowPost(t *testing.T) {
 	if !waitGroupWait(ctx, &requestWg) {
 		t.Fatal("did not finish processing events")
 	}
-	qt.Assert(t, reqs, qt.HasLen, numParallel)
 	for _, req := range reqs {
 		qt.Assert(t, req, qt.IsNotNil)
 	}

@@ -33,7 +33,7 @@ func NewEventRecorder(ctx context.Context, instanceId string, endpointURL string
 		endpointURL,
 		endpointAuthorization,
 		make(chan report),
-		make(chan report),
+		make(chan []report),
 	}
 
 	go er.ingestReports()
@@ -57,7 +57,7 @@ type EventRecorder struct {
 	endpointURL           string
 	endpointAuthorization string
 	incomingReportChan    chan report
-	reportChan            chan report
+	reportChan            chan []report
 }
 
 type eventReport struct {
@@ -143,32 +143,22 @@ func (er *EventRecorder) recordEvent(eventSource string, evt eventReport) {
 
 func (er *EventRecorder) ingestReports() {
 	var queuedReports []report
-	var nextReport report
-	var reportChan chan report = nil
+	var reportChan chan []report = nil
 	for {
 		select {
 		case <-er.ctx.Done():
 			return
 		// read incoming report
 		case report := <-er.incomingReportChan:
+			queuedReports = append(queuedReports, report)
 			if reportChan == nil {
 				// if queue had been idle, reactivate and set this report to publish next
 				reportChan = er.reportChan
-				nextReport = report
-			} else {
-				// otherwise, add it to the outgoing queue once the current one finishes
-				queuedReports = append(queuedReports, report)
 			}
 		// send outgoing report when queue is active (when reportChan == nil, this path is never followed)
-		case reportChan <- nextReport:
-			if len(queuedReports) > 0 {
-				// if we haven't exhausted our queue, then add the next report for posting
-				nextReport = queuedReports[0]
-				queuedReports = queuedReports[1:]
-			} else {
-				// otherwise, deactivate posting cause we are now idle
-				reportChan = nil
-			}
+		case reportChan <- queuedReports:
+			queuedReports = nil
+			reportChan = nil
 		}
 	}
 }
@@ -183,24 +173,38 @@ func (er *EventRecorder) postReports() {
 		select {
 		case <-er.ctx.Done():
 			return
-		case report := <-er.reportChan:
-			er.handleReport(client, report)
+		case reports := <-er.reportChan:
+			er.handleReports(client, reports)
 		}
 	}
 }
 
+type multiEventReport struct {
+	Events []eventReport `json:"events"`
+}
+
 // handleReport turns a report into an HTTP post to the event reporting URL
 // using the provided Client. Errors are not returned, only logged.
-func (er *EventRecorder) handleReport(client http.Client, report report) {
-	byts, err := json.Marshal(report.evt)
+func (er *EventRecorder) handleReports(client http.Client, reports []report) {
+	eventReports := make([]eventReport, 0, len(reports))
+	sources := ""
+	for idx, report := range reports {
+		eventReports = append(eventReports, report.evt)
+		sources += report.src
+		if idx < len(reports)-1 {
+			sources += ", "
+		}
+	}
+
+	byts, err := json.Marshal(multiEventReport{eventReports})
 	if err != nil {
-		log.Errorf("Failed to JSONify and encode event [%s]: %w", report.src, err.Error())
+		log.Errorf("Failed to JSONify and encode event [%s]: %w", sources, err.Error())
 		return
 	}
 
 	req, err := http.NewRequest("POST", er.endpointURL, bytes.NewBufferString(string(byts)))
 	if err != nil {
-		log.Errorf("Failed to create POST request [%s] for recorder [%s]: %w", report.src, er.endpointURL, err.Error())
+		log.Errorf("Failed to create POST request [%s] for recorder [%s]: %w", sources, er.endpointURL, err.Error())
 		return
 	}
 
@@ -213,12 +217,12 @@ func (er *EventRecorder) handleReport(client http.Client, report report) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Errorf("Failed to POST event [%s] to recorder [%s]: %w", report.src, er.endpointURL, err.Error())
+		log.Errorf("Failed to POST event [%s] to recorder [%s]: %w", sources, er.endpointURL, err.Error())
 		return
 	}
 
 	defer resp.Body.Close() // error not so important at this point
-	if resp.StatusCode <= 200 || resp.StatusCode >= 299 {
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		log.Errorf("Expected success response code from event recorder server, got: %s", http.StatusText(resp.StatusCode))
 	}
 }
