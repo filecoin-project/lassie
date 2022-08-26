@@ -366,8 +366,8 @@ func (retriever *Retriever) retrieve(ctx context.Context, query candidateQuery) 
 	return stats, nil
 }
 
-// Returns a list of miners known to have the requested block, with blacklisted
-// miners filtered out.
+// Returns a list of SPs known to have the requested block, with blacklisted
+// SPs filtered out.
 //
 // Possible errors - ErrInvalidEndpointURL, ErrEndpointRequestFailed, ErrEndpointBodyInvalid
 func (retriever *Retriever) lookupCandidates(ctx context.Context, cid cid.Cid) ([]RetrievalCandidate, error) {
@@ -376,7 +376,7 @@ func (retriever *Retriever) lookupCandidates(ctx context.Context, cid cid.Cid) (
 		return nil, err
 	}
 
-	// Remove blacklisted miners, or non-whitelisted miners
+	// Remove blacklisted SPs, or non-whitelisted SPs
 	var res []RetrievalCandidate
 	for _, candidate := range unfiltered {
 
@@ -390,8 +390,17 @@ func (retriever *Retriever) lookupCandidates(ctx context.Context, cid cid.Cid) (
 			continue
 		}
 
-		// Skip suspended miners from the miner monitor
+		// Skip suspended SPs from the minerMonitor
 		if retriever.minerMonitor.suspended(candidate.MinerPeer.ID) {
+			continue
+		}
+
+		// Skip if we are currently at our maximum concurrent retrievals for this SP
+		// since we likely won't be able to retrieve from them at the moment even if
+		// query is successful
+		minerConfig := retriever.config.MinerConfig(candidate.MinerPeer.ID)
+		if minerConfig.MaxConcurrentRetrievals > 0 &&
+			retriever.activeRetrievals.GetActiveRetrievalCountFor(candidate.MinerPeer.ID) > minerConfig.MaxConcurrentRetrievals {
 			continue
 		}
 

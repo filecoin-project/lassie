@@ -132,6 +132,27 @@ func (arm *ActiveRetrievalsManager) GetStatusFor(retrievalCid cid.Cid, phase rep
 	return ar.retrievalId, ar.retrievalCid, phaseStart, true
 }
 
+// GetActiveRetrievalCountFor returns the number of active retrievals for a
+// storage provider. Active retrievals only count the retrieval phase, not the
+// query phase requests.
+func (arm *ActiveRetrievalsManager) GetActiveRetrievalCountFor(storageProviderId peer.ID) uint {
+	arm.lk.RLock()
+	defer arm.lk.RUnlock()
+	return arm.countRetrievalsFor(storageProviderId)
+}
+
+// countRetrievalsFor counts the number of active retrievals for a
+// storageProviderId. This function requires a read lock on arm.lk!
+func (arm *ActiveRetrievalsManager) countRetrievalsFor(storageProviderId peer.ID) uint {
+	var currentRetrievals uint
+	for _, ret := range arm.arMap {
+		if ret.currentStorageProviderId == storageProviderId {
+			currentRetrievals++
+		}
+	}
+	return currentRetrievals
+}
+
 // SetRetrievalCandidate updates the current storage provider that we are
 // performing a retrieval (not query) from. It also sets the root CID for this
 // candidate, which may be different to the originally requested CID.
@@ -153,13 +174,7 @@ func (arm *ActiveRetrievalsManager) SetRetrievalCandidate(retrievalCid, rootCid 
 	// If limit is enabled (non-zero) and we have already hit it, we can't
 	// allow this retrieval to start
 	if maxConcurrent > 0 {
-		var currentRetrievals uint
-		for _, ret := range arm.arMap {
-			if ret.currentStorageProviderId == storageProviderId {
-				currentRetrievals++
-			}
-		}
-		if currentRetrievals >= maxConcurrent {
+		if arm.countRetrievalsFor(storageProviderId) >= maxConcurrent {
 			ar.retrievalsFinished++ // this retrieval won't start so we won't get events for it, treat it as finished
 			arm.maybeFinish(retrievalCid, ar)
 			return ErrHitRetrievalLimit
