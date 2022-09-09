@@ -95,9 +95,7 @@ type Endpoint interface {
 	FindCandidates(context.Context, cid.Cid) ([]RetrievalCandidate, error)
 }
 
-type BlockConfirmer interface {
-	Has(context.Context, cid.Cid) (bool, error)
-}
+type BlockConfirmer func(c cid.Cid) (bool, error)
 
 // Possible errors: ErrInitKeystoreFailed, ErrInitWalletFailed,
 // ErrInitFilClientFailed
@@ -119,9 +117,7 @@ func NewRetriever(
 			suspensionDuration:       time.Minute,
 			failureHistoryDuration:   time.Second * 15,
 		}),
-		confirm: func(c cid.Cid) (bool, error) {
-			return confirmer.Has(ctx, c)
-		},
+		confirm: confirmer,
 	}
 
 	retriever.filClient.SubscribeToRetrievalEvents(retriever)
