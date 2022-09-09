@@ -78,6 +78,7 @@ type Retriever struct {
 	eventManager     *EventManager
 	activeRetrievals *ActiveRetrievalsManager
 	minerMonitor     *minerMonitor
+	confirm          func(cid.Cid) (bool, error)
 }
 
 type candidateQuery struct {
@@ -94,6 +95,10 @@ type Endpoint interface {
 	FindCandidates(context.Context, cid.Cid) ([]RetrievalCandidate, error)
 }
 
+type BlockConfirmer interface {
+	Has(context.Context, cid.Cid) (bool, error)
+}
+
 // Possible errors: ErrInitKeystoreFailed, ErrInitWalletFailed,
 // ErrInitFilClientFailed
 func NewRetriever(
@@ -101,6 +106,7 @@ func NewRetriever(
 	config RetrieverConfig,
 	filClient *filclient.FilClient,
 	endpoint Endpoint,
+	confirmer BlockConfirmer,
 ) (*Retriever, error) {
 	retriever := &Retriever{
 		config:           config,
@@ -113,6 +119,9 @@ func NewRetriever(
 			suspensionDuration:       time.Minute,
 			failureHistoryDuration:   time.Second * 15,
 		}),
+		confirm: func(c cid.Cid) (bool, error) {
+			return confirmer.Has(ctx, c)
+		},
 	}
 
 	retriever.filClient.SubscribeToRetrievalEvents(retriever)
@@ -518,6 +527,10 @@ func (retriever *Retriever) OnRetrievalEvent(event rep.RetrievalEvent) {
 			ret.QueryResponse(),
 		)
 	case rep.RetrievalEventSuccess:
+		confirmed, err := retriever.confirm(event.PayloadCid())
+		if err != nil {
+			log.Errorf("Error while confirming block [%s] for retrieval [%s]: %w", event.PayloadCid(), retrievalId, err)
+		}
 		retriever.activeRetrievals.RetrievalCandidatedFinished(retrievalCid, true)
 		retriever.eventManager.FireRetrievalSuccess(
 			retrievalId,
@@ -526,6 +539,7 @@ func (retriever *Retriever) OnRetrievalEvent(event rep.RetrievalEvent) {
 			event.StorageProviderId(),
 			ret.ReceivedSize(),
 			ret.ReceivedCids(),
+			confirmed,
 		)
 	default:
 		if event.Phase() == rep.QueryPhase {

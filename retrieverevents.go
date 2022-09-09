@@ -38,7 +38,7 @@ type RetrievalEventListener interface {
 	// RetrievalSuccess events occur on the success of a retrieval. A retrieval
 	// will result in either a QueryFailure or a QuerySuccess
 	// event.
-	RetrievalSuccess(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, receivedSize uint64, receivedCids int64)
+	RetrievalSuccess(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, receivedSize uint64, receivedCids int64, confirmed bool)
 
 	// RetrievalFailure events occur on the failure of a retrieval. A retrieval
 	// will result in either a QueryFailure or a QuerySuccess
@@ -142,9 +142,9 @@ func (em *EventManager) FireRetrievalProgress(retrievalId uuid.UUID, requestedCi
 }
 
 // FireRetrievalSuccess calls RetrievalSuccess for all listeners
-func (em *EventManager) FireRetrievalSuccess(retrievalId uuid.UUID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, receivedSize uint64, receivedCids int64) {
+func (em *EventManager) FireRetrievalSuccess(retrievalId uuid.UUID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, receivedSize uint64, receivedCids int64, confirmed bool) {
 	em.queueEvent(func(timestamp time.Time, listener RetrievalEventListener) {
-		listener.RetrievalSuccess(retrievalId, phaseStartTime, timestamp, requestedCid, storageProviderId, receivedSize, receivedCids)
+		listener.RetrievalSuccess(retrievalId, phaseStartTime, timestamp, requestedCid, storageProviderId, receivedSize, receivedCids, confirmed)
 	})
 }
 

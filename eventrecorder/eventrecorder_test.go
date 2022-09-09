@@ -95,7 +95,7 @@ func TestEventRecorder(t *testing.T) {
 		{
 			name: "RetrievalSuccess",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id uuid.UUID, etime, ptime time.Time, spid peer.ID) {
-				er.RetrievalSuccess(id, ptime, etime, testCid1, spid, uint64(2020), 3030)
+				er.RetrievalSuccess(id, ptime, etime, testCid1, spid, uint64(2020), 3030, true)
 
 				select {
 				case <-ctx.Done():
@@ -117,9 +117,10 @@ func TestEventRecorder(t *testing.T) {
 
 				detailsNode, err := event.LookupByString("eventDetails")
 				qt.Assert(t, err, qt.IsNil)
-				qt.Assert(t, detailsNode.Length(), qt.Equals, int64(2))
+				qt.Assert(t, detailsNode.Length(), qt.Equals, int64(3))
 				verifyIntNode(t, detailsNode, "receivedSize", 2020)
 				verifyIntNode(t, detailsNode, "receivedCids", 3030)
+				verifyBoolNode(t, detailsNode, "confirmed", true)
 			},
 		},
 		{
@@ -274,6 +275,14 @@ func verifyIntNode(t *testing.T, node datamodel.Node, key string, expected int64
 	ii, err := subNode.AsInt()
 	qt.Assert(t, err, qt.IsNil)
 	qt.Assert(t, ii, qt.Equals, expected)
+}
+
+func verifyBoolNode(t *testing.T, node datamodel.Node, key string, expected bool) {
+	subNode, err := node.LookupByString(key)
+	qt.Assert(t, err, qt.IsNil)
+	bb, err := subNode.AsBool()
+	qt.Assert(t, err, qt.IsNil)
+	qt.Assert(t, bb, qt.Equals, expected)
 }
 
 func mustCid(cstr string) cid.Cid {
