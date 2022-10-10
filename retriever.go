@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -156,6 +157,11 @@ func (retriever *Retriever) Request(cid cid.Cid) error {
 		return ErrNoCandidates
 	}
 
+	ctx := context.Background()
+
+	stats.Record(ctx, metrics.BitswapRequestWithIndexerCandidatesCount.M(1))
+	stats.Record(ctx, metrics.IndexerCandidatesCount.M(int64(len(candidates))))
+
 	// when we want to include the indexer "phase", this should move to the top of
 	// Retrieve(), but for now we can avoid unnecessary new+cleanup for negative
 	// indexer calls.
@@ -174,7 +180,7 @@ func (retriever *Retriever) Request(cid cid.Cid) error {
 
 	// If we got to this point, one or more candidates have been found and we
 	// are good to go ahead with the retrieval
-	go retriever.retrieveFromBestCandidate(context.Background(), retrievalId, cid, candidates)
+	go retriever.retrieveFromBestCandidate(ctx, retrievalId, cid, candidates)
 	return nil
 }
 
@@ -188,9 +194,13 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, retri
 	// receive success or failures from that many we know the phase is completed,
 	// if zero at this point then clean-up will occur
 	retriever.activeRetrievals.SetRetrievalCandidateCount(retrievalCid, len(queries))
+
 	if len(queries) == 0 {
 		return nil
 	}
+
+	stats.Record(ctx, metrics.BitswapRequestWithSuccessfulQueryCount.M(1))
+	stats.Record(ctx, metrics.RetrievalQueryCount.M(int64(len(queries))))
 
 	sort.Slice(queries, func(i, j int) bool {
 		a := queries[i].response
@@ -504,13 +514,28 @@ func (retriever *Retriever) OnRetrievalEvent(event rep.RetrievalEvent) {
 				ret.ErrorMessage(),
 			)
 		} else {
+
+			ctx := context.Background()
+			msg := ret.ErrorMessage()
+			var matched bool
+			for substr, metric := range metrics.ErrorMetricMatches {
+				if strings.Contains(msg, substr) {
+					stats.Record(ctx, metric.M(1))
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				stats.Record(ctx, metrics.RetrievalErrorOtherCount.M(1))
+			}
+
 			retriever.activeRetrievals.RetrievalCandidatedFinished(retrievalCid, false)
 			retriever.eventManager.FireRetrievalFailure(
 				retrievalId,
 				event.PayloadCid(),
 				phaseStartTime,
 				event.StorageProviderId(),
-				ret.ErrorMessage(),
+				msg,
 			)
 		}
 	case rep.RetrievalEventQueryAsk: // query-ask success
