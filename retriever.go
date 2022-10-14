@@ -441,7 +441,7 @@ func (retriever *Retriever) lookupCandidates(ctx context.Context, cid cid.Cid) (
 		// query is successful
 		minerConfig := retriever.config.GetMinerConfig(candidate.MinerPeer.ID)
 		if minerConfig.MaxConcurrentRetrievals > 0 &&
-			retriever.activeRetrievals.GetActiveRetrievalCountFor(candidate.MinerPeer.ID) > minerConfig.MaxConcurrentRetrievals {
+			retriever.activeRetrievals.GetActiveRetrievalCountFor(candidate.MinerPeer.ID) >= minerConfig.MaxConcurrentRetrievals {
 			continue
 		}
 
