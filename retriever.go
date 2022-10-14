@@ -474,14 +474,15 @@ func (retriever *Retriever) queryCandidates(ctx context.Context, retrievalId uui
 		go func(i int, candidate RetrievalCandidate) {
 			defer wg.Done()
 
+			queryCtx := ctx
 			minerCfgs := retriever.config.GetMinerConfig(candidate.MinerPeer.ID)
 			if minerCfgs.RetrievalTimeout != 0 {
 				var cancelFunc func()
-				ctx, cancelFunc = context.WithDeadline(ctx, time.Now().Add(minerCfgs.RetrievalTimeout))
+				queryCtx, cancelFunc = context.WithDeadline(queryCtx, time.Now().Add(minerCfgs.RetrievalTimeout))
 				defer cancelFunc()
 			}
 
-			query, err := retriever.filClient.RetrievalQueryToPeer(ctx, candidate.MinerPeer, candidate.RootCid)
+			query, err := retriever.filClient.RetrievalQueryToPeer(queryCtx, candidate.MinerPeer, candidate.RootCid)
 			if err != nil {
 				log.Warnf(
 					"Failed to query miner %s for %s: %v",
