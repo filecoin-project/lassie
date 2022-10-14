@@ -326,7 +326,18 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, retri
 func (retriever *Retriever) retrieve(ctx context.Context, query candidateQuery) (*filclient.RetrievalStats, error) {
 	proposal, err := retrievehelper.RetrievalProposalForAsk(query.response, query.candidate.RootCid, nil)
 	if err != nil {
-		return &filclient.RetrievalStats{}, fmt.Errorf("%w: %v", ErrProposalCreationFailed, err)
+		err = fmt.Errorf("%w: %v", ErrProposalCreationFailed, err)
+		// since we're prematurely ending the retrieval due to error, we need to
+		// simulate a failure event that would otherwise come from filclient so we
+		// can properly report it and perform clean-up
+		retriever.OnRetrievalEvent(rep.NewRetrievalEventFailure(
+			rep.RetrievalPhase,
+			query.candidate.RootCid,
+			query.candidate.MinerPeer.ID,
+			address.Undef,
+			err.Error()),
+		)
+		return &filclient.RetrievalStats{}, err
 	}
 
 	startTime := time.Now()
