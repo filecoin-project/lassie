@@ -1,6 +1,7 @@
 package filecoin
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -73,8 +74,15 @@ func (arm *ActiveRetrievalsManager) New(retrievalCid cid.Cid, queryCandidateCoun
 	arm.lk.Lock()
 	defer arm.lk.Unlock()
 
-	if _, ok := arm.findActiveRetrievalFor(retrievalCid); ok {
-		return uuid.UUID{}, ErrRetrievalAlreadyRunning{retrievalCid}
+	if ar, ok := arm.findActiveRetrievalFor(retrievalCid); ok {
+		return uuid.UUID{}, ErrRetrievalAlreadyRunning{retrievalCid,
+			fmt.Sprintf("started %s ago, %d/%d query candidates, %d/%d retrieval candidates",
+				time.Since(ar.queryStartTime),
+				ar.queriesFinished,
+				ar.queryCandidateCount,
+				ar.retrievalsFinished,
+				ar.retrievalCandidateCount),
+		}
 	}
 
 	arm.arMap[retrievalCid] = &activeRetrieval{

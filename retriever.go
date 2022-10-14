@@ -35,11 +35,12 @@ var (
 )
 
 type ErrRetrievalAlreadyRunning struct {
-	c cid.Cid
+	c     cid.Cid
+	extra string
 }
 
 func (e ErrRetrievalAlreadyRunning) Error() string {
-	return fmt.Sprintf("retrieval already running for cid: %s", e.c)
+	return fmt.Sprintf("retrieval already running for CID: %s (%s)", e.c, e.extra)
 }
 
 type MinerConfig struct {
