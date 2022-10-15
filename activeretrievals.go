@@ -76,12 +76,13 @@ func (arm *ActiveRetrievalsManager) New(retrievalCid cid.Cid, queryCandidateCoun
 
 	if ar, ok := arm.findActiveRetrievalFor(retrievalCid); ok {
 		return uuid.UUID{}, ErrRetrievalAlreadyRunning{retrievalCid,
-			fmt.Sprintf("started %s ago, %d/%d query candidates, %d/%d retrieval candidates",
+			fmt.Sprintf("started %s ago with %d/%d query candidates and %d/%d retrieval candidates, %d active total",
 				time.Since(ar.queryStartTime),
 				ar.queriesFinished,
 				ar.queryCandidateCount,
 				ar.retrievalsFinished,
-				ar.retrievalCandidateCount),
+				ar.retrievalCandidateCount,
+				len(arm.arMap)),
 		}
 	}
 
