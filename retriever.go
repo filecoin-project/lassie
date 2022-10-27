@@ -540,22 +540,35 @@ func (retriever *Retriever) OnRetrievalEvent(event rep.RetrievalEvent) {
 		log.Errorf("Received event [%s] for unexpected retrieval: payload-cid=%s, storage-provider-id=%s", event.Code, event.PayloadCid(), event.StorageProviderId())
 		return
 	}
+	ctx := context.Background()
 
 	switch ret := event.(type) {
 	case rep.RetrievalEventFailure:
+
+		msg := ret.ErrorMessage()
+
 		if event.Phase() == rep.QueryPhase {
+			var matched bool
+			for substr, metric := range metrics.QueryErrorMetricMatches {
+				if strings.Contains(msg, substr) {
+					stats.Record(ctx, metric.M(1))
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				stats.Record(ctx, metrics.QueryErrorOtherCount.M(1))
+			}
 			retriever.activeRetrievals.QueryCandidatedFinished(retrievalCid)
 			retriever.eventManager.FireQueryFailure(
 				retrievalId,
 				event.PayloadCid(),
 				phaseStartTime,
 				event.StorageProviderId(),
-				ret.ErrorMessage(),
+				msg,
 			)
 		} else {
 
-			ctx := context.Background()
-			msg := ret.ErrorMessage()
 			var matched bool
 			for substr, metric := range metrics.ErrorMetricMatches {
 				if strings.Contains(msg, substr) {
@@ -578,6 +591,7 @@ func (retriever *Retriever) OnRetrievalEvent(event rep.RetrievalEvent) {
 			)
 		}
 	case rep.RetrievalEventQueryAsk: // query-ask success
+
 		retriever.activeRetrievals.QueryCandidatedFinished(retrievalCid)
 		retriever.eventManager.FireQuerySuccess(
 			retrievalId,
@@ -586,6 +600,19 @@ func (retriever *Retriever) OnRetrievalEvent(event rep.RetrievalEvent) {
 			event.StorageProviderId(),
 			ret.QueryResponse(),
 		)
+		if ret.QueryResponse().Status == retrievalmarket.QueryResponseError {
+			var matched bool
+			for substr, metric := range metrics.QueryResponseMetricMatches {
+				if strings.Contains(ret.QueryResponse().Message, substr) {
+					stats.Record(ctx, metric.M(1))
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				stats.Record(ctx, metrics.QueryErrorOtherCount.M(1))
+			}
+		}
 	case rep.RetrievalEventSuccess:
 		confirmed, err := retriever.confirm(event.PayloadCid())
 		if err != nil {
