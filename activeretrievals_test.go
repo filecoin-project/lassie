@@ -22,7 +22,7 @@ func TestActiveRetrievalsManager_GetStatusFor(t *testing.T) {
 	qt.Assert(t, has, qt.IsTrue)
 	qt.Assert(t, sid, qt.Equals, id)
 	qt.Assert(t, scid, qt.Equals, testCid1)
-	qt.Assert(t, sqtime.Truncate(time.Microsecond*1).UnixMilli(), qt.Equals, time.Now().Truncate(time.Microsecond*1).UnixMilli())
+	qt.Assert(t, time.Since(sqtime).Truncate(time.Millisecond).Milliseconds(), qt.Equals, int64(0))
 
 	_, _, _, has = arm.GetStatusFor(testCid2, rep.QueryPhase)
 	qt.Assert(t, has, qt.IsFalse)
@@ -42,7 +42,7 @@ func TestActiveRetrievalsManager_GetStatusFor(t *testing.T) {
 	qt.Assert(t, has, qt.IsTrue)
 	qt.Assert(t, sid, qt.Equals, id)
 	qt.Assert(t, scid, qt.Equals, testCid1)
-	qt.Assert(t, srtime.Truncate(time.Microsecond*1).UnixMilli(), qt.Equals, time.Now().Truncate(time.Microsecond*1).UnixMilli())
+	qt.Assert(t, time.Since(srtime).Truncate(time.Millisecond).Milliseconds(), qt.Equals, int64(0))
 	qt.Assert(t, srtime, qt.Not(qt.Equals), sqtime) // different phase start time
 
 	_, _, stime, has = arm.GetStatusFor(testCid1, rep.QueryPhase)
