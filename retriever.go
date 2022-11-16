@@ -352,8 +352,6 @@ func (retriever *Retriever) retrieve(ctx context.Context, query candidateQuery) 
 
 	minerCfgs := retriever.config.GetMinerConfig(query.candidate.MinerPeer.ID)
 
-	// Start the timeout tracker only if retrieval timeout isn't 0
-
 	resultChan, progressChan, gracefulShutdown := retriever.filClient.RetrieveContentFromPeerAsync(
 		retrieveCtx,
 		query.candidate.MinerPeer.ID,
@@ -361,6 +359,7 @@ func (retriever *Retriever) retrieve(ctx context.Context, query candidateQuery) 
 		proposal,
 	)
 
+	// Start the timeout tracker only if retrieval timeout isn't 0
 	if minerCfgs.RetrievalTimeout != 0 {
 		lastBytesReceivedTimer = time.AfterFunc(minerCfgs.RetrievalTimeout, func() {
 			doneLk.Lock()
