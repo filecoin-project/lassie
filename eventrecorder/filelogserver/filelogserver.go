@@ -1,9 +1,9 @@
 // A simple HTTP server that receives EventRecorder events and writes them,
 // as line-delimited JSON to an output file.
 //
-// 	* Use `--port` to set the port (default: 8080)
+//   - Use `--port` to set the port (default: 8080)
 //
-//  * Use `--output` to set the output file path (default: output.json)
+//   - Use `--output` to set the output file path (default: output.json)
 //
 // When encoded as JSON, the original event JSON will be wrapped in a parent
 // with the "retrievalId" UUID and "peerId" peerID that come from the URL.
@@ -13,7 +13,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 
@@ -39,7 +39,7 @@ func main() {
 			return
 		}
 
-		body, err := ioutil.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			log.Errorf("Could not decode body: %s", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
