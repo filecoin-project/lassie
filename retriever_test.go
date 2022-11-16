@@ -142,17 +142,18 @@ func (dfc *MockFilClient) RetrievalQueryToPeer(ctx context.Context, minerPeer pe
 	return &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseUnavailable}, nil
 }
 
-func (dfc *MockFilClient) RetrieveContentFromPeerWithProgressCallback(
+func (dfc *MockFilClient) RetrieveContentFromPeerAsync(
 	ctx context.Context,
 	peerID peer.ID,
 	minerWallet address.Address,
 	proposal *retrievalmarket.DealProposal,
-	progressCallback func(bytesReceived uint64),
-) (*filclient.RetrievalStats, error) {
+) (<-chan filclient.RetrievalResult, <-chan uint64, func()) {
 	dfc.lk.Lock()
 	dfc.received_retrievedPeers = append(dfc.received_retrievedPeers, peerID)
 	dfc.lk.Unlock()
-	return nil, errors.New("nope")
+	resChan := make(chan filclient.RetrievalResult, 1)
+	resChan <- filclient.RetrievalResult{nil, errors.New("nope")}
+	return resChan, nil, func() {}
 }
 
 func (*MockFilClient) SubscribeToRetrievalEvents(subscriber rep.RetrievalSubscriber) {}

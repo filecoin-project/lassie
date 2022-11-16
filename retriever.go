@@ -101,13 +101,12 @@ type Endpoint interface {
 type FilClient interface {
 	RetrievalQueryToPeer(ctx context.Context, minerPeer peer.AddrInfo, pcid cid.Cid) (*retrievalmarket.QueryResponse, error)
 
-	RetrieveContentFromPeerWithProgressCallback(
+	RetrieveContentFromPeerAsync(
 		ctx context.Context,
 		peerID peer.ID,
 		minerWallet address.Address,
 		proposal *retrievalmarket.DealProposal,
-		progressCallback func(bytesReceived uint64),
-	) (*filclient.RetrievalStats, error)
+	) (<-chan filclient.RetrievalResult, <-chan uint64, func())
 
 	SubscribeToRetrievalEvents(subscriber rep.RetrievalSubscriber)
 }
@@ -342,8 +341,6 @@ func (retriever *Retriever) retrieve(ctx context.Context, query candidateQuery) 
 
 	startTime := time.Now()
 
-	retrieveCtx, retrieveCancel := context.WithCancel(ctx)
-	defer retrieveCancel()
 	var lastBytesReceived uint64 = 0
 	var doneLk sync.Mutex
 	done := false
@@ -353,6 +350,9 @@ func (retriever *Retriever) retrieve(ctx context.Context, query candidateQuery) 
 	minerCfgs := retriever.config.GetMinerConfig(query.candidate.MinerPeer.ID)
 
 	// Start the timeout tracker only if retrieval timeout isn't 0
+
+	resultChan, progressChan, gracefulShutdown := retriever.filClient.RetrieveContentFromPeerAsync(ctx, query.candidate.MinerPeer.ID, query.response.PaymentAddress, proposal)
+
 	if minerCfgs.RetrievalTimeout != 0 {
 		lastBytesReceivedTimer = time.AfterFunc(minerCfgs.RetrievalTimeout, func() {
 			doneLk.Lock()
@@ -369,22 +369,33 @@ func (retriever *Retriever) retrieve(ctx context.Context, query candidateQuery) 
 				address.Undef,
 				fmt.Sprintf("timeout after %s", minerCfgs.RetrievalTimeout),
 			))
-			retrieveCancel()
+			gracefulShutdown()
 			timedOut = true
 		})
 	}
-	stats, err := retriever.filClient.RetrieveContentFromPeerWithProgressCallback(retrieveCtx, query.candidate.MinerPeer.ID, query.response.PaymentAddress, proposal, func(bytesReceived uint64) {
-		if lastBytesReceivedTimer != nil {
-			doneLk.Lock()
-			if !done {
-				if lastBytesReceived != bytesReceived {
-					lastBytesReceivedTimer.Reset(minerCfgs.RetrievalTimeout)
-					lastBytesReceived = bytesReceived
+
+	var stats *filclient.RetrievalStats
+waitforcomplete:
+	for {
+		select {
+		case result := <-resultChan:
+			stats = result.RetrievalStats
+			err = result.Err
+			break waitforcomplete
+		case bytesReceived := <-progressChan:
+			if lastBytesReceivedTimer != nil {
+				doneLk.Lock()
+				if !done {
+					if lastBytesReceived != bytesReceived {
+						lastBytesReceivedTimer.Reset(minerCfgs.RetrievalTimeout)
+						lastBytesReceived = bytesReceived
+					}
 				}
+				doneLk.Unlock()
 			}
-			doneLk.Unlock()
 		}
-	})
+	}
+
 	if timedOut {
 		err = fmt.Errorf(
 			"timed out after not receiving data for %s (started %s ago, stopped at %s)",
