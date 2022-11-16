@@ -152,7 +152,7 @@ func (dfc *MockFilClient) RetrieveContentFromPeerAsync(
 	dfc.received_retrievedPeers = append(dfc.received_retrievedPeers, peerID)
 	dfc.lk.Unlock()
 	resChan := make(chan filclient.RetrievalResult, 1)
-	resChan <- filclient.RetrievalResult{nil, errors.New("nope")}
+	resChan <- filclient.RetrievalResult{RetrievalStats: nil, Err: errors.New("nope")}
 	return resChan, nil, func() {}
 }
 

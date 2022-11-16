@@ -340,18 +340,26 @@ func (retriever *Retriever) retrieve(ctx context.Context, query candidateQuery) 
 	}
 
 	startTime := time.Now()
+	retrieveCtx, retrieveCancel := context.WithCancel(ctx)
+	defer retrieveCancel()
 
 	var lastBytesReceived uint64 = 0
 	var doneLk sync.Mutex
 	done := false
 	timedOut := false
 	var lastBytesReceivedTimer *time.Timer
+	var gracefulShutdownTimer *time.Timer
 
 	minerCfgs := retriever.config.GetMinerConfig(query.candidate.MinerPeer.ID)
 
 	// Start the timeout tracker only if retrieval timeout isn't 0
 
-	resultChan, progressChan, gracefulShutdown := retriever.filClient.RetrieveContentFromPeerAsync(ctx, query.candidate.MinerPeer.ID, query.response.PaymentAddress, proposal)
+	resultChan, progressChan, gracefulShutdown := retriever.filClient.RetrieveContentFromPeerAsync(
+		retrieveCtx,
+		query.candidate.MinerPeer.ID,
+		query.response.PaymentAddress,
+		proposal,
+	)
 
 	if minerCfgs.RetrievalTimeout != 0 {
 		lastBytesReceivedTimer = time.AfterFunc(minerCfgs.RetrievalTimeout, func() {
@@ -370,6 +378,7 @@ func (retriever *Retriever) retrieve(ctx context.Context, query candidateQuery) 
 				fmt.Sprintf("timeout after %s", minerCfgs.RetrievalTimeout),
 			))
 			gracefulShutdown()
+			gracefulShutdownTimer = time.AfterFunc(1*time.Minute, retrieveCancel)
 			timedOut = true
 		})
 	}
@@ -418,6 +427,9 @@ waitforcomplete:
 
 	if lastBytesReceivedTimer != nil {
 		lastBytesReceivedTimer.Stop()
+	}
+	if gracefulShutdownTimer != nil {
+		gracefulShutdownTimer.Stop()
 	}
 	doneLk.Lock()
 	done = true
