@@ -161,7 +161,9 @@ func (retriever *Retriever) Request(cid cid.Cid) error {
 	// candidates and use that cached info. We only really have to look up an
 	// up-to-date candidate list from the endpoint if we need to begin a new
 	// retrieval.
-	candidates, err := retriever.lookupCandidates(context.Background(), cid)
+	ctx := context.Background()
+
+	candidates, err := retriever.lookupCandidates(ctx, cid)
 	if err != nil {
 		return fmt.Errorf("could not get retrieval candidates for %s: %w", cid, err)
 	}
@@ -170,10 +172,7 @@ func (retriever *Retriever) Request(cid cid.Cid) error {
 		return ErrNoCandidates
 	}
 
-	ctx := context.Background()
-
-	stats.Record(ctx, metrics.BitswapRequestWithIndexerCandidatesCount.M(1))
-	stats.Record(ctx, metrics.IndexerCandidatesCount.M(int64(len(candidates))))
+	stats.Record(ctx, metrics.RequestWithIndexerCandidatesFilteredCount.M(1))
 
 	// when we want to include the indexer "phase", this should move to the top of
 	// Retrieve(), but for now we can avoid unnecessary new+cleanup for negative
@@ -204,6 +203,11 @@ func (retriever *Retriever) Request(cid cid.Cid) error {
 func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, retrievalId uuid.UUID, retrievalCid cid.Cid, candidates []RetrievalCandidate) error {
 	queries := retriever.queryCandidates(ctx, retrievalId, retrievalCid, candidates)
 
+	if len(queries) > 0 {
+		stats.Record(ctx, metrics.RequestWithSuccessfulQueriesCount.M(1))
+	}
+	stats.Record(ctx, metrics.SuccessfulQueriesPerRequestCount.M(int64(len(queries))))
+
 	if !retriever.config.PaidRetrievals {
 		// filter out paid retrievals
 		qt := make([]candidateQuery, 0)
@@ -225,8 +229,8 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, retri
 		return nil
 	}
 
-	stats.Record(ctx, metrics.BitswapRequestWithSuccessfulQueryCount.M(1))
-	stats.Record(ctx, metrics.RetrievalQueryCount.M(int64(len(queries))))
+	stats.Record(ctx, metrics.RequestWithSuccessfulQueriesFilteredCount.M(1))
+	stats.Record(ctx, metrics.SuccessfulQueriesPerRequestFilteredCount.M(int64(len(queries))))
 
 	sort.Slice(queries, func(i, j int) bool {
 		a := queries[i].response
@@ -255,7 +259,7 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, retri
 	// retrievalStats will be nil after the loop if none of the retrievals successfully
 	// complete
 	var retrievalStats *filclient.RetrievalStats
-	for _, query := range queries {
+	for i, query := range queries {
 		minerConfig := retriever.config.GetMinerConfig(query.candidate.MinerPeer.ID)
 		if err := retriever.activeRetrievals.SetRetrievalCandidate(
 			retrievalCid,
@@ -287,6 +291,8 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, retri
 				err,
 			)
 			stats.Record(ctx, metrics.RetrievalDealFailCount.M(1))
+
+			continue
 		} else {
 			log.Infof(
 				"Successfully retrieved from miner %s for %s\n"+
@@ -304,16 +310,15 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, retri
 			stats.Record(ctx, metrics.RetrievalDealDuration.M(retrievalStats.Duration.Seconds()))
 			stats.Record(ctx, metrics.RetrievalDealSize.M(int64(retrievalStats.Size)))
 			stats.Record(ctx, metrics.RetrievalDealCost.M(retrievalStats.TotalPayment.Int64()))
-		}
+			stats.Record(ctx, metrics.FailedRetrievalsPerRequestCount.M(int64(i)))
 
-		if err != nil {
-			continue
+			break
 		}
-
-		break
 	}
 
+	// There were no successful queries
 	if retrievalStats == nil {
+		stats.Record(ctx, metrics.FailedRetrievalsPerRequestCount.M(int64(len(queries))))
 		return ErrAllRetrievalsFailed
 	}
 
@@ -447,6 +452,9 @@ waitforcomplete:
 // Possible errors - ErrInvalidEndpointURL, ErrEndpointRequestFailed, ErrEndpointBodyInvalid
 func (retriever *Retriever) lookupCandidates(ctx context.Context, cid cid.Cid) ([]RetrievalCandidate, error) {
 	unfiltered, err := retriever.endpoint.FindCandidates(ctx, cid)
+	stats.Record(ctx, metrics.RequestWithIndexerCandidatesCount.M(1))
+	stats.Record(ctx, metrics.IndexerCandidatesPerRequestCount.M(int64(len(unfiltered))))
+
 	if err != nil {
 		return nil, err
 	}
