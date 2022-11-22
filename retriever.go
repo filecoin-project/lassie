@@ -172,8 +172,6 @@ func (retriever *Retriever) Request(cid cid.Cid) error {
 		return ErrNoCandidates
 	}
 
-	stats.Record(ctx, metrics.RequestWithIndexerCandidatesFilteredCount.M(1))
-
 	// when we want to include the indexer "phase", this should move to the top of
 	// Retrieve(), but for now we can avoid unnecessary new+cleanup for negative
 	// indexer calls.
@@ -189,6 +187,8 @@ func (retriever *Retriever) Request(cid cid.Cid) error {
 	if err != nil {
 		return err
 	}
+
+	stats.Record(ctx, metrics.RequestWithIndexerCandidatesFilteredCount.M(1))
 
 	// If we got to this point, one or more candidates have been found and we
 	// are good to go ahead with the retrieval
