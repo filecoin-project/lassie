@@ -452,7 +452,9 @@ waitforcomplete:
 // Possible errors - ErrInvalidEndpointURL, ErrEndpointRequestFailed, ErrEndpointBodyInvalid
 func (retriever *Retriever) lookupCandidates(ctx context.Context, cid cid.Cid) ([]RetrievalCandidate, error) {
 	unfiltered, err := retriever.endpoint.FindCandidates(ctx, cid)
-	stats.Record(ctx, metrics.RequestWithIndexerCandidatesCount.M(1))
+	if len(unfiltered) > 0 {
+		stats.Record(ctx, metrics.RequestWithIndexerCandidatesCount.M(1))
+	}
 	stats.Record(ctx, metrics.IndexerCandidatesPerRequestCount.M(int64(len(unfiltered))))
 
 	if err != nil {
