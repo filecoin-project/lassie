@@ -567,7 +567,7 @@ func (retriever *Retriever) OnRetrievalEvent(event rep.RetrievalEvent) {
 	retrievalId, retrievalCid, phaseStartTime, has := retriever.activeRetrievals.GetStatusFor(event.PayloadCid(), event.Phase())
 
 	if !has {
-		log.Errorf("Received event [%s] for unexpected retrieval: payload-cid=%s, storage-provider-id=%s", event.Code, event.PayloadCid(), event.StorageProviderId())
+		log.Errorf("Received event [%s] for unexpected retrieval: payload-cid=%s, storage-provider-id=%s", event.Code(), event.PayloadCid(), event.StorageProviderId())
 		return
 	}
 	ctx := context.Background()
