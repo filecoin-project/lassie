@@ -8,19 +8,18 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/application-research/autoretrieve/filecoin"
-	"github.com/application-research/filclient/rep"
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
+	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 var HttpTimeout = 5 * time.Second
 var ParallelPosters = 5
 
-var _ filecoin.RetrievalEventListener = (*EventRecorder)(nil)
+var _ retriever.RetrievalEventListener = (*EventRecorder)(nil)
 
 var log = logging.Logger("eventrecorder")
 
@@ -61,15 +60,15 @@ type EventRecorder struct {
 }
 
 type eventReport struct {
-	RetrievalId       uuid.UUID   `json:"retrievalId"`
-	InstanceId        string      `json:"instanceId"`
-	Cid               string      `json:"cid"`
-	StorageProviderId peer.ID     `json:"storageProviderId"`
-	Phase             rep.Phase   `json:"phase"`
-	PhaseStartTime    time.Time   `json:"phaseStartTime"`
-	EventName         rep.Code    `json:"eventName"`
-	EventTime         time.Time   `json:"eventTime"`
-	EventDetails      interface{} `json:"eventDetails,omitempty"`
+	RetrievalId       uuid.UUID       `json:"retrievalId"`
+	InstanceId        string          `json:"instanceId"`
+	Cid               string          `json:"cid"`
+	StorageProviderId peer.ID         `json:"storageProviderId"`
+	Phase             retriever.Phase `json:"phase"`
+	PhaseStartTime    time.Time       `json:"phaseStartTime"`
+	EventName         retriever.Code  `json:"eventName"`
+	EventTime         time.Time       `json:"eventTime"`
+	EventDetails      interface{}     `json:"eventDetails,omitempty"`
 }
 
 // eventDetailsSuccess is for the EventDetails in the case of a retrieval
@@ -87,8 +86,8 @@ type eventDetailsError struct {
 }
 
 // QueryProgress events occur during the query process
-func (er *EventRecorder) QueryProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, retrievalCid cid.Cid, storageProviderId peer.ID, eventName rep.Code) {
-	evt := eventReport{retrievalId, er.instanceId, retrievalCid.String(), storageProviderId, rep.QueryPhase, phaseStartTime, eventName, eventTime, nil}
+func (er *EventRecorder) QueryProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, retrievalCid cid.Cid, storageProviderId peer.ID, eventName retriever.Code) {
+	evt := eventReport{retrievalId, er.instanceId, retrievalCid.String(), storageProviderId, retriever.QueryPhase, phaseStartTime, eventName, eventTime, nil}
 	er.recordEvent("QueryProgress", evt)
 }
 
@@ -96,7 +95,7 @@ func (er *EventRecorder) QueryProgress(retrievalId uuid.UUID, phaseStartTime, ev
 // provider. A query will result in either a QueryFailure or
 // a QuerySuccess event.
 func (er *EventRecorder) QueryFailure(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, retrievalCid cid.Cid, storageProviderId peer.ID, errorString string) {
-	evt := eventReport{retrievalId, er.instanceId, retrievalCid.String(), storageProviderId, rep.QueryPhase, phaseStartTime, rep.FailureCode, eventTime, nil}
+	evt := eventReport{retrievalId, er.instanceId, retrievalCid.String(), storageProviderId, retriever.QueryPhase, phaseStartTime, retriever.FailureCode, eventTime, nil}
 	evt.EventDetails = &eventDetailsError{errorString}
 	er.recordEvent("QueryFailure", evt)
 }
@@ -105,7 +104,7 @@ func (er *EventRecorder) QueryFailure(retrievalId uuid.UUID, phaseStartTime, eve
 // provider. A query will result in either a QueryFailure or
 // a QuerySuccess event.
 func (er *EventRecorder) QuerySuccess(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, retrievalCid cid.Cid, storageProviderId peer.ID, queryResponse retrievalmarket.QueryResponse) {
-	evt := eventReport{retrievalId, er.instanceId, retrievalCid.String(), storageProviderId, rep.QueryPhase, phaseStartTime, rep.QueryAskedCode, eventTime, nil}
+	evt := eventReport{retrievalId, er.instanceId, retrievalCid.String(), storageProviderId, retriever.QueryPhase, phaseStartTime, retriever.QueryAskedCode, eventTime, nil}
 	evt.EventDetails = &queryResponse
 	er.recordEvent("QuerySuccess", evt)
 }
@@ -113,8 +112,8 @@ func (er *EventRecorder) QuerySuccess(retrievalId uuid.UUID, phaseStartTime, eve
 // RetrievalProgress events occur during the process of a retrieval. The
 // Success and failure progress event types are not reported here, but are
 // signalled via RetrievalSuccess or RetrievalFailure.
-func (er *EventRecorder) RetrievalProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, retrievalCid cid.Cid, storageProviderId peer.ID, eventName rep.Code) {
-	evt := eventReport{retrievalId, er.instanceId, retrievalCid.String(), storageProviderId, rep.RetrievalPhase, phaseStartTime, eventName, eventTime, nil}
+func (er *EventRecorder) RetrievalProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, retrievalCid cid.Cid, storageProviderId peer.ID, eventName retriever.Code) {
+	evt := eventReport{retrievalId, er.instanceId, retrievalCid.String(), storageProviderId, retriever.RetrievalPhase, phaseStartTime, eventName, eventTime, nil}
 	er.recordEvent("RetrievalProgress", evt)
 }
 
@@ -122,7 +121,7 @@ func (er *EventRecorder) RetrievalProgress(retrievalId uuid.UUID, phaseStartTime
 // will result in either a QueryFailure or a QuerySuccess
 // event.
 func (er *EventRecorder) RetrievalSuccess(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, retrievalCid cid.Cid, storageProviderId peer.ID, retrievedSize uint64, receivedCids int64, confirmed bool) {
-	evt := eventReport{retrievalId, er.instanceId, retrievalCid.String(), storageProviderId, rep.RetrievalPhase, phaseStartTime, rep.SuccessCode, eventTime, nil}
+	evt := eventReport{retrievalId, er.instanceId, retrievalCid.String(), storageProviderId, retriever.RetrievalPhase, phaseStartTime, retriever.SuccessCode, eventTime, nil}
 	evt.EventDetails = &eventDetailsSuccess{retrievedSize, receivedCids, confirmed}
 	er.recordEvent("RetrievalSuccess", evt)
 }
@@ -130,7 +129,7 @@ func (er *EventRecorder) RetrievalSuccess(retrievalId uuid.UUID, phaseStartTime,
 // RetrievalFailure events occur on the failure of a retrieval. A retrieval
 // will result in either a QueryFailure or a QuerySuccess event.
 func (er *EventRecorder) RetrievalFailure(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, retrievalCid cid.Cid, storageProviderId peer.ID, errorString string) {
-	evt := eventReport{retrievalId, er.instanceId, retrievalCid.String(), storageProviderId, rep.RetrievalPhase, phaseStartTime, rep.FailureCode, eventTime, nil}
+	evt := eventReport{retrievalId, er.instanceId, retrievalCid.String(), storageProviderId, retriever.RetrievalPhase, phaseStartTime, retriever.FailureCode, eventTime, nil}
 	evt.EventDetails = &eventDetailsError{errorString}
 	er.recordEvent("RetrievalFailure", evt)
 }

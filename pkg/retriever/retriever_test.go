@@ -1,4 +1,4 @@
-package filecoin
+package retriever
 
 import (
 	"context"
@@ -6,15 +6,16 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/application-research/filclient"
-	"github.com/application-research/filclient/rep"
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
+	"github.com/filecoin-project/go-fil-markets/shared"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/ipfs/go-cid"
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/ipld/go-ipld-prime"
+	"github.com/libp2p/go-libp2p/core/peer"
 
 	qt "github.com/frankban/quicktest"
+	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 )
 
 func TestQueryFiltering(t *testing.T) {
@@ -122,6 +123,7 @@ func TestQueryFiltering(t *testing.T) {
 var _ FilClient = (*MockFilClient)(nil)
 var _ Endpoint = (*DummyEndpoint)(nil)
 var _ BlockConfirmer = DummyBlockConfirmer
+var dealIdGen = shared.NewTimeCounter()
 
 type MockFilClient struct {
 	lk                      sync.Mutex
@@ -129,6 +131,29 @@ type MockFilClient struct {
 	received_retrievedPeers []peer.ID
 
 	returns_queryResponses map[string]retrievalmarket.QueryResponse
+}
+
+func (dfc *MockFilClient) RetrievalProposalForAsk(ask *retrievalmarket.QueryResponse, c cid.Cid, optionalSelector ipld.Node) (*retrievalmarket.DealProposal, error) {
+	if optionalSelector == nil {
+		optionalSelector = selectorparse.CommonSelector_ExploreAllRecursively
+	}
+
+	params, err := retrievalmarket.NewParamsV1(
+		ask.MinPricePerByte,
+		ask.MaxPaymentInterval,
+		ask.MaxPaymentIntervalIncrease,
+		optionalSelector,
+		nil,
+		ask.UnsealPrice,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &retrievalmarket.DealProposal{
+		PayloadCID: c,
+		ID:         retrievalmarket.DealID(dealIdGen.Next()),
+		Params:     params,
+	}, nil
 }
 
 func (dfc *MockFilClient) RetrievalQueryToPeer(ctx context.Context, minerPeer peer.AddrInfo, pcid cid.Cid) (*retrievalmarket.QueryResponse, error) {
@@ -147,16 +172,16 @@ func (dfc *MockFilClient) RetrieveContentFromPeerAsync(
 	peerID peer.ID,
 	minerWallet address.Address,
 	proposal *retrievalmarket.DealProposal,
-) (<-chan filclient.RetrievalResult, <-chan uint64, func()) {
+) (<-chan RetrievalResult, <-chan uint64, func()) {
 	dfc.lk.Lock()
 	dfc.received_retrievedPeers = append(dfc.received_retrievedPeers, peerID)
 	dfc.lk.Unlock()
-	resChan := make(chan filclient.RetrievalResult, 1)
-	resChan <- filclient.RetrievalResult{RetrievalStats: nil, Err: errors.New("nope")}
+	resChan := make(chan RetrievalResult, 1)
+	resChan <- RetrievalResult{RetrievalStats: nil, Err: errors.New("nope")}
 	return resChan, nil, func() {}
 }
 
-func (*MockFilClient) SubscribeToRetrievalEvents(subscriber rep.RetrievalSubscriber) {}
+func (*MockFilClient) SubscribeToRetrievalEvents(subscriber RetrievalSubscriber) {}
 
 type DummyEndpoint struct{}
 
