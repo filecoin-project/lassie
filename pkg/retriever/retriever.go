@@ -312,7 +312,7 @@ func (retriever *Retriever) retrieveFromBestCandidate(ctx context.Context, retri
 // Possible errors: ErrRetrievalRegistrationFailed, ErrProposalCreationFailed,
 // ErrRetrievalFailed
 func (retriever *Retriever) retrieve(ctx context.Context, query candidateQuery) (*RetrievalStats, error) {
-	proposal, err := retriever.filClient.RetrievalProposalForAsk(query.response, query.candidate.RootCid, nil)
+	proposal, err := RetrievalProposalForAsk(query.response, query.candidate.RootCid, nil)
 	if err != nil {
 		err = fmt.Errorf("%w: %v", ErrProposalCreationFailed, err)
 		// since we're prematurely ending the retrieval due to error, we need to

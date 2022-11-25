@@ -8,13 +8,10 @@ import (
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/ipfs/go-cid"
-	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 type FilClient interface {
-	RetrievalProposalForAsk(ask *retrievalmarket.QueryResponse, c cid.Cid, optionalSelector ipld.Node) (*retrievalmarket.DealProposal, error)
-
 	RetrievalQueryToPeer(ctx context.Context, minerPeer peer.AddrInfo, pcid cid.Cid) (*retrievalmarket.QueryResponse, error)
 
 	RetrieveContentFromPeerAsync(

@@ -123,7 +123,7 @@ func TestQueryFiltering(t *testing.T) {
 var _ FilClient = (*MockFilClient)(nil)
 var _ Endpoint = (*DummyEndpoint)(nil)
 var _ BlockConfirmer = DummyBlockConfirmer
-var dealIdGen = shared.NewTimeCounter()
+var testDealIdGen = shared.NewTimeCounter()
 
 type MockFilClient struct {
 	lk                      sync.Mutex
@@ -151,7 +151,7 @@ func (dfc *MockFilClient) RetrievalProposalForAsk(ask *retrievalmarket.QueryResp
 	}
 	return &retrievalmarket.DealProposal{
 		PayloadCID: c,
-		ID:         retrievalmarket.DealID(dealIdGen.Next()),
+		ID:         retrievalmarket.DealID(testDealIdGen.Next()),
 		Params:     params,
 	}, nil
 }
