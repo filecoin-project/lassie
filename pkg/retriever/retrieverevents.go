@@ -1,15 +1,14 @@
-package filecoin
+package retriever
 
 import (
 	"context"
 	"sync"
 	"time"
 
-	"github.com/application-research/filclient/rep"
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 // RetrievalEventListener defines a type that receives events fired during a
@@ -18,7 +17,7 @@ import (
 type RetrievalEventListener interface {
 	// QueryProgress events occur during the query process, stages.
 	// Currently this should just include a "connected" event.
-	QueryProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage rep.Code)
+	QueryProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage Code)
 
 	// QueryFailure events occur on the failure of querying a storage
 	// provider. A query will result in either a QueryFailure or
@@ -33,7 +32,7 @@ type RetrievalEventListener interface {
 	// RetrievalProgress events occur during the process of a retrieval. The
 	// Success and failure progress event types are not reported here, but are
 	// signalled via RetrievalSuccess or RetrievalFailure.
-	RetrievalProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage rep.Code)
+	RetrievalProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage Code)
 
 	// RetrievalSuccess events occur on the success of a retrieval. A retrieval
 	// will result in either a QueryFailure or a QuerySuccess
@@ -114,7 +113,7 @@ func (em *EventManager) queueEvent(cb func(timestamp time.Time, listener Retriev
 }
 
 // FireQueryProgress calls QueryProgress for all listeners
-func (em *EventManager) FireQueryProgress(retrievalId uuid.UUID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, stage rep.Code) {
+func (em *EventManager) FireQueryProgress(retrievalId uuid.UUID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, stage Code) {
 	em.queueEvent(func(timestamp time.Time, listener RetrievalEventListener) {
 		listener.QueryProgress(retrievalId, phaseStartTime, timestamp, requestedCid, storageProviderId, stage)
 	})
@@ -135,7 +134,7 @@ func (em *EventManager) FireQuerySuccess(retrievalId uuid.UUID, requestedCid cid
 }
 
 // FireRetrievalProgress calls RetrievalProgress for all listeners
-func (em *EventManager) FireRetrievalProgress(retrievalId uuid.UUID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, stage rep.Code) {
+func (em *EventManager) FireRetrievalProgress(retrievalId uuid.UUID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, stage Code) {
 	em.queueEvent(func(timestamp time.Time, listener RetrievalEventListener) {
 		listener.RetrievalProgress(retrievalId, phaseStartTime, timestamp, requestedCid, storageProviderId, stage)
 	})

@@ -1,10 +1,10 @@
-package filecoin
+package retriever
 
 import (
 	"sync"
 	"time"
 
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 type minerStatus struct {

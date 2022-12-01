@@ -8,18 +8,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/application-research/autoretrieve/filecoin/eventrecorder"
-	"github.com/application-research/filclient/rep"
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-state-types/abi"
+	"github.com/filecoin-project/lassie/pkg/eventrecorder"
+	"github.com/filecoin-project/lassie/pkg/retriever"
 	qt "github.com/frankban/quicktest"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/codec/dagjson"
 	"github.com/ipld/go-ipld-prime/datamodel"
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"golang.org/x/net/context"
 )
 
@@ -183,7 +183,7 @@ func TestEventRecorder(t *testing.T) {
 		{
 			name: "QueryProgress",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id uuid.UUID, etime, ptime time.Time, spid peer.ID) {
-				er.QueryProgress(id, ptime, etime, testCid1, spid, rep.ConnectedCode)
+				er.QueryProgress(id, ptime, etime, testCid1, spid, retriever.ConnectedCode)
 
 				select {
 				case <-ctx.Done():
@@ -207,7 +207,7 @@ func TestEventRecorder(t *testing.T) {
 		{
 			name: "RetrievalProgress",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id uuid.UUID, etime, ptime time.Time, spid peer.ID) {
-				er.RetrievalProgress(id, ptime, etime, testCid1, spid, rep.FirstByteCode)
+				er.RetrievalProgress(id, ptime, etime, testCid1, spid, retriever.FirstByteCode)
 
 				select {
 				case <-ctx.Done():
@@ -335,7 +335,7 @@ func TestEventRecorderSlowPost(t *testing.T) {
 		requestWg.Add(1)
 		go func() {
 			defer wg.Done()
-			er.RetrievalProgress(id, ptime, etime, testCid1, spid, rep.FirstByteCode)
+			er.RetrievalProgress(id, ptime, etime, testCid1, spid, retriever.FirstByteCode)
 		}()
 	}
 	if !waitGroupWait(ctx, &wg) {
