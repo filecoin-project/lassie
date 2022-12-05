@@ -13,8 +13,9 @@ import (
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-state-types/big"
+	"github.com/filecoin-project/lassie/pkg/eventpublisher"
 	"github.com/filecoin-project/lassie/pkg/metrics"
-	"github.com/filecoin-project/lotus/chain/types"
+	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -74,7 +75,7 @@ type Retriever struct {
 	// Assumed immutable during operation
 	config           RetrieverConfig
 	endpoint         Endpoint
-	filClient        FilClient
+	client           RetrievalClient
 	eventManager     *EventManager
 	activeRetrievals *ActiveRetrievalsManager
 	minerMonitor     *minerMonitor
@@ -100,14 +101,14 @@ type BlockConfirmer func(c cid.Cid) (bool, error)
 func NewRetriever(
 	ctx context.Context,
 	config RetrieverConfig,
-	filClient FilClient,
+	client RetrievalClient,
 	endpoint Endpoint,
 	confirmer BlockConfirmer,
 ) (*Retriever, error) {
 	retriever := &Retriever{
 		config:           config,
 		endpoint:         endpoint,
-		filClient:        filClient,
+		client:           client,
 		eventManager:     NewEventManager(ctx),
 		activeRetrievals: NewActiveRetrievalsManager(),
 		minerMonitor: newMinerMonitor(minerMonitorConfig{
@@ -118,7 +119,7 @@ func NewRetriever(
 		confirm: confirmer,
 	}
 
-	retriever.filClient.SubscribeToRetrievalEvents(retriever)
+	retriever.client.SubscribeToRetrievalEvents(retriever)
 
 	return retriever, nil
 }
@@ -318,8 +319,8 @@ func (retriever *Retriever) retrieve(ctx context.Context, query candidateQuery) 
 		// since we're prematurely ending the retrieval due to error, we need to
 		// simulate a failure event that would otherwise come from filclient so we
 		// can properly report it and perform clean-up
-		retriever.OnRetrievalEvent(NewRetrievalEventFailure(
-			RetrievalPhase,
+		retriever.OnRetrievalEvent(eventpublisher.NewRetrievalEventFailure(
+			eventpublisher.RetrievalPhase,
 			query.candidate.RootCid,
 			query.candidate.MinerPeer.ID,
 			address.Undef,
@@ -341,7 +342,7 @@ func (retriever *Retriever) retrieve(ctx context.Context, query candidateQuery) 
 
 	minerCfgs := retriever.config.GetMinerConfig(query.candidate.MinerPeer.ID)
 
-	resultChan, progressChan, gracefulShutdown := retriever.filClient.RetrieveContentFromPeerAsync(
+	resultChan, progressChan, gracefulShutdown := retriever.client.RetrieveContentFromPeerAsync(
 		retrieveCtx,
 		query.candidate.MinerPeer.ID,
 		query.response.PaymentAddress,
@@ -358,8 +359,8 @@ func (retriever *Retriever) retrieve(ctx context.Context, query candidateQuery) 
 			// since we're prematurely ending the retrieval due to timeout, we need to
 			// simulate a failure event that would otherwise come from filclient so we
 			// can properly report it and perform clean-up
-			retriever.OnRetrievalEvent(NewRetrievalEventFailure(
-				RetrievalPhase,
+			retriever.OnRetrievalEvent(eventpublisher.NewRetrievalEventFailure(
+				eventpublisher.RetrievalPhase,
 				query.candidate.RootCid,
 				query.candidate.MinerPeer.ID,
 				address.Undef,
@@ -498,7 +499,7 @@ func (retriever *Retriever) queryCandidates(ctx context.Context, retrievalId uui
 				defer cancelFunc()
 			}
 
-			query, err := retriever.filClient.RetrievalQueryToPeer(queryCtx, candidate.MinerPeer, candidate.RootCid)
+			query, err := retriever.client.RetrievalQueryToPeer(queryCtx, candidate.MinerPeer, candidate.RootCid)
 			if err != nil {
 				log.Warnf(
 					"Failed to query miner %s for %s: %v",
@@ -547,7 +548,7 @@ func formatCid(cid cid.Cid, short bool) string {
 }
 
 // Implement RetrievalSubscriber
-func (retriever *Retriever) OnRetrievalEvent(event RetrievalEvent) {
+func (retriever *Retriever) OnRetrievalEvent(event eventpublisher.RetrievalEvent) {
 	logEvent(event)
 
 	retrievalId, retrievalCid, phaseStartTime, has := retriever.activeRetrievals.GetStatusFor(event.PayloadCid(), event.Phase())
@@ -559,11 +560,11 @@ func (retriever *Retriever) OnRetrievalEvent(event RetrievalEvent) {
 	ctx := context.Background()
 
 	switch ret := event.(type) {
-	case RetrievalEventFailure:
+	case eventpublisher.RetrievalEventFailure:
 
 		msg := ret.ErrorMessage()
 
-		if event.Phase() == QueryPhase {
+		if event.Phase() == eventpublisher.QueryPhase {
 			var matched bool
 			for substr, metric := range metrics.QueryErrorMetricMatches {
 				if strings.Contains(msg, substr) {
@@ -606,7 +607,7 @@ func (retriever *Retriever) OnRetrievalEvent(event RetrievalEvent) {
 				msg,
 			)
 		}
-	case RetrievalEventQueryAsk: // query-ask success
+	case eventpublisher.RetrievalEventQueryAsk: // query-ask success
 
 		retriever.activeRetrievals.QueryCandidatedFinished(retrievalCid)
 		retriever.eventManager.FireQuerySuccess(
@@ -629,7 +630,7 @@ func (retriever *Retriever) OnRetrievalEvent(event RetrievalEvent) {
 				stats.Record(ctx, metrics.QueryErrorOtherCount.M(1))
 			}
 		}
-	case RetrievalEventSuccess:
+	case eventpublisher.RetrievalEventSuccess:
 		confirmed, err := retriever.confirm(event.PayloadCid())
 		if err != nil {
 			log.Errorf("Error while confirming block [%s] for retrieval [%s]: %w", event.PayloadCid(), retrievalId, err)
@@ -645,7 +646,7 @@ func (retriever *Retriever) OnRetrievalEvent(event RetrievalEvent) {
 			confirmed,
 		)
 	default:
-		if event.Phase() == QueryPhase {
+		if event.Phase() == eventpublisher.QueryPhase {
 			retriever.eventManager.FireQueryProgress(
 				retrievalId,
 				event.PayloadCid(),
@@ -665,7 +666,7 @@ func (retriever *Retriever) OnRetrievalEvent(event RetrievalEvent) {
 	}
 }
 
-func logEvent(event RetrievalEvent) {
+func logEvent(event eventpublisher.RetrievalEvent) {
 	kv := make([]interface{}, 0)
 	logadd := func(kva ...interface{}) {
 		if len(kva)%2 != 0 {
@@ -685,7 +686,7 @@ func logEvent(event RetrievalEvent) {
 		"storageProviderId", event.StorageProviderId(),
 		"storageProviderAddr", event.StorageProviderAddr())
 	switch tevent := event.(type) {
-	case RetrievalEventQueryAsk:
+	case eventpublisher.RetrievalEventQueryAsk:
 		logadd("queryResponse:Status", tevent.QueryResponse().Status,
 			"queryResponse:PieceCIDFound", tevent.QueryResponse().PieceCIDFound,
 			"queryResponse:Size", tevent.QueryResponse().Size,
@@ -695,9 +696,9 @@ func logEvent(event RetrievalEvent) {
 			"queryResponse:MaxPaymentIntervalIncrease", tevent.QueryResponse().MaxPaymentIntervalIncrease,
 			"queryResponse:Message", tevent.QueryResponse().Message,
 			"queryResponse:UnsealPrice", tevent.QueryResponse().UnsealPrice)
-	case RetrievalEventFailure:
+	case eventpublisher.RetrievalEventFailure:
 		logadd("errorMessage", tevent.ErrorMessage())
-	case RetrievalEventSuccess:
+	case eventpublisher.RetrievalEventSuccess:
 		logadd("receivedSize", tevent.ReceivedSize())
 	}
 	log.Debugw("retrieval-event", kv...)

@@ -7,11 +7,12 @@ import (
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-state-types/abi"
+	"github.com/filecoin-project/lassie/pkg/eventpublisher"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
-type FilClient interface {
+type RetrievalClient interface {
 	RetrievalQueryToPeer(ctx context.Context, minerPeer peer.AddrInfo, pcid cid.Cid) (*retrievalmarket.QueryResponse, error)
 
 	RetrieveContentFromPeerAsync(
@@ -21,7 +22,7 @@ type FilClient interface {
 		proposal *retrievalmarket.DealProposal,
 	) (<-chan RetrievalResult, <-chan uint64, func())
 
-	SubscribeToRetrievalEvents(subscriber RetrievalSubscriber)
+	SubscribeToRetrievalEvents(subscriber eventpublisher.RetrievalSubscriber)
 }
 
 type RetrievalResult struct {
@@ -43,5 +44,5 @@ type RetrievalStats struct {
 }
 
 type RetrievalSubscriber interface {
-	OnRetrievalEvent(RetrievalEvent)
+	OnRetrievalEvent(eventpublisher.RetrievalEvent)
 }
