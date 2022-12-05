@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/filecoin-project/lassie/pkg/eventpublisher"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -126,7 +127,7 @@ func (arm *ActiveRetrievalsManager) SetRetrievalCandidateCount(retrievalCid cid.
 // original retrieval CID (which may be different to the CID a storage provider
 // is being asked for). The phase is provided here in order to determine which
 // start time to return (query or retrieval).
-func (arm *ActiveRetrievalsManager) GetStatusFor(retrievalCid cid.Cid, phase Phase) (uuid.UUID, cid.Cid, time.Time, bool) {
+func (arm *ActiveRetrievalsManager) GetStatusFor(retrievalCid cid.Cid, phase eventpublisher.Phase) (uuid.UUID, cid.Cid, time.Time, bool) {
 	arm.lk.RLock()
 	defer arm.lk.RUnlock()
 	ar, found := arm.findActiveRetrievalFor(retrievalCid)
@@ -134,7 +135,7 @@ func (arm *ActiveRetrievalsManager) GetStatusFor(retrievalCid cid.Cid, phase Pha
 		return uuid.UUID{}, cid.Undef, time.Time{}, false
 	}
 	phaseStart := ar.queryStartTime
-	if phase == RetrievalPhase {
+	if phase == eventpublisher.RetrievalPhase {
 		phaseStart = ar.retrievalStartTime
 	}
 	return ar.retrievalId, ar.retrievalCid, phaseStart, true

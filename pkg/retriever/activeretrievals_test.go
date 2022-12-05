@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/filecoin-project/lassie/pkg/eventpublisher"
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	qt "github.com/frankban/quicktest"
 	"github.com/ipfs/go-cid"
@@ -17,40 +18,40 @@ func TestActiveRetrievalsManager_GetStatusFor(t *testing.T) {
 	id, err := arm.New(testCid1, 1, 1)
 	qt.Assert(t, err, qt.IsNil)
 
-	sid, scid, sqtime, has := arm.GetStatusFor(testCid1, retriever.QueryPhase)
+	sid, scid, sqtime, has := arm.GetStatusFor(testCid1, eventpublisher.QueryPhase)
 	qt.Assert(t, has, qt.IsTrue)
 	qt.Assert(t, sid, qt.Equals, id)
 	qt.Assert(t, scid, qt.Equals, testCid1)
 	qt.Assert(t, time.Since(sqtime).Truncate(time.Millisecond).Milliseconds(), qt.Equals, int64(0))
 
-	_, _, _, has = arm.GetStatusFor(testCid2, retriever.QueryPhase)
+	_, _, _, has = arm.GetStatusFor(testCid2, eventpublisher.QueryPhase)
 	qt.Assert(t, has, qt.IsFalse)
 
 	arm.QueryCandidatedFinished(testCid1)
-	_, _, stime, has := arm.GetStatusFor(testCid1, retriever.QueryPhase)
+	_, _, stime, has := arm.GetStatusFor(testCid1, eventpublisher.QueryPhase)
 	qt.Assert(t, has, qt.IsTrue)
 	qt.Assert(t, stime, qt.Equals, sqtime) // should be identical to the first call, we're still in query phase
 
-	_, _, stime, has = arm.GetStatusFor(testCid1, retriever.RetrievalPhase)
+	_, _, stime, has = arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 	qt.Assert(t, has, qt.IsTrue)
 	qt.Assert(t, stime, qt.Equals, time.Time{}) // haven't started retrieval phase yet
 
 	// start retrieval phase
 	arm.SetRetrievalCandidateCount(testCid1, 1)
-	sid, scid, srtime, has := arm.GetStatusFor(testCid1, retriever.RetrievalPhase)
+	sid, scid, srtime, has := arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 	qt.Assert(t, has, qt.IsTrue)
 	qt.Assert(t, sid, qt.Equals, id)
 	qt.Assert(t, scid, qt.Equals, testCid1)
 	qt.Assert(t, time.Since(srtime).Truncate(time.Millisecond).Milliseconds(), qt.Equals, int64(0))
 	qt.Assert(t, srtime, qt.Not(qt.Equals), sqtime) // different phase start time
 
-	_, _, stime, has = arm.GetStatusFor(testCid1, retriever.QueryPhase)
+	_, _, stime, has = arm.GetStatusFor(testCid1, eventpublisher.QueryPhase)
 	qt.Assert(t, has, qt.IsTrue)
 	qt.Assert(t, sid, qt.Equals, id)
 	qt.Assert(t, scid, qt.Equals, testCid1)
 	qt.Assert(t, stime, qt.Equals, sqtime) // should still be the same as original query phase time
 
-	_, _, rtime, has := arm.GetStatusFor(testCid1, retriever.RetrievalPhase)
+	_, _, rtime, has := arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 	qt.Assert(t, has, qt.IsTrue)
 	qt.Assert(t, sid, qt.Equals, id)
 	qt.Assert(t, scid, qt.Equals, testCid1)
@@ -61,26 +62,26 @@ func TestActiveRetrievalsManager_GetStatusFor(t *testing.T) {
 	qt.Assert(t, err, qt.IsNil)
 
 	// statuses with the testCid1 are still the same
-	_, _, stime, has = arm.GetStatusFor(testCid1, retriever.QueryPhase)
+	_, _, stime, has = arm.GetStatusFor(testCid1, eventpublisher.QueryPhase)
 	qt.Assert(t, has, qt.IsTrue)
 	qt.Assert(t, sid, qt.Equals, id)
 	qt.Assert(t, scid, qt.Equals, testCid1)
 	qt.Assert(t, stime, qt.Equals, sqtime)
 
-	_, _, rtime, has = arm.GetStatusFor(testCid1, retriever.RetrievalPhase)
+	_, _, rtime, has = arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 	qt.Assert(t, has, qt.IsTrue)
 	qt.Assert(t, sid, qt.Equals, id)
 	qt.Assert(t, scid, qt.Equals, testCid1)
 	qt.Assert(t, rtime, qt.Equals, srtime)
 
 	// statuses with the testCid2 should also work now
-	_, _, stime, has = arm.GetStatusFor(testCid2, retriever.QueryPhase)
+	_, _, stime, has = arm.GetStatusFor(testCid2, eventpublisher.QueryPhase)
 	qt.Assert(t, has, qt.IsTrue)
 	qt.Assert(t, sid, qt.Equals, id)
 	qt.Assert(t, scid, qt.Equals, testCid1)
 	qt.Assert(t, stime, qt.Equals, sqtime)
 
-	_, _, rtime, has = arm.GetStatusFor(testCid2, retriever.RetrievalPhase)
+	_, _, rtime, has = arm.GetStatusFor(testCid2, eventpublisher.RetrievalPhase)
 	qt.Assert(t, has, qt.IsTrue)
 	qt.Assert(t, sid, qt.Equals, id)
 	qt.Assert(t, scid, qt.Equals, testCid1)
@@ -94,11 +95,11 @@ func TestActiveRetrievalsManager_NoRetrievalPhase(t *testing.T) {
 		qt.Assert(t, err, qt.IsNil)
 
 		arm.QueryCandidatedFinished(testCid1)
-		_, _, _, has := arm.GetStatusFor(testCid1, retriever.RetrievalPhase)
+		_, _, _, has := arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 		qt.Assert(t, has, qt.IsTrue)
 
 		arm.SetRetrievalCandidateCount(testCid1, 0) // should trigger a clean-up
-		_, _, _, has = arm.GetStatusFor(testCid1, retriever.RetrievalPhase)
+		_, _, _, has = arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 		qt.Assert(t, has, qt.IsFalse)
 	})
 
@@ -108,11 +109,11 @@ func TestActiveRetrievalsManager_NoRetrievalPhase(t *testing.T) {
 		qt.Assert(t, err, qt.IsNil)
 
 		arm.SetRetrievalCandidateCount(testCid1, 0)
-		_, _, _, has := arm.GetStatusFor(testCid1, retriever.RetrievalPhase)
+		_, _, _, has := arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 		qt.Assert(t, has, qt.IsTrue)
 
 		arm.QueryCandidatedFinished(testCid1) // should trigger a clean-up
-		_, _, _, has = arm.GetStatusFor(testCid1, retriever.RetrievalPhase)
+		_, _, _, has = arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 		qt.Assert(t, has, qt.IsFalse)
 	})
 }
@@ -124,15 +125,15 @@ func TestActiveRetrievalsManager_BothPhases(t *testing.T) {
 		qt.Assert(t, err, qt.IsNil)
 
 		arm.QueryCandidatedFinished(testCid1)
-		_, _, _, has := arm.GetStatusFor(testCid1, retriever.RetrievalPhase)
+		_, _, _, has := arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 		qt.Assert(t, has, qt.IsTrue)
 
 		arm.SetRetrievalCandidateCount(testCid1, 1)
-		_, _, _, has = arm.GetStatusFor(testCid1, retriever.RetrievalPhase)
+		_, _, _, has = arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 		qt.Assert(t, has, qt.IsTrue)
 
 		arm.RetrievalCandidatedFinished(testCid1, true)
-		_, _, _, has = arm.GetStatusFor(testCid1, retriever.RetrievalPhase)
+		_, _, _, has = arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 		qt.Assert(t, has, qt.IsFalse)
 	})
 
@@ -143,15 +144,15 @@ func TestActiveRetrievalsManager_BothPhases(t *testing.T) {
 		qt.Assert(t, err, qt.IsNil)
 
 		arm.QueryCandidatedFinished(testCid1)
-		_, _, _, has := arm.GetStatusFor(testCid1, retriever.RetrievalPhase)
+		_, _, _, has := arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 		qt.Assert(t, has, qt.IsTrue)
 
 		arm.SetRetrievalCandidateCount(testCid1, 1)
-		_, _, _, has = arm.GetStatusFor(testCid1, retriever.RetrievalPhase)
+		_, _, _, has = arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 		qt.Assert(t, has, qt.IsTrue)
 
 		arm.RetrievalCandidatedFinished(testCid1, false)
-		_, _, _, has = arm.GetStatusFor(testCid1, retriever.RetrievalPhase)
+		_, _, _, has = arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 		qt.Assert(t, has, qt.IsFalse)
 	})
 
@@ -163,21 +164,21 @@ func TestActiveRetrievalsManager_BothPhases(t *testing.T) {
 		arm.QueryCandidatedFinished(testCid1)
 		arm.QueryCandidatedFinished(testCid1)
 		arm.QueryCandidatedFinished(testCid1)
-		_, _, _, has := arm.GetStatusFor(testCid1, retriever.RetrievalPhase)
+		_, _, _, has := arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 		qt.Assert(t, has, qt.IsTrue)
 
 		arm.SetRetrievalCandidateCount(testCid1, 3)
-		_, _, _, has = arm.GetStatusFor(testCid1, retriever.RetrievalPhase)
+		_, _, _, has = arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 		qt.Assert(t, has, qt.IsTrue)
 
 		arm.RetrievalCandidatedFinished(testCid1, false)
-		_, _, _, has = arm.GetStatusFor(testCid1, retriever.RetrievalPhase)
+		_, _, _, has = arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 		qt.Assert(t, has, qt.IsTrue)
 		arm.RetrievalCandidatedFinished(testCid1, false)
-		_, _, _, has = arm.GetStatusFor(testCid1, retriever.RetrievalPhase)
+		_, _, _, has = arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 		qt.Assert(t, has, qt.IsTrue)
 		arm.RetrievalCandidatedFinished(testCid1, false) // expect clean-up
-		_, _, _, has = arm.GetStatusFor(testCid1, retriever.RetrievalPhase)
+		_, _, _, has = arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 		qt.Assert(t, has, qt.IsFalse)
 	})
 
@@ -189,18 +190,18 @@ func TestActiveRetrievalsManager_BothPhases(t *testing.T) {
 		arm.QueryCandidatedFinished(testCid1)
 		arm.QueryCandidatedFinished(testCid1)
 		arm.QueryCandidatedFinished(testCid1)
-		_, _, _, has := arm.GetStatusFor(testCid1, retriever.RetrievalPhase)
+		_, _, _, has := arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 		qt.Assert(t, has, qt.IsTrue)
 
 		arm.SetRetrievalCandidateCount(testCid1, 3)
-		_, _, _, has = arm.GetStatusFor(testCid1, retriever.RetrievalPhase)
+		_, _, _, has = arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 		qt.Assert(t, has, qt.IsTrue)
 
 		arm.RetrievalCandidatedFinished(testCid1, false)
-		_, _, _, has = arm.GetStatusFor(testCid1, retriever.RetrievalPhase)
+		_, _, _, has = arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 		qt.Assert(t, has, qt.IsTrue)
 		arm.RetrievalCandidatedFinished(testCid1, true) // expect early clean-up
-		_, _, _, has = arm.GetStatusFor(testCid1, retriever.RetrievalPhase)
+		_, _, _, has = arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 		qt.Assert(t, has, qt.IsFalse)
 	})
 
@@ -212,22 +213,22 @@ func TestActiveRetrievalsManager_BothPhases(t *testing.T) {
 
 		arm.QueryCandidatedFinished(testCid1)
 		arm.QueryCandidatedFinished(testCid1)
-		_, _, _, has := arm.GetStatusFor(testCid1, retriever.RetrievalPhase)
+		_, _, _, has := arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 		qt.Assert(t, has, qt.IsTrue)
 
 		arm.SetRetrievalCandidateCount(testCid1, 3)
-		_, _, _, has = arm.GetStatusFor(testCid1, retriever.RetrievalPhase)
+		_, _, _, has = arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 		qt.Assert(t, has, qt.IsTrue)
 
 		arm.RetrievalCandidatedFinished(testCid1, false)
-		_, _, _, has = arm.GetStatusFor(testCid1, retriever.RetrievalPhase)
+		_, _, _, has = arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 		qt.Assert(t, has, qt.IsTrue)
 		arm.RetrievalCandidatedFinished(testCid1, true)
-		_, _, _, has = arm.GetStatusFor(testCid1, retriever.RetrievalPhase)
+		_, _, _, has = arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 		qt.Assert(t, has, qt.IsTrue)
 
 		arm.QueryCandidatedFinished(testCid1) // delayed clean-up
-		_, _, _, has = arm.GetStatusFor(testCid1, retriever.RetrievalPhase)
+		_, _, _, has = arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 		qt.Assert(t, has, qt.IsFalse)
 	})
 }

@@ -1,6 +1,4 @@
-package retriever
-
-// Originally from filclient/rep/event.go
+package eventpublisher
 
 import (
 	"time"
@@ -12,12 +10,16 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
+type Phase string
+
 const (
 	// QueryPhase involves a connect, query-ask, success|failure
 	QueryPhase Phase = "query"
 	// RetrievalPhase involves the full data retrieval: connect, proposed, accepted, first-byte-received, success|failure
 	RetrievalPhase Phase = "retrieval"
 )
+
+type Code string
 
 const (
 	ConnectedCode  Code = "connected"
@@ -28,20 +30,6 @@ const (
 	FailureCode    Code = "failure"
 	SuccessCode    Code = "success"
 )
-
-var (
-	_ RetrievalEvent = RetrievalEventConnect{}
-	_ RetrievalEvent = RetrievalEventQueryAsk{}
-	_ RetrievalEvent = RetrievalEventProposed{}
-	_ RetrievalEvent = RetrievalEventAccepted{}
-	_ RetrievalEvent = RetrievalEventFirstByte{}
-	_ RetrievalEvent = RetrievalEventFailure{}
-	_ RetrievalEvent = RetrievalEventSuccess{}
-)
-
-type Code string
-
-type Phase string
 
 type RetrievalEvent interface {
 	// Code returns the type of event this is
@@ -57,6 +45,16 @@ type RetrievalEvent interface {
 	// this retrieval was requested via peer address
 	StorageProviderAddr() address.Address
 }
+
+var (
+	_ RetrievalEvent = RetrievalEventConnect{}
+	_ RetrievalEvent = RetrievalEventQueryAsk{}
+	_ RetrievalEvent = RetrievalEventProposed{}
+	_ RetrievalEvent = RetrievalEventAccepted{}
+	_ RetrievalEvent = RetrievalEventFirstByte{}
+	_ RetrievalEvent = RetrievalEventFailure{}
+	_ RetrievalEvent = RetrievalEventSuccess{}
+)
 
 type RetrievalEventConnect struct {
 	phase               Phase

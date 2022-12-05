@@ -89,8 +89,8 @@ func TestQueryFiltering(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			mockFilc := &MockFilClient{returns_queryResponses: tc.queryResponses}
-			r, err := NewRetriever(context.Background(), RetrieverConfig{PaidRetrievals: tc.paid}, mockFilc, &DummyEndpoint{}, DummyBlockConfirmer)
+			mockClient := &MockClient{returns_queryResponses: tc.queryResponses}
+			r, err := NewRetriever(context.Background(), RetrieverConfig{PaidRetrievals: tc.paid}, mockClient, &DummyEndpoint{}, DummyBlockConfirmer)
 			qt.Assert(t, err, qt.IsNil)
 
 			candidates := []RetrievalCandidate{}
@@ -106,26 +106,26 @@ func TestQueryFiltering(t *testing.T) {
 			r.retrieveFromBestCandidate(context.Background(), id, cid.Undef, candidates)
 
 			// expected all queries
-			qt.Assert(t, len(mockFilc.received_queriedPeers), qt.Equals, len(tc.queryResponses))
+			qt.Assert(t, len(mockClient.received_queriedPeers), qt.Equals, len(tc.queryResponses))
 			for p := range tc.queryResponses {
-				qt.Assert(t, mockFilc.received_queriedPeers, qt.Contains, peer.ID(p))
+				qt.Assert(t, mockClient.received_queriedPeers, qt.Contains, peer.ID(p))
 			}
 
 			// verify that the list of retrievals matches the expected filtered list
-			qt.Assert(t, len(mockFilc.received_retrievedPeers), qt.Equals, len(tc.expectedPeers))
+			qt.Assert(t, len(mockClient.received_retrievedPeers), qt.Equals, len(tc.expectedPeers))
 			for _, p := range tc.expectedPeers {
-				qt.Assert(t, mockFilc.received_retrievedPeers, qt.Contains, peer.ID(p))
+				qt.Assert(t, mockClient.received_retrievedPeers, qt.Contains, peer.ID(p))
 			}
 		})
 	}
 }
 
-var _ FilClient = (*MockFilClient)(nil)
+var _ RetrievalClient = (*MockClient)(nil)
 var _ Endpoint = (*DummyEndpoint)(nil)
 var _ BlockConfirmer = DummyBlockConfirmer
 var testDealIdGen = shared.NewTimeCounter()
 
-type MockFilClient struct {
+type MockClient struct {
 	lk                      sync.Mutex
 	received_queriedPeers   []peer.ID
 	received_retrievedPeers []peer.ID
@@ -133,7 +133,7 @@ type MockFilClient struct {
 	returns_queryResponses map[string]retrievalmarket.QueryResponse
 }
 
-func (dfc *MockFilClient) RetrievalProposalForAsk(ask *retrievalmarket.QueryResponse, c cid.Cid, optionalSelector ipld.Node) (*retrievalmarket.DealProposal, error) {
+func (mc *MockClient) RetrievalProposalForAsk(ask *retrievalmarket.QueryResponse, c cid.Cid, optionalSelector ipld.Node) (*retrievalmarket.DealProposal, error) {
 	if optionalSelector == nil {
 		optionalSelector = selectorparse.CommonSelector_ExploreAllRecursively
 	}
@@ -156,32 +156,32 @@ func (dfc *MockFilClient) RetrievalProposalForAsk(ask *retrievalmarket.QueryResp
 	}, nil
 }
 
-func (dfc *MockFilClient) RetrievalQueryToPeer(ctx context.Context, minerPeer peer.AddrInfo, pcid cid.Cid) (*retrievalmarket.QueryResponse, error) {
-	dfc.lk.Lock()
-	dfc.received_queriedPeers = append(dfc.received_queriedPeers, minerPeer.ID)
-	dfc.lk.Unlock()
+func (mc *MockClient) RetrievalQueryToPeer(ctx context.Context, minerPeer peer.AddrInfo, pcid cid.Cid) (*retrievalmarket.QueryResponse, error) {
+	mc.lk.Lock()
+	mc.received_queriedPeers = append(mc.received_queriedPeers, minerPeer.ID)
+	mc.lk.Unlock()
 
-	if qr, ok := dfc.returns_queryResponses[string(minerPeer.ID)]; ok {
+	if qr, ok := mc.returns_queryResponses[string(minerPeer.ID)]; ok {
 		return &qr, nil
 	}
 	return &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseUnavailable}, nil
 }
 
-func (dfc *MockFilClient) RetrieveContentFromPeerAsync(
+func (mc *MockClient) RetrieveContentFromPeerAsync(
 	ctx context.Context,
 	peerID peer.ID,
 	minerWallet address.Address,
 	proposal *retrievalmarket.DealProposal,
 ) (<-chan RetrievalResult, <-chan uint64, func()) {
-	dfc.lk.Lock()
-	dfc.received_retrievedPeers = append(dfc.received_retrievedPeers, peerID)
-	dfc.lk.Unlock()
+	mc.lk.Lock()
+	mc.received_retrievedPeers = append(mc.received_retrievedPeers, peerID)
+	mc.lk.Unlock()
 	resChan := make(chan RetrievalResult, 1)
 	resChan <- RetrievalResult{RetrievalStats: nil, Err: errors.New("nope")}
 	return resChan, nil, func() {}
 }
 
-func (*MockFilClient) SubscribeToRetrievalEvents(subscriber RetrievalSubscriber) {}
+func (*MockClient) SubscribeToRetrievalEvents(subscriber RetrievalSubscriber) {}
 
 type DummyEndpoint struct{}
 
