@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -29,6 +30,8 @@ var (
 	ErrRetrievalRegistrationFailed = errors.New("retrieval registration failed")
 	ErrRetrievalFailed             = errors.New("retrieval failed")
 	ErrAllRetrievalsFailed         = errors.New("all retrievals failed")
+	ErrAllQueriesFailed            = errors.New("all queries failed")
+	ErrRetrievalTimedOut           = errors.New("retrieval timed out")
 )
 
 type ErrRetrievalAlreadyRunning struct {
@@ -130,6 +133,129 @@ func (retriever *Retriever) RegisterListener(listener RetrievalEventListener) fu
 	return retriever.eventManager.RegisterListener(listener)
 }
 
+func (retriever *Retriever) Request(cid cid.Cid) error {
+	ctx := context.Background()
+
+	getStorageProviderTimeout := func(storageProviderId peer.ID) time.Duration {
+		return retriever.config.GetMinerConfig(storageProviderId).RetrievalTimeout
+	}
+
+	isAcceptableStorageProvider := func(storageProviderId peer.ID) bool {
+		// Skip blacklist
+		if retriever.config.MinerBlacklist[storageProviderId] {
+			return false
+		}
+
+		// Skip non-whitelist IF the whitelist isn't empty
+		if len(retriever.config.MinerWhitelist) > 0 && !retriever.config.MinerWhitelist[storageProviderId] {
+			return false
+		}
+
+		// Skip suspended SPs from the minerMonitor
+		if retriever.minerMonitor.suspended(storageProviderId) {
+			return false
+		}
+
+		// Skip if we are currently at our maximum concurrent retrievals for this SP
+		// since we likely won't be able to retrieve from them at the moment even if
+		// query is successful
+		minerConfig := retriever.config.GetMinerConfig(storageProviderId)
+		if minerConfig.MaxConcurrentRetrievals > 0 &&
+			retriever.activeRetrievals.GetActiveRetrievalCountFor(storageProviderId) >= minerConfig.MaxConcurrentRetrievals {
+			return false
+		}
+
+		return true
+	}
+
+	isAcceptableQueryResponse := func(queryResponse *retrievalmarket.QueryResponse) bool {
+		// filter out paid retrievals if necessary
+		return retriever.config.PaidRetrievals || totalCost(queryResponse).Equals(big.Zero())
+	}
+
+	// setup
+	retrieval := NewCidRetrieval(
+		retriever.endpoint,
+		retriever.filClient,
+		getStorageProviderTimeout,
+		isAcceptableStorageProvider,
+		isAcceptableQueryResponse,
+		cid,
+	)
+
+	var retrievalId uuid.UUID // TODO: use this
+	var candidateCount int
+	var failedCount int64
+
+	retrieval.OnCandidatesFound(func(foundCount int) error {
+		if foundCount > 0 {
+			stats.Record(ctx, metrics.RequestWithIndexerCandidatesCount.M(1))
+		}
+		stats.Record(ctx, metrics.IndexerCandidatesPerRequestCount.M(int64(foundCount)))
+		return nil
+	})
+	retrieval.OnCandidatesFiltered(func(filteredCount int) error {
+		candidateCount = filteredCount
+		var err error
+		retrievalId, err = retriever.activeRetrievals.New(cid, filteredCount, 1)
+		if err != nil {
+			return err
+		}
+		stats.Record(ctx, metrics.RequestWithIndexerCandidatesFilteredCount.M(1))
+		return nil
+	})
+	retrieval.OnErrorQueryingCandidate(func(storageProviderId peer.ID, err error) {
+		retriever.minerMonitor.recordFailure(storageProviderId)
+	})
+	retrieval.OnErrorRetrievingFromCandidate(func(storageProviderId peer.ID, err error) {
+		// TODO: if timeout
+		if errors.Is(err, ErrRetrievalTimedOut) {
+			retriever.OnRetrievalEvent(NewRetrievalEventFailure(
+				RetrievalPhase,
+				query.candidate.RootCid, // TODO: get this
+				storageProviderId,
+				address.Undef,
+				fmt.Sprintf("timeout after %s", getStorageProviderTimeout(storageProviderId)),
+			))
+		}
+		atomic.AddInt64(&failedCount, 1)
+		retriever.minerMonitor.recordFailure(storageProviderId)
+	})
+	retrieval.OnRetrievingFromCandidate(func(i peer.ID) error {
+		// TODO: something with retrievalId
+		return nil
+	})
+
+	// retrieve
+	retrievalStats, err := retrieval.RetrieveCid(ctx)
+	if err != nil {
+		stats.Record(ctx, metrics.FailedRetrievalsPerRequestCount.M(int64(candidateCount)))
+		return err
+	}
+
+	log.Infof(
+		"Successfully retrieved from miner %s for %s\n"+
+			"\tDuration: %s\n"+
+			"\tBytes Received: %s\n"+
+			"\tTotal Payment: %s",
+		retrievalStats.StorageProviderId,
+		formatCidAndRoot(cid, retrievalStats.RootCid, false),
+		retrievalStats.Duration,
+		humanize.IBytes(retrievalStats.Size),
+		types.FIL(retrievalStats.TotalPayment),
+	)
+
+	stats.Record(ctx, metrics.RetrievalDealSuccessCount.M(1))
+	stats.Record(ctx, metrics.RetrievalDealDuration.M(retrievalStats.Duration.Seconds()))
+	stats.Record(ctx, metrics.RetrievalDealSize.M(int64(retrievalStats.Size)))
+	stats.Record(ctx, metrics.RetrievalDealCost.M(retrievalStats.TotalPayment.Int64()))
+	stats.Record(ctx, metrics.FailedRetrievalsPerRequestCount.M(atomic.LoadInt64(&failedCount)))
+
+	return nil
+}
+
+// TODO: remove most of the stuff below here -----------------------------------
+
 // Request will tell the retriever to start trying to retrieve a certain CID. If
 // there are no candidates available, this function will immediately return with
 // an error. If a candidate is found, retrieval will begin in the background and
@@ -140,7 +266,7 @@ func (retriever *Retriever) RegisterListener(listener RetrievalEventListener) fu
 //
 // Possible errors: ErrInvalidEndpointURL, ErrEndpointRequestFailed,
 // ErrEndpointBodyInvalid, ErrNoCandidates
-func (retriever *Retriever) Request(cid cid.Cid) error {
+func (retriever *Retriever) RequestOld(cid cid.Cid) error {
 	// TODO: before looking up candidates from the endpoint, we could cache
 	// candidates and use that cached info. We only really have to look up an
 	// up-to-date candidate list from the endpoint if we need to begin a new
@@ -523,27 +649,6 @@ func (retriever *Retriever) queryCandidates(ctx context.Context, retrievalId uui
 	wg.Wait()
 
 	return queries
-}
-
-func totalCost(qres *retrievalmarket.QueryResponse) big.Int {
-	return big.Add(big.Mul(qres.MinPricePerByte, big.NewIntUnsigned(qres.Size)), qres.UnsealPrice)
-}
-
-func formatCidAndRoot(cid cid.Cid, root cid.Cid, short bool) string {
-	if cid.Equals(root) {
-		return formatCid(cid, short)
-	} else {
-		return fmt.Sprintf("%s (root %s)", formatCid(cid, short), formatCid(root, short))
-	}
-}
-
-func formatCid(cid cid.Cid, short bool) string {
-	str := cid.String()
-	if short {
-		return "..." + str[len(str)-10:]
-	} else {
-		return str
-	}
 }
 
 // Implement RetrievalSubscriber
