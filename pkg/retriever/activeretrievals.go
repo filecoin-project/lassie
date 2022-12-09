@@ -117,7 +117,32 @@ func (arm *ActiveRetrievalsManager) SetRetrievalCandidateCount(retrievalCid cid.
 		return
 	}
 	ar.retrievalCandidateCount = candidateCount
-	ar.retrievalStartTime = time.Now()
+	if ar.retrievalStartTime.IsZero() {
+		ar.retrievalStartTime = time.Now()
+	}
+	log.Debugf("Updated active retrieval for %s to retrieval phase (%d active, %d/%d query candidates, %d/%d retrieval candidates)", retrievalCid, len(arm.arMap), ar.queriesFinished, ar.queryCandidateCount, ar.retrievalsFinished, ar.retrievalCandidateCount)
+	arm.maybeFinish(retrievalCid, ar)
+}
+
+// TODO: remove this if it's not actually needed
+
+// IncrementRetrievalCandidateCount increments the number of storage provider
+// candidate count by one. When the number of finished retrievals equals the
+// total number and the number of finished queries equals the query candidate
+// count the full retrieval is considered complete and can be cleaned up.
+func (arm *ActiveRetrievalsManager) IncrementRetrievalCandidateCount(retrievalCid cid.Cid) {
+	arm.lk.Lock()
+	defer arm.lk.Unlock()
+
+	ar, found := arm.findActiveRetrievalFor(retrievalCid)
+	if !found {
+		log.Errorf("Unexpected active retrieval IncrementRetrievalCandidateCount for %s", retrievalCid)
+		return
+	}
+	ar.retrievalCandidateCount = ar.retrievalCandidateCount
+	if ar.retrievalStartTime.IsZero() {
+		ar.retrievalStartTime = time.Now()
+	}
 	log.Debugf("Updated active retrieval for %s to retrieval phase (%d active, %d/%d query candidates, %d/%d retrieval candidates)", retrievalCid, len(arm.arMap), ar.queriesFinished, ar.queryCandidateCount, ar.retrievalsFinished, ar.retrievalCandidateCount)
 	arm.maybeFinish(retrievalCid, ar)
 }
