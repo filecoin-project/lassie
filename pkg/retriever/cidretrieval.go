@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/retriever/prioritywaitqueue"
@@ -16,28 +15,23 @@ import (
 	"go.uber.org/multierr"
 )
 
-type RetrievalClient interface {
-	RetrievalQueryToPeer(
-		ctx context.Context,
-		minerPeer peer.AddrInfo,
-		pcid cid.Cid,
-	) (*retrievalmarket.QueryResponse, error)
-
-	RetrieveContentFromPeerAsync(
-		ctx context.Context,
-		peerID peer.ID,
-		minerWallet address.Address,
-		proposal *retrievalmarket.DealProposal,
-	) (<-chan RetrievalResult, <-chan uint64, func())
-}
-
 type CounterCallback func(int) error
-type PeerIDCallback func(peer.ID) error
-type PeerIDErrorCallback func(peer.ID, error)
+type CandidateCallback func(RetrievalCandidate) error
+type CandidateErrorCallback func(RetrievalCandidate, error)
 
 type GetStorageProviderTimeout func(peer peer.ID) time.Duration
 type IsAcceptableStorageProvider func(peer peer.ID) bool
 type IsAcceptableQueryResponse func(*retrievalmarket.QueryResponse) bool
+
+type Instrumentation interface {
+	OnRetrievalCandidatesFound(foundCount int) error
+	OnRetrievalCandidatesFiltered(filteredCount int) error
+	OnErrorQueryingRetrievalCandidate(candidate RetrievalCandidate, err error)
+	OnErrorRetrievingFromCandidate(candidate RetrievalCandidate, err error)
+	OnRetrievalQueryForCandidate(candidate RetrievalCandidate, queryResponse *retrievalmarket.QueryResponse)
+	OnFilteredRetrievalQueryForCandidate(candidate RetrievalCandidate, queryResponse *retrievalmarket.QueryResponse)
+	OnRetrievingFromCandidate(candidate RetrievalCandidate)
+}
 
 type CidRetrieval interface {
 	RetrieveCid(ctx context.Context) (*RetrievalStats, error)
@@ -80,6 +74,7 @@ type retrieval struct {
 	Ctx                         context.Context
 	IndexEndpoint               Endpoint
 	Client                      RetrievalClient
+	Instrumentation             Instrumentation
 	Cid                         cid.Cid
 	GetStorageProviderTimeout   GetStorageProviderTimeout
 	IsAcceptableStorageProvider IsAcceptableStorageProvider
@@ -88,18 +83,13 @@ type retrieval struct {
 	WaitQueue  prioritywaitqueue.PriorityWaitQueue[*retrievalmarket.QueryResponse]
 	ResultChan chan runResult
 	FinishChan chan struct{}
-
-	onCandidatesFound              []CounterCallback
-	onCandidatesFiltered           []CounterCallback
-	onRetrievingFromCandidate      []PeerIDCallback
-	onErrorQueryingCandidate       []PeerIDErrorCallback
-	onErrorRetrievingFromCandidate []PeerIDErrorCallback
 }
 
 // NewCidRetrieval creates a new CidRetrieval
 func NewCidRetrieval(
 	indexEndpoint Endpoint,
-	Client RetrievalClient,
+	client RetrievalClient,
+	instrumentation Instrumentation,
 	getStorageProviderTimeout GetStorageProviderTimeout,
 	isAcceptableStorageProvider IsAcceptableStorageProvider,
 	isAcceptableQueryResponse IsAcceptableQueryResponse,
@@ -107,6 +97,8 @@ func NewCidRetrieval(
 ) *retrieval {
 	ret := &retrieval{
 		IndexEndpoint:               indexEndpoint,
+		Client:                      client,
+		Instrumentation:             instrumentation,
 		Cid:                         cid,
 		GetStorageProviderTimeout:   getStorageProviderTimeout,
 		IsAcceptableStorageProvider: isAcceptableStorageProvider,
@@ -116,26 +108,6 @@ func NewCidRetrieval(
 		WaitQueue:                   prioritywaitqueue.New(queryCompare),
 	}
 	return ret
-}
-
-func (ret *retrieval) OnCandidatesFound(cb CounterCallback) {
-	ret.onCandidatesFound = append(ret.onCandidatesFound, cb)
-}
-
-func (ret *retrieval) OnCandidatesFiltered(cb CounterCallback) {
-	ret.onCandidatesFiltered = append(ret.onCandidatesFiltered, cb)
-}
-
-func (ret *retrieval) OnRetrievingFromCandidate(cb PeerIDCallback) {
-	ret.onRetrievingFromCandidate = append(ret.onRetrievingFromCandidate, cb)
-}
-
-func (ret *retrieval) OnErrorQueryingCandidate(cb PeerIDErrorCallback) {
-	ret.onErrorQueryingCandidate = append(ret.onErrorQueryingCandidate, cb)
-}
-
-func (ret *retrieval) OnErrorRetrievingFromCandidate(cb PeerIDErrorCallback) {
-	ret.onErrorRetrievingFromCandidate = append(ret.onErrorRetrievingFromCandidate, cb)
 }
 
 func (ret *retrieval) RetrieveCid(ctx context.Context) (*RetrievalStats, error) {
@@ -154,14 +126,15 @@ func (ret *retrieval) RetrieveCid(ctx context.Context) (*RetrievalStats, error) 
 
 func (ret *retrieval) collectResults(candidates []RetrievalCandidate) (*RetrievalStats, error) {
 	var finishedCount int
-	var merr error
+	var rmerr error
+	var qmerr error
 	var stats *RetrievalStats
 	for result := range ret.ResultChan {
 		if result.QueryError != nil {
-			merr = multierr.Append(merr, result.QueryError)
+			qmerr = multierr.Append(qmerr, result.QueryError)
 		}
 		if result.RetrievalError != nil {
-			merr = multierr.Append(merr, result.RetrievalError)
+			rmerr = multierr.Append(rmerr, result.RetrievalError)
 		}
 		if result.RetrievalResult != nil {
 			stats = result.RetrievalResult
@@ -170,15 +143,22 @@ func (ret *retrieval) collectResults(candidates []RetrievalCandidate) (*Retrieva
 		// have we got all responses but no success?
 		finishedCount++
 		if finishedCount >= len(candidates) {
-			if merr == nil {
-				merr = ErrAllQueriesFailed
-			}
 			break
 		}
 	}
 	// signals to goroutines to bail
 	close(ret.FinishChan)
-	return stats, merr
+
+	if stats == nil {
+		if rmerr == nil {
+			// we failed, but didn't get any retrieval errors, so must have only got query errors
+			rmerr = ErrAllQueriesFailed
+		} else {
+			// we failed, and got only retrieval errors
+			rmerr = multierr.Append(rmerr, ErrAllRetrievalsFailed)
+		}
+	}
+	return stats, multierr.Append(qmerr, rmerr)
 }
 
 // startRetrievals will begin async retrievals from the list of candidates
@@ -194,11 +174,7 @@ func (ret *retrieval) findCandidates(ctx context.Context) ([]RetrievalCandidate,
 		return nil, fmt.Errorf("could not get retrieval candidates for %s: %w", ret.Cid, err)
 	}
 
-	for _, cb := range ret.onCandidatesFound {
-		if err := cb(len(candidates)); err != nil {
-			return nil, err
-		}
-	}
+	ret.Instrumentation.OnRetrievalCandidatesFound(len(candidates))
 
 	if len(candidates) == 0 {
 		return nil, ErrNoCandidates
@@ -211,10 +187,8 @@ func (ret *retrieval) findCandidates(ctx context.Context) ([]RetrievalCandidate,
 		}
 	}
 
-	for _, cb := range ret.onCandidatesFiltered {
-		if err := cb(len(acceptableCandidates)); err != nil {
-			return nil, err
-		}
+	if err := ret.Instrumentation.OnRetrievalCandidatesFiltered(len(acceptableCandidates)); err != nil {
+		return nil, err
 	}
 
 	if len(acceptableCandidates) == 0 {
@@ -252,20 +226,21 @@ func (ret *retrieval) sendResult(result runResult) bool {
 func (ret *retrieval) runRetrieval(ctx context.Context, candidate RetrievalCandidate) {
 	queryResponse, err := ret.queryCandidate(ctx, candidate)
 	if err != nil {
-		for _, cb := range ret.onErrorQueryingCandidate {
-			cb(candidate.MinerPeer.ID, err)
-		}
-		if !ret.sendResult(runResult{QueryError: err}) {
-			return
-		}
+		ret.Instrumentation.OnErrorQueryingRetrievalCandidate(candidate, err)
+		ret.sendResult(runResult{QueryError: err})
 		return
 	}
 
-	if queryResponse.Status != retrievalmarket.QueryResponseAvailable || !ret.IsAcceptableQueryResponse(queryResponse) {
+	ret.Instrumentation.OnRetrievalQueryForCandidate(candidate, queryResponse)
+
+	if queryResponse.Status != retrievalmarket.QueryResponseAvailable ||
+		!ret.IsAcceptableQueryResponse(queryResponse) {
 		// bail, with no result or error
 		ret.sendResult(runResult{})
 		return
 	}
+
+	ret.Instrumentation.OnFilteredRetrievalQueryForCandidate(candidate, queryResponse)
 
 	// priority queue wait
 	done := ret.WaitQueue.Wait(queryResponse)
@@ -276,20 +251,18 @@ func (ret *retrieval) runRetrieval(ctx context.Context, candidate RetrievalCandi
 		return
 	}
 
-	for _, cb := range ret.onRetrievingFromCandidate {
-		if err := cb(candidate.MinerPeer.ID); err != nil {
-			// register a result (that's not from the retrieval), and bail
-			ret.sendResult(runResult{RetrievalError: err})
-			return
-		}
-	}
+	ret.Instrumentation.OnRetrievingFromCandidate(candidate)
+
+	log.Infof(
+		"Attempting retrieval from miner %s for %s",
+		candidate.MinerPeer.ID,
+		formatCidAndRoot(ret.Cid, candidate.RootCid, false),
+	)
 
 	stats, err := ret.retrieveFromCandidate(ctx, candidate, queryResponse)
 
 	if err != nil {
-		for _, cb := range ret.onErrorRetrievingFromCandidate {
-			cb(candidate.MinerPeer.ID, err)
-		}
+		ret.Instrumentation.OnErrorRetrievingFromCandidate(candidate, err)
 		ret.sendResult(runResult{RetrievalError: err})
 	} else {
 		ret.sendResult(runResult{RetrievalResult: stats})
@@ -314,10 +287,6 @@ func (ret *retrieval) queryCandidate(ctx context.Context, candidate RetrievalCan
 			err,
 		)
 		return nil, err
-	}
-
-	if query.Status != retrievalmarket.QueryResponseAvailable {
-		return nil, nil
 	}
 
 	return query, nil
