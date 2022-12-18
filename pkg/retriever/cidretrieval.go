@@ -96,9 +96,7 @@ type retrieval struct {
 	IsAcceptableStorageProvider IsAcceptableStorageProvider
 	IsAcceptableQueryResponse   IsAcceptableQueryResponse
 
-	WaitQueue  prioritywaitqueue.PriorityWaitQueue[*retrievalmarket.QueryResponse]
-	ResultChan chan runResult
-	FinishChan chan struct{}
+	WaitQueue prioritywaitqueue.PriorityWaitQueue[*retrievalmarket.QueryResponse]
 }
 
 // NewCidRetrieval creates a new CidRetrieval
@@ -119,8 +117,6 @@ func NewCidRetrieval(
 		GetStorageProviderTimeout:   getStorageProviderTimeout,
 		IsAcceptableStorageProvider: isAcceptableStorageProvider,
 		IsAcceptableQueryResponse:   isAcceptableQueryResponse,
-		ResultChan:                  make(chan runResult),
-		FinishChan:                  make(chan struct{}),
 		WaitQueue:                   prioritywaitqueue.New(queryCompare),
 	}
 	return ret
@@ -136,16 +132,19 @@ func (ret *retrieval) RetrieveCid(ctx context.Context) (*RetrievalStats, error) 
 		return nil, err
 	}
 
-	ret.startRetrievals(ctx, candidates)
-	return ret.collectResults(candidates)
+	resultChan := make(chan runResult, len(candidates))
+	stopChan := make(chan struct{})
+
+	ret.startRetrievals(ctx, candidates, resultChan, stopChan)
+	return ret.collectResults(resultChan, stopChan)
 }
 
-func (ret *retrieval) collectResults(candidates []RetrievalCandidate) (*RetrievalStats, error) {
+func (ret *retrieval) collectResults(resultChan chan runResult, stopChan chan struct{}) (*RetrievalStats, error) {
 	var finishedCount int
 	var rmerr error
 	var qmerr error
 	var stats *RetrievalStats
-	for result := range ret.ResultChan {
+	for result := range resultChan {
 		if result.QueryError != nil {
 			qmerr = multierr.Append(qmerr, result.QueryError)
 		}
@@ -158,12 +157,12 @@ func (ret *retrieval) collectResults(candidates []RetrievalCandidate) (*Retrieva
 		}
 		// have we got all responses but no success?
 		finishedCount++
-		if finishedCount >= len(candidates) {
+		if finishedCount >= cap(resultChan) {
 			break
 		}
 	}
 	// signals to goroutines to bail
-	close(ret.FinishChan)
+	close(stopChan)
 
 	if stats == nil {
 		if rmerr == nil {
@@ -178,9 +177,24 @@ func (ret *retrieval) collectResults(candidates []RetrievalCandidate) (*Retrieva
 }
 
 // startRetrievals will begin async retrievals from the list of candidates
-func (ret *retrieval) startRetrievals(ctx context.Context, candidates []RetrievalCandidate) {
+func (ret *retrieval) startRetrievals(ctx context.Context, candidates []RetrievalCandidate, resultChan chan runResult, stopChan chan struct{}) {
 	for _, candidate := range candidates {
-		go ret.runRetrieval(ctx, candidate)
+		// go ret.runRetrieval(ctx, candidate, resultChan)
+		go func(candidate RetrievalCandidate) {
+			// try-receive stop channel to exit early
+			select {
+			case <-stopChan:
+				return
+			default:
+			}
+
+			// Return the result of the retrieval to the result channel
+			select {
+			case <-stopChan:
+				return
+			case resultChan <- ret.runRetrieval(ctx, candidate):
+			}
+		}(candidate)
 	}
 }
 
@@ -214,37 +228,14 @@ func (ret *retrieval) findCandidates(ctx context.Context) ([]RetrievalCandidate,
 	return acceptableCandidates, nil
 }
 
-// canSendResult will indicate whether a result is likely to be accepted (true)
-// or whether the retrieval is already finished (likely by a success)
-func (ret *retrieval) canSendResult() bool {
-	select {
-	case <-ret.FinishChan:
-		return false
-	default:
-	}
-	return true
-}
-
-// sendResult will only send a result to the parent goroutine if a retrieval has
-// finished (likely by a success), otherwise it will send the result
-func (ret *retrieval) sendResult(result runResult) bool {
-	select {
-	case <-ret.FinishChan:
-		return false
-	case ret.ResultChan <- result:
-	}
-	return true
-}
-
 // runRetrieval is a singular CID:SP retrieval, expected to be run in a goroutine
 // and coordinate with other candidate retrievals to block after query phase and
 // only attempt one retrieval-proper at a time.
-func (ret *retrieval) runRetrieval(ctx context.Context, candidate RetrievalCandidate) {
+func (ret *retrieval) runRetrieval(ctx context.Context, candidate RetrievalCandidate) runResult {
 	queryResponse, err := ret.queryCandidate(ctx, candidate)
 	if err != nil {
 		ret.Instrumentation.OnErrorQueryingRetrievalCandidate(candidate, err)
-		ret.sendResult(runResult{QueryError: err})
-		return
+		return runResult{QueryError: err}
 	}
 
 	ret.Instrumentation.OnRetrievalQueryForCandidate(candidate, queryResponse)
@@ -252,8 +243,7 @@ func (ret *retrieval) runRetrieval(ctx context.Context, candidate RetrievalCandi
 	if queryResponse.Status != retrievalmarket.QueryResponseAvailable ||
 		!ret.IsAcceptableQueryResponse(queryResponse) {
 		// bail, with no result or error
-		ret.sendResult(runResult{})
-		return
+		return runResult{}
 	}
 
 	ret.Instrumentation.OnFilteredRetrievalQueryForCandidate(candidate, queryResponse)
@@ -261,11 +251,6 @@ func (ret *retrieval) runRetrieval(ctx context.Context, candidate RetrievalCandi
 	// priority queue wait
 	done := ret.WaitQueue.Wait(queryResponse)
 	defer done()
-
-	if !ret.canSendResult() {
-		// retrieval already finished, don't proceed
-		return
-	}
 
 	ret.Instrumentation.OnRetrievingFromCandidate(candidate)
 
@@ -276,13 +261,12 @@ func (ret *retrieval) runRetrieval(ctx context.Context, candidate RetrievalCandi
 	)
 
 	stats, err := ret.retrieveFromCandidate(ctx, candidate, queryResponse)
-
 	if err != nil {
 		ret.Instrumentation.OnErrorRetrievingFromCandidate(candidate, err)
-		ret.sendResult(runResult{RetrievalError: err})
-	} else {
-		ret.sendResult(runResult{RetrievalResult: stats})
+		return runResult{RetrievalError: err}
 	}
+
+	return runResult{RetrievalResult: stats}
 }
 
 func (ret *retrieval) queryCandidate(ctx context.Context, candidate RetrievalCandidate) (*retrievalmarket.QueryResponse, error) {
