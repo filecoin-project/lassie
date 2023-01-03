@@ -9,9 +9,9 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-state-types/big"
-	"github.com/filecoin-project/lassie/pkg/retriever/prioritywaitqueue"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/rvagg/go-prioritywaitqueue"
 	"go.uber.org/multierr"
 )
 
@@ -24,12 +24,19 @@ type IsAcceptableStorageProvider func(peer peer.ID) bool
 type IsAcceptableQueryResponse func(*retrievalmarket.QueryResponse) bool
 
 type Instrumentation interface {
+	// OnRetrievalCandidatesFound is called once after querying the indexer
 	OnRetrievalCandidatesFound(foundCount int) error
+	// OnRetrievalCandidatesFiltered is called once after filtering is applied to indexer candidates
 	OnRetrievalCandidatesFiltered(filteredCount int) error
+	// OnErrorQueryingRetrievalCandidate may be called up to once per retrieval candidate
 	OnErrorQueryingRetrievalCandidate(candidate RetrievalCandidate, err error)
+	// OnErrorRetrievingFromCandidate may be called up to once per retrieval candidate
 	OnErrorRetrievingFromCandidate(candidate RetrievalCandidate, err error)
+	// OnRetrievalQueryForCandidate may be called up to once per retrieval candidate
 	OnRetrievalQueryForCandidate(candidate RetrievalCandidate, queryResponse *retrievalmarket.QueryResponse)
+	// OnFilteredRetrievalQueryForCandidate may be called up to once per retrieval candidate
 	OnFilteredRetrievalQueryForCandidate(candidate RetrievalCandidate, queryResponse *retrievalmarket.QueryResponse)
+	// OnRetrievingFromCandidate may be called up to once per retrieval candidate
 	OnRetrievingFromCandidate(candidate RetrievalCandidate)
 }
 
