@@ -238,16 +238,21 @@ func (ret *retrieval) runRetrieval(ctx context.Context, candidate RetrievalCandi
 		return
 	}
 
+	fmt.Println("queried", string(candidate.MinerPeer.ID))
+
 	ret.Instrumentation.OnRetrievalQueryForCandidate(candidate, queryResponse)
 
 	if queryResponse.Status != retrievalmarket.QueryResponseAvailable ||
 		!ret.IsAcceptableQueryResponse(queryResponse) {
 		// bail, with no result or error
+		fmt.Println("unacceptable, bailing on", string(candidate.MinerPeer.ID))
 		ret.sendResult(runResult{})
 		return
 	}
 
 	ret.Instrumentation.OnFilteredRetrievalQueryForCandidate(candidate, queryResponse)
+
+	fmt.Println("filtered", string(candidate.MinerPeer.ID))
 
 	// priority queue wait
 	done := ret.WaitQueue.Wait(queryResponse)
@@ -255,10 +260,12 @@ func (ret *retrieval) runRetrieval(ctx context.Context, candidate RetrievalCandi
 
 	if !ret.canSendResult() {
 		// retrieval already finished, don't proceed
+		fmt.Println("bailing early on", string(candidate.MinerPeer.ID))
 		return
 	}
 
 	ret.Instrumentation.OnRetrievingFromCandidate(candidate)
+	fmt.Println("retrieveving from", string(candidate.MinerPeer.ID))
 
 	log.Infof(
 		"Attempting retrieval from miner %s for %s",
