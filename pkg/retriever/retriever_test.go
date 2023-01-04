@@ -10,6 +10,7 @@ import (
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-fil-markets/shared"
 	"github.com/filecoin-project/go-state-types/big"
+	"github.com/filecoin-project/lassie/pkg/eventpublisher"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -181,7 +182,7 @@ func (mc *MockClient) RetrieveContentFromPeerAsync(
 	return resChan, nil, func() {}
 }
 
-func (*MockClient) SubscribeToRetrievalEvents(subscriber RetrievalSubscriber) {}
+func (*MockClient) SubscribeToRetrievalEvents(subscriber eventpublisher.RetrievalSubscriber) {}
 
 type DummyEndpoint struct{}
 
