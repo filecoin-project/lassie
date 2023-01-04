@@ -7,11 +7,11 @@ import (
 	"sync"
 	"time"
 
-	datatransfer "github.com/filecoin-project/go-data-transfer"
-	dtchannelmonitor "github.com/filecoin-project/go-data-transfer/channelmonitor"
-	dtimpl "github.com/filecoin-project/go-data-transfer/impl"
-	dtnetwork "github.com/filecoin-project/go-data-transfer/network"
-	dttransport "github.com/filecoin-project/go-data-transfer/transport/graphsync"
+	datatransfer "github.com/filecoin-project/go-data-transfer/v2"
+	dtchannelmonitor "github.com/filecoin-project/go-data-transfer/v2/channelmonitor"
+	dtimpl "github.com/filecoin-project/go-data-transfer/v2/impl"
+	dtnetwork "github.com/filecoin-project/go-data-transfer/v2/network"
+	dttransport "github.com/filecoin-project/go-data-transfer/v2/transport/graphsync"
 
 	"github.com/filecoin-project/go-address"
 
@@ -154,28 +154,23 @@ func NewClientWithConfig(cfg *Config) (*RetrievalClient, error) {
 		return nil, err
 	}
 
-	err = dataTransfer.RegisterVoucherType(&requestvalidation.StorageDataTransferVoucher{}, nil)
+	err = dataTransfer.RegisterVoucherType(requestvalidation.StorageDataTransferVoucherType, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	err = dataTransfer.RegisterVoucherType(&retrievalmarket.DealProposal{}, nil)
+	err = dataTransfer.RegisterVoucherType(retrievalmarket.DealProposalType, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	err = dataTransfer.RegisterVoucherType(&retrievalmarket.DealPayment{}, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	err = dataTransfer.RegisterVoucherResultType(&retrievalmarket.DealResponse{})
+	err = dataTransfer.RegisterVoucherType(retrievalmarket.DealPaymentType, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	if cfg.RetrievalConfigurer != nil {
-		if err := dataTransfer.RegisterTransportConfigurer(&retrievalmarket.DealProposal{}, cfg.RetrievalConfigurer); err != nil {
+		if err := dataTransfer.RegisterTransportConfigurer(retrievalmarket.DealProposalType, cfg.RetrievalConfigurer); err != nil {
 			return nil, err
 		}
 	}
@@ -333,78 +328,82 @@ func (rc *RetrievalClient) retrieveContentFromPeerWithProgressCallback(
 			return
 		case datatransfer.NewVoucher:
 		case datatransfer.NewVoucherResult:
+			lastVoucher := state.LastVoucherResult()
+			resType, err := retrievalmarket.DealResponseFromNode(lastVoucher.Voucher)
+			if err != nil {
+				log.Errorf("unexpected voucher result received: %s", err.Error())
+				return
+			}
+			if len(resType.Message) != 0 {
+				log.Debugf("Received deal response voucher result %s (%v): %s\n\t%+v", resType.Status, resType.Status, resType.Message, resType)
+			} else {
+				log.Debugf("Received deal response voucher result %s (%v)\n\t%+v", resType.Status, resType.Status, resType)
+			}
 
-			switch resType := state.LastVoucherResult().(type) {
-			case *retrievalmarket.DealResponse:
-				if len(resType.Message) != 0 {
-					log.Debugf("Received deal response voucher result %s (%v): %s\n\t%+v", resType.Status, resType.Status, resType.Message, resType)
+			switch resType.Status {
+			case retrievalmarket.DealStatusAccepted:
+				log.Info("Deal accepted")
+
+				// publish deal accepted event
+				rc.retrievalEventPublisher.Publish(eventpublisher.NewRetrievalEventAccepted(eventpublisher.RetrievalPhase, rootCid, peerID, address.Undef))
+
+			// Respond with a payment voucher when funds are requested
+			case retrievalmarket.DealStatusFundsNeeded, retrievalmarket.DealStatusFundsNeededLastPayment:
+				if willingToPay && paymentRequired {
+					log.Infof("Sending payment voucher (nonce: %v, amount: %v)", nonce, resType.PaymentOwed)
+
+					totalPayment = big.Add(totalPayment, resType.PaymentOwed)
+
+					voucher, shortfall, err := rc.payChanMgr.CreateVoucher(ctx, payChanAddr, paych.SignedVoucher{
+						ChannelAddr: payChanAddr,
+						Lane:        payChanLane,
+						Nonce:       nonce,
+						Amount:      totalPayment,
+					})
+					if err != nil {
+						finish(err)
+						return
+					}
+
+					if big.Cmp(shortfall, big.NewInt(0)) > 0 {
+						finish(fmt.Errorf("not enough funds remaining in payment channel (shortfall = %s)", shortfall))
+						return
+					}
+
+					paymentVoucher := retrievalmarket.BindnodeRegistry.TypeToNode(&retrievalmarket.DealPayment{
+						ID:             proposal.ID,
+						PaymentChannel: payChanAddr,
+						PaymentVoucher: voucher,
+					})
+
+					if err := rc.dataTransfer.SendVoucher(ctx, chanidCopy, datatransfer.TypedVoucher{Type: retrievalmarket.DealPaymentType, Voucher: paymentVoucher}); err != nil {
+						finish(fmt.Errorf("failed to send payment voucher: %w", err))
+						return
+					}
+
+					nonce++
 				} else {
-					log.Debugf("Received deal response voucher result %s (%v)\n\t%+v", resType.Status, resType.Status, resType)
+					finish(fmt.Errorf("the miner requested payment even though this transaction was determined to be zero cost"))
+					return
 				}
-
-				switch resType.Status {
-				case retrievalmarket.DealStatusAccepted:
-					log.Info("Deal accepted")
-
-					// publish deal accepted event
-					rc.retrievalEventPublisher.Publish(eventpublisher.NewRetrievalEventAccepted(eventpublisher.RetrievalPhase, rootCid, peerID, address.Undef))
-
-				// Respond with a payment voucher when funds are requested
-				case retrievalmarket.DealStatusFundsNeeded, retrievalmarket.DealStatusFundsNeededLastPayment:
-					if willingToPay && paymentRequired {
-						log.Infof("Sending payment voucher (nonce: %v, amount: %v)", nonce, resType.PaymentOwed)
-
-						totalPayment = big.Add(totalPayment, resType.PaymentOwed)
-
-						voucher, shortfall, err := rc.payChanMgr.CreateVoucher(ctx, payChanAddr, paych.SignedVoucher{
-							ChannelAddr: payChanAddr,
-							Lane:        payChanLane,
-							Nonce:       nonce,
-							Amount:      totalPayment,
-						})
-						if err != nil {
-							finish(err)
-							return
-						}
-
-						if big.Cmp(shortfall, big.NewInt(0)) > 0 {
-							finish(fmt.Errorf("not enough funds remaining in payment channel (shortfall = %s)", shortfall))
-							return
-						}
-
-						if err := rc.dataTransfer.SendVoucher(ctx, chanidCopy, &retrievalmarket.DealPayment{
-							ID:             proposal.ID,
-							PaymentChannel: payChanAddr,
-							PaymentVoucher: voucher,
-						}); err != nil {
-							finish(fmt.Errorf("failed to send payment voucher: %w", err))
-							return
-						}
-
-						nonce++
-					} else {
-						finish(fmt.Errorf("the miner requested payment even though this transaction was determined to be zero cost"))
-						return
-					}
-				case retrievalmarket.DealStatusRejected:
-					finish(fmt.Errorf("deal rejected: %s", resType.Message))
+			case retrievalmarket.DealStatusRejected:
+				finish(fmt.Errorf("deal rejected: %s", resType.Message))
+				return
+			case retrievalmarket.DealStatusFundsNeededUnseal, retrievalmarket.DealStatusUnsealing:
+				finish(fmt.Errorf("data is sealed"))
+				return
+			case retrievalmarket.DealStatusCancelled:
+				finish(fmt.Errorf("deal cancelled: %s", resType.Message))
+				return
+			case retrievalmarket.DealStatusErrored:
+				finish(fmt.Errorf("deal errored: %s", resType.Message))
+				return
+			case retrievalmarket.DealStatusCompleted:
+				if allBytesReceived {
+					finish(nil)
 					return
-				case retrievalmarket.DealStatusFundsNeededUnseal, retrievalmarket.DealStatusUnsealing:
-					finish(fmt.Errorf("data is sealed"))
-					return
-				case retrievalmarket.DealStatusCancelled:
-					finish(fmt.Errorf("deal cancelled: %s", resType.Message))
-					return
-				case retrievalmarket.DealStatusErrored:
-					finish(fmt.Errorf("deal errored: %s", resType.Message))
-					return
-				case retrievalmarket.DealStatusCompleted:
-					if allBytesReceived {
-						finish(nil)
-						return
-					}
-					dealComplete = true
 				}
+				dealComplete = true
 			}
 		case datatransfer.PauseInitiator:
 		case datatransfer.ResumeInitiator:
@@ -462,7 +461,8 @@ func (rc *RetrievalClient) retrieveContentFromPeerWithProgressCallback(
 	defer unsubscribe()
 
 	// Submit the retrieval deal proposal to the miner
-	newchid, err := rc.dataTransfer.OpenPullDataChannel(ctx, peerID, proposal, proposal.PayloadCID, shared.AllSelector())
+	proposalVoucher := retrievalmarket.BindnodeRegistry.TypeToNode(proposal)
+	newchid, err := rc.dataTransfer.OpenPullDataChannel(ctx, peerID, datatransfer.TypedVoucher{Type: retrievalmarket.DealProposalType, Voucher: proposalVoucher}, proposal.PayloadCID, shared.AllSelector())
 	if err != nil {
 		// We could fail before a successful proposal
 		// publish event failure
