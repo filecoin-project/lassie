@@ -11,12 +11,12 @@ import (
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/ipfs/go-cid"
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/rvagg/go-prioritywaitqueue"
 	"go.uber.org/multierr"
 )
 
-var errQueryCancelled = errors.New("no candidates")
+var errQueryCancelled = errors.New("query cancelled")
 
 type CounterCallback func(int) error
 type CandidateCallback func(RetrievalCandidate) error
@@ -245,12 +245,6 @@ func (retrieval *cidRetrieval) sendResult(result runResult) bool {
 	select {
 	case <-retrieval.FinishChan:
 		return false
-	default:
-	}
-
-	select {
-	case <-retrieval.FinishChan:
-		return false
 	case retrieval.ResultChan <- result:
 		if result.RetrievalResult != nil {
 			// signals to goroutines to bail, this has to be done here, rather than on
@@ -344,9 +338,7 @@ func (retrieval *cidRetrieval) queryCandidate(ctx context.Context, candidate Ret
 		defer timeoutFunc()
 	}
 
-	fmt.Println("Querying", string(candidate.MinerPeer.ID))
 	query, err := retrieval.Client.RetrievalQueryToPeer(ctx, candidate.MinerPeer, candidate.RootCid)
-	fmt.Println("Done querying", string(candidate.MinerPeer.ID), "got err", err, cancelled)
 	if err != nil {
 		if !cancelled {
 			log.Warnf(
@@ -366,7 +358,6 @@ func (retrieval *cidRetrieval) queryCandidate(ctx context.Context, candidate Ret
 func (retrieval *cidRetrieval) retrieveFromCandidate(ctx context.Context, candidate RetrievalCandidate, queryResponse *retrievalmarket.QueryResponse) (*RetrievalStats, error) {
 	proposal, err := RetrievalProposalForAsk(queryResponse, candidate.RootCid, nil)
 	if err != nil {
-		fmt.Println("returning RetrievalProposalForAsk error for", string(candidate.MinerPeer.ID))
 		return nil, fmt.Errorf("%w: %v", ErrProposalCreationFailed, err)
 	}
 
@@ -380,8 +371,6 @@ func (retrieval *cidRetrieval) retrieveFromCandidate(ctx context.Context, candid
 	var lastBytesReceivedTimer, gracefulShutdownTimer *time.Timer
 
 	retrievalTimeout := retrieval.GetStorageProviderTimeout(candidate.MinerPeer.ID)
-
-	fmt.Println("Retrieving", string(candidate.MinerPeer.ID))
 
 	resultChan, progressChan, gracefulShutdown := retrieval.Client.RetrieveContentFromPeerAsync(
 		retrieveCtx,
@@ -426,7 +415,6 @@ waitforcomplete:
 	}
 
 	if timedOut {
-		fmt.Println("returning timeout error for", string(candidate.MinerPeer.ID), time.Since(startTime))
 		return nil, fmt.Errorf(
 			"%w: did not receive data for %s (started %s ago, stopped at %s)",
 			ErrRetrievalTimedOut,
@@ -447,11 +435,9 @@ waitforcomplete:
 	doneLk.Unlock()
 
 	if err != nil {
-		fmt.Println("returning error for", string(candidate.MinerPeer.ID), err)
 		return stats, fmt.Errorf("%w: %v", ErrRetrievalFailed, err)
 	}
 
-	fmt.Println("returning stats for", string(candidate.MinerPeer.ID))
 	return stats, nil
 }
 

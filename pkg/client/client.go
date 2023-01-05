@@ -541,13 +541,13 @@ awaitfinished:
 	rc.retrievalEventPublisher.Publish(eventpublisher.NewRetrievalEventSuccess(eventpublisher.RetrievalPhase, rootCid, peerID, address.Undef, state.Received(), state.ReceivedCidsTotal(), duration, totalPayment))
 
 	return &retriever.RetrievalStats{
-		Peer:         state.OtherPeer(),
-		Size:         state.Received(),
-		Duration:     duration,
-		AverageSpeed: speed,
-		TotalPayment: totalPayment,
-		NumPayments:  int(nonce),
-		AskPrice:     proposal.PricePerByte,
+		StorageProviderId: state.OtherPeer(),
+		Size:              state.Received(),
+		Duration:          duration,
+		AverageSpeed:      speed,
+		TotalPayment:      totalPayment,
+		NumPayments:       int(nonce),
+		AskPrice:          proposal.PricePerByte,
 	}, nil
 }
 

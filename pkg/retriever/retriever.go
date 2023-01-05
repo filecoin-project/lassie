@@ -82,11 +82,6 @@ type Retriever struct {
 	confirm          func(cid.Cid) (bool, error)
 }
 
-type candidateQuery struct {
-	candidate RetrievalCandidate
-	response  *retrievalmarket.QueryResponse
-}
-
 type RetrievalCandidate struct {
 	MinerPeer peer.AddrInfo
 	RootCid   cid.Cid
