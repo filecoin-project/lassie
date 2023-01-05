@@ -159,7 +159,7 @@ func (retrieval *cidRetrieval) RetrieveCid(ctx context.Context, cid cid.Cid) (*R
 		}()
 	}
 
-	return retrieval.collectResults(state, candidates)
+	return retrieval.collectResults(ctx, state, candidates)
 }
 
 // findCandidates calls the indexer for the given CID
@@ -196,28 +196,36 @@ func (retrieval *cidRetrieval) findCandidates(ctx context.Context, cid cid.Cid) 
 // collectResults is responsible for receiving query errors, retrieval errors
 // and retrieval results and aggregating into an appropriate return of either
 // a complete RetrievalStats or an bundled multi-error
-func (retrieval *cidRetrieval) collectResults(state *retrievalState, candidates []RetrievalCandidate) (*RetrievalStats, error) {
+func (retrieval *cidRetrieval) collectResults(ctx context.Context, state *retrievalState, candidates []RetrievalCandidate) (*RetrievalStats, error) {
 	var finishedCount int
 	var queryErrors error
 	var retrievalErrors error
 	var stats *RetrievalStats
-	for result := range state.ResultChan {
-		if result.QueryError != nil {
-			queryErrors = multierr.Append(queryErrors, result.QueryError)
-		}
-		if result.RetrievalError != nil {
-			retrievalErrors = multierr.Append(retrievalErrors, result.RetrievalError)
-		}
-		if result.RetrievalResult != nil {
-			stats = result.RetrievalResult
-			break
-		}
-		// have we got all responses but no success?
-		finishedCount++
-		if finishedCount >= len(candidates) {
-			break
+
+collectcomplete:
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, context.Canceled
+		case result := <-state.ResultChan:
+			if result.QueryError != nil {
+				queryErrors = multierr.Append(queryErrors, result.QueryError)
+			}
+			if result.RetrievalError != nil {
+				retrievalErrors = multierr.Append(retrievalErrors, result.RetrievalError)
+			}
+			if result.RetrievalResult != nil {
+				stats = result.RetrievalResult
+				break collectcomplete
+			}
+			// have we got all responses but no success?
+			finishedCount++
+			if finishedCount >= len(candidates) {
+				break collectcomplete
+			}
 		}
 	}
+
 	// cancel any active queries
 	state.ActiveQueryCancelLk.Lock()
 	for _, ac := range state.ActiveQueryCancel {
