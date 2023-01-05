@@ -113,7 +113,7 @@ func NewCidRetrieval(
 	isAcceptableStorageProvider IsAcceptableStorageProvider,
 	isAcceptableQueryResponse IsAcceptableQueryResponse,
 ) *cidRetrieval {
-	ret := &cidRetrieval{
+	return &cidRetrieval{
 		IndexEndpoint:               indexEndpoint,
 		Client:                      client,
 		Instrumentation:             instrumentation,
@@ -121,12 +121,17 @@ func NewCidRetrieval(
 		IsAcceptableStorageProvider: isAcceptableStorageProvider,
 		IsAcceptableQueryResponse:   isAcceptableQueryResponse,
 	}
-	return ret
+}
+
+// wait is used internally for testing that we do proper goroutine cleanup
+func (retrieval *cidRetrieval) wait() {
+	retrieval.WaitGroup.Wait()
 }
 
 // RetrieveCid begins the retrieval process for a given CID. This call may be
 // safely called across multiple goroutines
 func (retrieval *cidRetrieval) RetrieveCid(ctx context.Context, cid cid.Cid) (*RetrievalStats, error) {
+	// state local to this CID's retrieval
 	state := &retrievalState{
 		Cid:               cid,
 		ResultChan:        make(chan runResult),
@@ -138,69 +143,13 @@ func (retrieval *cidRetrieval) RetrieveCid(ctx context.Context, cid cid.Cid) (*R
 	ctx, cancelCtx := context.WithCancel(ctx)
 	defer cancelCtx()
 
-	// Indexer candidates for CID
+	// fetch indexer candidates for CID
 	candidates, err := retrieval.findCandidates(ctx, cid)
 	if err != nil {
 		return nil, err
 	}
 
-	retrieval.startRetrievals(ctx, state, candidates)
-	return retrieval.collectResults(state, candidates)
-}
-
-// wait is used internally for testing that we do proper goroutine cleanup
-func (retrieval *cidRetrieval) wait() {
-	retrieval.WaitGroup.Wait()
-}
-
-// collectResults is responsible for receiving query errors, retrieval errors
-// and retrieval results and aggregating into an appropriate return of either
-// a complete RetrievalStats or an bundled multi-error
-func (retrieval *cidRetrieval) collectResults(state *retrievalState, candidates []RetrievalCandidate) (*RetrievalStats, error) {
-	var finishedCount int
-	var rmerr error
-	var qmerr error
-	var stats *RetrievalStats
-	for result := range state.ResultChan {
-		if result.QueryError != nil {
-			qmerr = multierr.Append(qmerr, result.QueryError)
-		}
-		if result.RetrievalError != nil {
-			rmerr = multierr.Append(rmerr, result.RetrievalError)
-		}
-		if result.RetrievalResult != nil {
-			stats = result.RetrievalResult
-			break
-		}
-		// have we got all responses but no success?
-		finishedCount++
-		if finishedCount >= len(candidates) {
-			break
-		}
-	}
-	// cancel any active queries
-	state.ActiveQueryCancelLk.Lock()
-	for _, ac := range state.ActiveQueryCancel {
-		(*ac)()
-	}
-	state.ActiveQueryCancelLk.Unlock()
-
-	if stats == nil {
-		if rmerr == nil {
-			// we failed, but didn't get any retrieval errors, so must have only got query errors
-			rmerr = ErrAllQueriesFailed
-		} else {
-			// we failed, and got only retrieval errors
-			rmerr = multierr.Append(rmerr, ErrAllRetrievalsFailed)
-		}
-		return nil, multierr.Append(qmerr, rmerr)
-	}
-	// if we succeeded, drop all the errors that occurred along the way
-	return stats, nil
-}
-
-// startRetrievals will begin async retrievals from the list of candidates
-func (retrieval *cidRetrieval) startRetrievals(ctx context.Context, state *retrievalState, candidates []RetrievalCandidate) {
+	// start retrievals
 	retrieval.WaitGroup.Add(len(candidates))
 	for _, candidate := range candidates {
 		candidate := candidate
@@ -209,6 +158,8 @@ func (retrieval *cidRetrieval) startRetrievals(ctx context.Context, state *retri
 			retrieval.WaitGroup.Done()
 		}()
 	}
+
+	return retrieval.collectResults(state, candidates)
 }
 
 // findCandidates calls the indexer for the given CID
@@ -242,6 +193,103 @@ func (retrieval *cidRetrieval) findCandidates(ctx context.Context, cid cid.Cid) 
 	return acceptableCandidates, nil
 }
 
+// collectResults is responsible for receiving query errors, retrieval errors
+// and retrieval results and aggregating into an appropriate return of either
+// a complete RetrievalStats or an bundled multi-error
+func (retrieval *cidRetrieval) collectResults(state *retrievalState, candidates []RetrievalCandidate) (*RetrievalStats, error) {
+	var finishedCount int
+	var queryErrors error
+	var retrievalErrors error
+	var stats *RetrievalStats
+	for result := range state.ResultChan {
+		if result.QueryError != nil {
+			queryErrors = multierr.Append(queryErrors, result.QueryError)
+		}
+		if result.RetrievalError != nil {
+			retrievalErrors = multierr.Append(retrievalErrors, result.RetrievalError)
+		}
+		if result.RetrievalResult != nil {
+			stats = result.RetrievalResult
+			break
+		}
+		// have we got all responses but no success?
+		finishedCount++
+		if finishedCount >= len(candidates) {
+			break
+		}
+	}
+	// cancel any active queries
+	state.ActiveQueryCancelLk.Lock()
+	for _, ac := range state.ActiveQueryCancel {
+		(*ac)()
+	}
+	state.ActiveQueryCancelLk.Unlock()
+
+	if stats == nil {
+		if retrievalErrors == nil {
+			// we failed, but didn't get any retrieval errors, so must have only got query errors
+			retrievalErrors = ErrAllQueriesFailed
+		} else {
+			// we failed, and got only retrieval errors
+			retrievalErrors = multierr.Append(retrievalErrors, ErrAllRetrievalsFailed)
+		}
+		return nil, multierr.Append(queryErrors, retrievalErrors)
+	}
+	// if we succeeded, drop all the errors that occurred along the way
+	return stats, nil
+}
+
+// runRetrieval is a singular CID:SP retrieval, expected to be run in a goroutine
+// and coordinate with other candidate retrievals to block after query phase and
+// only attempt one retrieval-proper at a time.
+func (retrieval *cidRetrieval) runRetrieval(ctx context.Context, state *retrievalState, candidate RetrievalCandidate) {
+	queryResponse, err := queryCandidate(ctx, retrieval.GetStorageProviderTimeout, retrieval.Client, state, candidate)
+	if err != nil {
+		if err != errQueryCancelled {
+			retrieval.Instrumentation.OnErrorQueryingRetrievalCandidate(candidate, err)
+			state.sendResult(runResult{QueryError: err})
+		}
+		return
+	}
+
+	retrieval.Instrumentation.OnRetrievalQueryForCandidate(candidate, queryResponse)
+
+	if queryResponse.Status != retrievalmarket.QueryResponseAvailable ||
+		!retrieval.IsAcceptableQueryResponse(queryResponse) {
+		// bail, with no result or error
+		state.sendResult(runResult{})
+		return
+	}
+
+	retrieval.Instrumentation.OnFilteredRetrievalQueryForCandidate(candidate, queryResponse)
+
+	// priorityqueue wait; gated here so that only one retrieval can happen at once
+	done := state.WaitQueue.Wait(queryResponse)
+	defer done()
+
+	if !state.canSendResult() {
+		// a retrieval already successfully finished, don't proceed
+		return
+	}
+
+	retrieval.Instrumentation.OnRetrievingFromCandidate(candidate)
+
+	log.Infof(
+		"Attempting retrieval from miner %s for %s",
+		candidate.MinerPeer.ID,
+		formatCidAndRoot(state.Cid, candidate.RootCid, false),
+	)
+
+	stats, err := retrieveFromCandidate(ctx, retrieval.GetStorageProviderTimeout, retrieval.Client, candidate, queryResponse)
+
+	if err != nil {
+		retrieval.Instrumentation.OnErrorRetrievingFromCandidate(candidate, err)
+		state.sendResult(runResult{RetrievalError: err})
+	} else {
+		state.sendResult(runResult{RetrievalResult: stats})
+	}
+}
+
 // canSendResult will indicate whether a result is likely to be accepted (true)
 // or whether the retrieval is already finished (likely by a success)
 func (state *retrievalState) canSendResult() bool {
@@ -270,62 +318,17 @@ func (state *retrievalState) sendResult(result runResult) bool {
 	return true
 }
 
-// runRetrieval is a singular CID:SP retrieval, expected to be run in a goroutine
-// and coordinate with other candidate retrievals to block after query phase and
-// only attempt one retrieval-proper at a time.
-func (retrieval *cidRetrieval) runRetrieval(ctx context.Context, state *retrievalState, candidate RetrievalCandidate) {
-	queryResponse, err := retrieval.queryCandidate(ctx, state, candidate)
-	if err != nil {
-		if err != errQueryCancelled {
-			retrieval.Instrumentation.OnErrorQueryingRetrievalCandidate(candidate, err)
-			state.sendResult(runResult{QueryError: err})
-		}
-		return
-	}
-
-	retrieval.Instrumentation.OnRetrievalQueryForCandidate(candidate, queryResponse)
-
-	if queryResponse.Status != retrievalmarket.QueryResponseAvailable ||
-		!retrieval.IsAcceptableQueryResponse(queryResponse) {
-		// bail, with no result or error
-		state.sendResult(runResult{})
-		return
-	}
-
-	retrieval.Instrumentation.OnFilteredRetrievalQueryForCandidate(candidate, queryResponse)
-
-	// priority queue wait
-	done := state.WaitQueue.Wait(queryResponse)
-	defer done()
-
-	if !state.canSendResult() {
-		// retrieval already finished, don't proceed
-		return
-	}
-
-	retrieval.Instrumentation.OnRetrievingFromCandidate(candidate)
-
-	log.Infof(
-		"Attempting retrieval from miner %s for %s",
-		candidate.MinerPeer.ID,
-		formatCidAndRoot(state.Cid, candidate.RootCid, false),
-	)
-
-	stats, err := retrieval.retrieveFromCandidate(ctx, candidate, queryResponse)
-
-	if err != nil {
-		retrieval.Instrumentation.OnErrorRetrievingFromCandidate(candidate, err)
-		state.sendResult(runResult{RetrievalError: err})
-	} else {
-		state.sendResult(runResult{RetrievalResult: stats})
-	}
-}
-
 // queryCandidate handles the query phase for the given candidate, it will
 // either return a query result or an error, where the error may be a
 // errQueryCancelled which results from a bail due to a successful query from
 // another candidate happening in the meantime
-func (retrieval *cidRetrieval) queryCandidate(ctx context.Context, state *retrievalState, candidate RetrievalCandidate) (*retrievalmarket.QueryResponse, error) {
+func queryCandidate(
+	ctx context.Context,
+	getStorageProviderTimeout GetStorageProviderTimeout,
+	client RetrievalClient,
+	state *retrievalState,
+	candidate RetrievalCandidate,
+) (*retrievalmarket.QueryResponse, error) {
 	// allow this query to be cancelled prematurely from the parent goroutine
 	var cancelled bool
 	var cancelFunc func()
@@ -348,7 +351,7 @@ func (retrieval *cidRetrieval) queryCandidate(ctx context.Context, state *retrie
 		state.ActiveQueryCancelLk.Unlock()
 	}()
 
-	retrievalTimeout := retrieval.GetStorageProviderTimeout(candidate.MinerPeer.ID)
+	retrievalTimeout := getStorageProviderTimeout(candidate.MinerPeer.ID)
 
 	if retrievalTimeout != 0 {
 		var timeoutFunc func()
@@ -356,7 +359,7 @@ func (retrieval *cidRetrieval) queryCandidate(ctx context.Context, state *retrie
 		defer timeoutFunc()
 	}
 
-	query, err := retrieval.Client.RetrievalQueryToPeer(ctx, candidate.MinerPeer, candidate.RootCid)
+	query, err := client.RetrievalQueryToPeer(ctx, candidate.MinerPeer, candidate.RootCid)
 	if err != nil {
 		if !cancelled {
 			log.Warnf(
@@ -376,7 +379,14 @@ func (retrieval *cidRetrieval) queryCandidate(ctx context.Context, state *retrie
 // retrieveFromCandidate handles the full retrieval phase for an individual
 // candidate. We expect only one of these to be running at a time for a given
 // CID retrieval.
-func (retrieval *cidRetrieval) retrieveFromCandidate(ctx context.Context, candidate RetrievalCandidate, queryResponse *retrievalmarket.QueryResponse) (*RetrievalStats, error) {
+func retrieveFromCandidate(
+	ctx context.Context,
+	getStorageProviderTimeout GetStorageProviderTimeout,
+	client RetrievalClient,
+	candidate RetrievalCandidate,
+	queryResponse *retrievalmarket.QueryResponse,
+) (*RetrievalStats, error) {
+
 	proposal, err := RetrievalProposalForAsk(queryResponse, candidate.RootCid, nil)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrProposalCreationFailed, err)
@@ -391,9 +401,9 @@ func (retrieval *cidRetrieval) retrieveFromCandidate(ctx context.Context, candid
 	var done, timedOut bool
 	var lastBytesReceivedTimer, gracefulShutdownTimer *time.Timer
 
-	retrievalTimeout := retrieval.GetStorageProviderTimeout(candidate.MinerPeer.ID)
+	retrievalTimeout := getStorageProviderTimeout(candidate.MinerPeer.ID)
 
-	resultChan, progressChan, gracefulShutdown := retrieval.Client.RetrieveContentFromPeerAsync(
+	resultChan, progressChan, gracefulShutdown := client.RetrieveContentFromPeerAsync(
 		retrieveCtx,
 		candidate.MinerPeer.ID,
 		queryResponse.PaymentAddress,
