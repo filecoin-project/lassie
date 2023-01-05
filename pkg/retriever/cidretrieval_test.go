@@ -12,6 +12,7 @@ import (
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-fil-markets/shared"
 	"github.com/filecoin-project/go-state-types/big"
+	"github.com/filecoin-project/lassie/pkg/eventpublisher"
 	"github.com/google/go-cmp/cmp"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
@@ -92,11 +93,11 @@ func TestQueryFiltering(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			dqr := make(map[string]delayedQueryResponse, 0)
+			dqr := make(map[string]delayedQueryReturn, 0)
 			for p, qr := range tc.queryResponses {
-				dqr[p] = delayedQueryResponse{qr, time.Millisecond * 50}
+				dqr[p] = delayedQueryReturn{&qr, nil, time.Millisecond * 50}
 			}
-			mockFilc := &mockFilClient{returns_queryResponses: dqr}
+			mockClient := &mockClient{returns_queries: dqr}
 			mockInstrumentation := &mockInstrumentation{}
 			candidates := []RetrievalCandidate{}
 			for p := range tc.queryResponses {
@@ -107,7 +108,7 @@ func TestQueryFiltering(t *testing.T) {
 
 			retrieval := NewCidRetrieval(
 				mockEndpoint,
-				mockFilc,
+				mockClient,
 				mockInstrumentation,
 				func(peer peer.ID) time.Duration { return time.Second },
 				func(peer peer.ID) bool { return true },
@@ -122,11 +123,11 @@ func TestQueryFiltering(t *testing.T) {
 
 			// expected all queries
 			qt.Assert(t, mockInstrumentation.errorQueryingRetrievalCandidate, qt.IsNil)
-			qt.Assert(t, len(mockFilc.received_queriedPeers), qt.Equals, len(tc.queryResponses))
+			qt.Assert(t, len(mockClient.received_queriedPeers), qt.Equals, len(tc.queryResponses))
 			qt.Assert(t, len(mockInstrumentation.retrievalQueryForCandidate), qt.Equals, len(tc.queryResponses))
 			for p, qr := range tc.queryResponses {
 				pid := peer.ID(p)
-				qt.Assert(t, mockFilc.received_queriedPeers, qt.Contains, pid)
+				qt.Assert(t, mockClient.received_queriedPeers, qt.Contains, pid)
 				found := false
 				for _, rqfc := range mockInstrumentation.retrievalQueryForCandidate {
 					if rqfc.candidate.MinerPeer.ID == pid {
@@ -138,13 +139,13 @@ func TestQueryFiltering(t *testing.T) {
 			}
 
 			// verify that the list of retrievals matches the expected filtered list
-			qt.Assert(t, len(mockFilc.received_retrievedPeers), qt.Equals, len(tc.expectedPeers))
+			qt.Assert(t, len(mockClient.received_retrievedPeers), qt.Equals, len(tc.expectedPeers))
 			qt.Assert(t, len(mockInstrumentation.filteredRetrievalQueryForCandidate), qt.Equals, len(tc.expectedPeers))
 			qt.Assert(t, len(mockInstrumentation.retrievingFromCandidate), qt.Equals, len(tc.expectedPeers))
 			qt.Assert(t, len(mockInstrumentation.errorRetrievingFromCandidate), qt.Equals, len(tc.expectedPeers)) // they all error!
 			for _, p := range tc.expectedPeers {
 				pid := peer.ID(p)
-				qt.Assert(t, mockFilc.received_retrievedPeers, qt.Contains, pid)
+				qt.Assert(t, mockClient.received_retrievedPeers, qt.Contains, pid)
 				qt.Assert(t, mockInstrumentation.retrievingFromCandidate, qt.Any(qt.CmpEquals(cmp.AllowUnexported(cid.Cid{}))), RetrievalCandidate{peer.AddrInfo{ID: pid}, cid.Undef})
 				found := false
 				for _, rqfc := range mockInstrumentation.filteredRetrievalQueryForCandidate {
@@ -161,48 +162,112 @@ func TestQueryFiltering(t *testing.T) {
 }
 
 func TestRetrievalRacing(t *testing.T) {
+	successfulQueryResponse := retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}
+
 	testCases := []struct {
 		name                      string
-		queryResponses            map[string]delayedQueryResponse
+		queryReturns              map[string]delayedQueryReturn
 		expectedQueryReturns      []string
-		retrievalStats            map[string]delayedRetrievalStats
+		retrievalReturns          map[string]delayedRetrievalReturn
 		expectedRetrievalAttempts []string
 		expectedRetrieval         string
 	}{
 		{
 			name: "single fast",
-			queryResponses: map[string]delayedQueryResponse{
-				"foo": {retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, time.Millisecond * 20},
-				"bar": {retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, time.Millisecond * 200},
-				"baz": {retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, time.Millisecond * 200},
+			queryReturns: map[string]delayedQueryReturn{
+				"foo": {&successfulQueryResponse, nil, time.Millisecond * 20},
+				"bar": {&successfulQueryResponse, nil, time.Millisecond * 200},
+				"baz": {&successfulQueryResponse, nil, time.Millisecond * 200},
 			},
 			expectedQueryReturns: []string{"foo"},
-			retrievalStats: map[string]delayedRetrievalStats{
-				"foo": {RetrievalStats{StorageProviderId: peer.ID("foo"), Size: 1}, time.Millisecond * 20},
-				"bar": {RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}, time.Millisecond * 200},
-				"baz": {RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 3}, time.Millisecond * 200},
+			retrievalReturns: map[string]delayedRetrievalReturn{
+				"foo": {RetrievalResult{RetrievalStats: &RetrievalStats{StorageProviderId: peer.ID("foo"), Size: 1}}, time.Millisecond * 20},
+				"bar": {RetrievalResult{RetrievalStats: &RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}}, time.Millisecond * 200},
+				"baz": {RetrievalResult{RetrievalStats: &RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 3}}, time.Millisecond * 200},
 			},
 			expectedRetrievalAttempts: []string{"foo"},
 			expectedRetrieval:         "foo",
+		},
+		{
+			name: "all queries finished",
+			queryReturns: map[string]delayedQueryReturn{
+				"foo": {&successfulQueryResponse, nil, time.Millisecond * 20},
+				"bar": {&successfulQueryResponse, nil, time.Millisecond * 50},
+				"baz": {&successfulQueryResponse, nil, time.Millisecond * 50},
+			},
+			expectedQueryReturns: []string{"foo", "bar", "baz"},
+			retrievalReturns: map[string]delayedRetrievalReturn{
+				"foo": {RetrievalResult{RetrievalStats: &RetrievalStats{StorageProviderId: peer.ID("foo"), Size: 1}}, time.Millisecond * 200},
+				"bar": {RetrievalResult{RetrievalStats: &RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}}, time.Millisecond * 200},
+				"baz": {RetrievalResult{RetrievalStats: &RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 3}}, time.Millisecond * 200},
+			},
+			expectedRetrievalAttempts: []string{"foo"},
+			expectedRetrieval:         "foo",
+		},
+		{
+			name: "all queries failed",
+			queryReturns: map[string]delayedQueryReturn{
+				"foo": {nil, errors.New("Nope"), time.Millisecond * 20},
+				"bar": {nil, errors.New("Nope"), time.Millisecond * 20},
+				"baz": {nil, errors.New("Nope"), time.Millisecond * 20},
+			},
+			expectedQueryReturns: []string{},
+			retrievalReturns: map[string]delayedRetrievalReturn{
+				"foo": {RetrievalResult{RetrievalStats: &RetrievalStats{StorageProviderId: peer.ID("foo"), Size: 1}}, time.Millisecond},
+				"bar": {RetrievalResult{RetrievalStats: &RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}}, time.Millisecond},
+				"baz": {RetrievalResult{RetrievalStats: &RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 3}}, time.Millisecond},
+			},
+			expectedRetrievalAttempts: []string{},
+		},
+		{
+			name: "first retrieval failed",
+			queryReturns: map[string]delayedQueryReturn{
+				"foo": {&successfulQueryResponse, nil, time.Millisecond * 20},
+				"bar": {&successfulQueryResponse, nil, time.Millisecond * 50},
+				"baz": {&successfulQueryResponse, nil, time.Millisecond * 200},
+			},
+			expectedQueryReturns: []string{"foo", "bar"},
+			retrievalReturns: map[string]delayedRetrievalReturn{
+				"foo": {RetrievalResult{Err: errors.New("Nope")}, time.Millisecond * 20},
+				"bar": {RetrievalResult{RetrievalStats: &RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}}, time.Millisecond * 20},
+				"baz": {RetrievalResult{RetrievalStats: &RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 3}}, time.Millisecond * 20},
+			},
+			expectedRetrievalAttempts: []string{"foo", "bar"},
+			expectedRetrieval:         "bar",
+		},
+		{
+			name: "all retrievals failed",
+			queryReturns: map[string]delayedQueryReturn{
+				"foo": {&successfulQueryResponse, nil, time.Millisecond * 20},
+				"bar": {&successfulQueryResponse, nil, time.Millisecond * 20},
+				"baz": {&successfulQueryResponse, nil, time.Millisecond * 20},
+			},
+			expectedQueryReturns: []string{"foo", "bar", "baz"},
+			retrievalReturns: map[string]delayedRetrievalReturn{
+				"foo": {RetrievalResult{Err: errors.New("Nope")}, time.Millisecond * 100},
+				"bar": {RetrievalResult{Err: errors.New("Nope")}, time.Millisecond * 100},
+				"baz": {RetrievalResult{Err: errors.New("Nope")}, time.Millisecond * 100},
+			},
+			expectedRetrievalAttempts: []string{"foo", "bar", "baz"},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			mockFilc := &mockFilClient{
-				returns_queryResponses: tc.queryResponses,
-				returns_retrievalStats: tc.retrievalStats,
+			mockClient := &mockClient{
+				returns_queries:    tc.queryReturns,
+				returns_retrievals: tc.retrievalReturns,
 			}
 			mockInstrumentation := &mockInstrumentation{}
 			candidates := []RetrievalCandidate{}
-			for p := range tc.queryResponses {
+			for p := range tc.queryReturns {
 				candidates = append(candidates, RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID(p)}})
 			}
 			mockEndpoint := &mockEndpoint{candidates}
 
 			retrieval := NewCidRetrieval(
 				mockEndpoint,
-				mockFilc,
+				mockClient,
 				mockInstrumentation,
 				func(peer peer.ID) time.Duration { return time.Second },
 				func(peer peer.ID) bool { return true },
@@ -212,61 +277,84 @@ func TestRetrievalRacing(t *testing.T) {
 
 			// perform retrieval and make sure we got a result
 			stats, err := retrieval.RetrieveCid(context.Background())
-			qt.Assert(t, stats, qt.IsNotNil)
-			qt.Assert(t, err, qt.IsNil)
+			if tc.expectedRetrieval != "" {
+				qt.Assert(t, stats, qt.IsNotNil)
+				qt.Assert(t, err, qt.IsNil)
+				// make sure we got the final retrieval we wanted
+				qt.Assert(t, stats, qt.Equals, tc.retrievalReturns[tc.expectedRetrieval].retrievalResult.RetrievalStats)
+			} else {
+				qt.Assert(t, stats, qt.IsNil)
+				qt.Assert(t, err, qt.IsNotNil)
+			}
+			waitStart := time.Now()
+			retrieval.wait()
+			waited := time.Since(waitStart)
+			// make sure we didn't have to wait long to have the goroutines cleaned up, they should
+			// return very quickly from the mockClient#RetrievalQueryToPeer after a context cancel
+			qt.Assert(t, waited < time.Millisecond, qt.IsTrue, qt.Commentf("wait took %s", waited))
 
 			// make sure we handled the queries we expected
-			qt.Assert(t, mockInstrumentation.errorQueryingRetrievalCandidate, qt.IsNil)
-			qt.Assert(t, len(mockFilc.received_queriedPeers), qt.Equals, len(tc.queryResponses))
+			var expectedQueryFailures int
+			for _, r := range tc.queryReturns {
+				if r.err != nil {
+					expectedQueryFailures++
+				}
+			}
+			qt.Assert(t, len(mockInstrumentation.errorQueryingRetrievalCandidate), qt.Equals, expectedQueryFailures)
+			qt.Assert(t, len(mockClient.received_queriedPeers), qt.Equals, len(tc.queryReturns))
 			for _, p := range tc.expectedQueryReturns {
 				pid := peer.ID(p)
-				qt.Assert(t, mockFilc.received_queriedPeers, qt.Contains, pid)
+				qt.Assert(t, mockClient.received_queriedPeers, qt.Contains, pid)
 			}
 			// make sure we only returned the queries we expected (may be a subset of the above if a retrieval was fast enough)
 			qt.Assert(t, len(mockInstrumentation.retrievalQueryForCandidate), qt.Equals, len(tc.expectedQueryReturns))
 			qt.Assert(t, len(mockInstrumentation.filteredRetrievalQueryForCandidate), qt.Equals, len(tc.expectedQueryReturns))
 
 			// make sure we performed the retrievals we expected
-			qt.Assert(t, len(mockInstrumentation.errorRetrievingFromCandidate), qt.Equals, 0)
-			qt.Assert(t, len(mockFilc.received_retrievedPeers), qt.Equals, len(tc.expectedRetrievalAttempts))
+			var expectedRetrievalFailures int
+			for _, r := range tc.retrievalReturns {
+				if r.retrievalResult.Err != nil {
+					expectedRetrievalFailures++
+				}
+			}
+			qt.Assert(t, len(mockInstrumentation.errorRetrievingFromCandidate), qt.Equals, expectedRetrievalFailures)
+			qt.Assert(t, len(mockClient.received_retrievedPeers), qt.Equals, len(tc.expectedRetrievalAttempts))
 			qt.Assert(t, len(mockInstrumentation.retrievingFromCandidate), qt.Equals, len(tc.expectedRetrievalAttempts))
 			for _, p := range tc.expectedRetrievalAttempts {
 				pid := peer.ID(p)
-				qt.Assert(t, mockFilc.received_retrievedPeers, qt.Contains, pid)
+				qt.Assert(t, mockClient.received_retrievedPeers, qt.Contains, pid)
 			}
-
-			// make sure we got the final retrieval we wanted
-			qt.Assert(t, *stats, qt.Equals, tc.retrievalStats[tc.expectedRetrieval].retrievalStats)
 		})
 	}
 }
 
-var _ FilClient = (*mockFilClient)(nil)
+var _ RetrievalClient = (*mockClient)(nil)
 var _ Endpoint = (*mockEndpoint)(nil)
 var _ BlockConfirmer = dummyBlockConfirmer
 var _ Instrumentation = (*mockInstrumentation)(nil)
 var testDealIdGen = shared.NewTimeCounter()
 
-type delayedQueryResponse struct {
-	queryResponse retrievalmarket.QueryResponse
+type delayedQueryReturn struct {
+	queryResponse *retrievalmarket.QueryResponse
+	err           error
 	delay         time.Duration
 }
 
-type delayedRetrievalStats struct {
-	retrievalStats RetrievalStats
-	delay          time.Duration
+type delayedRetrievalReturn struct {
+	retrievalResult RetrievalResult
+	delay           time.Duration
 }
 
-type mockFilClient struct {
+type mockClient struct {
 	lk                      sync.Mutex
 	received_queriedPeers   []peer.ID
 	received_retrievedPeers []peer.ID
 
-	returns_queryResponses map[string]delayedQueryResponse
-	returns_retrievalStats map[string]delayedRetrievalStats
+	returns_queries    map[string]delayedQueryReturn
+	returns_retrievals map[string]delayedRetrievalReturn
 }
 
-func (dfc *mockFilClient) RetrievalProposalForAsk(ask *retrievalmarket.QueryResponse, c cid.Cid, optionalSelector ipld.Node) (*retrievalmarket.DealProposal, error) {
+func (dfc *mockClient) RetrievalProposalForAsk(ask *retrievalmarket.QueryResponse, c cid.Cid, optionalSelector ipld.Node) (*retrievalmarket.DealProposal, error) {
 	if optionalSelector == nil {
 		optionalSelector = selectorparse.CommonSelector_ExploreAllRecursively
 	}
@@ -289,19 +377,23 @@ func (dfc *mockFilClient) RetrievalProposalForAsk(ask *retrievalmarket.QueryResp
 	}, nil
 }
 
-func (dfc *mockFilClient) RetrievalQueryToPeer(ctx context.Context, minerPeer peer.AddrInfo, pcid cid.Cid) (*retrievalmarket.QueryResponse, error) {
+func (dfc *mockClient) RetrievalQueryToPeer(ctx context.Context, minerPeer peer.AddrInfo, pcid cid.Cid) (*retrievalmarket.QueryResponse, error) {
 	dfc.lk.Lock()
 	dfc.received_queriedPeers = append(dfc.received_queriedPeers, minerPeer.ID)
 	dfc.lk.Unlock()
 
-	if dqr, ok := dfc.returns_queryResponses[string(minerPeer.ID)]; ok {
-		time.Sleep(dqr.delay)
-		return &dqr.queryResponse, nil
+	if dqr, ok := dfc.returns_queries[string(minerPeer.ID)]; ok {
+		select {
+		case <-ctx.Done():
+			return nil, context.Canceled
+		case <-time.After(dqr.delay):
+		}
+		return dqr.queryResponse, dqr.err
 	}
 	return &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseUnavailable}, nil
 }
 
-func (dfc *mockFilClient) RetrieveContentFromPeerAsync(
+func (dfc *mockClient) RetrieveContentFromPeerAsync(
 	ctx context.Context,
 	peerID peer.ID,
 	minerWallet address.Address,
@@ -311,16 +403,16 @@ func (dfc *mockFilClient) RetrieveContentFromPeerAsync(
 	dfc.received_retrievedPeers = append(dfc.received_retrievedPeers, peerID)
 	dfc.lk.Unlock()
 	resChan := make(chan RetrievalResult, 1)
-	if drs, ok := dfc.returns_retrievalStats[string(peerID)]; ok {
-		time.Sleep(drs.delay)
-		resChan <- RetrievalResult{RetrievalStats: &drs.retrievalStats}
+	if drr, ok := dfc.returns_retrievals[string(peerID)]; ok {
+		time.Sleep(drr.delay)
+		resChan <- drr.retrievalResult
 	} else {
 		resChan <- RetrievalResult{RetrievalStats: nil, Err: errors.New("nope")}
 	}
 	return resChan, nil, func() {}
 }
 
-func (*mockFilClient) SubscribeToRetrievalEvents(subscriber RetrievalSubscriber) {}
+func (*mockClient) SubscribeToRetrievalEvents(subscriber eventpublisher.RetrievalSubscriber) {}
 
 type mockEndpoint struct {
 	candidates []RetrievalCandidate
