@@ -75,11 +75,9 @@ const sendMessageTimeout = 2 * time.Minute
 type RetrievalClient struct {
 	blockstore              blockstore.Blockstore
 	dataTransfer            datatransfer.Manager
-	graphSync               *graphsync.GraphSync
 	host                    host.Host
 	payChanMgr              PayChannelManager
 	retrievalEventPublisher *eventpublisher.RetrievalEventPublisher
-	transport               *dttransport.Transport
 }
 
 type Config struct {
@@ -191,11 +189,9 @@ func NewClientWithConfig(cfg *Config) (*RetrievalClient, error) {
 	client := &RetrievalClient{
 		blockstore:              cfg.Blockstore,
 		dataTransfer:            dataTransfer,
-		graphSync:               graphSync,
 		host:                    cfg.Host,
 		payChanMgr:              cfg.PayChannelManager,
 		retrievalEventPublisher: retrievalEventPublisher,
-		transport:               dtTransport,
 	}
 
 	retrievalEventPublisher.Subscribe(client)
