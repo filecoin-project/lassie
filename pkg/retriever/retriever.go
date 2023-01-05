@@ -285,14 +285,13 @@ func (retriever *Retriever) Request(cid cid.Cid) error {
 		retriever.getStorageProviderTimeout,
 		retriever.isAcceptableStorageProvider,
 		retriever.isAcceptableQueryResponse,
-		cid,
 	)
 
 	// retrieve, note that we could get a successful retrieval
 	// (retrievalStats!=nil) _and_ also an error return because there may be
 	// multiple failures along the way, if we got a retrieval then we'll pretend
 	// to our caller that there was no error
-	retrievalStats, err := retrieval.RetrieveCid(ctx)
+	retrievalStats, err := retrieval.RetrieveCid(ctx, cid)
 	if err != nil {
 		if errors.Is(err, ErrAllQueriesFailed) {
 			// tell the ActiveRetrievalsManager not to expect any retrievals for this
