@@ -28,6 +28,7 @@ var (
 	ErrRetrievalRegistrationFailed = errors.New("retrieval registration failed")
 	ErrRetrievalFailed             = errors.New("retrieval failed")
 	ErrAllRetrievalsFailed         = errors.New("all retrievals failed")
+	ErrQueryFailed                 = errors.New("query failed")
 	ErrAllQueriesFailed            = errors.New("all queries failed")
 	ErrRetrievalTimedOut           = errors.New("retrieval timed out")
 )
@@ -178,7 +179,7 @@ func (ri *retrievalInstrumentation) OnErrorRetrievingFromCandidate(candidate Ret
 	log.Warnf(
 		"Failed to retrieve from miner %s for %s: %v",
 		candidate.MinerPeer.ID,
-		formatCidAndRoot(ri.cid, candidate.RootCid, false),
+		ri.cid,
 		err,
 	)
 	stats.Record(context.Background(), metrics.RetrievalDealFailCount.M(1))
@@ -277,21 +278,18 @@ func (retriever *Retriever) Request(cid cid.Cid) error {
 		},
 	}
 
-	// setup
-	retrieval := NewCidRetrieval(
-		retriever.endpoint,
-		retriever.client,
-		instrumentation,
-		retriever.getStorageProviderTimeout,
-		retriever.isAcceptableStorageProvider,
-		retriever.isAcceptableQueryResponse,
-	)
+	config := &RetrievalConfig{
+		Instrumentation:             instrumentation,
+		GetStorageProviderTimeout:   retriever.getStorageProviderTimeout,
+		IsAcceptableStorageProvider: retriever.isAcceptableStorageProvider,
+		IsAcceptableQueryResponse:   retriever.isAcceptableQueryResponse,
+	}
 
 	// retrieve, note that we could get a successful retrieval
 	// (retrievalStats!=nil) _and_ also an error return because there may be
 	// multiple failures along the way, if we got a retrieval then we'll pretend
 	// to our caller that there was no error
-	retrievalStats, err := retrieval.RetrieveCid(ctx, cid)
+	retrievalStats, err := Retrieve(ctx, config, retriever.endpoint, retriever.client, cid)
 	if err != nil {
 		if errors.Is(err, ErrAllQueriesFailed) {
 			// tell the ActiveRetrievalsManager not to expect any retrievals for this
@@ -310,7 +308,7 @@ func (retriever *Retriever) Request(cid cid.Cid) error {
 			"\tBytes Received: %s\n"+
 			"\tTotal Payment: %s",
 		retrievalStats.StorageProviderId,
-		formatCidAndRoot(cid, retrievalStats.RootCid, false),
+		cid,
 		retrievalStats.Duration,
 		humanize.IBytes(retrievalStats.Size),
 		types.FIL(retrievalStats.TotalPayment),
