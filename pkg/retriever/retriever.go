@@ -253,7 +253,7 @@ func (retriever *Retriever) isAcceptableQueryResponse(queryResponse *retrievalma
 	return retriever.config.PaidRetrievals || totalCost(queryResponse).Equals(big.Zero())
 }
 
-func (retriever *Retriever) Request(cid cid.Cid) error {
+func (retriever *Retriever) Request(cid cid.Cid) (*RetrievalStats, error) {
 	ctx := context.Background()
 
 	// instrumentation receives events primarily responsible for metrics reporting
@@ -299,7 +299,7 @@ func (retriever *Retriever) Request(cid cid.Cid) error {
 			retriever.activeRetrievals.SetRetrievalCandidateCount(cid, 0)
 		}
 		if retrievalStats == nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -325,7 +325,7 @@ func (retriever *Retriever) Request(cid cid.Cid) error {
 	stats.Record(ctx, metrics.SuccessfulQueriesPerRequestCount.M(atomic.LoadInt64(&instrumentation.queryCount)))
 	stats.Record(ctx, metrics.SuccessfulQueriesPerRequestFilteredCount.M(atomic.LoadInt64(&instrumentation.filteredQueryCount)))
 
-	return nil
+	return retrievalStats, nil
 }
 
 // Implement RetrievalSubscriber

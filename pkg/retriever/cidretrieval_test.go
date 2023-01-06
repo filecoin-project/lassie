@@ -3,7 +3,6 @@ package retriever
 import (
 	"context"
 	"errors"
-	"fmt"
 	mbig "math/big"
 	"sync"
 	"testing"
@@ -377,7 +376,6 @@ func TestMultipleRetrievals(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
-		fmt.Println("Retrieving ...")
 		stats, err := retrieval.RetrieveCid(context.Background(), cid1)
 		qt.Assert(t, stats, qt.IsNotNil)
 		qt.Assert(t, err, qt.IsNil)
@@ -386,7 +384,6 @@ func TestMultipleRetrievals(t *testing.T) {
 		wg.Done()
 	}()
 
-	fmt.Println("Retrieving ...")
 	stats, err := retrieval.RetrieveCid(context.Background(), cid2)
 	qt.Assert(t, stats, qt.IsNotNil)
 	qt.Assert(t, err, qt.IsNil)
@@ -409,9 +406,6 @@ func TestMultipleRetrievals(t *testing.T) {
 		qt.Assert(t, mockClient.received_queriedPeers, qt.Contains, pid)
 	}
 	// make sure we only returned the queries we expected, in this case 2 were too slow and 1 errored so we only get 4
-	for _, c := range mockInstrumentation.retrievalQueryForCandidate {
-		fmt.Println("got", string(c.candidate.MinerPeer.ID))
-	}
 	qt.Assert(t, len(mockInstrumentation.retrievalQueryForCandidate), qt.Equals, 3)
 	qt.Assert(t, len(mockInstrumentation.filteredRetrievalQueryForCandidate), qt.Equals, 3)
 

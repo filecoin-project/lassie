@@ -205,8 +205,6 @@ func (retrieval *cidRetrieval) collectResults(ctx context.Context, state *retrie
 collectcomplete:
 	for {
 		select {
-		case <-ctx.Done():
-			return nil, context.Canceled
 		case result := <-state.ResultChan:
 			if result.QueryError != nil {
 				queryErrors = multierr.Append(queryErrors, result.QueryError)
@@ -223,6 +221,8 @@ collectcomplete:
 			if finishedCount >= len(candidates) {
 				break collectcomplete
 			}
+		case <-ctx.Done():
+			return nil, context.Canceled
 		}
 	}
 
@@ -312,6 +312,12 @@ func (state *retrievalState) canSendResult() bool {
 // sendResult will only send a result to the parent goroutine if a retrieval has
 // finished (likely by a success), otherwise it will send the result
 func (state *retrievalState) sendResult(result runResult) bool {
+	select {
+	case <-state.FinishChan:
+		return false
+	default:
+	}
+
 	select {
 	case <-state.FinishChan:
 		return false
