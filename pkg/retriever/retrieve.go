@@ -82,12 +82,10 @@ func (cfg *RetrievalConfig) wait() {
 
 // retrieval handles state on a per-retrieval (across multiple candidates) basis
 type retrieval struct {
-	cid                 cid.Cid
-	waitQueue           prioritywaitqueue.PriorityWaitQueue[*retrievalmarket.QueryResponse]
-	resultChan          chan RetrievalResult
-	finishChan          chan struct{}
-	activeQueryCancel   []*context.CancelFunc
-	activeQueryCancelLk sync.Mutex
+	cid        cid.Cid
+	waitQueue  prioritywaitqueue.PriorityWaitQueue[*retrievalmarket.QueryResponse]
+	resultChan chan RetrievalResult
+	finishChan chan struct{}
 }
 
 // Retrieve performs a retrieval for a given CID by querying the indexer, then
@@ -107,11 +105,10 @@ func Retrieve(
 
 	// state local to this CID's retrieval
 	retrieval := &retrieval{
-		cid:               cid,
-		resultChan:        make(chan RetrievalResult),
-		finishChan:        make(chan struct{}),
-		waitQueue:         prioritywaitqueue.New(queryCompare),
-		activeQueryCancel: make([]*context.CancelFunc, 0),
+		cid:        cid,
+		resultChan: make(chan RetrievalResult),
+		finishChan: make(chan struct{}),
+		waitQueue:  prioritywaitqueue.New(queryCompare),
 	}
 
 	ctx, cancelCtx := context.WithCancel(ctx)
@@ -178,9 +175,7 @@ func collectResults(ctx context.Context, retrieval *retrieval, candidates []Retr
 	var finishedCount int
 	var queryErrors error
 	var retrievalErrors error
-	var stats *RetrievalStats
 
-collectcomplete:
 	for {
 		select {
 		case result := <-retrieval.resultChan:
@@ -192,38 +187,24 @@ collectcomplete:
 				}
 			}
 			if result.RetrievalStats != nil {
-				stats = result.RetrievalStats
-				break collectcomplete
+				return result.RetrievalStats, nil
 			}
 			// have we got all responses but no success?
 			finishedCount++
 			if finishedCount >= len(candidates) {
-				break collectcomplete
+				if retrievalErrors == nil {
+					// we failed, but didn't get any retrieval errors, so must have only got query errors
+					retrievalErrors = ErrAllQueriesFailed
+				} else {
+					// we failed, and got only retrieval errors
+					retrievalErrors = multierr.Append(retrievalErrors, ErrAllRetrievalsFailed)
+				}
+				return nil, multierr.Append(queryErrors, retrievalErrors)
 			}
 		case <-ctx.Done():
 			return nil, context.Canceled
 		}
 	}
-
-	// cancel any active queries
-	retrieval.activeQueryCancelLk.Lock()
-	for _, ac := range retrieval.activeQueryCancel {
-		(*ac)()
-	}
-	retrieval.activeQueryCancelLk.Unlock()
-
-	if stats == nil {
-		if retrievalErrors == nil {
-			// we failed, but didn't get any retrieval errors, so must have only got query errors
-			retrievalErrors = ErrAllQueriesFailed
-		} else {
-			// we failed, and got only retrieval errors
-			retrievalErrors = multierr.Append(retrievalErrors, ErrAllRetrievalsFailed)
-		}
-		return nil, multierr.Append(queryErrors, retrievalErrors)
-	}
-	// if we succeeded, drop all the errors that occurred along the way
-	return stats, nil
 }
 
 // runRetrievalCandidate is a singular CID:SP retrieval, expected to be run in a goroutine
@@ -235,21 +216,19 @@ func runRetrievalCandidate(ctx context.Context, cfg *RetrievalConfig, client Ret
 		timeout = cfg.GetStorageProviderTimeout(candidate.MinerPeer.ID)
 	}
 
-	// gating after query, done() is provided by the prioritywaitqueue to signal completion
+	var stats *RetrievalStats
 	var done func()
-	canProceed := func(queryResponse *retrievalmarket.QueryResponse) bool {
-		// priorityqueue wait; gated here so that only one retrieval can happen at once
+
+	// run the query phase
+	queryResponse, err := queryPhase(ctx, cfg, client, timeout, candidate)
+
+	if queryResponse != nil {
+		// if query is successful, then wait for priority and execute retrieval
 		done = retrieval.waitQueue.Wait(queryResponse)
-		return retrieval.canSendResult()
+		if retrieval.canSendResult() {
+			stats, err = retrievalPhase(ctx, cfg, client, timeout, candidate, queryResponse)
+		}
 	}
-
-	// allow for localised cancellation across the multiple goroutines being coordinated
-	ctx, cancelFn := context.WithCancel(ctx)
-	retrieval.activeQueryCancelLk.Lock()
-	retrieval.activeQueryCancel = append(retrieval.activeQueryCancel, &cancelFn)
-	retrieval.activeQueryCancelLk.Unlock()
-
-	stats, err := retrieveCandidate(ctx, cfg, client, canProceed, timeout, candidate)
 
 	if retrieval.canSendResult() {
 		if err != nil {
@@ -303,13 +282,13 @@ func totalCost(qres *retrievalmarket.QueryResponse) big.Int {
 // retrieveCandidate performs the full retrieval flow for a single SP:CID
 // candidate, allowing for gating between query and retrieval using a
 // canProceed callback.
-func retrieveCandidate(
+
+func queryPhase(
 	ctx context.Context,
 	cfg *RetrievalConfig,
 	client RetrievalClient,
-	canProceed IsAcceptableQueryResponse,
 	timeout time.Duration,
-	candidate RetrievalCandidate) (*RetrievalStats, error) {
+	candidate RetrievalCandidate) (*retrievalmarket.QueryResponse, error) {
 
 	queryCtx := ctx // separate context so we can capture cancellation vs timeout
 
@@ -350,10 +329,16 @@ func retrieveCandidate(
 	if cfg.Instrumentation != nil {
 		cfg.Instrumentation.OnFilteredRetrievalQueryForCandidate(candidate, queryResponse)
 	}
+	return queryResponse, nil
+}
 
-	if !canProceed(queryResponse) {
-		return nil, nil
-	}
+func retrievalPhase(
+	ctx context.Context,
+	cfg *RetrievalConfig,
+	client RetrievalClient,
+	timeout time.Duration,
+	candidate RetrievalCandidate,
+	queryResponse *retrievalmarket.QueryResponse) (*RetrievalStats, error) {
 
 	if cfg.Instrumentation != nil {
 		cfg.Instrumentation.OnRetrievingFromCandidate(candidate)
@@ -391,35 +376,26 @@ func retrieveCandidate(
 		lastBytesReceivedTimer = time.AfterFunc(timeout, func() {
 			doneLk.Lock()
 			done = true
+			timedOut = true
 			doneLk.Unlock()
 
 			gracefulShutdown()
 			gracefulShutdownTimer = time.AfterFunc(1*time.Minute, retrieveCancel)
-			timedOut = true
 		})
 	}
 
-	var stats *RetrievalStats
-waitforcomplete:
-	for {
-		select {
-		case result := <-resultChan:
-			stats = result.RetrievalStats
-			err = result.Err
-			break waitforcomplete
-		case bytesReceived := <-progressChan:
-			if lastBytesReceivedTimer != nil {
-				doneLk.Lock()
-				if !done {
-					if lastBytesReceived != bytesReceived {
-						lastBytesReceivedTimer.Reset(timeout)
-						lastBytesReceived = bytesReceived
-					}
+	stats, err := waitForComplete(resultChan, progressChan, func(bytesReceived uint64) {
+		if lastBytesReceivedTimer != nil {
+			doneLk.Lock()
+			if !done {
+				if lastBytesReceived != bytesReceived {
+					lastBytesReceivedTimer.Reset(timeout)
+					lastBytesReceived = bytesReceived
 				}
-				doneLk.Unlock()
 			}
+			doneLk.Unlock()
 		}
-	}
+	})
 
 	if timedOut {
 		return nil, multierr.Append(ErrRetrievalFailed,
@@ -439,9 +415,6 @@ waitforcomplete:
 	if gracefulShutdownTimer != nil {
 		gracefulShutdownTimer.Stop()
 	}
-	doneLk.Lock()
-	done = true
-	doneLk.Unlock()
 
 	if err != nil {
 		if cfg.Instrumentation != nil {
@@ -451,4 +424,15 @@ waitforcomplete:
 	}
 
 	return stats, err
+}
+
+func waitForComplete(resultChan <-chan RetrievalResult, progressChan <-chan uint64, onBytesReceived func(uint64)) (*RetrievalStats, error) {
+	for {
+		select {
+		case result := <-resultChan:
+			return result.RetrievalStats, result.Err
+		case bytesReceived := <-progressChan:
+			onBytesReceived(bytesReceived)
+		}
+	}
 }
