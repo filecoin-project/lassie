@@ -8,7 +8,7 @@ require (
 	github.com/filecoin-project/go-address v1.1.0
 	github.com/filecoin-project/go-cbor-util v0.0.1
 	github.com/filecoin-project/go-data-transfer/v2 v2.0.0-rc1
-	github.com/filecoin-project/go-fil-markets v1.24.3-0.20221014045531-68279a837f6a
+	github.com/filecoin-project/go-fil-markets v1.25.3-0.20230107010325-143abaddd0f3
 	github.com/filecoin-project/go-state-types v0.9.9
 	github.com/frankban/quicktest v1.14.4
 	github.com/google/uuid v1.3.0
