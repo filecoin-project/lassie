@@ -75,7 +75,7 @@ func (cfg *RetrieverConfig) GetMinerConfig(peer peer.ID) MinerConfig {
 type Retriever struct {
 	// Assumed immutable during operation
 	config           RetrieverConfig
-	endpoint         Endpoint
+	candidateFinder  CandidateFinder
 	client           RetrievalClient
 	eventManager     *EventManager
 	activeRetrievals *ActiveRetrievalsManager
@@ -88,7 +88,7 @@ type RetrievalCandidate struct {
 	RootCid   cid.Cid
 }
 
-type Endpoint interface {
+type CandidateFinder interface {
 	FindCandidates(context.Context, cid.Cid) ([]RetrievalCandidate, error)
 }
 
@@ -98,12 +98,12 @@ func NewRetriever(
 	ctx context.Context,
 	config RetrieverConfig,
 	client RetrievalClient,
-	endpoint Endpoint,
+	candidateFinder CandidateFinder,
 	confirmer BlockConfirmer,
 ) (*Retriever, error) {
 	retriever := &Retriever{
 		config:           config,
-		endpoint:         endpoint,
+		candidateFinder:  candidateFinder,
 		client:           client,
 		eventManager:     NewEventManager(ctx),
 		activeRetrievals: NewActiveRetrievalsManager(),
@@ -289,7 +289,7 @@ func (retriever *Retriever) Request(cid cid.Cid) error {
 	// (retrievalStats!=nil) _and_ also an error return because there may be
 	// multiple failures along the way, if we got a retrieval then we'll pretend
 	// to our caller that there was no error
-	retrievalStats, err := Retrieve(ctx, config, retriever.endpoint, retriever.client, cid)
+	retrievalStats, err := Retrieve(ctx, config, retriever.candidateFinder, retriever.client, cid)
 	if err != nil {
 		if errors.Is(err, ErrAllQueriesFailed) {
 			// tell the ActiveRetrievalsManager not to expect any retrievals for this

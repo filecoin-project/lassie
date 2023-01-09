@@ -103,7 +103,7 @@ func TestQueryFiltering(t *testing.T) {
 			for p := range tc.queryResponses {
 				candidates = append(candidates, RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID(p)}})
 			}
-			mockEndpoint := &mockEndpoint{map[cid.Cid][]RetrievalCandidate{cid.Undef: candidates}}
+			mockCandidateFinder := &mockCandidateFinder{map[cid.Cid][]RetrievalCandidate{cid.Undef: candidates}}
 			retriever := &Retriever{config: RetrieverConfig{PaidRetrievals: tc.paid}} // used for isAcceptableQueryResponse() only
 
 			cfg := &RetrievalConfig{
@@ -114,7 +114,7 @@ func TestQueryFiltering(t *testing.T) {
 			}
 
 			// perform retrieval and test top-level results, we should only error in this test
-			stats, err := Retrieve(context.Background(), cfg, mockEndpoint, mockClient, cid.Undef)
+			stats, err := Retrieve(context.Background(), cfg, mockCandidateFinder, mockClient, cid.Undef)
 			qt.Assert(t, stats, qt.IsNil)
 			qt.Assert(t, err, qt.IsNotNil)
 
@@ -280,7 +280,7 @@ func TestRetrievalRacing(t *testing.T) {
 			for p := range tc.queryReturns {
 				candidates = append(candidates, RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID(p)}})
 			}
-			mockEndpoint := &mockEndpoint{map[cid.Cid][]RetrievalCandidate{cid.Undef: candidates}}
+			mockCandidateFinder := &mockCandidateFinder{map[cid.Cid][]RetrievalCandidate{cid.Undef: candidates}}
 
 			cfg := &RetrievalConfig{
 				Instrumentation:             mockInstrumentation,
@@ -290,7 +290,7 @@ func TestRetrievalRacing(t *testing.T) {
 			}
 
 			// perform retrieval and make sure we got a result
-			stats, err := Retrieve(context.Background(), cfg, mockEndpoint, mockClient, cid.Undef)
+			stats, err := Retrieve(context.Background(), cfg, mockCandidateFinder, mockClient, cid.Undef)
 			if tc.expectedRetrieval != "" {
 				qt.Assert(t, stats, qt.IsNotNil)
 				qt.Assert(t, err, qt.IsNil)
@@ -367,7 +367,7 @@ func TestMultipleRetrievals(t *testing.T) {
 		},
 	}
 	mockInstrumentation := &mockInstrumentation{}
-	mockEndpoint := &mockEndpoint{map[cid.Cid][]RetrievalCandidate{
+	mockCandidateFinder := &mockCandidateFinder{map[cid.Cid][]RetrievalCandidate{
 		cid1: {
 			{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}},
 			{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}},
@@ -390,7 +390,7 @@ func TestMultipleRetrievals(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
-		stats, err := Retrieve(context.Background(), cfg, mockEndpoint, mockClient, cid1)
+		stats, err := Retrieve(context.Background(), cfg, mockCandidateFinder, mockClient, cid1)
 		qt.Assert(t, stats, qt.IsNotNil)
 		qt.Assert(t, err, qt.IsNil)
 		// make sure we got the final retrieval we wanted
@@ -398,7 +398,7 @@ func TestMultipleRetrievals(t *testing.T) {
 		wg.Done()
 	}()
 
-	stats, err := Retrieve(context.Background(), cfg, mockEndpoint, mockClient, cid2)
+	stats, err := Retrieve(context.Background(), cfg, mockCandidateFinder, mockClient, cid2)
 	qt.Assert(t, stats, qt.IsNotNil)
 	qt.Assert(t, err, qt.IsNil)
 	// make sure we got the final retrieval we wanted
@@ -433,7 +433,7 @@ func TestMultipleRetrievals(t *testing.T) {
 }
 
 var _ RetrievalClient = (*mockClient)(nil)
-var _ Endpoint = (*mockEndpoint)(nil)
+var _ CandidateFinder = (*mockCandidateFinder)(nil)
 var _ BlockConfirmer = dummyBlockConfirmer
 var _ Instrumentation = (*mockInstrumentation)(nil)
 var testDealIdGen = shared.NewTimeCounter()
@@ -518,11 +518,11 @@ func (dfc *mockClient) RetrieveContentFromPeerAsync(
 
 func (*mockClient) SubscribeToRetrievalEvents(subscriber eventpublisher.RetrievalSubscriber) {}
 
-type mockEndpoint struct {
+type mockCandidateFinder struct {
 	candidates map[cid.Cid][]RetrievalCandidate
 }
 
-func (me *mockEndpoint) FindCandidates(ctx context.Context, cid cid.Cid) ([]RetrievalCandidate, error) {
+func (me *mockCandidateFinder) FindCandidates(ctx context.Context, cid cid.Cid) ([]RetrievalCandidate, error) {
 	return me.candidates[cid], nil
 }
 

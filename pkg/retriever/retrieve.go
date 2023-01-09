@@ -94,7 +94,7 @@ type retrieval struct {
 func Retrieve(
 	ctx context.Context,
 	cfg *RetrievalConfig,
-	indexEndpoint Endpoint,
+	candidateFinder CandidateFinder,
 	client RetrievalClient,
 	cid cid.Cid,
 ) (*RetrievalStats, error) {
@@ -115,7 +115,7 @@ func Retrieve(
 	defer cancelCtx()
 
 	// fetch indexer candidates for CID
-	candidates, err := findCandidates(ctx, cfg, indexEndpoint, cid)
+	candidates, err := findCandidates(ctx, cfg, candidateFinder, cid)
 	if err != nil {
 		return nil, err
 	}
@@ -134,8 +134,8 @@ func Retrieve(
 }
 
 // findCandidates calls the indexer for the given CID
-func findCandidates(ctx context.Context, cfg *RetrievalConfig, indexEndpoint Endpoint, cid cid.Cid) ([]RetrievalCandidate, error) {
-	candidates, err := indexEndpoint.FindCandidates(ctx, cid)
+func findCandidates(ctx context.Context, cfg *RetrievalConfig, candidateFinder CandidateFinder, cid cid.Cid) ([]RetrievalCandidate, error) {
+	candidates, err := candidateFinder.FindCandidates(ctx, cid)
 	if err != nil {
 		return nil, fmt.Errorf("could not get retrieval candidates for %s: %w", cid, err)
 	}
