@@ -247,6 +247,26 @@ func TestRetrievalRacing(t *testing.T) {
 			},
 			expectedRetrievalAttempts: []string{"foo", "bar", "baz"},
 		},
+		// quickest query ("foo") fails retrieval, the other 3 line up in the queue,
+		// it should choose the "best", which is the smallest (they're all free)
+		{
+			name: "racing chooses best",
+			queryReturns: map[string]delayedQueryReturn{
+				"foo":  {&retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, nil, time.Millisecond * 20},
+				"bar":  {&retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, nil, time.Millisecond * 40},
+				"baz":  {&retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, nil, time.Millisecond * 40},
+				"bang": {&retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 4, UnsealPrice: big.Zero()}, nil, time.Millisecond * 40},
+			},
+			expectedQueryReturns: []string{"foo", "bar", "baz", "bang"},
+			retrievalReturns: map[string]delayedRetrievalReturn{
+				"foo":  {RetrievalResult{Err: errors.New("Nope")}, time.Millisecond * 100},
+				"bar":  {RetrievalResult{RetrievalStats: &RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 3}}, time.Millisecond * 20},
+				"baz":  {RetrievalResult{RetrievalStats: &RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 2}}, time.Millisecond * 20},
+				"bang": {RetrievalResult{RetrievalStats: &RetrievalStats{StorageProviderId: peer.ID("bang"), Size: 4}}, time.Millisecond * 20},
+			},
+			expectedRetrievalAttempts: []string{"foo", "baz"},
+			expectedRetrieval:         "baz",
+		},
 	}
 
 	for _, tc := range testCases {
