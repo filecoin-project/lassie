@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/lassie/pkg/eventpublisher"
 	"github.com/ipfs/go-cid"
@@ -49,14 +48,13 @@ func TestEventing(t *testing.T) {
 
 	pub.Subscribe(sub)
 	pid := peer.NewPeerRecord().PeerID
-	pub.Publish(eventpublisher.NewRetrievalEventConnect(eventpublisher.QueryPhase, testCid1, pid, address.Undef))
-	pub.Publish(eventpublisher.NewRetrievalEventSuccess(eventpublisher.RetrievalPhase, testCid1, "", address.TestAddress, 101, 202, time.Millisecond*303, abi.NewTokenAmount(404)))
+	pub.Publish(eventpublisher.NewRetrievalEventConnect(eventpublisher.QueryPhase, testCid1, pid))
+	pub.Publish(eventpublisher.NewRetrievalEventSuccess(testCid1, "", 101, 202, time.Millisecond*303, abi.NewTokenAmount(404)))
 
 	evt := <-sub.ping
 	require.Equal(t, eventpublisher.QueryPhase, evt.Phase())
 	require.Equal(t, testCid1, evt.PayloadCid())
 	require.Equal(t, pid, evt.StorageProviderId())
-	require.Equal(t, address.Undef, evt.StorageProviderAddr())
 	require.Equal(t, eventpublisher.ConnectedCode, evt.Code())
 	_, ok := evt.(eventpublisher.RetrievalEventConnect)
 	require.True(t, ok)
@@ -65,12 +63,11 @@ func TestEventing(t *testing.T) {
 	require.Equal(t, eventpublisher.RetrievalPhase, evt.Phase())
 	require.Equal(t, testCid1, evt.PayloadCid())
 	require.Equal(t, peer.ID(""), evt.StorageProviderId())
-	require.Equal(t, address.TestAddress, evt.StorageProviderAddr())
 	require.Equal(t, eventpublisher.SuccessCode, evt.Code())
 	res, ok := evt.(eventpublisher.RetrievalEventSuccess)
 	require.True(t, ok)
 	require.Equal(t, uint64(101), res.ReceivedSize())
-	require.Equal(t, int64(202), res.ReceivedCids())
+	require.Equal(t, uint64(202), res.ReceivedCids())
 	require.Equal(t, time.Millisecond*303, res.Duration())
 	require.Equal(t, abi.NewTokenAmount(404), res.TotalPayment())
 }

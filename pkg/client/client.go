@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer/v2"
@@ -27,7 +26,6 @@ import (
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/go-state-types/builtin/v8/paych"
 
-	"github.com/filecoin-project/lassie/pkg/eventpublisher"
 	"github.com/filecoin-project/lassie/pkg/retriever"
 
 	"github.com/ipfs/go-cid"
@@ -52,7 +50,6 @@ import (
 
 // Logging
 var log = logging.Logger("client")
-var retrievalLog = logging.Logger("lassie-retrieval")
 var tracer trace.Tracer = otel.Tracer("lassie")
 
 const RetrievalQueryProtocol = "/fil/retrieval/qry/1.0.0"
@@ -75,12 +72,12 @@ const messageSendRetries = 2
 const sendMessageTimeout = 2 * time.Minute
 
 type RetrievalClient struct {
-	blockstore              blockstore.Blockstore
-	dataTransfer            datatransfer.Manager
-	host                    host.Host
-	payChanMgr              PayChannelManager
-	ready                   *ready.ReadyManager
-	retrievalEventPublisher *eventpublisher.RetrievalEventPublisher
+	blockstore   blockstore.Blockstore
+	dataTransfer datatransfer.Manager
+	host         host.Host
+	payChanMgr   PayChannelManager
+	ready        *ready.ReadyManager
+	// retrievalEventPublisher *eventpublisher.RetrievalEventPublisher
 }
 
 type Config struct {
@@ -187,18 +184,18 @@ func NewClientWithConfig(cfg *Config) (*RetrievalClient, error) {
 		return nil, err
 	}
 
-	retrievalEventPublisher := eventpublisher.NewEventPublisher(ctx)
+	// retrievalEventPublisher := eventpublisher.NewEventPublisher(ctx)
 
 	client := &RetrievalClient{
-		blockstore:              cfg.Blockstore,
-		dataTransfer:            dataTransfer,
-		host:                    cfg.Host,
-		payChanMgr:              cfg.PayChannelManager,
-		retrievalEventPublisher: retrievalEventPublisher,
-		ready:                   ready,
+		blockstore:   cfg.Blockstore,
+		dataTransfer: dataTransfer,
+		host:         cfg.Host,
+		payChanMgr:   cfg.PayChannelManager,
+		ready:        ready,
+		// retrievalEventPublisher: retrievalEventPublisher,
 	}
 
-	retrievalEventPublisher.Subscribe(client)
+	// retrievalEventPublisher.Subscribe(client)
 
 	return client, nil
 }
@@ -207,53 +204,14 @@ func (rc *RetrievalClient) AwaitReady() error {
 	return rc.ready.AwaitReady()
 }
 
-func (rc *RetrievalClient) RetrieveContentFromPeerAsync(
+func (rc *RetrievalClient) RetrieveFromPeer(
 	ctx context.Context,
 	peerID peer.ID,
 	minerWallet address.Address,
 	proposal *retrievalmarket.DealProposal,
-) (result <-chan retriever.RetrievalResult, onProgress <-chan uint64, gracefulShutdown func()) {
-	gracefulShutdownChan := make(chan struct{}, 1)
-	resultChan := make(chan retriever.RetrievalResult, 1)
-	progressChan := make(chan uint64)
-	internalCtx, internalCancel := context.WithCancel(ctx)
-	go func() {
-		defer internalCancel()
-		result, err := rc.retrieveContentFromPeerWithProgressCallback(internalCtx, peerID, minerWallet, proposal, func(bytes uint64) {
-			select {
-			case <-internalCtx.Done():
-			case progressChan <- bytes:
-			}
-		}, gracefulShutdownChan)
-		resultChan <- retriever.RetrievalResult{RetrievalStats: result, Err: err}
-	}()
-	return resultChan, progressChan, func() {
-		gracefulShutdownChan <- struct{}{}
-	}
-}
-
-func (rc *RetrievalClient) RetrieveContentFromPeerWithProgressCallback(
-	ctx context.Context,
-	peerID peer.ID,
-	minerWallet address.Address,
-	proposal *retrievalmarket.DealProposal,
-	progressCallback func(bytesReceived uint64),
-) (*retriever.RetrievalStats, error) {
-	return rc.retrieveContentFromPeerWithProgressCallback(ctx, peerID, minerWallet, proposal, progressCallback, nil)
-}
-
-func (rc *RetrievalClient) retrieveContentFromPeerWithProgressCallback(
-	ctx context.Context,
-	peerID peer.ID,
-	minerWallet address.Address,
-	proposal *retrievalmarket.DealProposal,
-	progressCallback func(bytesReceived uint64),
+	eventsCallback datatransfer.Subscriber,
 	gracefulShutdownRequested <-chan struct{},
 ) (*retriever.RetrievalStats, error) {
-	if progressCallback == nil {
-		progressCallback = func(bytesReceived uint64) {}
-	}
-
 	log.Infof("Starting retrieval with miner peer ID: %s", peerID)
 
 	ctx, span := tracer.Start(ctx, "rcRetrieveContent")
@@ -264,8 +222,6 @@ func (rc *RetrievalClient) retrieveContentFromPeerWithProgressCallback(
 	totalPayment := abi.NewTokenAmount(0)
 
 	rootCid := proposal.PayloadCID
-	var chanid datatransfer.ChannelID
-	var chanidLk sync.Mutex
 
 	willingToPay := rc.payChanMgr != nil // The PayChannelManager can be nil if we don't want to pay for retrievals
 	paymentRequired := !proposal.PricePerByte.IsZero() || !proposal.UnsealPrice.IsZero()
@@ -276,16 +232,10 @@ func (rc *RetrievalClient) retrieveContentFromPeerWithProgressCallback(
 		// Get the payment channel and create a lane for this retrieval
 		payChanAddr, err := rc.payChanMgr.GetPayChannelWithMinFunds(ctx, minerWallet)
 		if err != nil {
-			rc.retrievalEventPublisher.Publish(
-				eventpublisher.NewRetrievalEventFailure(eventpublisher.RetrievalPhase, rootCid, peerID, address.Undef,
-					fmt.Sprintf("failed to get payment channel: %s", err.Error())))
 			return nil, fmt.Errorf("failed to get payment channel: %w", err)
 		}
 		payChanLane, err = rc.payChanMgr.AllocateLane(ctx, payChanAddr)
 		if err != nil {
-			rc.retrievalEventPublisher.Publish(
-				eventpublisher.NewRetrievalEventFailure(eventpublisher.RetrievalPhase, rootCid, peerID, address.Undef,
-					fmt.Sprintf("failed to allocate lane: %s", err.Error())))
 			return nil, fmt.Errorf("failed to allocate lane: %w", err)
 		}
 	}
@@ -309,19 +259,11 @@ func (rc *RetrievalClient) retrieveContentFromPeerWithProgressCallback(
 	dealID := proposal.ID
 	allBytesReceived := false
 	dealComplete := false
-	receivedFirstByte := false
 
-	unsubscribe := rc.dataTransfer.SubscribeToEvents(func(event datatransfer.Event, state datatransfer.ChannelState) {
-		// Copy chanid so it can be used later in the callback
-		chanidLk.Lock()
-		chanidCopy := chanid
-		chanidLk.Unlock()
-
-		// Skip all events that aren't related to this channel
-		if state.ChannelID() != chanidCopy {
-			return
+	eventsCb := func(event datatransfer.Event, state datatransfer.ChannelState) {
+		if eventsCallback != nil {
+			defer eventsCallback(event, state)
 		}
-
 		silenceEventCode := false
 		eventCodeNotHandled := false
 
@@ -356,10 +298,6 @@ func (rc *RetrievalClient) retrieveContentFromPeerWithProgressCallback(
 			switch resType.Status {
 			case retrievalmarket.DealStatusAccepted:
 				log.Info("Deal accepted")
-
-				// publish deal accepted event
-				rc.retrievalEventPublisher.Publish(eventpublisher.NewRetrievalEventAccepted(eventpublisher.RetrievalPhase, rootCid, peerID, address.Undef))
-
 			// Respond with a payment voucher when funds are requested
 			case retrievalmarket.DealStatusFundsNeeded, retrievalmarket.DealStatusFundsNeededLastPayment:
 				if willingToPay && paymentRequired {
@@ -389,7 +327,7 @@ func (rc *RetrievalClient) retrieveContentFromPeerWithProgressCallback(
 						PaymentVoucher: voucher,
 					})
 
-					if err := rc.dataTransfer.SendVoucher(ctx, chanidCopy, datatransfer.TypedVoucher{Type: retrievalmarket.DealPaymentType, Voucher: paymentVoucher}); err != nil {
+					if err := rc.dataTransfer.SendVoucher(ctx, state.ChannelID(), datatransfer.TypedVoucher{Type: retrievalmarket.DealPaymentType, Voucher: paymentVoucher}); err != nil {
 						finish(fmt.Errorf("failed to send payment voucher: %w", err))
 						return
 					}
@@ -439,14 +377,6 @@ func (rc *RetrievalClient) retrieveContentFromPeerWithProgressCallback(
 		case datatransfer.DataSentProgress:
 		case datatransfer.DataReceivedProgress:
 			// First byte has been received
-
-			// publish first byte event
-			if !receivedFirstByte {
-				receivedFirstByte = true
-				rc.retrievalEventPublisher.Publish(eventpublisher.NewRetrievalEventFirstByte(eventpublisher.RetrievalPhase, rootCid, peerID, address.Undef))
-			}
-
-			progressCallback(state.Received())
 			silenceEventCode = true
 		case datatransfer.RequestTimedOut:
 		case datatransfer.SendDataError:
@@ -470,29 +400,15 @@ func (rc *RetrievalClient) retrieveContentFromPeerWithProgressCallback(
 				log.Debugw("retrieval event", "dealID", dealID, "rootCid", rootCid, "peerID", peerID, "name", name, "code", code, "message", msg, "blocksIndex", blocksIndex, "totalReceived", totalReceived)
 			}
 		}
-	})
-	defer unsubscribe()
+	}
 
 	// Submit the retrieval deal proposal to the miner
 	proposalVoucher := retrievalmarket.BindnodeRegistry.TypeToNode(proposal)
-	newchid, err := rc.dataTransfer.OpenPullDataChannel(ctx, peerID, datatransfer.TypedVoucher{Type: retrievalmarket.DealProposalType, Voucher: proposalVoucher}, proposal.PayloadCID, selectorparse.CommonSelector_ExploreAllRecursively)
+	chanid, err := rc.dataTransfer.OpenPullDataChannel(ctx, peerID, datatransfer.TypedVoucher{Type: retrievalmarket.DealProposalType, Voucher: proposalVoucher}, proposal.PayloadCID, selectorparse.CommonSelector_ExploreAllRecursively, eventsCb)
 	if err != nil {
 		// We could fail before a successful proposal
-		// publish event failure
-		rc.retrievalEventPublisher.Publish(
-			eventpublisher.NewRetrievalEventFailure(eventpublisher.RetrievalPhase, rootCid, peerID, address.Undef,
-				fmt.Sprintf("deal proposal failed: %s", err.Error())))
-		return nil, err
+		return nil, fmt.Errorf("%w: %s", retriever.ErrDealProposalFailed, err)
 	}
-
-	// Deal has been proposed
-	// publish deal proposed event
-	rc.retrievalEventPublisher.Publish(eventpublisher.NewRetrievalEventProposed(eventpublisher.RetrievalPhase, rootCid, peerID, address.Undef))
-
-	chanidLk.Lock()
-	chanid = newchid
-	chanidLk.Unlock()
-
 	defer rc.dataTransfer.CloseDataTransferChannel(ctx, chanid)
 
 	// Wait for the retrieval to finish before exiting the function
@@ -501,10 +417,6 @@ awaitfinished:
 		select {
 		case err := <-dtRes:
 			if err != nil {
-				// If there is an error, publish a retrieval event failure
-				rc.retrievalEventPublisher.Publish(
-					eventpublisher.NewRetrievalEventFailure(eventpublisher.RetrievalPhase, rootCid, peerID, address.Undef,
-						fmt.Sprintf("data transfer failed: %s", err.Error())))
 				return nil, fmt.Errorf("data transfer failed: %w", err)
 			}
 
@@ -522,36 +434,25 @@ awaitfinished:
 	// Confirm that we actually ended up with the root block we wanted, failure
 	// here indicates a data transfer error that was not properly reported
 	if has, err := rc.blockstore.Has(ctx, rootCid); err != nil {
-		err = fmt.Errorf("could not get query blockstore: %w", err)
-		rc.retrievalEventPublisher.Publish(
-			eventpublisher.NewRetrievalEventFailure(eventpublisher.RetrievalPhase, rootCid, peerID, address.Undef, err.Error()))
-		return nil, err
+		return nil, fmt.Errorf("could not get query blockstore: %w", err)
 	} else if !has {
-		msg := "data transfer failed: unconfirmed block transfer"
-		rc.retrievalEventPublisher.Publish(
-			eventpublisher.NewRetrievalEventFailure(eventpublisher.RetrievalPhase, rootCid, peerID, address.Undef, msg))
-		return nil, errors.New(msg)
+		return nil, errors.New("data transfer failed: unconfirmed block transfer")
 	}
 
 	// Compile the retrieval stats
 
 	state, err := rc.dataTransfer.ChannelState(ctx, chanid)
 	if err != nil {
-		err = fmt.Errorf("could not get channel state: %w", err)
-		rc.retrievalEventPublisher.Publish(
-			eventpublisher.NewRetrievalEventFailure(eventpublisher.RetrievalPhase, rootCid, peerID, address.Undef, err.Error()))
-		return nil, err
+		return nil, fmt.Errorf("could not get channel state: %w", err)
 	}
 
 	duration := time.Since(startTime)
 	speed := uint64(float64(state.Received()) / duration.Seconds())
 
-	// Otherwise publish a retrieval event success
-	rc.retrievalEventPublisher.Publish(eventpublisher.NewRetrievalEventSuccess(eventpublisher.RetrievalPhase, rootCid, peerID, address.Undef, state.Received(), state.ReceivedCidsTotal(), duration, totalPayment))
-
 	return &retriever.RetrievalStats{
 		StorageProviderId: state.OtherPeer(),
 		Size:              state.Received(),
+		Blocks:            uint64(state.ReceivedCidsTotal()),
 		Duration:          duration,
 		AverageSpeed:      speed,
 		TotalPayment:      totalPayment,
@@ -560,7 +461,7 @@ awaitfinished:
 	}, nil
 }
 
-func (rc *RetrievalClient) RetrievalQueryToPeer(ctx context.Context, peerAddr peer.AddrInfo, payloadCid cid.Cid) (*retrievalmarket.QueryResponse, error) {
+func (rc *RetrievalClient) RetrievalQueryToPeer(ctx context.Context, peerAddr peer.AddrInfo, payloadCid cid.Cid, onConnected func()) (*retrievalmarket.QueryResponse, error) {
 	ctx, span := tracer.Start(ctx, "retrievalQueryPeer", trace.WithAttributes(
 		attribute.Stringer("peerID", peerAddr.ID),
 	))
@@ -568,20 +469,12 @@ func (rc *RetrievalClient) RetrievalQueryToPeer(ctx context.Context, peerAddr pe
 
 	err := rc.host.Connect(ctx, peerAddr)
 	if err != nil {
-		// publish fail event, log the err
-		rc.retrievalEventPublisher.Publish(
-			eventpublisher.NewRetrievalEventFailure(eventpublisher.QueryPhase, payloadCid, peerAddr.ID, address.Undef,
-				fmt.Sprintf("failed connecting to miner: %s", err.Error())))
 		return nil, err
 	}
 
 	streamToPeer, err := rc.host.NewStream(ctx, peerAddr.ID, RetrievalQueryProtocol)
 	if err != nil {
-		// publish fail event, log the err
-		rc.retrievalEventPublisher.Publish(
-			eventpublisher.NewRetrievalEventFailure(eventpublisher.QueryPhase, payloadCid, peerAddr.ID, address.Undef,
-				fmt.Sprintf("failed connecting to miner: %s", err.Error())))
-		return nil, err
+		return nil, fmt.Errorf("failed connecting to miner: %w", err)
 	}
 
 	rc.host.ConnManager().Protect(streamToPeer.Conn().RemotePeer(), "RetrievalQueryToPeer")
@@ -590,9 +483,9 @@ func (rc *RetrievalClient) RetrievalQueryToPeer(ctx context.Context, peerAddr pe
 		streamToPeer.Close()
 	}()
 
-	// We have connected
-	// publish connected event
-	rc.retrievalEventPublisher.Publish(eventpublisher.NewRetrievalEventConnect(eventpublisher.QueryPhase, payloadCid, peerAddr.ID, address.Address{}))
+	if onConnected != nil {
+		onConnected()
+	}
 
 	request := &retrievalmarket.Query{
 		PayloadCID: payloadCid,
@@ -600,19 +493,13 @@ func (rc *RetrievalClient) RetrievalQueryToPeer(ctx context.Context, peerAddr pe
 
 	var resp retrievalmarket.QueryResponse
 	if err := doRpc(ctx, streamToPeer, request, &resp); err != nil {
-		// publish failure event
-		rc.retrievalEventPublisher.Publish(
-			eventpublisher.NewRetrievalEventFailure(eventpublisher.QueryPhase, payloadCid, peerAddr.ID, address.Undef,
-				fmt.Sprintf("failed retrieval query ask: %s", err.Error())))
 		return nil, fmt.Errorf("failed retrieval query rpc: %w", err)
 	}
-
-	// publish query ask event
-	rc.retrievalEventPublisher.Publish(eventpublisher.NewRetrievalEventQueryAsk(eventpublisher.QueryPhase, payloadCid, peerAddr.ID, address.Undef, resp))
 
 	return &resp, nil
 }
 
+/*
 func (rc *RetrievalClient) SubscribeToRetrievalEvents(subscriber eventpublisher.RetrievalSubscriber) {
 	rc.retrievalEventPublisher.Subscribe(subscriber)
 }
@@ -655,6 +542,7 @@ func (rc *RetrievalClient) OnRetrievalEvent(event eventpublisher.RetrievalEvent)
 	}
 	retrievalLog.Debugw("retrieval-event", kv...)
 }
+*/
 
 func doRpc(ctx context.Context, stream network.Stream, req interface{}, resp interface{}) error {
 	dline, ok := ctx.Deadline()
