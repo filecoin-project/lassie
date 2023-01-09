@@ -76,7 +76,7 @@ type eventReport struct {
 // success
 type eventDetailsSuccess struct {
 	ReceivedSize uint64 `json:"receivedSize"`
-	ReceivedCids int64  `json:"receivedCids"`
+	ReceivedCids uint64 `json:"receivedCids"`
 	Confirmed    bool   `json:"confirmed"`
 }
 
@@ -121,7 +121,7 @@ func (er *EventRecorder) RetrievalProgress(retrievalId uuid.UUID, phaseStartTime
 // RetrievalSuccess events occur on the success of a retrieval. A retrieval
 // will result in either a QueryFailure or a QuerySuccess
 // event.
-func (er *EventRecorder) RetrievalSuccess(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, retrievalCid cid.Cid, storageProviderId peer.ID, retrievedSize uint64, receivedCids int64, confirmed bool) {
+func (er *EventRecorder) RetrievalSuccess(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, retrievalCid cid.Cid, storageProviderId peer.ID, retrievedSize uint64, receivedCids uint64, confirmed bool) {
 	evt := eventReport{retrievalId, er.instanceId, retrievalCid.String(), storageProviderId, eventpublisher.RetrievalPhase, phaseStartTime, eventpublisher.SuccessCode, eventTime, nil}
 	evt.EventDetails = &eventDetailsSuccess{retrievedSize, receivedCids, confirmed}
 	er.recordEvent("RetrievalSuccess", evt)

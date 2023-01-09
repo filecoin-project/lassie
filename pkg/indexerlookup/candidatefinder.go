@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/filecoin-project/index-provider/metadata"
-	"github.com/filecoin-project/lassie/pkg/retriever"
+	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	"github.com/ipni/storetheindex/api/v0/finder/model"
 )
@@ -51,7 +51,7 @@ func (idxf *IndexerCandidateFinder) sendRequest(req *http.Request) (*model.FindR
 	return model.UnmarshalFindResponse(b)
 }
 
-func (idxf *IndexerCandidateFinder) FindCandidates(ctx context.Context, cid cid.Cid) ([]retriever.RetrievalCandidate, error) {
+func (idxf *IndexerCandidateFinder) FindCandidates(ctx context.Context, cid cid.Cid) ([]types.RetrievalCandidate, error) {
 	u := fmt.Sprint(idxf.baseUrl, "/multihash/", cid.Hash().B58String())
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
@@ -64,7 +64,7 @@ func (idxf *IndexerCandidateFinder) FindCandidates(ctx context.Context, cid cid.
 	}
 	hash := string(cid.Hash())
 	// turn parsedResp into records.
-	var matches []retriever.RetrievalCandidate
+	var matches []types.RetrievalCandidate
 
 	indices := rand.Perm(len(parsedResp.MultihashResults))
 	for _, i := range indices {
@@ -80,7 +80,7 @@ func (idxf *IndexerCandidateFinder) FindCandidates(ctx context.Context, cid cid.
 				continue
 			}
 
-			matches = append(matches, retriever.RetrievalCandidate{
+			matches = append(matches, types.RetrievalCandidate{
 				RootCid:   cid,
 				MinerPeer: val.Provider,
 			})
