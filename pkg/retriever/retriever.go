@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/eventpublisher"
@@ -21,6 +20,7 @@ import (
 )
 
 var (
+	ErrDealProposalFailed          = errors.New("deal proposal failed")
 	ErrNoCandidates                = errors.New("no candidates")
 	ErrUnexpectedRetrieval         = errors.New("unexpected active retrieval")
 	ErrHitRetrievalLimit           = errors.New("hit retrieval limit")
@@ -83,13 +83,8 @@ type Retriever struct {
 	confirm          func(cid.Cid) (bool, error)
 }
 
-type RetrievalCandidate struct {
-	MinerPeer peer.AddrInfo
-	RootCid   cid.Cid
-}
-
 type CandidateFinder interface {
-	FindCandidates(context.Context, cid.Cid) ([]RetrievalCandidate, error)
+	FindCandidates(context.Context, cid.Cid) ([]types.RetrievalCandidate, error)
 }
 
 type BlockConfirmer func(c cid.Cid) (bool, error)
@@ -115,8 +110,6 @@ func NewRetriever(
 		confirm: confirmer,
 	}
 
-	retriever.client.SubscribeToRetrievalEvents(retriever)
-
 	return retriever, nil
 }
 
@@ -125,89 +118,6 @@ func NewRetriever(
 // storage providers to find compatible ones to attempt retrieval from.
 func (retriever *Retriever) RegisterListener(listener RetrievalEventListener) func() {
 	return retriever.eventManager.RegisterListener(listener)
-}
-
-type retrievalInstrumentation struct {
-	retriever           *Retriever
-	cid                 cid.Cid
-	startingRetrievalCb func(candidateCount int) error
-	queryCount          int64
-	filteredQueryCount  int64
-	failedCount         int64
-}
-
-func (ri *retrievalInstrumentation) OnRetrievalCandidatesFound(foundCount int) error {
-	if foundCount > 0 {
-		stats.Record(context.Background(), metrics.RequestWithIndexerCandidatesCount.M(1))
-	}
-	stats.Record(context.Background(), metrics.IndexerCandidatesPerRequestCount.M(int64(foundCount)))
-	return nil
-}
-
-func (ri *retrievalInstrumentation) OnRetrievalCandidatesFiltered(filteredCount int) error {
-	if filteredCount == 0 {
-		return nil
-	}
-	stats.Record(context.Background(), metrics.RequestWithIndexerCandidatesFilteredCount.M(1))
-	return ri.startingRetrievalCb(filteredCount)
-}
-
-func (ri *retrievalInstrumentation) OnErrorQueryingRetrievalCandidate(candidate RetrievalCandidate, err error) {
-	ri.retriever.minerMonitor.recordFailure(candidate.MinerPeer.ID)
-}
-
-func (ri *retrievalInstrumentation) OnErrorRetrievingFromCandidate(candidate RetrievalCandidate, err error) {
-	// need to simulate error events locally because they don't arise from the client
-	if errors.Is(err, ErrRetrievalTimedOut) {
-		ri.retriever.OnRetrievalEvent(eventpublisher.NewRetrievalEventFailure(
-			eventpublisher.RetrievalPhase,
-			candidate.RootCid,
-			candidate.MinerPeer.ID,
-			address.Undef,
-			fmt.Sprintf("timeout after %s", ri.retriever.getStorageProviderTimeout(candidate.MinerPeer.ID)),
-		))
-	} else if errors.Is(err, ErrProposalCreationFailed) {
-		ri.retriever.OnRetrievalEvent(eventpublisher.NewRetrievalEventFailure(
-			eventpublisher.RetrievalPhase,
-			candidate.RootCid,
-			candidate.MinerPeer.ID,
-			address.Undef,
-			err.Error()),
-		)
-	}
-	atomic.AddInt64(&ri.failedCount, 1)
-	log.Warnf(
-		"Failed to retrieve from miner %s for %s: %v",
-		candidate.MinerPeer.ID,
-		ri.cid,
-		err,
-	)
-	stats.Record(context.Background(), metrics.RetrievalDealFailCount.M(1))
-	stats.Record(context.Background(), metrics.RetrievalDealActiveCount.M(-1))
-	ri.retriever.minerMonitor.recordFailure(candidate.MinerPeer.ID)
-}
-
-func (ri *retrievalInstrumentation) OnRetrievalQueryForCandidate(candidate RetrievalCandidate, queryResponse *retrievalmarket.QueryResponse) {
-	qc := atomic.AddInt64(&ri.queryCount, 1)
-	if qc == 1 {
-		stats.Record(context.Background(), metrics.RequestWithSuccessfulQueriesCount.M(1))
-	}
-}
-
-func (ri *retrievalInstrumentation) OnFilteredRetrievalQueryForCandidate(candidate RetrievalCandidate, queryResponse *retrievalmarket.QueryResponse) {
-	fqc := atomic.AddInt64(&ri.filteredQueryCount, 1)
-	if fqc == 1 {
-		stats.Record(context.Background(), metrics.RequestWithSuccessfulQueriesFilteredCount.M(1))
-	}
-	// register that we have this many candidates to retrieve from, so that when we
-	// receive success or failures from that many we know the phase is completed,
-	// if zero at this point then clean-up will occur
-	ri.retriever.activeRetrievals.SetRetrievalCandidateCount(candidate.RootCid, int(fqc))
-}
-
-func (ri *retrievalInstrumentation) OnRetrievingFromCandidate(candidate RetrievalCandidate) {
-	stats.Record(context.Background(), metrics.RetrievalRequestCount.M(1))
-	stats.Record(context.Background(), metrics.RetrievalDealActiveCount.M(1))
 }
 
 func (retriever *Retriever) getStorageProviderTimeout(storageProviderId peer.ID) time.Duration {
@@ -257,39 +167,76 @@ func (retriever *Retriever) isAcceptableQueryResponse(queryResponse *retrievalma
 // Retrieve attempts to retrieve the given CID using the configured
 // CandidateFinder to find storage providers that should have the CID.
 func (retriever *Retriever) Retrieve(ctx context.Context, cid cid.Cid) (*RetrievalStats, error) {
-	// instrumentation receives events primarily responsible for metrics reporting
-	// but we also use it for activeRetrievals management while we still need to
-	// deal with that here
-	instrumentation := &retrievalInstrumentation{
-		retriever: retriever,
-		cid:       cid,
-		startingRetrievalCb: func(filteredCount int) error {
-			// We register that we have len(candidates) candidates to query, so that when
-			// we receive success or failures from that many we know the phase is
-			// completed. We also pre-emptively suggest we're expecting at least one
-			// retrieval to occur. But this number will be updated as queries come in,
-			// but at this point we want to avoid a (unlikely) race condition where we
-			// get all expected success/failures for queries and trigger a clean-up
-			// before we have a chance to set the correct count
-			if _, err := retriever.activeRetrievals.New(cid, filteredCount, 1); err != nil {
-				return err
-			}
-			return nil
-		},
-	}
-
 	config := &RetrievalConfig{
-		Instrumentation:             instrumentation,
 		GetStorageProviderTimeout:   retriever.getStorageProviderTimeout,
 		IsAcceptableStorageProvider: retriever.isAcceptableStorageProvider,
 		IsAcceptableQueryResponse:   retriever.isAcceptableQueryResponse,
 	}
 
+	var failedCount int64
+	var queryCount int64
+	var filteredQueryCount int64
+
 	// retrieve, note that we could get a successful retrieval
 	// (retrievalStats!=nil) _and_ also an error return because there may be
 	// multiple failures along the way, if we got a retrieval then we'll pretend
 	// to our caller that there was no error
-	retrievalStats, err := RetrieveFromCandidates(ctx, config, retriever.candidateFinder, retriever.client, cid)
+	retrievalStats, err := RetrieveFromCandidates(ctx, config, retriever.candidateFinder, retriever.client, cid, func(event eventpublisher.RetrievalEvent) {
+		// handle special-case retrieval failure event (could be >1 of these per Retrieve() call)
+		switch ret := event.(type) {
+		case eventpublisher.RetrievalEventCandidatesFound:
+			if len(ret.Candidates()) > 0 {
+				stats.Record(context.Background(), metrics.RequestWithIndexerCandidatesCount.M(1))
+			}
+			stats.Record(context.Background(), metrics.IndexerCandidatesPerRequestCount.M(int64(len(ret.Candidates()))))
+		case eventpublisher.RetrievalEventCandidatesFiltered:
+			if len(ret.Candidates()) > 0 {
+				stats.Record(context.Background(), metrics.RequestWithIndexerCandidatesFilteredCount.M(1))
+				// We register that we have len(candidates) candidates to query, so that when
+				// we receive success or failures from that many we know the phase is
+				// completed. We also pre-emptively suggest we're expecting at least one
+				// retrieval to occur. But this number will be updated as queries come in,
+				// but at this point we want to avoid a (unlikely) race condition where we
+				// get all expected success/failures for queries and trigger a clean-up
+				// before we have a chance to set the correct count
+				retriever.activeRetrievals.New(event.PayloadCid(), len(ret.Candidates()), 1) // TODO: handle err
+			}
+		case eventpublisher.RetrievalEventQueryAsk:
+			qc := atomic.AddInt64(&queryCount, 1)
+			if qc == 1 {
+				stats.Record(context.Background(), metrics.RequestWithSuccessfulQueriesCount.M(1))
+			}
+		case eventpublisher.RetrievalEventQueryAskFiltered:
+			fqc := atomic.AddInt64(&filteredQueryCount, 1)
+			if fqc == 1 {
+				stats.Record(context.Background(), metrics.RequestWithSuccessfulQueriesFilteredCount.M(1))
+			}
+			// register that we have this many candidates to retrieve from, so that when we
+			// receive success or failures from that many we know the phase is completed,
+			// if zero at this point then clean-up will occur
+			retriever.activeRetrievals.SetRetrievalCandidateCount(ret.PayloadCid(), int(fqc))
+		case eventpublisher.RetrievalEventFailure:
+			if ret.Phase() == eventpublisher.RetrievalPhase {
+				atomic.AddInt64(&failedCount, 1)
+				log.Warnf(
+					"Failed to retrieve from miner %s for %s: %s",
+					event.StorageProviderId(),
+					event.PayloadCid(),
+					ret.ErrorMessage(),
+				)
+				stats.Record(context.Background(), metrics.RetrievalDealFailCount.M(1))
+				stats.Record(context.Background(), metrics.RetrievalDealActiveCount.M(-1))
+			}
+			retriever.minerMonitor.recordFailure(ret.StorageProviderId())
+		case eventpublisher.RetrievalEventStarted:
+			if ret.Phase() == eventpublisher.RetrievalPhase {
+				stats.Record(context.Background(), metrics.RetrievalRequestCount.M(1))
+				stats.Record(context.Background(), metrics.RetrievalDealActiveCount.M(1))
+			}
+		}
+
+		retriever.onRetrievalEvent(event)
+	})
 	if err != nil {
 		if errors.Is(err, ErrAllQueriesFailed) {
 			// tell the ActiveRetrievalsManager not to expect any retrievals for this
@@ -319,21 +266,26 @@ func (retriever *Retriever) Retrieve(ctx context.Context, cid cid.Cid) (*Retriev
 	stats.Record(ctx, metrics.RetrievalDealDuration.M(retrievalStats.Duration.Seconds()))
 	stats.Record(ctx, metrics.RetrievalDealSize.M(int64(retrievalStats.Size)))
 	stats.Record(ctx, metrics.RetrievalDealCost.M(retrievalStats.TotalPayment.Int64()))
-	stats.Record(ctx, metrics.FailedRetrievalsPerRequestCount.M(atomic.LoadInt64(&instrumentation.failedCount)))
-	stats.Record(ctx, metrics.SuccessfulQueriesPerRequestCount.M(atomic.LoadInt64(&instrumentation.queryCount)))
-	stats.Record(ctx, metrics.SuccessfulQueriesPerRequestFilteredCount.M(atomic.LoadInt64(&instrumentation.filteredQueryCount)))
+	stats.Record(ctx, metrics.FailedRetrievalsPerRequestCount.M(atomic.LoadInt64(&failedCount)))
+	stats.Record(ctx, metrics.SuccessfulQueriesPerRequestCount.M(atomic.LoadInt64(&queryCount)))
+	stats.Record(ctx, metrics.SuccessfulQueriesPerRequestFilteredCount.M(atomic.LoadInt64(&filteredQueryCount)))
 
 	return retrievalStats, nil
 }
 
 // Implement RetrievalSubscriber
-func (retriever *Retriever) OnRetrievalEvent(event eventpublisher.RetrievalEvent) {
+func (retriever *Retriever) onRetrievalEvent(event eventpublisher.RetrievalEvent) {
 	logEvent(event)
+
+	if event.Code() == eventpublisher.CandidatesFoundCode {
+		// activeRetrievals not set up for this yet
+		return
+	}
 
 	retrievalId, retrievalCid, phaseStartTime, has := retriever.activeRetrievals.GetStatusFor(event.PayloadCid(), event.Phase())
 
 	if !has {
-		log.Errorf("Received event [%s] for unexpected retrieval: payload-cid=%s, storage-provider-id=%s", event.Code(), event.PayloadCid(), event.StorageProviderId())
+		log.Errorf("Received event [%s / %t] for unexpected retrieval: payload-cid=%s, storage-provider-id=%s", event.Code(), event.PayloadCid(), event.StorageProviderId())
 		return
 	}
 	ctx := context.Background()
@@ -363,7 +315,7 @@ func (retriever *Retriever) OnRetrievalEvent(event eventpublisher.RetrievalEvent
 				event.StorageProviderId(),
 				msg,
 			)
-		} else {
+		} else if event.Phase() == eventpublisher.RetrievalPhase {
 			var matched bool
 			for substr, metric := range metrics.ErrorMetricMatches {
 				if strings.Contains(msg, substr) {
@@ -432,7 +384,7 @@ func (retriever *Retriever) OnRetrievalEvent(event eventpublisher.RetrievalEvent
 				event.StorageProviderId(),
 				event.Code(),
 			)
-		} else {
+		} else if event.Phase() == eventpublisher.RetrievalPhase {
 			retriever.eventManager.FireRetrievalProgress(
 				retrievalId,
 				event.PayloadCid(),
@@ -461,8 +413,7 @@ func logEvent(event eventpublisher.RetrievalEvent) {
 	logadd("code", event.Code(),
 		"phase", event.Phase(),
 		"payloadCid", event.PayloadCid(),
-		"storageProviderId", event.StorageProviderId(),
-		"storageProviderAddr", event.StorageProviderAddr())
+		"storageProviderId", event.StorageProviderId())
 	switch tevent := event.(type) {
 	case eventpublisher.RetrievalEventQueryAsk:
 		logadd("queryResponse:Status", tevent.QueryResponse().Status,

@@ -194,7 +194,7 @@ func (progressPrinter) QuerySuccess(retrievalId uuid.UUID, phaseStartTime, event
 func (progressPrinter) RetrievalProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage eventpublisher.Code) {
 	fmt.Printf("Retrieving from [%s] (%s)...\n", storageProviderId, stage)
 }
-func (progressPrinter) RetrievalSuccess(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, receivedSize uint64, receivedCids int64, confirmed bool) {
+func (progressPrinter) RetrievalSuccess(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, receivedSize uint64, receivedCids uint64, confirmed bool) {
 }
 func (progressPrinter) RetrievalFailure(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, errString string) {
 	fmt.Printf("Retrieval failure for [%s]: %s\n", storageProviderId, errString)
