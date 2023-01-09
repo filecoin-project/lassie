@@ -114,7 +114,7 @@ func TestQueryFiltering(t *testing.T) {
 			}
 
 			// perform retrieval and test top-level results, we should only error in this test
-			stats, err := Retrieve(context.Background(), cfg, mockCandidateFinder, mockClient, cid.Undef)
+			stats, err := RetrieveFromCandidate(context.Background(), cfg, mockCandidateFinder, mockClient, cid.Undef)
 			qt.Assert(t, stats, qt.IsNil)
 			qt.Assert(t, err, qt.IsNotNil)
 
@@ -290,7 +290,7 @@ func TestRetrievalRacing(t *testing.T) {
 			}
 
 			// perform retrieval and make sure we got a result
-			stats, err := Retrieve(context.Background(), cfg, mockCandidateFinder, mockClient, cid.Undef)
+			stats, err := RetrieveFromCandidate(context.Background(), cfg, mockCandidateFinder, mockClient, cid.Undef)
 			if tc.expectedRetrieval != "" {
 				qt.Assert(t, stats, qt.IsNotNil)
 				qt.Assert(t, err, qt.IsNil)
@@ -390,7 +390,7 @@ func TestMultipleRetrievals(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
-		stats, err := Retrieve(context.Background(), cfg, mockCandidateFinder, mockClient, cid1)
+		stats, err := RetrieveFromCandidate(context.Background(), cfg, mockCandidateFinder, mockClient, cid1)
 		qt.Assert(t, stats, qt.IsNotNil)
 		qt.Assert(t, err, qt.IsNil)
 		// make sure we got the final retrieval we wanted
@@ -398,7 +398,7 @@ func TestMultipleRetrievals(t *testing.T) {
 		wg.Done()
 	}()
 
-	stats, err := Retrieve(context.Background(), cfg, mockCandidateFinder, mockClient, cid2)
+	stats, err := RetrieveFromCandidate(context.Background(), cfg, mockCandidateFinder, mockClient, cid2)
 	qt.Assert(t, stats, qt.IsNotNil)
 	qt.Assert(t, err, qt.IsNil)
 	// make sure we got the final retrieval we wanted

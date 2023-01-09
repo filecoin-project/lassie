@@ -54,7 +54,7 @@ func Fetch(c *cli.Context) error {
 	}
 
 	fmt.Printf("Fetching %s", rootCid)
-	stats, err := retriever.Request(rootCid)
+	stats, err := retriever.Retrieve(c.Context, rootCid)
 	if err != nil {
 		fmt.Println()
 		return err
