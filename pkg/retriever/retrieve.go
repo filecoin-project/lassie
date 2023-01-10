@@ -190,10 +190,8 @@ func collectResults(ctx context.Context, retrieval *retrieval, expectedCandidate
 			}
 			if result.Err != nil {
 				if errors.Is(result.Err, ErrQueryFailed) {
-					eventsCallback(eventpublisher.Failure(result.PhaseStart, eventpublisher.QueryPhase, retrieval.cid, result.PeerID, result.Err.Error()))
 					queryErrors = multierr.Append(queryErrors, result.Err)
 				} else if errors.Is(result.Err, ErrRetrievalFailed) {
-					eventsCallback(eventpublisher.Failure(result.PhaseStart, eventpublisher.RetrievalPhase, retrieval.cid, result.PeerID, result.Err.Error()))
 					retrievalErrors = multierr.Append(retrievalErrors, result.Err)
 				}
 			}
@@ -228,19 +226,23 @@ func runRetrievalCandidate(ctx context.Context, cfg *RetrievalConfig, client Ret
 	}
 
 	var stats *RetrievalStats
+	var retrievalErr error
 	var done func()
 	queryStartTime := time.Now()
 
-	retrieval.sendEvent(eventpublisher.Started(queryStartTime, eventpublisher.QueryPhase, candidate.RootCid, candidate.MinerPeer.ID))
+	retrieval.sendEvent(eventpublisher.Started(queryStartTime, eventpublisher.QueryPhase, candidate))
 
 	// run the query phase
 	onConnected := func() {
-		retrieval.sendEvent(eventpublisher.Connect(queryStartTime, eventpublisher.QueryPhase, candidate.RootCid, candidate.MinerPeer.ID))
+		retrieval.sendEvent(eventpublisher.Connect(queryStartTime, eventpublisher.QueryPhase, candidate))
 	}
-	queryResponse, err := queryPhase(ctx, cfg, client, timeout, candidate, onConnected)
+	queryResponse, queryErr := queryPhase(ctx, cfg, client, timeout, candidate, onConnected)
+	if queryErr != nil {
+		retrieval.sendEvent(eventpublisher.Failure(queryStartTime, eventpublisher.QueryPhase, candidate, queryErr.Error()))
+	}
 
 	if queryResponse != nil {
-		retrieval.sendEvent(eventpublisher.QueryAsk(queryStartTime, candidate.RootCid, candidate.MinerPeer.ID, *queryResponse))
+		retrieval.sendEvent(eventpublisher.QueryAsk(queryStartTime, candidate, *queryResponse))
 		if queryResponse.Status != retrievalmarket.QueryResponseAvailable ||
 			(cfg.IsAcceptableQueryResponse != nil && !cfg.IsAcceptableQueryResponse(queryResponse)) {
 			queryResponse = nil
@@ -250,13 +252,13 @@ func runRetrievalCandidate(ctx context.Context, cfg *RetrievalConfig, client Ret
 	retrievalStartTime := time.Now()
 
 	if queryResponse != nil {
-		retrieval.sendEvent(eventpublisher.QueryAskFiltered(queryStartTime, candidate.RootCid, candidate.MinerPeer.ID, *queryResponse))
+		retrieval.sendEvent(eventpublisher.QueryAskFiltered(queryStartTime, candidate, *queryResponse))
 
 		var receivedFirstByte bool
 		eventsCallback := func(event datatransfer.Event, channelState datatransfer.ChannelState) {
 			switch event.Code {
 			case datatransfer.Open:
-				retrieval.sendEvent(eventpublisher.Proposed(retrievalStartTime, candidate.RootCid, candidate.MinerPeer.ID))
+				retrieval.sendEvent(eventpublisher.Proposed(retrievalStartTime, candidate))
 			case datatransfer.NewVoucherResult:
 				lastVoucher := channelState.LastVoucherResult()
 				resType, err := retrievalmarket.DealResponseFromNode(lastVoucher.Voucher)
@@ -264,12 +266,12 @@ func runRetrievalCandidate(ctx context.Context, cfg *RetrievalConfig, client Ret
 					return
 				}
 				if resType.Status == retrievalmarket.DealStatusAccepted {
-					retrieval.sendEvent(eventpublisher.Accepted(retrievalStartTime, candidate.RootCid, candidate.MinerPeer.ID))
+					retrieval.sendEvent(eventpublisher.Accepted(retrievalStartTime, candidate))
 				}
 			case datatransfer.DataReceivedProgress:
 				if !receivedFirstByte {
 					receivedFirstByte = true
-					retrieval.sendEvent(eventpublisher.FirstByte(retrievalStartTime, candidate.RootCid, candidate.MinerPeer.ID))
+					retrieval.sendEvent(eventpublisher.FirstByte(retrievalStartTime, candidate))
 				}
 			}
 		}
@@ -278,49 +280,20 @@ func runRetrievalCandidate(ctx context.Context, cfg *RetrievalConfig, client Ret
 		done = retrieval.waitQueue.Wait(&queryCandidate{queryResponse, time.Since(queryStartTime)})
 
 		if retrieval.canSendResult() {
-			retrieval.sendEvent(eventpublisher.Started(retrievalStartTime, eventpublisher.RetrievalPhase, candidate.RootCid, candidate.MinerPeer.ID))
+			retrieval.sendEvent(eventpublisher.Started(retrievalStartTime, eventpublisher.RetrievalPhase, candidate))
 
-			stats, err = retrievalPhase(ctx, cfg, client, timeout, candidate, queryResponse, eventsCallback)
+			stats, retrievalErr = retrievalPhase(ctx, cfg, client, timeout, candidate, queryResponse, eventsCallback)
 
-			if err != nil {
-				if errors.Is(err, ErrRetrievalTimedOut) {
-					retrieval.sendEvent(eventpublisher.Failure(
-						retrievalStartTime,
-						eventpublisher.RetrievalPhase,
-						candidate.RootCid,
-						candidate.MinerPeer.ID,
-						fmt.Sprintf("timeout after %s", timeout),
-					))
-				} else if errors.Is(err, ErrProposalCreationFailed) {
-					retrieval.sendEvent(eventpublisher.Failure(
-						retrievalStartTime,
-						eventpublisher.RetrievalPhase,
-						candidate.RootCid,
-						candidate.MinerPeer.ID,
-						err.Error()),
-					)
-					// } else if errors.Is(err, ErrProposalCreationFailed) {
-					// 	retrieval.sendEvent(eventpublisher.Failure(
-					// 		eventpublisher.RetrievalPhase,
-					// 		candidate.RootCid,
-					// 		candidate.MinerPeer.ID,
-					// 		address.Undef,
-					// 		err.Error()),
-					// 	)
-				} else {
-					retrieval.sendEvent(eventpublisher.Failure(
-						retrievalStartTime,
-						eventpublisher.RetrievalPhase,
-						candidate.RootCid,
-						candidate.MinerPeer.ID,
-						err.Error()),
-					)
+			if retrievalErr != nil {
+				msg := retrievalErr.Error()
+				if errors.Is(retrievalErr, ErrRetrievalTimedOut) {
+					msg = fmt.Sprintf("timeout after %s", timeout)
 				}
+				retrieval.sendEvent(eventpublisher.Failure(retrievalStartTime, eventpublisher.RetrievalPhase, candidate, msg))
 			} else {
 				retrieval.sendEvent(eventpublisher.Success(
 					retrievalStartTime,
-					candidate.RootCid,
-					candidate.MinerPeer.ID,
+					candidate,
 					stats.Size,
 					stats.Blocks,
 					stats.Duration,
@@ -331,10 +304,14 @@ func runRetrievalCandidate(ctx context.Context, cfg *RetrievalConfig, client Ret
 	}
 
 	if retrieval.canSendResult() {
-		if err != nil {
+		if queryErr != nil || retrievalErr != nil {
 			if ctx.Err() != nil { // cancelled, don't report the error
 				retrieval.sendResult(retrievalResult{PhaseStart: retrievalStartTime, PeerID: candidate.MinerPeer.ID})
 			} else {
+				err := queryErr
+				if err == nil {
+					err = retrievalErr
+				}
 				retrieval.sendResult(retrievalResult{PhaseStart: retrievalStartTime, PeerID: candidate.MinerPeer.ID, Err: err})
 			}
 		} else {

@@ -202,10 +202,8 @@ func (retriever *Retriever) Retrieve(ctx context.Context, cid cid.Cid) (*Retriev
 		cid,
 		onRetrievalEvent,
 	)
-	if err != nil {
-		if retrievalStats == nil {
-			return nil, err
-		}
+	if err != nil && retrievalStats == nil {
+		return nil, err
 	}
 
 	// success
@@ -243,6 +241,8 @@ func makeOnRetrievalEvent(
 	retrievalId uuid.UUID,
 	eventStats *eventStats,
 ) func(event eventpublisher.RetrievalEvent) {
+	// this callback is only called in the main retrieval goroutine so is safe to
+	// modify local values (eventStats) without synchronization
 	return func(event eventpublisher.RetrievalEvent) {
 		logEvent(event)
 
