@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"time"
 
 	"github.com/urfave/cli/v2"
 )
@@ -24,6 +25,12 @@ func main1() int {
 						Aliases:   []string{"o"},
 						Usage:     "The CAR file to write to",
 						TakesFile: true,
+					},
+					&cli.DurationFlag{
+						Name:    "timeout",
+						Aliases: []string{"t"},
+						Usage:   "Consider it an error after not receiving a response from a storage provider for this long",
+						Value:   20 * time.Second,
 					},
 				},
 			},

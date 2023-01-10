@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/dustin/go-humanize"
 	"github.com/filecoin-project/lassie/cmd/lassie/internal"
@@ -24,7 +25,7 @@ import (
 
 func Fetch(c *cli.Context) error {
 	if c.Args().Len() == 0 || !c.IsSet("output") {
-		return fmt.Errorf("usage: lassie fetch -o <CAR file> <CID>")
+		return fmt.Errorf("usage: lassie fetch -o <CAR file> [-t <timeout>] <CID>")
 	}
 
 	rootCid, err := cid.Parse(c.Args().Get(0))
@@ -48,7 +49,7 @@ func Fetch(c *cli.Context) error {
 		blockCount++
 	}
 	bstore := &putCbBlockstore{parent: carStore, cb: putCb}
-	retriever, err := setupRetriever(configDir, c, bstore)
+	retriever, err := setupRetriever(configDir, c, c.Duration("timeout"), bstore)
 	if err != nil {
 		return err
 	}
@@ -83,7 +84,7 @@ func setupConfigDir() (string, error) {
 	return filepath.Join(homedir, ".lassie", "datastore"), nil
 }
 
-func setupRetriever(configDir string, c *cli.Context, blockstore blockstore.Blockstore) (*retriever.Retriever, error) {
+func setupRetriever(configDir string, c *cli.Context, timeout time.Duration, blockstore blockstore.Blockstore) (*retriever.Retriever, error) {
 	datastore := dss.MutexWrap(datastore.NewMapDatastore())
 
 	host, err := internal.InitHost(c.Context, configDir, multiaddr.StringCast("/ip4/0.0.0.0/tcp/6746"))
@@ -107,7 +108,11 @@ func setupRetriever(configDir string, c *cli.Context, blockstore blockstore.Bloc
 		return blockstore.Has(c.Context, cid)
 	}
 
-	retrieverCfg := retriever.RetrieverConfig{}
+	retrieverCfg := retriever.RetrieverConfig{
+		DefaultMinerConfig: retriever.MinerConfig{
+			RetrievalTimeout: timeout,
+		},
+	}
 
 	return retriever.NewRetriever(c.Context, retrieverCfg, retrievalClient, indexer, confirmer)
 }
