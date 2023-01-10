@@ -9,35 +9,35 @@ import (
 )
 
 func TestSuspend(t *testing.T) {
-	cfg := minerMonitorConfig{
+	cfg := &spTrackerConfig{
 		maxFailuresBeforeSuspend: 3,
 		failureHistoryDuration:   time.Millisecond * 50,
 		suspensionDuration:       time.Millisecond * 50,
 	}
 
-	monitor := newMinerMonitor(cfg)
+	tracker := newSpTracker(cfg)
 
-	testMinerA := peer.ID("A")
-	testMinerB := peer.ID("B")
+	testSPA := peer.ID("A")
+	testSPB := peer.ID("B")
 
 	// Must have max failures + 1 logged and be marked as suspended... and then
 	// no longer be marked as suspended after the suspension duration is up
 	for i := uint(0); i < cfg.maxFailuresBeforeSuspend+1; i++ {
-		monitor.recordFailure(testMinerA)
+		tracker.RecordFailure(testSPA)
 	}
-	require.Len(t, monitor.statuses[testMinerA].failures, int(cfg.maxFailuresBeforeSuspend+1))
-	require.True(t, monitor.suspended(testMinerA))
+	require.Len(t, tracker.spfm[testSPA].failures, int(cfg.maxFailuresBeforeSuspend+1))
+	require.True(t, tracker.IsSuspended(testSPA))
 	require.Eventually(
 		t,
-		func() bool { return !monitor.suspended(testMinerA) },
+		func() bool { return !tracker.IsSuspended(testSPA) },
 		cfg.suspensionDuration*time.Duration(3),
 		time.Millisecond,
 	)
 
 	// Must have max failures and not be marked as suspended
 	for i := uint(0); i < cfg.maxFailuresBeforeSuspend; i++ {
-		monitor.recordFailure(testMinerB)
+		tracker.RecordFailure(testSPB)
 	}
-	require.Len(t, monitor.statuses[testMinerB].failures, int(cfg.maxFailuresBeforeSuspend))
-	require.False(t, monitor.suspended(testMinerB))
+	require.Len(t, tracker.spfm[testSPB].failures, int(cfg.maxFailuresBeforeSuspend))
+	require.False(t, tracker.IsSuspended(testSPB))
 }
