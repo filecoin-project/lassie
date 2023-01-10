@@ -7,6 +7,7 @@ import (
 
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/lassie/pkg/eventpublisher"
+	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/require"
@@ -48,8 +49,8 @@ func TestEventing(t *testing.T) {
 
 	pub.Subscribe(sub)
 	pid := peer.NewPeerRecord().PeerID
-	pub.Publish(eventpublisher.Connect(time.Now(), eventpublisher.QueryPhase, testCid1, pid))
-	pub.Publish(eventpublisher.Success(time.Now(), testCid1, "", 101, 202, time.Millisecond*303, abi.NewTokenAmount(404)))
+	pub.Publish(eventpublisher.Connect(time.Now(), eventpublisher.QueryPhase, types.RetrievalCandidate{RootCid: testCid1, MinerPeer: peer.AddrInfo{ID: pid}}))
+	pub.Publish(eventpublisher.Success(time.Now(), types.RetrievalCandidate{RootCid: testCid1, MinerPeer: peer.AddrInfo{ID: ""}}, 101, 202, time.Millisecond*303, abi.NewTokenAmount(404)))
 
 	evt := <-sub.ping
 	require.Equal(t, eventpublisher.QueryPhase, evt.Phase())

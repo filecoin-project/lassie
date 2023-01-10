@@ -96,8 +96,8 @@ type RetrievalEventConnect struct {
 	storageProviderId peer.ID
 }
 
-func Connect(phaseStartTime time.Time, phase Phase, payloadCid cid.Cid, storageProviderId peer.ID) RetrievalEventConnect {
-	return RetrievalEventConnect{phase, phaseStartTime, payloadCid, storageProviderId}
+func Connect(phaseStartTime time.Time, phase Phase, candidate types.RetrievalCandidate) RetrievalEventConnect {
+	return RetrievalEventConnect{phase, phaseStartTime, candidate.RootCid, candidate.MinerPeer.ID}
 }
 
 type RetrievalEventQueryAsk struct {
@@ -107,8 +107,8 @@ type RetrievalEventQueryAsk struct {
 	queryResponse     retrievalmarket.QueryResponse
 }
 
-func QueryAsk(phaseStartTime time.Time, payloadCid cid.Cid, storageProviderId peer.ID, queryResponse retrievalmarket.QueryResponse) RetrievalEventQueryAsk {
-	return RetrievalEventQueryAsk{phaseStartTime, payloadCid, storageProviderId, queryResponse}
+func QueryAsk(phaseStartTime time.Time, candidate types.RetrievalCandidate, queryResponse retrievalmarket.QueryResponse) RetrievalEventQueryAsk {
+	return RetrievalEventQueryAsk{phaseStartTime, candidate.RootCid, candidate.MinerPeer.ID, queryResponse}
 }
 
 type RetrievalEventQueryAskFiltered struct {
@@ -118,8 +118,8 @@ type RetrievalEventQueryAskFiltered struct {
 	queryResponse     retrievalmarket.QueryResponse
 }
 
-func QueryAskFiltered(phaseStartTime time.Time, payloadCid cid.Cid, storageProviderId peer.ID, queryResponse retrievalmarket.QueryResponse) RetrievalEventQueryAskFiltered {
-	return RetrievalEventQueryAskFiltered{phaseStartTime, payloadCid, storageProviderId, queryResponse}
+func QueryAskFiltered(phaseStartTime time.Time, candidate types.RetrievalCandidate, queryResponse retrievalmarket.QueryResponse) RetrievalEventQueryAskFiltered {
+	return RetrievalEventQueryAskFiltered{phaseStartTime, candidate.RootCid, candidate.MinerPeer.ID, queryResponse}
 }
 
 type RetrievalEventProposed struct {
@@ -128,8 +128,8 @@ type RetrievalEventProposed struct {
 	storageProviderId peer.ID
 }
 
-func Proposed(phaseStartTime time.Time, payloadCid cid.Cid, storageProviderId peer.ID) RetrievalEventProposed {
-	return RetrievalEventProposed{phaseStartTime, payloadCid, storageProviderId}
+func Proposed(phaseStartTime time.Time, candidate types.RetrievalCandidate) RetrievalEventProposed {
+	return RetrievalEventProposed{phaseStartTime, candidate.RootCid, candidate.MinerPeer.ID}
 }
 
 type RetrievalEventStarted struct {
@@ -139,8 +139,8 @@ type RetrievalEventStarted struct {
 	storageProviderId peer.ID
 }
 
-func Started(phaseStartTime time.Time, phase Phase, payloadCid cid.Cid, storageProviderId peer.ID) RetrievalEventStarted {
-	return RetrievalEventStarted{phase, phaseStartTime, payloadCid, storageProviderId}
+func Started(phaseStartTime time.Time, phase Phase, candidate types.RetrievalCandidate) RetrievalEventStarted {
+	return RetrievalEventStarted{phase, phaseStartTime, candidate.RootCid, candidate.MinerPeer.ID}
 }
 
 type RetrievalEventAccepted struct {
@@ -149,8 +149,8 @@ type RetrievalEventAccepted struct {
 	storageProviderId peer.ID
 }
 
-func Accepted(phaseStartTime time.Time, payloadCid cid.Cid, storageProviderId peer.ID) RetrievalEventAccepted {
-	return RetrievalEventAccepted{phaseStartTime, payloadCid, storageProviderId}
+func Accepted(phaseStartTime time.Time, candidate types.RetrievalCandidate) RetrievalEventAccepted {
+	return RetrievalEventAccepted{phaseStartTime, candidate.RootCid, candidate.MinerPeer.ID}
 }
 
 type RetrievalEventFirstByte struct {
@@ -159,8 +159,8 @@ type RetrievalEventFirstByte struct {
 	storageProviderId peer.ID
 }
 
-func FirstByte(phaseStartTime time.Time, payloadCid cid.Cid, storageProviderId peer.ID) RetrievalEventFirstByte {
-	return RetrievalEventFirstByte{phaseStartTime, payloadCid, storageProviderId}
+func FirstByte(phaseStartTime time.Time, candidate types.RetrievalCandidate) RetrievalEventFirstByte {
+	return RetrievalEventFirstByte{phaseStartTime, candidate.RootCid, candidate.MinerPeer.ID}
 }
 
 type RetrievalEventFailure struct {
@@ -171,8 +171,8 @@ type RetrievalEventFailure struct {
 	errorMessage      string
 }
 
-func Failure(phaseStartTime time.Time, phase Phase, payloadCid cid.Cid, storageProviderId peer.ID, errorMessage string) RetrievalEventFailure {
-	return RetrievalEventFailure{phase, phaseStartTime, payloadCid, storageProviderId, errorMessage}
+func Failure(phaseStartTime time.Time, phase Phase, candidate types.RetrievalCandidate, errorMessage string) RetrievalEventFailure {
+	return RetrievalEventFailure{phase, phaseStartTime, candidate.RootCid, candidate.MinerPeer.ID, errorMessage}
 }
 
 type RetrievalEventSuccess struct {
@@ -185,8 +185,8 @@ type RetrievalEventSuccess struct {
 	totalPayment      big.Int
 }
 
-func Success(phaseStartTime time.Time, payloadCid cid.Cid, storageProviderId peer.ID, receivedSize uint64, receivedCids uint64, duration time.Duration, totalPayment big.Int) RetrievalEventSuccess {
-	return RetrievalEventSuccess{phaseStartTime, payloadCid, storageProviderId, receivedSize, receivedCids, duration, totalPayment}
+func Success(phaseStartTime time.Time, candidate types.RetrievalCandidate, receivedSize uint64, receivedCids uint64, duration time.Duration, totalPayment big.Int) RetrievalEventSuccess {
+	return RetrievalEventSuccess{phaseStartTime, candidate.RootCid, candidate.MinerPeer.ID, receivedSize, receivedCids, duration, totalPayment}
 }
 
 func (r RetrievalEventCandidatesFound) Code() Code                 { return CandidatesFoundCode }
