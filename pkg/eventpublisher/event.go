@@ -43,6 +43,8 @@ type RetrievalEvent interface {
 	Code() Code
 	// Phase returns what phase of a retrieval this even occurred on
 	Phase() Phase
+	// PhaseStartTime returns the time that the phase started for this storage provider
+	PhaseStartTime() time.Time
 	// PayloadCid returns the CID being requested
 	PayloadCid() cid.Cid
 	// StorageProviderId returns the peer ID of the storage provider if this
@@ -64,106 +66,117 @@ var (
 )
 
 type RetrievalEventCandidatesFound struct {
-	payloadCid cid.Cid
-	candidates []types.RetrievalCandidate
+	phaseStartTime time.Time
+	payloadCid     cid.Cid
+	candidates     []types.RetrievalCandidate
 }
 
-func NewRetrievalEventCandidatesFound(payloadCid cid.Cid, candidates []types.RetrievalCandidate) RetrievalEventCandidatesFound {
+func CandidatesFound(phaseStartTime time.Time, payloadCid cid.Cid, candidates []types.RetrievalCandidate) RetrievalEventCandidatesFound {
 	c := make([]types.RetrievalCandidate, len(candidates))
 	copy(c, candidates)
-	return RetrievalEventCandidatesFound{payloadCid, c}
+	return RetrievalEventCandidatesFound{phaseStartTime, payloadCid, c}
 }
 
 type RetrievalEventCandidatesFiltered struct {
-	payloadCid cid.Cid
-	candidates []types.RetrievalCandidate
+	phaseStartTime time.Time
+	payloadCid     cid.Cid
+	candidates     []types.RetrievalCandidate
 }
 
-func NewRetrievalEventCandidatesFiltered(payloadCid cid.Cid, candidates []types.RetrievalCandidate) RetrievalEventCandidatesFiltered {
+func CandidatesFiltered(phaseStartTime time.Time, payloadCid cid.Cid, candidates []types.RetrievalCandidate) RetrievalEventCandidatesFiltered {
 	c := make([]types.RetrievalCandidate, len(candidates))
 	copy(c, candidates)
-	return RetrievalEventCandidatesFiltered{payloadCid, c}
+	return RetrievalEventCandidatesFiltered{phaseStartTime, payloadCid, c}
 }
 
 type RetrievalEventConnect struct {
 	phase             Phase
+	phaseStartTime    time.Time
 	payloadCid        cid.Cid
 	storageProviderId peer.ID
 }
 
-func NewRetrievalEventConnect(phase Phase, payloadCid cid.Cid, storageProviderId peer.ID) RetrievalEventConnect {
-	return RetrievalEventConnect{phase, payloadCid, storageProviderId}
+func Connect(phaseStartTime time.Time, phase Phase, payloadCid cid.Cid, storageProviderId peer.ID) RetrievalEventConnect {
+	return RetrievalEventConnect{phase, phaseStartTime, payloadCid, storageProviderId}
 }
 
 type RetrievalEventQueryAsk struct {
+	phaseStartTime    time.Time
 	payloadCid        cid.Cid
 	storageProviderId peer.ID
 	queryResponse     retrievalmarket.QueryResponse
 }
 
-func NewRetrievalEventQueryAsk(payloadCid cid.Cid, storageProviderId peer.ID, queryResponse retrievalmarket.QueryResponse) RetrievalEventQueryAsk {
-	return RetrievalEventQueryAsk{payloadCid, storageProviderId, queryResponse}
+func QueryAsk(phaseStartTime time.Time, payloadCid cid.Cid, storageProviderId peer.ID, queryResponse retrievalmarket.QueryResponse) RetrievalEventQueryAsk {
+	return RetrievalEventQueryAsk{phaseStartTime, payloadCid, storageProviderId, queryResponse}
 }
 
 type RetrievalEventQueryAskFiltered struct {
+	phaseStartTime    time.Time
 	payloadCid        cid.Cid
 	storageProviderId peer.ID
 	queryResponse     retrievalmarket.QueryResponse
 }
 
-func NewRetrievalEventQueryAskFiltered(payloadCid cid.Cid, storageProviderId peer.ID, queryResponse retrievalmarket.QueryResponse) RetrievalEventQueryAskFiltered {
-	return RetrievalEventQueryAskFiltered{payloadCid, storageProviderId, queryResponse}
+func QueryAskFiltered(phaseStartTime time.Time, payloadCid cid.Cid, storageProviderId peer.ID, queryResponse retrievalmarket.QueryResponse) RetrievalEventQueryAskFiltered {
+	return RetrievalEventQueryAskFiltered{phaseStartTime, payloadCid, storageProviderId, queryResponse}
 }
 
 type RetrievalEventProposed struct {
+	phaseStartTime    time.Time
 	payloadCid        cid.Cid
 	storageProviderId peer.ID
 }
 
-func NewRetrievalEventProposed(payloadCid cid.Cid, storageProviderId peer.ID) RetrievalEventProposed {
-	return RetrievalEventProposed{payloadCid, storageProviderId}
+func Proposed(phaseStartTime time.Time, payloadCid cid.Cid, storageProviderId peer.ID) RetrievalEventProposed {
+	return RetrievalEventProposed{phaseStartTime, payloadCid, storageProviderId}
 }
 
 type RetrievalEventStarted struct {
 	phase             Phase
+	phaseStartTime    time.Time
 	payloadCid        cid.Cid
 	storageProviderId peer.ID
 }
 
-func NewRetrievalEventStarted(phase Phase, payloadCid cid.Cid, storageProviderId peer.ID) RetrievalEventStarted {
-	return RetrievalEventStarted{phase, payloadCid, storageProviderId}
+func Started(phaseStartTime time.Time, phase Phase, payloadCid cid.Cid, storageProviderId peer.ID) RetrievalEventStarted {
+	return RetrievalEventStarted{phase, phaseStartTime, payloadCid, storageProviderId}
 }
 
 type RetrievalEventAccepted struct {
+	phaseStartTime    time.Time
 	payloadCid        cid.Cid
 	storageProviderId peer.ID
 }
 
-func NewRetrievalEventAccepted(payloadCid cid.Cid, storageProviderId peer.ID) RetrievalEventAccepted {
-	return RetrievalEventAccepted{payloadCid, storageProviderId}
+func Accepted(phaseStartTime time.Time, payloadCid cid.Cid, storageProviderId peer.ID) RetrievalEventAccepted {
+	return RetrievalEventAccepted{phaseStartTime, payloadCid, storageProviderId}
 }
 
 type RetrievalEventFirstByte struct {
+	phaseStartTime    time.Time
 	payloadCid        cid.Cid
 	storageProviderId peer.ID
 }
 
-func NewRetrievalEventFirstByte(payloadCid cid.Cid, storageProviderId peer.ID) RetrievalEventFirstByte {
-	return RetrievalEventFirstByte{payloadCid, storageProviderId}
+func FirstByte(phaseStartTime time.Time, payloadCid cid.Cid, storageProviderId peer.ID) RetrievalEventFirstByte {
+	return RetrievalEventFirstByte{phaseStartTime, payloadCid, storageProviderId}
 }
 
 type RetrievalEventFailure struct {
 	phase             Phase
+	phaseStartTime    time.Time
 	payloadCid        cid.Cid
 	storageProviderId peer.ID
 	errorMessage      string
 }
 
-func NewRetrievalEventFailure(phase Phase, payloadCid cid.Cid, storageProviderId peer.ID, errorMessage string) RetrievalEventFailure {
-	return RetrievalEventFailure{phase, payloadCid, storageProviderId, errorMessage}
+func Failure(phaseStartTime time.Time, phase Phase, payloadCid cid.Cid, storageProviderId peer.ID, errorMessage string) RetrievalEventFailure {
+	return RetrievalEventFailure{phase, phaseStartTime, payloadCid, storageProviderId, errorMessage}
 }
 
 type RetrievalEventSuccess struct {
+	phaseStartTime    time.Time
 	payloadCid        cid.Cid
 	storageProviderId peer.ID
 	receivedSize      uint64
@@ -172,12 +185,13 @@ type RetrievalEventSuccess struct {
 	totalPayment      big.Int
 }
 
-func NewRetrievalEventSuccess(payloadCid cid.Cid, storageProviderId peer.ID, receivedSize uint64, receivedCids uint64, duration time.Duration, totalPayment big.Int) RetrievalEventSuccess {
-	return RetrievalEventSuccess{payloadCid, storageProviderId, receivedSize, receivedCids, duration, totalPayment}
+func Success(phaseStartTime time.Time, payloadCid cid.Cid, storageProviderId peer.ID, receivedSize uint64, receivedCids uint64, duration time.Duration, totalPayment big.Int) RetrievalEventSuccess {
+	return RetrievalEventSuccess{phaseStartTime, payloadCid, storageProviderId, receivedSize, receivedCids, duration, totalPayment}
 }
 
 func (r RetrievalEventCandidatesFound) Code() Code                 { return CandidatesFoundCode }
 func (r RetrievalEventCandidatesFound) Phase() Phase               { return IndexerPhase }
+func (r RetrievalEventCandidatesFound) PhaseStartTime() time.Time  { return r.phaseStartTime }
 func (r RetrievalEventCandidatesFound) PayloadCid() cid.Cid        { return r.payloadCid }
 func (r RetrievalEventCandidatesFound) StorageProviderId() peer.ID { return peer.ID("") }
 func (r RetrievalEventCandidatesFound) StorageProviderAddr() address.Address {
@@ -186,6 +200,7 @@ func (r RetrievalEventCandidatesFound) StorageProviderAddr() address.Address {
 func (r RetrievalEventCandidatesFound) Candidates() []types.RetrievalCandidate { return r.candidates }
 func (r RetrievalEventCandidatesFiltered) Code() Code                          { return CandidatesFilteredCode }
 func (r RetrievalEventCandidatesFiltered) Phase() Phase                        { return IndexerPhase }
+func (r RetrievalEventCandidatesFiltered) PhaseStartTime() time.Time           { return r.phaseStartTime }
 func (r RetrievalEventCandidatesFiltered) PayloadCid() cid.Cid                 { return r.payloadCid }
 func (r RetrievalEventCandidatesFiltered) StorageProviderId() peer.ID          { return peer.ID("") }
 func (r RetrievalEventCandidatesFiltered) StorageProviderAddr() address.Address {
@@ -196,19 +211,23 @@ func (r RetrievalEventCandidatesFiltered) Candidates() []types.RetrievalCandidat
 }
 func (r RetrievalEventStarted) Code() Code                                    { return StartedCode }
 func (r RetrievalEventStarted) Phase() Phase                                  { return r.phase }
+func (r RetrievalEventStarted) PhaseStartTime() time.Time                     { return r.phaseStartTime }
 func (r RetrievalEventStarted) PayloadCid() cid.Cid                           { return r.payloadCid }
 func (r RetrievalEventStarted) StorageProviderId() peer.ID                    { return r.storageProviderId }
 func (r RetrievalEventConnect) Code() Code                                    { return ConnectedCode }
 func (r RetrievalEventConnect) Phase() Phase                                  { return r.phase }
+func (r RetrievalEventConnect) PhaseStartTime() time.Time                     { return r.phaseStartTime }
 func (r RetrievalEventConnect) PayloadCid() cid.Cid                           { return r.payloadCid }
 func (r RetrievalEventConnect) StorageProviderId() peer.ID                    { return r.storageProviderId }
 func (r RetrievalEventQueryAsk) Code() Code                                   { return QueryAskedCode }
 func (r RetrievalEventQueryAsk) Phase() Phase                                 { return QueryPhase }
+func (r RetrievalEventQueryAsk) PhaseStartTime() time.Time                    { return r.phaseStartTime }
 func (r RetrievalEventQueryAsk) PayloadCid() cid.Cid                          { return r.payloadCid }
 func (r RetrievalEventQueryAsk) StorageProviderId() peer.ID                   { return r.storageProviderId }
 func (r RetrievalEventQueryAsk) QueryResponse() retrievalmarket.QueryResponse { return r.queryResponse } // QueryResponse returns the response from a storage provider to a query-ask
 func (r RetrievalEventQueryAskFiltered) Code() Code                           { return QueryAskedFilteredCode }
 func (r RetrievalEventQueryAskFiltered) Phase() Phase                         { return QueryPhase }
+func (r RetrievalEventQueryAskFiltered) PhaseStartTime() time.Time            { return r.phaseStartTime }
 func (r RetrievalEventQueryAskFiltered) PayloadCid() cid.Cid                  { return r.payloadCid }
 func (r RetrievalEventQueryAskFiltered) StorageProviderId() peer.ID           { return r.storageProviderId }
 func (r RetrievalEventQueryAskFiltered) QueryResponse() retrievalmarket.QueryResponse {
@@ -216,18 +235,22 @@ func (r RetrievalEventQueryAskFiltered) QueryResponse() retrievalmarket.QueryRes
 }                                                            // QueryResponse returns the response from a storage provider to a query-ask
 func (r RetrievalEventProposed) Code() Code                  { return ProposedCode }
 func (r RetrievalEventProposed) Phase() Phase                { return RetrievalPhase }
+func (r RetrievalEventProposed) PhaseStartTime() time.Time   { return r.phaseStartTime }
 func (r RetrievalEventProposed) PayloadCid() cid.Cid         { return r.payloadCid }
 func (r RetrievalEventProposed) StorageProviderId() peer.ID  { return r.storageProviderId }
 func (r RetrievalEventAccepted) Code() Code                  { return AcceptedCode }
 func (r RetrievalEventAccepted) Phase() Phase                { return RetrievalPhase }
+func (r RetrievalEventAccepted) PhaseStartTime() time.Time   { return r.phaseStartTime }
 func (r RetrievalEventAccepted) PayloadCid() cid.Cid         { return r.payloadCid }
 func (r RetrievalEventAccepted) StorageProviderId() peer.ID  { return r.storageProviderId }
 func (r RetrievalEventFirstByte) Code() Code                 { return FirstByteCode }
 func (r RetrievalEventFirstByte) Phase() Phase               { return RetrievalPhase }
+func (r RetrievalEventFirstByte) PhaseStartTime() time.Time  { return r.phaseStartTime }
 func (r RetrievalEventFirstByte) PayloadCid() cid.Cid        { return r.payloadCid }
 func (r RetrievalEventFirstByte) StorageProviderId() peer.ID { return r.storageProviderId }
 func (r RetrievalEventFailure) Code() Code                   { return FailureCode }
 func (r RetrievalEventFailure) Phase() Phase                 { return r.phase }
+func (r RetrievalEventFailure) PhaseStartTime() time.Time    { return r.phaseStartTime }
 func (r RetrievalEventFailure) PayloadCid() cid.Cid          { return r.payloadCid }
 func (r RetrievalEventFailure) StorageProviderId() peer.ID   { return r.storageProviderId }
 
@@ -236,6 +259,7 @@ func (r RetrievalEventFailure) StorageProviderId() peer.ID   { return r.storageP
 func (r RetrievalEventFailure) ErrorMessage() string       { return r.errorMessage }
 func (r RetrievalEventSuccess) Code() Code                 { return SuccessCode }
 func (r RetrievalEventSuccess) Phase() Phase               { return RetrievalPhase }
+func (r RetrievalEventSuccess) PhaseStartTime() time.Time  { return r.phaseStartTime }
 func (r RetrievalEventSuccess) PayloadCid() cid.Cid        { return r.payloadCid }
 func (r RetrievalEventSuccess) StorageProviderId() peer.ID { return r.storageProviderId }
 func (r RetrievalEventSuccess) Duration() time.Duration    { return r.duration }

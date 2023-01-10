@@ -48,8 +48,8 @@ func TestEventing(t *testing.T) {
 
 	pub.Subscribe(sub)
 	pid := peer.NewPeerRecord().PeerID
-	pub.Publish(eventpublisher.NewRetrievalEventConnect(eventpublisher.QueryPhase, testCid1, pid))
-	pub.Publish(eventpublisher.NewRetrievalEventSuccess(testCid1, "", 101, 202, time.Millisecond*303, abi.NewTokenAmount(404)))
+	pub.Publish(eventpublisher.Connect(time.Now(), eventpublisher.QueryPhase, testCid1, pid))
+	pub.Publish(eventpublisher.Success(time.Now(), testCid1, "", 101, 202, time.Millisecond*303, abi.NewTokenAmount(404)))
 
 	evt := <-sub.ping
 	require.Equal(t, eventpublisher.QueryPhase, evt.Phase())
