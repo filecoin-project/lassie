@@ -60,16 +60,21 @@ func newSpTracker(cfg *spTrackerConfig) *spTracker {
 	}
 }
 
-// NewRetrieval registers a new retrieval
-func (spt *spTracker) NewRetrieval(cid cid.Cid) uuid.UUID {
+// RegisterRetrieval registers a retrieval, returning true if the retrieval for
+// this CID already exists, or false if it is new.
+func (spt *spTracker) RegisterRetrieval(cid cid.Cid) (uuid.UUID, bool) {
+	spt.lk.Lock()
+	defer spt.lk.Unlock()
+	if ar, has := spt.arm[cid]; has {
+		return ar.id, true
+	}
+	// new
 	id, err := uuid.NewRandom()
 	if err != nil {
 		panic(err)
 	}
-	spt.lk.Lock()
-	defer spt.lk.Unlock()
 	spt.arm[cid] = activeRetrieval{id, make([]peer.ID, 0)}
-	return id
+	return id, false
 }
 
 // EndRetrieval cleans up an existing retrieval
