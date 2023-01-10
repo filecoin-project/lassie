@@ -32,6 +32,11 @@ func main1() int {
 						Usage:   "Consider it an error after not receiving a response from a storage provider for this long",
 						Value:   20 * time.Second,
 					},
+					&cli.BoolFlag{
+						Name:    "progress",
+						Aliases: []string{"p"},
+						Usage:   "Print progress output",
+					},
 				},
 			},
 		},

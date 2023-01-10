@@ -9,16 +9,20 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
+	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/lassie/cmd/lassie/internal"
 	"github.com/filecoin-project/lassie/pkg/client"
+	"github.com/filecoin-project/lassie/pkg/eventpublisher"
 	"github.com/filecoin-project/lassie/pkg/indexerlookup"
 	"github.com/filecoin-project/lassie/pkg/retriever"
+	"github.com/google/uuid"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	dss "github.com/ipfs/go-datastore/sync"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	carblockstore "github.com/ipld/go-car/v2/blockstore"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/urfave/cli/v2"
 )
@@ -27,6 +31,7 @@ func Fetch(c *cli.Context) error {
 	if c.Args().Len() == 0 || !c.IsSet("output") {
 		return fmt.Errorf("usage: lassie fetch -o <CAR file> [-t <timeout>] <CID>")
 	}
+	progress := c.Bool("progress")
 
 	rootCid, err := cid.Parse(c.Args().Get(0))
 	if err != nil {
@@ -45,8 +50,12 @@ func Fetch(c *cli.Context) error {
 
 	var blockCount int
 	putCb := func(putCount int) {
-		fmt.Print(strings.Repeat(".", putCount))
-		blockCount++
+		blockCount += putCount
+		if !progress {
+			fmt.Print(strings.Repeat(".", putCount))
+		} else if blockCount%10 == 0 {
+			fmt.Printf("Received %d blocks...\n", blockCount)
+		}
 	}
 	bstore := &putCbBlockstore{parent: carStore, cb: putCb}
 	retriever, err := setupRetriever(configDir, c, c.Duration("timeout"), bstore)
@@ -55,6 +64,10 @@ func Fetch(c *cli.Context) error {
 	}
 
 	fmt.Printf("Fetching %s", rootCid)
+	if progress {
+		fmt.Println()
+		retriever.RegisterListener(progressPrinter{})
+	}
 	stats, err := retriever.Retrieve(c.Context, rootCid)
 	if err != nil {
 		fmt.Println()
@@ -150,4 +163,24 @@ func (pcb *putCbBlockstore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, er
 }
 func (pcb *putCbBlockstore) HashOnRead(enabled bool) {
 	pcb.parent.HashOnRead(enabled)
+}
+
+type progressPrinter struct{}
+
+func (progressPrinter) QueryProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage eventpublisher.Code) {
+	fmt.Printf("Querying [%s] (%s)...\n", storageProviderId, stage)
+}
+func (progressPrinter) QueryFailure(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, errString string) {
+	fmt.Printf("Query failure for [%s]: %s\n", storageProviderId, errString)
+}
+func (progressPrinter) QuerySuccess(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, queryResponse retrievalmarket.QueryResponse) {
+	fmt.Printf("Query response from [%s]: size=%d bytes, price-per-byte=%s, unseal-price=%s, message=[%s]\n", storageProviderId, queryResponse.Size, queryResponse.MinPricePerByte, queryResponse.UnsealPrice, queryResponse.Message)
+}
+func (progressPrinter) RetrievalProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage eventpublisher.Code) {
+	fmt.Printf("Retrieving from [%s] (%s)...\n", storageProviderId, stage)
+}
+func (progressPrinter) RetrievalSuccess(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, receivedSize uint64, receivedCids uint64, confirmed bool) {
+}
+func (progressPrinter) RetrievalFailure(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, errString string) {
+	fmt.Printf("Retrieval failure for [%s]: %s\n", storageProviderId, errString)
 }
