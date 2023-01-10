@@ -77,7 +77,6 @@ type RetrievalClient struct {
 	host         host.Host
 	payChanMgr   PayChannelManager
 	ready        *ready.ReadyManager
-	// retrievalEventPublisher *eventpublisher.RetrievalEventPublisher
 }
 
 type Config struct {
@@ -184,18 +183,13 @@ func NewClientWithConfig(cfg *Config) (*RetrievalClient, error) {
 		return nil, err
 	}
 
-	// retrievalEventPublisher := eventpublisher.NewEventPublisher(ctx)
-
 	client := &RetrievalClient{
 		blockstore:   cfg.Blockstore,
 		dataTransfer: dataTransfer,
 		host:         cfg.Host,
 		payChanMgr:   cfg.PayChannelManager,
 		ready:        ready,
-		// retrievalEventPublisher: retrievalEventPublisher,
 	}
-
-	// retrievalEventPublisher.Subscribe(client)
 
 	return client, nil
 }
@@ -239,8 +233,6 @@ func (rc *RetrievalClient) RetrieveFromPeer(
 			return nil, fmt.Errorf("failed to allocate lane: %w", err)
 		}
 	}
-
-	// Set up incoming events handler
 
 	// The next nonce (incrementing unique ID starting from 0) for the next voucher
 	var nonce uint64 = 0
@@ -498,51 +490,6 @@ func (rc *RetrievalClient) RetrievalQueryToPeer(ctx context.Context, peerAddr pe
 
 	return &resp, nil
 }
-
-/*
-func (rc *RetrievalClient) SubscribeToRetrievalEvents(subscriber eventpublisher.RetrievalSubscriber) {
-	rc.retrievalEventPublisher.Subscribe(subscriber)
-}
-
-// Implement RetrievalSubscriber
-func (rc *RetrievalClient) OnRetrievalEvent(event eventpublisher.RetrievalEvent) {
-	kv := make([]interface{}, 0)
-	logadd := func(kva ...interface{}) {
-		if len(kva)%2 != 0 {
-			panic("bad number of key/value arguments")
-		}
-		for i := 0; i < len(kva); i += 2 {
-			key, ok := kva[i].(string)
-			if !ok {
-				panic("expected string key")
-			}
-			kv = append(kv, key, kva[i+1])
-		}
-	}
-	logadd("code", event.Code(),
-		"phase", event.Phase(),
-		"payloadCid", event.PayloadCid(),
-		"storageProviderId", event.StorageProviderId(),
-		"storageProviderAddr", event.StorageProviderAddr())
-	switch tevent := event.(type) {
-	case eventpublisher.RetrievalEventQueryAsk:
-		logadd("queryResponse:Status", tevent.QueryResponse().Status,
-			"queryResponse:PieceCIDFound", tevent.QueryResponse().PieceCIDFound,
-			"queryResponse:Size", tevent.QueryResponse().Size,
-			"queryResponse:PaymentAddress", tevent.QueryResponse().PaymentAddress,
-			"queryResponse:MinPricePerByte", tevent.QueryResponse().MinPricePerByte,
-			"queryResponse:MaxPaymentInterval", tevent.QueryResponse().MaxPaymentInterval,
-			"queryResponse:MaxPaymentIntervalIncrease", tevent.QueryResponse().MaxPaymentIntervalIncrease,
-			"queryResponse:Message", tevent.QueryResponse().Message,
-			"queryResponse:UnsealPrice", tevent.QueryResponse().UnsealPrice)
-	case eventpublisher.RetrievalEventFailure:
-		logadd("errorMessage", tevent.ErrorMessage())
-	case eventpublisher.RetrievalEventSuccess:
-		logadd("receivedSize", tevent.ReceivedSize())
-	}
-	retrievalLog.Debugw("retrieval-event", kv...)
-}
-*/
 
 func doRpc(ctx context.Context, stream network.Stream, req interface{}, resp interface{}) error {
 	dline, ok := ctx.Deadline()
