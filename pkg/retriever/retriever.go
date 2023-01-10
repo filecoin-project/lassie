@@ -31,16 +31,8 @@ var (
 	ErrQueryFailed                 = errors.New("query failed")
 	ErrAllQueriesFailed            = errors.New("all queries failed")
 	ErrRetrievalTimedOut           = errors.New("retrieval timed out")
+	ErrRetrievalAlreadyRunning     = errors.New("retrieval already running for CID")
 )
-
-type ErrRetrievalAlreadyRunning struct {
-	c     cid.Cid
-	extra string
-}
-
-func (e ErrRetrievalAlreadyRunning) Error() string {
-	return fmt.Sprintf("retrieval already running for CID: %s (%s)", e.c, e.extra)
-}
 
 type MinerConfig struct {
 	RetrievalTimeout        time.Duration
@@ -167,7 +159,10 @@ func (retriever *Retriever) isAcceptableQueryResponse(queryResponse *retrievalma
 // Retrieve attempts to retrieve the given CID using the configured
 // CandidateFinder to find storage providers that should have the CID.
 func (retriever *Retriever) Retrieve(ctx context.Context, cid cid.Cid) (*RetrievalStats, error) {
-	retrievalId := retriever.spTracker.NewRetrieval(cid)
+	retrievalId, exists := retriever.spTracker.RegisterRetrieval(cid)
+	if exists {
+		return nil, fmt.Errorf("%w: %s", ErrRetrievalAlreadyRunning, cid)
+	}
 	defer func() {
 		if err := retriever.spTracker.EndRetrieval(cid); err != nil {
 			log.Errorf("failed to end retrieval tracking for %s: %s", cid, err.Error())
