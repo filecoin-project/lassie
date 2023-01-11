@@ -88,10 +88,10 @@ type retrieval struct {
 	finishChan chan struct{}
 }
 
-// RetrieveFromCandidate performs a retrieval for a given CID by querying the indexer, then
+// RetrieveFromCandidates performs a retrieval for a given CID by querying the indexer, then
 // attempting to query all candidates and attempting to perform a full retrieval
 // from the best and fastest storage provider as the queries are received.
-func RetrieveFromCandidate(
+func RetrieveFromCandidates(
 	ctx context.Context,
 	cfg *RetrievalConfig,
 	candidateFinder CandidateFinder,

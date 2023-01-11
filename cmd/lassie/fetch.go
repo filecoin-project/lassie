@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -27,6 +25,31 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+var fetchCmd = &cli.Command{
+	Name:   "fetch",
+	Usage:  "fetch content from Filecoin",
+	Action: Fetch,
+	Flags: []cli.Flag{
+		&cli.StringFlag{
+			Name:      "output",
+			Aliases:   []string{"o"},
+			Usage:     "The CAR file to write to",
+			TakesFile: true,
+		},
+		&cli.DurationFlag{
+			Name:    "timeout",
+			Aliases: []string{"t"},
+			Usage:   "Consider it an error after not receiving a response from a storage provider for this long",
+			Value:   20 * time.Second,
+		},
+		&cli.BoolFlag{
+			Name:    "progress",
+			Aliases: []string{"p"},
+			Usage:   "Print progress output",
+		},
+	},
+}
+
 func Fetch(c *cli.Context) error {
 	if c.Args().Len() == 0 || !c.IsSet("output") {
 		return fmt.Errorf("usage: lassie fetch -o <CAR file> [-t <timeout>] <CID>")
@@ -34,11 +57,6 @@ func Fetch(c *cli.Context) error {
 	progress := c.Bool("progress")
 
 	rootCid, err := cid.Parse(c.Args().Get(0))
-	if err != nil {
-		return err
-	}
-
-	configDir, err := setupConfigDir()
 	if err != nil {
 		return err
 	}
@@ -58,7 +76,7 @@ func Fetch(c *cli.Context) error {
 		}
 	}
 	bstore := &putCbBlockstore{parent: carStore, cb: putCb}
-	retriever, err := setupRetriever(configDir, c, c.Duration("timeout"), bstore)
+	retriever, err := setupRetriever(c, c.Duration("timeout"), bstore)
 	if err != nil {
 		return err
 	}
@@ -89,18 +107,10 @@ func Fetch(c *cli.Context) error {
 	return nil
 }
 
-func setupConfigDir() (string, error) {
-	homedir, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(homedir, ".lassie", "datastore"), nil
-}
-
-func setupRetriever(configDir string, c *cli.Context, timeout time.Duration, blockstore blockstore.Blockstore) (*retriever.Retriever, error) {
+func setupRetriever(c *cli.Context, timeout time.Duration, blockstore blockstore.Blockstore) (*retriever.Retriever, error) {
 	datastore := dss.MutexWrap(datastore.NewMapDatastore())
 
-	host, err := internal.InitHost(c.Context, configDir, multiaddr.StringCast("/ip4/0.0.0.0/tcp/6746"))
+	host, err := internal.InitHost(c.Context, multiaddr.StringCast("/ip4/0.0.0.0/tcp/6746"))
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +189,7 @@ func (progressPrinter) QuerySuccess(retrievalId uuid.UUID, phaseStartTime, event
 func (progressPrinter) RetrievalProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage eventpublisher.Code) {
 	fmt.Printf("Retrieving from [%s] (%s)...\n", storageProviderId, stage)
 }
-func (progressPrinter) RetrievalSuccess(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, receivedSize uint64, receivedCids uint64, confirmed bool) {
+func (progressPrinter) RetrievalSuccess(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, receivedSize uint64, receivedCids int64, confirmed bool) {
 }
 func (progressPrinter) RetrievalFailure(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, errString string) {
 	fmt.Printf("Retrieval failure for [%s]: %s\n", storageProviderId, errString)

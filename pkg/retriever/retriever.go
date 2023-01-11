@@ -289,7 +289,7 @@ func (retriever *Retriever) Retrieve(ctx context.Context, cid cid.Cid) (*Retriev
 	// (retrievalStats!=nil) _and_ also an error return because there may be
 	// multiple failures along the way, if we got a retrieval then we'll pretend
 	// to our caller that there was no error
-	retrievalStats, err := RetrieveFromCandidate(ctx, config, retriever.candidateFinder, retriever.client, cid)
+	retrievalStats, err := RetrieveFromCandidates(ctx, config, retriever.candidateFinder, retriever.client, cid)
 	if err != nil {
 		if errors.Is(err, ErrAllQueriesFailed) {
 			// tell the ActiveRetrievalsManager not to expect any retrievals for this
