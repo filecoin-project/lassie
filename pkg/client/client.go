@@ -12,6 +12,7 @@ import (
 	dtimpl "github.com/filecoin-project/go-data-transfer/v2/impl"
 	dtnetwork "github.com/filecoin-project/go-data-transfer/v2/network"
 	dttransport "github.com/filecoin-project/go-data-transfer/v2/transport/graphsync"
+	"github.com/hannahhoward/go-pubsub/ready"
 
 	"github.com/filecoin-project/go-address"
 
@@ -77,6 +78,7 @@ type RetrievalClient struct {
 	dataTransfer            datatransfer.Manager
 	host                    host.Host
 	payChanMgr              PayChannelManager
+	ready                   *ready.ReadyManager
 	retrievalEventPublisher *eventpublisher.RetrievalEventPublisher
 }
 
@@ -175,6 +177,11 @@ func NewClientWithConfig(cfg *Config) (*RetrievalClient, error) {
 		}
 	}
 
+	ready := ready.NewReadyManager()
+	dataTransfer.OnReady(func(err error) {
+		ready.FireReady(err)
+	})
+
 	if err := dataTransfer.Start(ctx); err != nil {
 		return nil, err
 	}
@@ -187,11 +194,16 @@ func NewClientWithConfig(cfg *Config) (*RetrievalClient, error) {
 		host:                    cfg.Host,
 		payChanMgr:              cfg.PayChannelManager,
 		retrievalEventPublisher: retrievalEventPublisher,
+		ready:                   ready,
 	}
 
 	retrievalEventPublisher.Subscribe(client)
 
 	return client, nil
+}
+
+func (rc *RetrievalClient) AwaitReady() error {
+	return rc.ready.AwaitReady()
 }
 
 func (rc *RetrievalClient) RetrieveContentFromPeerAsync(
