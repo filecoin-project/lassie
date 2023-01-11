@@ -34,4 +34,6 @@ type PayChannelManager interface {
 	// Outstanding messages can occur if a create / add funds message was sent and
 	// then the system was shut down or crashed before the result was received.
 	Start() error
+
+	Stop() error
 }

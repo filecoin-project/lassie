@@ -12,6 +12,7 @@ import (
 	dtimpl "github.com/filecoin-project/go-data-transfer/v2/impl"
 	dtnetwork "github.com/filecoin-project/go-data-transfer/v2/network"
 	dttransport "github.com/filecoin-project/go-data-transfer/v2/transport/graphsync"
+	"github.com/hannahhoward/go-pubsub/ready"
 
 	"github.com/filecoin-project/go-address"
 
@@ -78,6 +79,7 @@ type RetrievalClient struct {
 	host                    host.Host
 	payChanMgr              PayChannelManager
 	retrievalEventPublisher *eventpublisher.RetrievalEventPublisher
+	readyMgr                ready.ReadyManager
 }
 
 type Config struct {
@@ -130,13 +132,6 @@ func NewClient(blockstore blockstore.Blockstore, datastore datastore.Batching, h
 
 // Creates a new RetrievalClient with the given Config
 func NewClientWithConfig(cfg *Config) (*RetrievalClient, error) {
-	ctx := context.Background()
-
-	if cfg.PayChannelManager != nil {
-		if err := cfg.PayChannelManager.Start(); err != nil {
-			return nil, err
-		}
-	}
 
 	graphSync := graphsync.New(context.Background(),
 		gsnetwork.NewFromLibp2pHost(cfg.Host),
@@ -175,11 +170,7 @@ func NewClientWithConfig(cfg *Config) (*RetrievalClient, error) {
 		}
 	}
 
-	if err := dataTransfer.Start(ctx); err != nil {
-		return nil, err
-	}
-
-	retrievalEventPublisher := eventpublisher.NewEventPublisher(ctx)
+	retrievalEventPublisher := eventpublisher.NewEventPublisher()
 
 	client := &RetrievalClient{
 		blockstore:              cfg.Blockstore,
@@ -192,6 +183,36 @@ func NewClientWithConfig(cfg *Config) (*RetrievalClient, error) {
 	retrievalEventPublisher.Subscribe(client)
 
 	return client, nil
+}
+
+func (rc *RetrievalClient) Start(ctx context.Context) error {
+	rc.dataTransfer.OnReady(func(err error) {
+		rc.readyMgr.FireReady(err)
+	})
+	if err := rc.dataTransfer.Start(ctx); err != nil {
+		return err
+	}
+
+	if rc.payChanMgr != nil {
+		if err := rc.payChanMgr.Start(); err != nil {
+			return err
+		}
+	}
+
+	return rc.retrievalEventPublisher.Start()
+}
+
+func (rc *RetrievalClient) AwaitReady() error {
+	return rc.readyMgr.AwaitReady()
+}
+
+func (rc *RetrievalClient) Stop(ctx context.Context) error {
+	if rc.payChanMgr != nil {
+		if err := rc.payChanMgr.Stop(); err != nil {
+			return err
+		}
+	}
+	return rc.retrievalEventPublisher.Stop(ctx)
 }
 
 func (rc *RetrievalClient) RetrieveContentFromPeerAsync(

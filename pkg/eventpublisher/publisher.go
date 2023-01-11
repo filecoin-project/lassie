@@ -10,7 +10,8 @@ type RetrievalSubscriber interface {
 }
 
 type RetrievalEventPublisher struct {
-	ctx context.Context
+	closing chan struct{}
+	closed  chan struct{}
 	// Lock for the subscribers list
 	subscribersLk sync.RWMutex
 	// The list of subscribers
@@ -22,21 +23,39 @@ type RetrievalEventPublisher struct {
 // A return function unsubscribing a subscribed Subscriber via the Subscribe() function
 type UnsubscribeFn func()
 
-func NewEventPublisher(ctx context.Context) *RetrievalEventPublisher {
+func NewEventPublisher() *RetrievalEventPublisher {
 	ep := &RetrievalEventPublisher{
-		ctx:         ctx,
 		subscribers: make(map[int]RetrievalSubscriber, 0),
 		events:      make(chan RetrievalEvent, 16),
+		closing:     make(chan struct{}),
+		closed:      make(chan struct{}),
 	}
-	go ep.loop()
 
 	return ep
 }
 
+func (ep *RetrievalEventPublisher) Start() error {
+	go ep.loop()
+	return nil
+}
+
+func (ep *RetrievalEventPublisher) Stop(ctx context.Context) error {
+	close(ep.closing)
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-ep.closed:
+		return nil
+	}
+}
+
 func (ep *RetrievalEventPublisher) loop() {
+	defer func() {
+		close(ep.closed)
+	}()
 	for {
 		select {
-		case <-ep.ctx.Done():
+		case <-ep.closing:
 			return
 		case event := <-ep.events:
 			ep.subscribersLk.RLock()
@@ -74,7 +93,7 @@ func (ep *RetrievalEventPublisher) Subscribe(subscriber RetrievalSubscriber) Uns
 
 func (ep *RetrievalEventPublisher) Publish(event RetrievalEvent) {
 	select {
-	case <-ep.ctx.Done():
+	case <-ep.closing:
 	case ep.events <- event:
 	}
 }

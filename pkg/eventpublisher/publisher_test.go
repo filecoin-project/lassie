@@ -26,7 +26,8 @@ func (us *sub) OnRetrievalEvent(evt eventpublisher.RetrievalEvent) {
 }
 
 func TestSubscribeAndUnsubscribe(t *testing.T) {
-	pub := eventpublisher.NewEventPublisher(context.Background())
+	pub := eventpublisher.NewEventPublisher()
+	require.NoError(t, pub.Start())
 	sub := &sub{}
 	require.Equal(t, 0, pub.SubscriberCount(), "has no subscribers")
 
@@ -38,13 +39,15 @@ func TestSubscribeAndUnsubscribe(t *testing.T) {
 	require.Equal(t, 1, pub.SubscriberCount(), "unregistered first subscriber")
 	unsub2()
 	require.Equal(t, 0, pub.SubscriberCount(), "unregistered second subscriber")
+	require.NoError(t, pub.Stop(context.Background()))
 }
 
 func TestEventing(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	pub := eventpublisher.NewEventPublisher(ctx)
+	pub := eventpublisher.NewEventPublisher()
+	require.NoError(t, pub.Start())
 	sub := &sub{ping: make(chan eventpublisher.RetrievalEvent)}
 
 	pub.Subscribe(sub)
@@ -73,6 +76,7 @@ func TestEventing(t *testing.T) {
 	require.Equal(t, int64(202), res.ReceivedCids())
 	require.Equal(t, time.Millisecond*303, res.Duration())
 	require.Equal(t, abi.NewTokenAmount(404), res.TotalPayment())
+	require.NoError(t, pub.Stop(ctx))
 }
 
 func mustCid(cstr string) cid.Cid {
