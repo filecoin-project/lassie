@@ -396,7 +396,13 @@ func (rc *RetrievalClient) RetrieveFromPeer(
 
 	// Submit the retrieval deal proposal to the miner
 	proposalVoucher := retrievalmarket.BindnodeRegistry.TypeToNode(proposal)
-	chanid, err := rc.dataTransfer.OpenPullDataChannel(ctx, peerID, datatransfer.TypedVoucher{Type: retrievalmarket.DealProposalType, Voucher: proposalVoucher}, proposal.PayloadCID, selectorparse.CommonSelector_ExploreAllRecursively, eventsCb)
+	chanid, err := rc.dataTransfer.OpenPullDataChannel(
+		ctx,
+		peerID,
+		datatransfer.TypedVoucher{Type: retrievalmarket.DealProposalType, Voucher: proposalVoucher},
+		proposal.PayloadCID,
+		selectorparse.CommonSelector_ExploreAllRecursively,
+		datatransfer.WithSubscriber(eventsCb))
 	if err != nil {
 		// We could fail before a successful proposal
 		return nil, fmt.Errorf("%w: %s", retriever.ErrDealProposalFailed, err)
