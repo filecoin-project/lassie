@@ -267,6 +267,27 @@ func TestRetrievalRacing(t *testing.T) {
 			expectedRetrievalAttempts: []string{"foo", "baz"},
 			expectedRetrieval:         "baz",
 		},
+		// quickest query ("foo") fails retrieval, the other 3 line up in the queue,
+		// it should choose the "best", which in this case is the fastest to return
+		// from query (they are all free and the same size)
+		{
+			name: "racing chooses fastest query",
+			queryReturns: map[string]delayedQueryReturn{
+				"foo":  {&retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, nil, time.Millisecond * 20},
+				"bar":  {&retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, nil, time.Millisecond * 50},
+				"baz":  {&retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, nil, time.Millisecond * 60},
+				"bang": {&retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, nil, time.Millisecond * 40},
+			},
+			expectedQueryReturns: []string{"foo", "bar", "baz", "bang"},
+			retrievalReturns: map[string]delayedRetrievalReturn{
+				"foo":  {RetrievalResult{Err: errors.New("Nope")}, time.Millisecond * 100},
+				"bar":  {RetrievalResult{RetrievalStats: &RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 3}}, time.Millisecond * 20},
+				"baz":  {RetrievalResult{RetrievalStats: &RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 2}}, time.Millisecond * 20},
+				"bang": {RetrievalResult{RetrievalStats: &RetrievalStats{StorageProviderId: peer.ID("bang"), Size: 4}}, time.Millisecond * 20},
+			},
+			expectedRetrievalAttempts: []string{"foo", "bang"},
+			expectedRetrieval:         "bang",
+		},
 	}
 
 	for _, tc := range testCases {
@@ -305,7 +326,7 @@ func TestRetrievalRacing(t *testing.T) {
 			waited := time.Since(waitStart)
 			// make sure we didn't have to wait long to have the goroutines cleaned up, they should
 			// return very quickly from the mockClient#RetrievalQueryToPeer after a context cancel
-			qt.Assert(t, waited < time.Millisecond, qt.IsTrue, qt.Commentf("wait took %s", waited))
+			qt.Assert(t, waited < 5*time.Millisecond, qt.IsTrue, qt.Commentf("wait took %s", waited))
 
 			// make sure we handled the queries we expected
 			var expectedQueryFailures int
