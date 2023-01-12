@@ -37,14 +37,14 @@ func TestActiveRetrievalsManager_GetStatusFor(t *testing.T) {
 	qt.Assert(t, stime, qt.Equals, time.Time{}) // haven't started retrieval phase yet
 
 	// start retrieval phase
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(20 * time.Millisecond)
 	arm.SetRetrievalCandidateCount(testCid1, 1)
 	sid, scid, srtime, has := arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 	qt.Assert(t, has, qt.IsTrue)
 	qt.Assert(t, sid, qt.Equals, id)
 	qt.Assert(t, scid, qt.Equals, testCid1)
-	qt.Assert(t, time.Since(srtime).Truncate(time.Millisecond).Milliseconds(), qt.Equals, int64(0))
-	qt.Assert(t, srtime, qt.Not(qt.Equals), sqtime) // different phase start time
+	qt.Assert(t, time.Since(srtime).Truncate(time.Millisecond*5).Milliseconds(), qt.Equals, int64(0)) // have to be very lax here thanks to windows
+	qt.Assert(t, srtime, qt.Not(qt.Equals), sqtime)                                                   // different phase start time
 
 	_, _, stime, has = arm.GetStatusFor(testCid1, eventpublisher.QueryPhase)
 	qt.Assert(t, has, qt.IsTrue)
