@@ -16,8 +16,16 @@ import (
 // retrieval process, including the process of querying available storage
 // providers to find compatible ones to attempt retrieval from.
 type RetrievalEventListener interface {
+	// IndexerProgress events occur during the Indexer process, stages.
+	// Currently this includes a "started" event.
+	IndexerProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, stage eventpublisher.Code)
+
+	// IndexerCandidates events occur after querying the indexer.
+	// Currently this includes "candidates-found" and "candidates-filtered" events.
+	IndexerCandidates(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, stage eventpublisher.Code, storageProviderIds []peer.ID)
+
 	// QueryProgress events occur during the query process, stages.
-	// Currently this should just include a "connected" event.
+	// Currently this includes "started" and "connected" events.
 	QueryProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage eventpublisher.Code)
 
 	// QueryFailure events occur on the failure of querying a storage
@@ -111,6 +119,20 @@ func (em *EventManager) queueEvent(cb func(timestamp time.Time, listener Retriev
 	case <-em.ctx.Done():
 	case em.events <- exec:
 	}
+}
+
+// FireQueryProgress calls QueryProgress for all listeners
+func (em *EventManager) FireIndexerProgress(retrievalId uuid.UUID, requestedCid cid.Cid, phaseStartTime time.Time, stage eventpublisher.Code) {
+	em.queueEvent(func(timestamp time.Time, listener RetrievalEventListener) {
+		listener.IndexerProgress(retrievalId, phaseStartTime, timestamp, requestedCid, stage)
+	})
+}
+
+// FireIndexerCandidates calls IndexerCandidates for all listeners
+func (em *EventManager) FireIndexerCandidates(retrievalId uuid.UUID, requestedCid cid.Cid, phaseStartTime time.Time, stage eventpublisher.Code, storageProviderIds []peer.ID) {
+	em.queueEvent(func(timestamp time.Time, listener RetrievalEventListener) {
+		listener.IndexerCandidates(retrievalId, phaseStartTime, timestamp, requestedCid, stage, storageProviderIds)
+	})
 }
 
 // FireQueryProgress calls QueryProgress for all listeners

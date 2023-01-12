@@ -146,6 +146,8 @@ func findCandidates(
 ) ([]types.RetrievalCandidate, error) {
 	phaseStarted := time.Now()
 
+	eventsCallback(eventpublisher.Started(phaseStarted, eventpublisher.IndexerPhase, types.RetrievalCandidate{RootCid: cid}))
+
 	candidates, err := candidateFinder.FindCandidates(ctx, cid)
 	if err != nil {
 		return nil, fmt.Errorf("could not get retrieval candidates for %s: %w", cid, err)
@@ -254,6 +256,9 @@ func runRetrievalCandidate(ctx context.Context, cfg *RetrievalConfig, client Ret
 	if queryResponse != nil {
 		retrieval.sendEvent(eventpublisher.QueryAskFiltered(queryStartTime, candidate, *queryResponse))
 
+		// if query is successful, then wait for priority and execute retrieval
+		done = retrieval.waitQueue.Wait(&queryCandidate{queryResponse, time.Since(queryStartTime)})
+
 		var receivedFirstByte bool
 		eventsCallback := func(event datatransfer.Event, channelState datatransfer.ChannelState) {
 			switch event.Code {
@@ -275,9 +280,6 @@ func runRetrievalCandidate(ctx context.Context, cfg *RetrievalConfig, client Ret
 				}
 			}
 		}
-
-		// if query is successful, then wait for priority and execute retrieval
-		done = retrieval.waitQueue.Wait(&queryCandidate{queryResponse, time.Since(queryStartTime)})
 
 		if retrieval.canSendResult() {
 			retrieval.sendEvent(eventpublisher.Started(retrievalStartTime, eventpublisher.RetrievalPhase, candidate))
