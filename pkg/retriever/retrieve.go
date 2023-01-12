@@ -41,19 +41,24 @@ type Instrumentation interface {
 	OnRetrievingFromCandidate(candidate RetrievalCandidate)
 }
 
+type queryCandidate struct {
+	*retrievalmarket.QueryResponse
+	Duration time.Duration
+}
+
 // queryCompare compares two QueryResponses and returns true if the first is
 // preferable to the second. This is used for the PriorityWaitQueue that will
 // prioritise execution of retrievals if two queries are available to compare
 // at the same time.
-var queryCompare prioritywaitqueue.ComparePriority[*retrievalmarket.QueryResponse] = func(a, b *retrievalmarket.QueryResponse) bool {
+var queryCompare prioritywaitqueue.ComparePriority[*queryCandidate] = func(a, b *queryCandidate) bool {
 	// Always prefer unsealed to sealed, no matter what
 	if a.UnsealPrice.IsZero() && !b.UnsealPrice.IsZero() {
 		return true
 	}
 
 	// Select lower price, or continue if equal
-	aTotalCost := totalCost(a)
-	bTotalCost := totalCost(b)
+	aTotalCost := totalCost(a.QueryResponse)
+	bTotalCost := totalCost(b.QueryResponse)
 	if !aTotalCost.Equals(bTotalCost) {
 		return aTotalCost.LessThan(bTotalCost)
 	}
@@ -63,7 +68,8 @@ var queryCompare prioritywaitqueue.ComparePriority[*retrievalmarket.QueryRespons
 		return a.Size < b.Size
 	}
 
-	return false
+	// Select the fastest to respond
+	return a.Duration < b.Duration
 }
 
 type RetrievalConfig struct {
@@ -83,7 +89,7 @@ func (cfg *RetrievalConfig) wait() {
 // retrieval handles state on a per-retrieval (across multiple candidates) basis
 type retrieval struct {
 	cid        cid.Cid
-	waitQueue  prioritywaitqueue.PriorityWaitQueue[*retrievalmarket.QueryResponse]
+	waitQueue  prioritywaitqueue.PriorityWaitQueue[*queryCandidate]
 	resultChan chan RetrievalResult
 	finishChan chan struct{}
 }
@@ -218,13 +224,14 @@ func runRetrievalCandidate(ctx context.Context, cfg *RetrievalConfig, client Ret
 
 	var stats *RetrievalStats
 	var done func()
+	queryStartTime := time.Now()
 
 	// run the query phase
 	queryResponse, err := queryPhase(ctx, cfg, client, timeout, candidate)
 
 	if queryResponse != nil {
 		// if query is successful, then wait for priority and execute retrieval
-		done = retrieval.waitQueue.Wait(queryResponse)
+		done = retrieval.waitQueue.Wait(&queryCandidate{queryResponse, time.Since(queryStartTime)})
 		if retrieval.canSendResult() {
 			stats, err = retrievalPhase(ctx, cfg, client, timeout, candidate, queryResponse)
 		}
