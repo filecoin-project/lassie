@@ -25,7 +25,7 @@ func TestSuspend(t *testing.T) {
 	for i := uint(0); i < cfg.maxFailuresBeforeSuspend+1; i++ {
 		tracker.RecordFailure(testSPA)
 	}
-	require.Len(t, tracker.spfm[testSPA].failures, int(cfg.maxFailuresBeforeSuspend+1))
+	require.Len(t, tracker.spm[testSPA].failures, int(cfg.maxFailuresBeforeSuspend+1))
 	require.True(t, tracker.IsSuspended(testSPA))
 	require.Eventually(
 		t,
@@ -38,6 +38,6 @@ func TestSuspend(t *testing.T) {
 	for i := uint(0); i < cfg.maxFailuresBeforeSuspend; i++ {
 		tracker.RecordFailure(testSPB)
 	}
-	require.Len(t, tracker.spfm[testSPB].failures, int(cfg.maxFailuresBeforeSuspend))
+	require.Len(t, tracker.spm[testSPB].failures, int(cfg.maxFailuresBeforeSuspend))
 	require.False(t, tracker.IsSuspended(testSPB))
 }
