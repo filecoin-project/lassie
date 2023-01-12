@@ -89,6 +89,7 @@ func (spt *spTracker) EndRetrieval(cid cid.Cid) error {
 			}
 		}
 		delete(spt.arm, cid)
+		return nil
 	}
 	return fmt.Errorf("no such active retrieval for %s", cid)
 }

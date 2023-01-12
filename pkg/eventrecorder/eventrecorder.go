@@ -86,6 +86,14 @@ type eventDetailsError struct {
 	Error string `json:"error"`
 }
 
+func (er *EventRecorder) IndexerProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, stage eventpublisher.Code) {
+	// TODO
+}
+
+func (er *EventRecorder) IndexerCandidates(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, stage eventpublisher.Code, storageProviderIds []peer.ID) {
+	// TODO
+}
+
 // QueryProgress events occur during the query process
 func (er *EventRecorder) QueryProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, retrievalCid cid.Cid, storageProviderId peer.ID, eventName eventpublisher.Code) {
 	evt := eventReport{retrievalId, er.instanceId, retrievalCid.String(), storageProviderId, eventpublisher.QueryPhase, phaseStartTime, eventName, eventTime, nil}

@@ -243,17 +243,19 @@ func makeOnRetrievalEvent(
 
 		switch ret := event.(type) {
 		case eventpublisher.RetrievalEventCandidatesFound:
-			handleCandidatesFoundEvent(ret)
+			handleCandidatesFoundEvent(eventManager, retrievalId, ret)
 		case eventpublisher.RetrievalEventCandidatesFiltered:
-			handleCandidatesFilteredEvent(spTracker, retrievalCid, ret)
+			handleCandidatesFilteredEvent(eventManager, retrievalId, spTracker, retrievalCid, ret)
 		case eventpublisher.RetrievalEventStarted:
-			handleStartedEvent(ret)
+			handleStartedEvent(eventManager, retrievalId, ret)
 		case eventpublisher.RetrievalEventFailure:
 			handleFailureEvent(ctx, spTracker, eventManager, eventStats, retrievalId, ret)
 		case eventpublisher.RetrievalEventQueryAsk: // query-ask success
 			handleQueryAskEvent(ctx, eventManager, eventStats, retrievalId, ret)
 		case eventpublisher.RetrievalEventQueryAskFiltered:
 			handleQueryAskFilteredEvent(eventStats)
+		case eventpublisher.RetrievalEventProposed:
+			handleProposedEvent(eventManager, retrievalId, ret)
 		case eventpublisher.RetrievalEventSuccess:
 			handleSuccessEvent(confirmer, eventManager, retrievalId, ret)
 		default:
@@ -282,6 +284,19 @@ func handleProgressEvent(eventManager *EventManager, retrievalId uuid.UUID, even
 		)
 	}
 }
+func handleProposedEvent(
+	eventManager *EventManager,
+	retrievalId uuid.UUID,
+	event eventpublisher.RetrievalEventProposed,
+) {
+	eventManager.FireRetrievalProgress(
+		retrievalId,
+		event.PayloadCid(),
+		event.PhaseStartTime(),
+		event.StorageProviderId(),
+		eventpublisher.ProposedCode,
+	)
+}
 
 func handleSuccessEvent(
 	confirmer BlockConfirmer,
@@ -289,7 +304,6 @@ func handleSuccessEvent(
 	retrievalId uuid.UUID,
 	event eventpublisher.RetrievalEventSuccess,
 ) {
-
 	confirmed, err := confirmer(event.PayloadCid())
 	if err != nil {
 		log.Errorf("Error while confirming block [%s] for retrieval [%s]: %w", event.PayloadCid(), retrievalId, err)
@@ -412,14 +426,39 @@ func handleFailureEvent(
 	}
 }
 
-func handleStartedEvent(event eventpublisher.RetrievalEventStarted) {
-	if event.Phase() == eventpublisher.RetrievalPhase {
+func handleStartedEvent(eventManager *EventManager, retrievalId uuid.UUID, event eventpublisher.RetrievalEventStarted) {
+	switch event.Phase() {
+	case eventpublisher.RetrievalPhase:
 		stats.Record(context.Background(), metrics.RetrievalRequestCount.M(1))
 		stats.Record(context.Background(), metrics.RetrievalDealActiveCount.M(1))
+		eventManager.FireRetrievalProgress(
+			retrievalId,
+			event.PayloadCid(),
+			event.PhaseStartTime(),
+			event.StorageProviderId(),
+			eventpublisher.StartedCode,
+		)
+	case eventpublisher.QueryPhase:
+		eventManager.FireQueryProgress(
+			retrievalId,
+			event.PayloadCid(),
+			event.PhaseStartTime(),
+			event.StorageProviderId(),
+			eventpublisher.StartedCode,
+		)
+	case eventpublisher.IndexerPhase:
+		eventManager.FireIndexerProgress(
+			retrievalId,
+			event.PayloadCid(),
+			event.PhaseStartTime(),
+			eventpublisher.StartedCode,
+		)
 	}
 }
 
 func handleCandidatesFilteredEvent(
+	eventManager *EventManager,
+	retrievalId uuid.UUID,
 	spTracker *spTracker,
 	retrievalCid cid.Cid,
 	event eventpublisher.RetrievalEventCandidatesFiltered,
@@ -434,12 +473,34 @@ func handleCandidatesFilteredEvent(
 		if err := spTracker.AddToRetrieval(retrievalCid, ids); err != nil {
 			log.Errorf("failed to add storage providers to tracked retrieval for %s: %s", retrievalCid, err.Error())
 		}
+		eventManager.FireIndexerCandidates(
+			retrievalId,
+			event.PayloadCid(),
+			event.PhaseStartTime(),
+			eventpublisher.CandidatesFilteredCode,
+			ids,
+		)
 	}
 }
 
-func handleCandidatesFoundEvent(event eventpublisher.RetrievalEventCandidatesFound) {
+func handleCandidatesFoundEvent(
+	eventManager *EventManager,
+	retrievalId uuid.UUID,
+	event eventpublisher.RetrievalEventCandidatesFound,
+) {
 	if len(event.Candidates()) > 0 {
 		stats.Record(context.Background(), metrics.RequestWithIndexerCandidatesCount.M(1))
+		ids := make([]peer.ID, 0)
+		for _, c := range event.Candidates() {
+			ids = append(ids, c.MinerPeer.ID)
+		}
+		eventManager.FireIndexerCandidates(
+			retrievalId,
+			event.PayloadCid(),
+			event.PhaseStartTime(),
+			eventpublisher.CandidatesFoundCode,
+			ids,
+		)
 	}
 	stats.Record(context.Background(), metrics.IndexerCandidatesPerRequestCount.M(int64(len(event.Candidates()))))
 }
