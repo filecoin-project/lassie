@@ -15,13 +15,14 @@ type activeRetrieval struct {
 	storageProviderIds []peer.ID
 }
 
-type spFailures struct {
+type trackedSp struct {
 	suspensionStart    time.Time
 	suspensionDuration time.Duration
 	failures           []time.Time // should be ordered, oldest to newest
+	concurrency        uint
 }
 
-func (status *spFailures) isSuspended() bool {
+func (status *trackedSp) isSuspended() bool {
 	return !status.suspensionStart.IsZero() && time.Since(status.suspensionStart) < status.suspensionDuration
 }
 
@@ -36,10 +37,8 @@ type spTracker struct {
 	cfg spTrackerConfig
 	// active retrievals
 	arm map[cid.Cid]activeRetrieval
-	// storage provider concurrency
-	spcm map[peer.ID]uint
-	// storage provider failures
-	spfm map[peer.ID]spFailures
+	// failures and concurrency of storage providers
+	spm map[peer.ID]trackedSp
 }
 
 // newSpTracker creates a new spTracker with the given config. If the config is
@@ -53,10 +52,9 @@ func newSpTracker(cfg *spTrackerConfig) *spTracker {
 		}
 	}
 	return &spTracker{
-		cfg:  *cfg,
-		arm:  make(map[cid.Cid]activeRetrieval),
-		spcm: make(map[peer.ID]uint),
-		spfm: make(map[peer.ID]spFailures),
+		cfg: *cfg,
+		arm: make(map[cid.Cid]activeRetrieval),
+		spm: make(map[peer.ID]trackedSp),
 	}
 }
 
@@ -83,12 +81,9 @@ func (spt *spTracker) EndRetrieval(cid cid.Cid) error {
 	defer spt.lk.Unlock()
 	if ar, has := spt.arm[cid]; has {
 		for _, id := range ar.storageProviderIds {
-			if c, has := spt.spcm[id]; has {
-				if c == 1 {
-					delete(spt.spcm, id)
-				} else {
-					spt.spcm[id]--
-				}
+			if c, has := spt.spm[id]; has && c.concurrency > 0 {
+				c.concurrency--
+				spt.spm[id] = c
 			} else {
 				return fmt.Errorf("internal error, peer.ID not properly double-recorded %s", cid)
 			}
@@ -107,10 +102,9 @@ func (spt *spTracker) AddToRetrieval(cid cid.Cid, storageProviderIds []peer.ID) 
 	if ar, has := spt.arm[cid]; has {
 		ar.storageProviderIds = append(ar.storageProviderIds, storageProviderIds...)
 		for _, id := range storageProviderIds {
-			if _, has := spt.spcm[id]; !has {
-				spt.spcm[id] = 0
-			}
-			spt.spcm[id]++
+			ts := spt.spm[id]
+			ts.concurrency++
+			spt.spm[id] = ts
 		}
 		return nil
 	}
@@ -122,8 +116,8 @@ func (spt *spTracker) AddToRetrieval(cid cid.Cid, storageProviderIds []peer.ID) 
 func (spt *spTracker) GetConcurrency(storageProviderId peer.ID) uint {
 	spt.lk.RLock()
 	defer spt.lk.RUnlock()
-	if c, has := spt.spcm[storageProviderId]; !has {
-		return c
+	if c, has := spt.spm[storageProviderId]; !has {
+		return c.concurrency
 	}
 	return 0
 }
@@ -133,7 +127,7 @@ func (spt *spTracker) GetConcurrency(storageProviderId peer.ID) uint {
 func (spt *spTracker) IsSuspended(storageProviderId peer.ID) bool {
 	spt.lk.RLock()
 	defer spt.lk.RUnlock()
-	if status, has := spt.spfm[storageProviderId]; has {
+	if status, has := spt.spm[storageProviderId]; has {
 		return status.isSuspended()
 	}
 	return false
@@ -145,7 +139,7 @@ func (spt *spTracker) RecordFailure(storageProviderId peer.ID) {
 	spt.lk.Lock()
 	defer spt.lk.Unlock()
 
-	status := spt.spfm[storageProviderId]
+	status := spt.spm[storageProviderId]
 
 	// Filter out expired history
 	n := 0
@@ -177,5 +171,5 @@ func (spt *spTracker) RecordFailure(storageProviderId peer.ID) {
 	}
 
 	// Write updated status back to map
-	spt.spfm[storageProviderId] = status
+	spt.spm[storageProviderId] = status
 }
