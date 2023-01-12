@@ -37,6 +37,7 @@ func TestActiveRetrievalsManager_GetStatusFor(t *testing.T) {
 	qt.Assert(t, stime, qt.Equals, time.Time{}) // haven't started retrieval phase yet
 
 	// start retrieval phase
+	time.Sleep(10 * time.Millisecond)
 	arm.SetRetrievalCandidateCount(testCid1, 1)
 	sid, scid, srtime, has := arm.GetStatusFor(testCid1, eventpublisher.RetrievalPhase)
 	qt.Assert(t, has, qt.IsTrue)
