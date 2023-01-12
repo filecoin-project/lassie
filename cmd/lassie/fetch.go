@@ -33,7 +33,7 @@ var fetchCmd = &cli.Command{
 		&cli.StringFlag{
 			Name:      "output",
 			Aliases:   []string{"o"},
-			Usage:     "The CAR file to write to",
+			Usage:     "The CAR file to write to, may be an existing or a new CAR",
 			TakesFile: true,
 		},
 		&cli.DurationFlag{
@@ -89,7 +89,7 @@ func Fetch(c *cli.Context) error {
 	fmt.Printf("Fetching %s", rootCid)
 	if progress {
 		fmt.Println()
-		retriever.RegisterListener(progressPrinter{})
+		retriever.RegisterListener(&progressPrinter{})
 	}
 	stats, err := retriever.Retrieve(c.Context, rootCid)
 	if err != nil {
@@ -180,8 +180,32 @@ func (pcb *putCbBlockstore) HashOnRead(enabled bool) {
 	pcb.parent.HashOnRead(enabled)
 }
 
-type progressPrinter struct{}
+var _ retriever.RetrievalEventListener = (*progressPrinter)(nil)
 
+type progressPrinter struct {
+	candidatesFound int
+}
+
+func (progressPrinter) IndexerProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, stage eventpublisher.Code) {
+	fmt.Printf("Querying indexer for %s...\n", requestedCid)
+}
+func (pp *progressPrinter) IndexerCandidates(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, stage eventpublisher.Code, storageProviderIds []peer.ID) {
+	switch stage {
+	case eventpublisher.CandidatesFoundCode:
+		pp.candidatesFound = len(storageProviderIds)
+	case eventpublisher.CandidatesFilteredCode:
+		num := "all of them"
+		if pp.candidatesFound != len(storageProviderIds) {
+			num = fmt.Sprintf("%d of them", len(storageProviderIds))
+		} else if pp.candidatesFound == 1 {
+			num = "it"
+		}
+		fmt.Printf("Found %d storage providers candidates from the indexer, querying %s:\n", pp.candidatesFound, num)
+		for _, id := range storageProviderIds {
+			fmt.Printf("\t%s\n", id)
+		}
+	}
+}
 func (progressPrinter) QueryProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage eventpublisher.Code) {
 	fmt.Printf("Querying [%s] (%s)...\n", storageProviderId, stage)
 }
@@ -189,7 +213,7 @@ func (progressPrinter) QueryFailure(retrievalId uuid.UUID, phaseStartTime, event
 	fmt.Printf("Query failure for [%s]: %s\n", storageProviderId, errString)
 }
 func (progressPrinter) QuerySuccess(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, queryResponse retrievalmarket.QueryResponse) {
-	fmt.Printf("Query response from [%s]: size=%d bytes, price-per-byte=%s, unseal-price=%s, message=[%s]\n", storageProviderId, queryResponse.Size, queryResponse.MinPricePerByte, queryResponse.UnsealPrice, queryResponse.Message)
+	fmt.Printf("Query response from [%s]: size=%s, price-per-byte=%s, unseal-price=%s, message=%s\n", storageProviderId, humanize.IBytes(queryResponse.Size), queryResponse.MinPricePerByte, queryResponse.UnsealPrice, queryResponse.Message)
 }
 func (progressPrinter) RetrievalProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage eventpublisher.Code) {
 	fmt.Printf("Retrieving from [%s] (%s)...\n", storageProviderId, stage)
