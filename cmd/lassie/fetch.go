@@ -51,8 +51,8 @@ var fetchCmd = &cli.Command{
 }
 
 func Fetch(c *cli.Context) error {
-	if c.Args().Len() == 0 || !c.IsSet("output") {
-		return fmt.Errorf("usage: lassie fetch -o <CAR file> [-t <timeout>] <CID>")
+	if c.Args().Len() != 1 {
+		return fmt.Errorf("usage: lassie fetch [-o <CAR file>] [-t <timeout>] <CID>")
 	}
 	progress := c.Bool("progress")
 
@@ -61,7 +61,12 @@ func Fetch(c *cli.Context) error {
 		return err
 	}
 
-	carStore, err := carblockstore.OpenReadWrite(c.String("output"), []cid.Cid{rootCid})
+	outfile := fmt.Sprintf("%s.car", rootCid)
+	if c.IsSet("output") {
+		outfile = c.String("output")
+	}
+
+	carStore, err := carblockstore.OpenReadWrite(outfile, []cid.Cid{rootCid})
 	if err != nil {
 		return err
 	}
