@@ -16,10 +16,11 @@ import (
 
 	"github.com/filecoin-project/go-address"
 
+	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
+
 	cborutil "github.com/filecoin-project/go-cbor-util"
 
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
-	"github.com/filecoin-project/go-fil-markets/shared"
 	"github.com/filecoin-project/go-fil-markets/storagemarket/impl/requestvalidation"
 
 	"github.com/filecoin-project/go-state-types/abi"
@@ -224,7 +225,7 @@ func (rc *RetrievalClient) RetrieveContentFromPeerAsync(
 			case progressChan <- bytes:
 			}
 		}, gracefulShutdownChan)
-		resultChan <- retriever.RetrievalResult{result, err}
+		resultChan <- retriever.RetrievalResult{RetrievalStats: result, Err: err}
 	}()
 	return resultChan, progressChan, func() {
 		gracefulShutdownChan <- struct{}{}
@@ -474,7 +475,7 @@ func (rc *RetrievalClient) retrieveContentFromPeerWithProgressCallback(
 
 	// Submit the retrieval deal proposal to the miner
 	proposalVoucher := retrievalmarket.BindnodeRegistry.TypeToNode(proposal)
-	newchid, err := rc.dataTransfer.OpenPullDataChannel(ctx, peerID, datatransfer.TypedVoucher{Type: retrievalmarket.DealProposalType, Voucher: proposalVoucher}, proposal.PayloadCID, shared.AllSelector())
+	newchid, err := rc.dataTransfer.OpenPullDataChannel(ctx, peerID, datatransfer.TypedVoucher{Type: retrievalmarket.DealProposalType, Voucher: proposalVoucher}, proposal.PayloadCID, selectorparse.CommonSelector_ExploreAllRecursively)
 	if err != nil {
 		// We could fail before a successful proposal
 		// publish event failure
