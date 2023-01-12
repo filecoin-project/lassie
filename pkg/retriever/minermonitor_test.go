@@ -11,8 +11,8 @@ import (
 func TestSuspend(t *testing.T) {
 	cfg := minerMonitorConfig{
 		maxFailuresBeforeSuspend: 3,
-		failureHistoryDuration:   time.Millisecond * 10,
-		suspensionDuration:       time.Millisecond * 10,
+		failureHistoryDuration:   time.Millisecond * 50,
+		suspensionDuration:       time.Millisecond * 50,
 	}
 
 	monitor := newMinerMonitor(cfg)
@@ -30,7 +30,7 @@ func TestSuspend(t *testing.T) {
 	require.Eventually(
 		t,
 		func() bool { return !monitor.suspended(testMinerA) },
-		cfg.suspensionDuration*time.Duration(2),
+		cfg.suspensionDuration*time.Duration(3),
 		time.Millisecond,
 	)
 
