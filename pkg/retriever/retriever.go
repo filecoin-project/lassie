@@ -75,7 +75,7 @@ func (cfg *RetrieverConfig) GetMinerConfig(peer peer.ID) MinerConfig {
 type Retriever struct {
 	// Assumed immutable during operation
 	config           RetrieverConfig
-	endpoint         Endpoint
+	candidateFinder  CandidateFinder
 	client           RetrievalClient
 	eventManager     *EventManager
 	activeRetrievals *ActiveRetrievalsManager
@@ -88,7 +88,7 @@ type RetrievalCandidate struct {
 	RootCid   cid.Cid
 }
 
-type Endpoint interface {
+type CandidateFinder interface {
 	FindCandidates(context.Context, cid.Cid) ([]RetrievalCandidate, error)
 }
 
@@ -98,12 +98,12 @@ func NewRetriever(
 	ctx context.Context,
 	config RetrieverConfig,
 	client RetrievalClient,
-	endpoint Endpoint,
+	candidateFinder CandidateFinder,
 	confirmer BlockConfirmer,
 ) (*Retriever, error) {
 	retriever := &Retriever{
 		config:           config,
-		endpoint:         endpoint,
+		candidateFinder:  candidateFinder,
 		client:           client,
 		eventManager:     NewEventManager(ctx),
 		activeRetrievals: NewActiveRetrievalsManager(),
@@ -254,9 +254,9 @@ func (retriever *Retriever) isAcceptableQueryResponse(queryResponse *retrievalma
 	return retriever.config.PaidRetrievals || totalCost(queryResponse).Equals(big.Zero())
 }
 
-func (retriever *Retriever) Request(cid cid.Cid) error {
-	ctx := context.Background()
-
+// Retrieve attempts to retrieve the given CID using the configured
+// CandidateFinder to find storage providers that should have the CID.
+func (retriever *Retriever) Retrieve(ctx context.Context, cid cid.Cid) (*RetrievalStats, error) {
 	// instrumentation receives events primarily responsible for metrics reporting
 	// but we also use it for activeRetrievals management while we still need to
 	// deal with that here
@@ -289,7 +289,7 @@ func (retriever *Retriever) Request(cid cid.Cid) error {
 	// (retrievalStats!=nil) _and_ also an error return because there may be
 	// multiple failures along the way, if we got a retrieval then we'll pretend
 	// to our caller that there was no error
-	retrievalStats, err := Retrieve(ctx, config, retriever.endpoint, retriever.client, cid)
+	retrievalStats, err := RetrieveFromCandidates(ctx, config, retriever.candidateFinder, retriever.client, cid)
 	if err != nil {
 		if errors.Is(err, ErrAllQueriesFailed) {
 			// tell the ActiveRetrievalsManager not to expect any retrievals for this
@@ -297,7 +297,7 @@ func (retriever *Retriever) Request(cid cid.Cid) error {
 			retriever.activeRetrievals.SetRetrievalCandidateCount(cid, 0)
 		}
 		if retrievalStats == nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -323,7 +323,7 @@ func (retriever *Retriever) Request(cid cid.Cid) error {
 	stats.Record(ctx, metrics.SuccessfulQueriesPerRequestCount.M(atomic.LoadInt64(&instrumentation.queryCount)))
 	stats.Record(ctx, metrics.SuccessfulQueriesPerRequestFilteredCount.M(atomic.LoadInt64(&instrumentation.filteredQueryCount)))
 
-	return nil
+	return retrievalStats, nil
 }
 
 // Implement RetrievalSubscriber
