@@ -5,13 +5,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 type activeRetrieval struct {
-	id                 uuid.UUID
+	cid                cid.Cid
 	storageProviderIds []peer.ID
 }
 
@@ -36,7 +36,7 @@ type spTracker struct {
 	lk  sync.RWMutex
 	cfg spTrackerConfig
 	// active retrievals
-	arm map[cid.Cid]activeRetrieval
+	arm map[types.RetrievalID]activeRetrieval
 	// failures and concurrency of storage providers
 	spm map[peer.ID]trackedSp
 }
@@ -53,54 +53,55 @@ func newSpTracker(cfg *spTrackerConfig) *spTracker {
 	}
 	return &spTracker{
 		cfg: *cfg,
-		arm: make(map[cid.Cid]activeRetrieval),
+		arm: make(map[types.RetrievalID]activeRetrieval),
 		spm: make(map[peer.ID]trackedSp),
 	}
 }
 
-// RegisterRetrieval registers a retrieval, returning true if the retrieval for
-// this CID already exists, or false if it is new.
-func (spt *spTracker) RegisterRetrieval(cid cid.Cid) (uuid.UUID, bool) {
+// RegisterRetrieval registers a retrieval, returning false if the retrieval for
+// this RetrievalID or CID CID already exists, or true if it is new.
+func (spt *spTracker) RegisterRetrieval(retrievalId types.RetrievalID, cid cid.Cid) bool {
 	spt.lk.Lock()
 	defer spt.lk.Unlock()
-	if ar, has := spt.arm[cid]; has {
-		return ar.id, true
+	if _, has := spt.arm[retrievalId]; has {
+		return false
+	}
+	for rid, ar := range spt.arm {
+		if rid == retrievalId || ar.cid == cid {
+			return false
+		}
 	}
 	// new
-	id, err := uuid.NewRandom()
-	if err != nil {
-		panic(err)
-	}
-	spt.arm[cid] = activeRetrieval{id, make([]peer.ID, 0)}
-	return id, false
+	spt.arm[retrievalId] = activeRetrieval{cid, make([]peer.ID, 0)}
+	return true
 }
 
 // EndRetrieval cleans up an existing retrieval
-func (spt *spTracker) EndRetrieval(cid cid.Cid) error {
+func (spt *spTracker) EndRetrieval(retrievalId types.RetrievalID) error {
 	spt.lk.Lock()
 	defer spt.lk.Unlock()
-	if ar, has := spt.arm[cid]; has {
+	if ar, has := spt.arm[retrievalId]; has {
 		for _, id := range ar.storageProviderIds {
 			if c, has := spt.spm[id]; has && c.concurrency > 0 {
 				c.concurrency--
 				spt.spm[id] = c
 			} else {
-				return fmt.Errorf("internal error, peer.ID not properly double-recorded %s", cid)
+				return fmt.Errorf("internal error, peer.ID not properly double-recorded %s", retrievalId)
 			}
 		}
-		delete(spt.arm, cid)
+		delete(spt.arm, retrievalId)
 		return nil
 	}
-	return fmt.Errorf("no such active retrieval for %s", cid)
+	return fmt.Errorf("no such active retrieval %s", retrievalId)
 }
 
 // AddToRetrieval adds a set of storage providers to an existing retrieval, this
 // will increase the concurrency for each of the storage providers until the
 // retrieval has finished
-func (spt *spTracker) AddToRetrieval(cid cid.Cid, storageProviderIds []peer.ID) error {
+func (spt *spTracker) AddToRetrieval(retrievalId types.RetrievalID, storageProviderIds []peer.ID) error {
 	spt.lk.Lock()
 	defer spt.lk.Unlock()
-	if ar, has := spt.arm[cid]; has {
+	if ar, has := spt.arm[retrievalId]; has {
 		ar.storageProviderIds = append(ar.storageProviderIds, storageProviderIds...)
 		for _, id := range storageProviderIds {
 			ts := spt.spm[id]
@@ -109,7 +110,7 @@ func (spt *spTracker) AddToRetrieval(cid cid.Cid, storageProviderIds []peer.ID) 
 		}
 		return nil
 	}
-	return fmt.Errorf("no such active retrieval for %s", cid)
+	return fmt.Errorf("no such active retrieval %s", retrievalId)
 }
 
 // GetConcurrency returns the number of retrievals the given storage provider
