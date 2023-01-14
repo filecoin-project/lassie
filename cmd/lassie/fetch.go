@@ -13,7 +13,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/eventpublisher"
 	"github.com/filecoin-project/lassie/pkg/indexerlookup"
 	"github.com/filecoin-project/lassie/pkg/retriever"
-	"github.com/google/uuid"
+	"github.com/filecoin-project/lassie/pkg/types"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
@@ -81,7 +81,7 @@ func Fetch(c *cli.Context) error {
 		}
 	}
 	bstore := &putCbBlockstore{parent: carStore, cb: putCb}
-	retriever, err := setupRetriever(c, c.Duration("timeout"), bstore)
+	ret, err := setupRetriever(c, c.Duration("timeout"), bstore)
 	if err != nil {
 		return err
 	}
@@ -89,9 +89,13 @@ func Fetch(c *cli.Context) error {
 	fmt.Printf("Fetching %s", rootCid)
 	if progress {
 		fmt.Println()
-		retriever.RegisterListener(&progressPrinter{})
+		ret.RegisterListener(&progressPrinter{})
 	}
-	stats, err := retriever.Retrieve(c.Context, rootCid)
+	retrievalId, err := types.NewRetrievalID()
+	if err != nil {
+		return err
+	}
+	stats, err := ret.Retrieve(c.Context, retrievalId, rootCid)
 	if err != nil {
 		fmt.Println()
 		return err
@@ -186,10 +190,10 @@ type progressPrinter struct {
 	candidatesFound int
 }
 
-func (progressPrinter) IndexerProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, stage eventpublisher.Code) {
+func (progressPrinter) IndexerProgress(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, stage eventpublisher.Code) {
 	fmt.Printf("Querying indexer for %s...\n", requestedCid)
 }
-func (pp *progressPrinter) IndexerCandidates(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, stage eventpublisher.Code, storageProviderIds []peer.ID) {
+func (pp *progressPrinter) IndexerCandidates(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, stage eventpublisher.Code, storageProviderIds []peer.ID) {
 	switch stage {
 	case eventpublisher.CandidatesFoundCode:
 		pp.candidatesFound = len(storageProviderIds)
@@ -206,20 +210,20 @@ func (pp *progressPrinter) IndexerCandidates(retrievalId uuid.UUID, phaseStartTi
 		}
 	}
 }
-func (progressPrinter) QueryProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage eventpublisher.Code) {
+func (progressPrinter) QueryProgress(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage eventpublisher.Code) {
 	fmt.Printf("Querying [%s] (%s)...\n", storageProviderId, stage)
 }
-func (progressPrinter) QueryFailure(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, errString string) {
+func (progressPrinter) QueryFailure(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, errString string) {
 	fmt.Printf("Query failure for [%s]: %s\n", storageProviderId, errString)
 }
-func (progressPrinter) QuerySuccess(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, queryResponse retrievalmarket.QueryResponse) {
+func (progressPrinter) QuerySuccess(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, queryResponse retrievalmarket.QueryResponse) {
 	fmt.Printf("Query response from [%s]: size=%s, price-per-byte=%s, unseal-price=%s, message=%s\n", storageProviderId, humanize.IBytes(queryResponse.Size), queryResponse.MinPricePerByte, queryResponse.UnsealPrice, queryResponse.Message)
 }
-func (progressPrinter) RetrievalProgress(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage eventpublisher.Code) {
+func (progressPrinter) RetrievalProgress(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage eventpublisher.Code) {
 	fmt.Printf("Retrieving from [%s] (%s)...\n", storageProviderId, stage)
 }
-func (progressPrinter) RetrievalSuccess(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, receivedSize uint64, receivedCids uint64, confirmed bool) {
+func (progressPrinter) RetrievalSuccess(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, receivedSize uint64, receivedCids uint64, confirmed bool) {
 }
-func (progressPrinter) RetrievalFailure(retrievalId uuid.UUID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, errString string) {
+func (progressPrinter) RetrievalFailure(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, errString string) {
 	fmt.Printf("Retrieval failure for [%s]: %s\n", storageProviderId, errString)
 }

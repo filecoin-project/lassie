@@ -13,8 +13,8 @@ import (
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/lassie/pkg/eventpublisher"
 	"github.com/filecoin-project/lassie/pkg/eventrecorder"
+	"github.com/filecoin-project/lassie/pkg/types"
 	qt "github.com/frankban/quicktest"
-	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/codec/dagjson"
@@ -42,11 +42,11 @@ func TestEventRecorder(t *testing.T) {
 
 	tests := []struct {
 		name string
-		exec func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id uuid.UUID, etime, ptime time.Time, spid peer.ID)
+		exec func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID)
 	}{
 		{
 			name: "QuerySuccess",
-			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id uuid.UUID, etime, ptime time.Time, spid peer.ID) {
+			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
 				qr := retrievalmarket.QueryResponse{
 					Status:                     retrievalmarket.QueryResponseUnavailable,
 					Size:                       10101,
@@ -94,7 +94,7 @@ func TestEventRecorder(t *testing.T) {
 		},
 		{
 			name: "RetrievalSuccess",
-			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id uuid.UUID, etime, ptime time.Time, spid peer.ID) {
+			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
 				er.RetrievalSuccess(id, ptime, etime, testCid1, spid, uint64(2020), 3030, true)
 
 				select {
@@ -125,7 +125,7 @@ func TestEventRecorder(t *testing.T) {
 		},
 		{
 			name: "QueryFailure",
-			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id uuid.UUID, etime, ptime time.Time, spid peer.ID) {
+			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
 				er.QueryFailure(id, ptime, etime, testCid1, spid, "ha ha no")
 
 				select {
@@ -153,7 +153,7 @@ func TestEventRecorder(t *testing.T) {
 		},
 		{
 			name: "RetrievalFailure",
-			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id uuid.UUID, etime, ptime time.Time, spid peer.ID) {
+			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
 				er.RetrievalFailure(id, ptime, etime, testCid1, spid, "ha ha no, silly silly")
 
 				select {
@@ -182,7 +182,7 @@ func TestEventRecorder(t *testing.T) {
 		},
 		{
 			name: "QueryProgress",
-			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id uuid.UUID, etime, ptime time.Time, spid peer.ID) {
+			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
 				er.QueryProgress(id, ptime, etime, testCid1, spid, eventpublisher.ConnectedCode)
 
 				select {
@@ -206,7 +206,7 @@ func TestEventRecorder(t *testing.T) {
 		},
 		{
 			name: "RetrievalProgress",
-			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id uuid.UUID, etime, ptime time.Time, spid peer.ID) {
+			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
 				er.RetrievalProgress(id, ptime, etime, testCid1, spid, eventpublisher.FirstByteCode)
 
 				select {
@@ -235,7 +235,7 @@ func TestEventRecorder(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 			defer cancel()
 			er := eventrecorder.NewEventRecorder(ctx, "test-instance", fmt.Sprintf("%s/test-path/here", ts.URL), authHeaderValue)
-			id, err := uuid.NewRandom()
+			id, err := types.NewRetrievalID()
 			qt.Assert(t, err, qt.IsNil)
 			etime := time.Now()
 			ptime := time.Now().Add(time.Hour * -1)
@@ -323,7 +323,7 @@ func TestEventRecorderSlowPost(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 	er := eventrecorder.NewEventRecorder(ctx, "test-instance", fmt.Sprintf("%s/test-path/here", ts.URL), authHeaderValue)
-	id, err := uuid.NewRandom()
+	id, err := types.NewRetrievalID()
 	qt.Assert(t, err, qt.IsNil)
 	etime := time.Now()
 	ptime := time.Now().Add(time.Hour * -1)

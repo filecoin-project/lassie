@@ -13,7 +13,6 @@ import (
 	"github.com/filecoin-project/lassie/pkg/eventpublisher"
 	"github.com/filecoin-project/lassie/pkg/metrics"
 	"github.com/filecoin-project/lassie/pkg/types"
-	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"go.opencensus.io/stats"
@@ -158,13 +157,12 @@ func (retriever *Retriever) isAcceptableQueryResponse(queryResponse *retrievalma
 
 // Retrieve attempts to retrieve the given CID using the configured
 // CandidateFinder to find storage providers that should have the CID.
-func (retriever *Retriever) Retrieve(ctx context.Context, cid cid.Cid) (*RetrievalStats, error) {
-	retrievalId, exists := retriever.spTracker.RegisterRetrieval(cid)
-	if exists {
+func (retriever *Retriever) Retrieve(ctx context.Context, retrievalId types.RetrievalID, cid cid.Cid) (*RetrievalStats, error) {
+	if !retriever.spTracker.RegisterRetrieval(retrievalId, cid) {
 		return nil, fmt.Errorf("%w: %s", ErrRetrievalAlreadyRunning, cid)
 	}
 	defer func() {
-		if err := retriever.spTracker.EndRetrieval(cid); err != nil {
+		if err := retriever.spTracker.EndRetrieval(retrievalId); err != nil {
 			log.Errorf("failed to end retrieval tracking for %s: %s", cid, err.Error())
 		}
 	}()
@@ -233,7 +231,7 @@ func makeOnRetrievalEvent(
 	spTracker *spTracker,
 	confirmer BlockConfirmer,
 	retrievalCid cid.Cid,
-	retrievalId uuid.UUID,
+	retrievalId types.RetrievalID,
 	eventStats *eventStats,
 ) func(event eventpublisher.RetrievalEvent) {
 	// this callback is only called in the main retrieval goroutine so is safe to
@@ -264,7 +262,7 @@ func makeOnRetrievalEvent(
 	}
 }
 
-func handleProgressEvent(eventManager *EventManager, retrievalId uuid.UUID, event eventpublisher.RetrievalEvent) {
+func handleProgressEvent(eventManager *EventManager, retrievalId types.RetrievalID, event eventpublisher.RetrievalEvent) {
 	switch event.Phase() {
 	case eventpublisher.QueryPhase:
 		eventManager.FireQueryProgress(
@@ -286,7 +284,7 @@ func handleProgressEvent(eventManager *EventManager, retrievalId uuid.UUID, even
 }
 func handleProposedEvent(
 	eventManager *EventManager,
-	retrievalId uuid.UUID,
+	retrievalId types.RetrievalID,
 	event eventpublisher.RetrievalEventProposed,
 ) {
 	eventManager.FireRetrievalProgress(
@@ -301,7 +299,7 @@ func handleProposedEvent(
 func handleSuccessEvent(
 	confirmer BlockConfirmer,
 	eventManager *EventManager,
-	retrievalId uuid.UUID,
+	retrievalId types.RetrievalID,
 	event eventpublisher.RetrievalEventSuccess,
 ) {
 	confirmed, err := confirmer(event.PayloadCid())
@@ -330,7 +328,7 @@ func handleQueryAskEvent(
 	ctx context.Context,
 	eventManager *EventManager,
 	eventStats *eventStats,
-	retrievalId uuid.UUID,
+	retrievalId types.RetrievalID,
 	event eventpublisher.RetrievalEventQueryAsk,
 ) {
 	eventStats.queryCount++
@@ -365,7 +363,7 @@ func handleFailureEvent(
 	spTracker *spTracker,
 	eventManager *EventManager,
 	eventStats *eventStats,
-	retrievalId uuid.UUID,
+	retrievalId types.RetrievalID,
 	event eventpublisher.RetrievalEventFailure,
 ) {
 	msg := event.ErrorMessage()
@@ -426,7 +424,7 @@ func handleFailureEvent(
 	}
 }
 
-func handleStartedEvent(eventManager *EventManager, retrievalId uuid.UUID, event eventpublisher.RetrievalEventStarted) {
+func handleStartedEvent(eventManager *EventManager, retrievalId types.RetrievalID, event eventpublisher.RetrievalEventStarted) {
 	switch event.Phase() {
 	case eventpublisher.RetrievalPhase:
 		stats.Record(context.Background(), metrics.RetrievalRequestCount.M(1))
@@ -458,7 +456,7 @@ func handleStartedEvent(eventManager *EventManager, retrievalId uuid.UUID, event
 
 func handleCandidatesFilteredEvent(
 	eventManager *EventManager,
-	retrievalId uuid.UUID,
+	retrievalId types.RetrievalID,
 	spTracker *spTracker,
 	retrievalCid cid.Cid,
 	event eventpublisher.RetrievalEventCandidatesFiltered,
@@ -470,7 +468,7 @@ func handleCandidatesFilteredEvent(
 		for _, c := range event.Candidates() {
 			ids = append(ids, c.MinerPeer.ID)
 		}
-		if err := spTracker.AddToRetrieval(retrievalCid, ids); err != nil {
+		if err := spTracker.AddToRetrieval(retrievalId, ids); err != nil {
 			log.Errorf("failed to add storage providers to tracked retrieval for %s: %s", retrievalCid, err.Error())
 		}
 		eventManager.FireIndexerCandidates(
@@ -485,7 +483,7 @@ func handleCandidatesFilteredEvent(
 
 func handleCandidatesFoundEvent(
 	eventManager *EventManager,
-	retrievalId uuid.UUID,
+	retrievalId types.RetrievalID,
 	event eventpublisher.RetrievalEventCandidatesFound,
 ) {
 	if len(event.Candidates()) > 0 {
