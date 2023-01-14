@@ -283,9 +283,9 @@ func TestRetrievalRacing(t *testing.T) {
 		{
 			name: "racing chooses fastest query",
 			queryReturns: map[string]delayedQueryReturn{
-				"foo":  {&retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, nil, time.Millisecond * 20},
-				"bar":  {&retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, nil, time.Millisecond * 50},
-				"baz":  {&retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, nil, time.Millisecond * 60},
+				"foo":  {&retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, nil, time.Millisecond * 10},
+				"bar":  {&retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, nil, time.Millisecond * 60},
+				"baz":  {&retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, nil, time.Millisecond * 80},
 				"bang": {&retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, nil, time.Millisecond * 40},
 			},
 			expectedQueryReturns: []string{"foo", "bar", "baz", "bang"},
