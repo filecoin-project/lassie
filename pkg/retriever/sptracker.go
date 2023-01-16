@@ -80,6 +80,7 @@ func (spt *spTracker) RegisterRetrieval(retrievalId types.RetrievalID, cid cid.C
 func (spt *spTracker) EndRetrieval(retrievalId types.RetrievalID) error {
 	spt.lk.Lock()
 	defer spt.lk.Unlock()
+
 	if ar, has := spt.arm[retrievalId]; has {
 		for _, id := range ar.storageProviderIds {
 			if c, has := spt.spm[id]; has && c.concurrency > 0 {
@@ -92,6 +93,7 @@ func (spt *spTracker) EndRetrieval(retrievalId types.RetrievalID) error {
 		delete(spt.arm, retrievalId)
 		return nil
 	}
+
 	return fmt.Errorf("no such active retrieval %s", retrievalId)
 }
 
@@ -108,6 +110,7 @@ func (spt *spTracker) AddToRetrieval(retrievalId types.RetrievalID, storageProvi
 			ts.concurrency++
 			spt.spm[id] = ts
 		}
+		spt.arm[retrievalId] = ar
 		return nil
 	}
 	return fmt.Errorf("no such active retrieval %s", retrievalId)
@@ -118,7 +121,7 @@ func (spt *spTracker) AddToRetrieval(retrievalId types.RetrievalID, storageProvi
 func (spt *spTracker) GetConcurrency(storageProviderId peer.ID) uint {
 	spt.lk.RLock()
 	defer spt.lk.RUnlock()
-	if c, has := spt.spm[storageProviderId]; !has {
+	if c, has := spt.spm[storageProviderId]; has {
 		return c.concurrency
 	}
 	return 0
