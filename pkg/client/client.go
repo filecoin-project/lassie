@@ -27,6 +27,7 @@ import (
 	"github.com/filecoin-project/go-state-types/builtin/v8/paych"
 
 	"github.com/filecoin-project/lassie/pkg/retriever"
+	"github.com/filecoin-project/lassie/pkg/types"
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
@@ -205,7 +206,7 @@ func (rc *RetrievalClient) RetrieveFromPeer(
 	proposal *retrievalmarket.DealProposal,
 	eventsCallback datatransfer.Subscriber,
 	gracefulShutdownRequested <-chan struct{},
-) (*retriever.RetrievalStats, error) {
+) (*types.RetrievalStats, error) {
 	log.Infof("Starting retrieval with miner peer ID: %s", peerID)
 
 	ctx, span := tracer.Start(ctx, "rcRetrieveContent")
@@ -447,7 +448,7 @@ awaitfinished:
 	duration := time.Since(startTime)
 	speed := uint64(float64(state.Received()) / duration.Seconds())
 
-	return &retriever.RetrievalStats{
+	return &types.RetrievalStats{
 		StorageProviderId: state.OtherPeer(),
 		Size:              state.Received(),
 		Blocks:            uint64(state.ReceivedCidsTotal()),

@@ -63,6 +63,7 @@ type EventManager struct {
 	ctx       context.Context
 	lk        sync.RWMutex
 	idx       int
+	started   bool
 	listeners map[int]RetrievalEventListener
 	events    chan eventExecution
 	cancel    context.CancelFunc
@@ -84,6 +85,9 @@ func NewEventManager(ctx context.Context) *EventManager {
 func (em *EventManager) Start() chan struct{} {
 	startChan := make(chan struct{})
 	go func() {
+		em.lk.Lock()
+		em.started = true
+		em.lk.Unlock()
 		startChan <- struct{}{}
 		for {
 			select {
@@ -105,6 +109,12 @@ func (em *EventManager) Start() chan struct{} {
 		}
 	}()
 	return startChan
+}
+
+func (em *EventManager) IsStarted() bool {
+	em.lk.RLock()
+	defer em.lk.RUnlock()
+	return em.started
 }
 
 func (em *EventManager) Stop() chan struct{} {

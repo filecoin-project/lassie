@@ -146,7 +146,12 @@ func setupRetriever(c *cli.Context, timeout time.Duration, blockstore blockstore
 		},
 	}
 
-	return retriever.NewRetriever(c.Context, retrieverCfg, retrievalClient, indexer, confirmer)
+	ret, err := retriever.NewRetriever(c.Context, retrieverCfg, retrievalClient, indexer, confirmer)
+	if err != nil {
+		return nil, err
+	}
+	<-ret.Start()
+	return ret, nil
 }
 
 // putCbBlockstore simply calls a callback on each put(), with the number of blocks put
