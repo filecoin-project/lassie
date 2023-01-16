@@ -529,6 +529,9 @@ func (dfc *mockClient) RetrievalQueryToPeer(ctx context.Context, minerPeer peer.
 			return nil, context.Canceled
 		case <-time.After(dqr.delay):
 		}
+		if dqr.err != nil {
+			onConnected()
+		}
 		return dqr.queryResponse, dqr.err
 	}
 	return &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseUnavailable}, nil

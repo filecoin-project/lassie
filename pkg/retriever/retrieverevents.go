@@ -65,36 +65,51 @@ type EventManager struct {
 	idx       int
 	listeners map[int]RetrievalEventListener
 	events    chan eventExecution
+	cancel    context.CancelFunc
+	stopped   chan struct{}
 }
 
 func NewEventManager(ctx context.Context) *EventManager {
-	em := &EventManager{
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithCancel(ctx)
+	return &EventManager{
 		ctx:       ctx,
+		cancel:    cancel,
 		listeners: make(map[int]RetrievalEventListener),
 		events:    make(chan eventExecution, 16),
+		stopped:   make(chan struct{}, 1),
 	}
-	go em.loop()
-	return em
 }
 
-func (em *EventManager) loop() {
-	for {
-		select {
-		case <-em.ctx.Done():
-			return
-		case execution := <-em.events:
-			em.lk.RLock()
-			listeners := make([]RetrievalEventListener, 0, len(em.listeners))
-			for _, listener := range em.listeners {
-				listeners = append(listeners, listener)
-			}
-			em.lk.RUnlock()
+func (em *EventManager) Start() chan struct{} {
+	startChan := make(chan struct{})
+	go func() {
+		startChan <- struct{}{}
+		for {
+			select {
+			case <-em.ctx.Done():
+				em.stopped <- struct{}{}
+				return
+			case execution := <-em.events:
+				em.lk.RLock()
+				listeners := make([]RetrievalEventListener, 0, len(em.listeners))
+				for _, listener := range em.listeners {
+					listeners = append(listeners, listener)
+				}
+				em.lk.RUnlock()
 
-			for _, listener := range listeners {
-				execution.cb(execution.ts, listener)
+				for _, listener := range listeners {
+					execution.cb(execution.ts, listener)
+				}
 			}
 		}
-	}
+	}()
+	return startChan
+}
+
+func (em *EventManager) Stop() chan struct{} {
+	em.cancel()
+	return em.stopped
 }
 
 func (em *EventManager) RegisterListener(listener RetrievalEventListener) func() {
@@ -115,6 +130,9 @@ func (em *EventManager) RegisterListener(listener RetrievalEventListener) func()
 
 func (em *EventManager) queueEvent(cb func(timestamp time.Time, listener RetrievalEventListener)) {
 	exec := eventExecution{time.Now(), cb} // time is _now_ even if we delay telling listeners
+	if em.ctx.Err() != nil {
+		return
+	}
 	select {
 	case <-em.ctx.Done():
 	case em.events <- exec:
