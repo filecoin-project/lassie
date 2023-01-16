@@ -19,6 +19,7 @@ import (
 )
 
 var (
+	ErrRetrieverNotStarted         = errors.New("retriever not started")
 	ErrDealProposalFailed          = errors.New("deal proposal failed")
 	ErrNoCandidates                = errors.New("no candidates")
 	ErrUnexpectedRetrieval         = errors.New("unexpected active retrieval")
@@ -47,7 +48,7 @@ type RetrieverConfig struct {
 	PaidRetrievals     bool
 }
 
-func (cfg *RetrieverConfig) GetMinerConfig(peer peer.ID) MinerConfig {
+func (cfg *RetrieverConfig) getMinerConfig(peer peer.ID) MinerConfig {
 	minerCfg := cfg.DefaultMinerConfig
 
 	if individual, ok := cfg.MinerConfigs[peer]; ok {
@@ -104,6 +105,18 @@ func NewRetriever(
 	return retriever, nil
 }
 
+// Start will start the retriever events system and return a channel that will
+// be closed when startup has completed
+func (retriever *Retriever) Start() chan struct{} {
+	return retriever.eventManager.Start()
+}
+
+// Stop will stop the retriever events system and return a channel that will be
+// closed when shutdown has completed
+func (retriever *Retriever) Stop() chan struct{} {
+	return retriever.eventManager.Stop()
+}
+
 // RegisterListener registers a listener to receive all events fired during the
 // process of making a retrieval, including the process of querying available
 // storage providers to find compatible ones to attempt retrieval from.
@@ -112,7 +125,7 @@ func (retriever *Retriever) RegisterListener(listener RetrievalEventListener) fu
 }
 
 func (retriever *Retriever) getStorageProviderTimeout(storageProviderId peer.ID) time.Duration {
-	return retriever.config.GetMinerConfig(storageProviderId).RetrievalTimeout
+	return retriever.config.getMinerConfig(storageProviderId).RetrievalTimeout
 }
 
 // isAcceptableStorageProvider checks whether the storage provider in question
@@ -138,7 +151,7 @@ func (retriever *Retriever) isAcceptableStorageProvider(storageProviderId peer.I
 	// Skip if we are currently at our maximum concurrent retrievals for this SP
 	// since we likely won't be able to retrieve from them at the moment even if
 	// query is successful
-	minerConfig := retriever.config.GetMinerConfig(storageProviderId)
+	minerConfig := retriever.config.getMinerConfig(storageProviderId)
 	if minerConfig.MaxConcurrentRetrievals > 0 &&
 		retriever.spTracker.GetConcurrency(storageProviderId) >= minerConfig.MaxConcurrentRetrievals {
 		return false
@@ -157,7 +170,10 @@ func (retriever *Retriever) isAcceptableQueryResponse(queryResponse *retrievalma
 
 // Retrieve attempts to retrieve the given CID using the configured
 // CandidateFinder to find storage providers that should have the CID.
-func (retriever *Retriever) Retrieve(ctx context.Context, retrievalId types.RetrievalID, cid cid.Cid) (*RetrievalStats, error) {
+func (retriever *Retriever) Retrieve(ctx context.Context, retrievalId types.RetrievalID, cid cid.Cid) (*types.RetrievalStats, error) {
+	if !retriever.eventManager.IsStarted() {
+		return nil, ErrRetrieverNotStarted
+	}
 	if !retriever.spTracker.RegisterRetrieval(retrievalId, cid) {
 		return nil, fmt.Errorf("%w: %s", ErrRetrievalAlreadyRunning, cid)
 	}

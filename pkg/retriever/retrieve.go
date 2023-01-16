@@ -73,7 +73,7 @@ func (cfg *RetrievalConfig) wait() {
 type retrievalResult struct {
 	PeerID     peer.ID
 	PhaseStart time.Time
-	Stats      *RetrievalStats
+	Stats      *types.RetrievalStats
 	Event      *eventpublisher.RetrievalEvent
 	Err        error
 }
@@ -96,7 +96,7 @@ func RetrieveFromCandidates(
 	client RetrievalClient,
 	cid cid.Cid,
 	eventsCallback func(eventpublisher.RetrievalEvent),
-) (*RetrievalStats, error) {
+) (*types.RetrievalStats, error) {
 
 	if cfg == nil {
 		cfg = &RetrievalConfig{}
@@ -123,11 +123,12 @@ func RetrieveFromCandidates(
 	}
 
 	// start retrievals
+	queryStartTime := time.Now()
 	cfg.waitGroup.Add(len(candidates))
 	for _, candidate := range candidates {
 		candidate := candidate
 		go func() {
-			runRetrievalCandidate(ctx, cfg, client, retrieval, candidate)
+			runRetrievalCandidate(ctx, cfg, client, retrieval, queryStartTime, candidate)
 			cfg.waitGroup.Done()
 		}()
 	}
@@ -178,7 +179,7 @@ func findCandidates(
 // collectResults is responsible for receiving query errors, retrieval errors
 // and retrieval results and aggregating into an appropriate return of either
 // a complete RetrievalStats or an bundled multi-error
-func collectResults(ctx context.Context, retrieval *retrieval, expectedCandidates int, eventsCallback func(eventpublisher.RetrievalEvent)) (*RetrievalStats, error) {
+func collectResults(ctx context.Context, retrieval *retrieval, expectedCandidates int, eventsCallback func(eventpublisher.RetrievalEvent)) (*types.RetrievalStats, error) {
 	var finishedCount int
 	var queryErrors error
 	var retrievalErrors error
@@ -221,16 +222,15 @@ func collectResults(ctx context.Context, retrieval *retrieval, expectedCandidate
 // runRetrievalCandidate is a singular CID:SP retrieval, expected to be run in a goroutine
 // and coordinate with other candidate retrievals to block after query phase and
 // only attempt one retrieval-proper at a time.
-func runRetrievalCandidate(ctx context.Context, cfg *RetrievalConfig, client RetrievalClient, retrieval *retrieval, candidate types.RetrievalCandidate) {
+func runRetrievalCandidate(ctx context.Context, cfg *RetrievalConfig, client RetrievalClient, retrieval *retrieval, queryStartTime time.Time, candidate types.RetrievalCandidate) {
 	var timeout time.Duration
 	if cfg.GetStorageProviderTimeout != nil {
 		timeout = cfg.GetStorageProviderTimeout(candidate.MinerPeer.ID)
 	}
 
-	var stats *RetrievalStats
+	var stats *types.RetrievalStats
 	var retrievalErr error
 	var done func()
-	queryStartTime := time.Now()
 
 	retrieval.sendEvent(eventpublisher.Started(queryStartTime, eventpublisher.QueryPhase, candidate))
 
@@ -409,7 +409,7 @@ func retrievalPhase(
 	candidate types.RetrievalCandidate,
 	queryResponse *retrievalmarket.QueryResponse,
 	eventsCallback datatransfer.Subscriber,
-) (*RetrievalStats, error) {
+) (*types.RetrievalStats, error) {
 	log.Infof(
 		"Attempting retrieval from miner %s for %s",
 		candidate.MinerPeer.ID,

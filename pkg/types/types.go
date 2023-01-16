@@ -1,6 +1,9 @@
 package types
 
 import (
+	"time"
+
+	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -31,4 +34,19 @@ func (id RetrievalID) MarshalText() ([]byte, error) {
 
 func (id *RetrievalID) UnmarshalText(data []byte) error {
 	return (*uuid.UUID)(id).UnmarshalText(data)
+}
+
+type RetrievalStats struct {
+	StorageProviderId peer.ID
+	RootCid           cid.Cid
+	Size              uint64
+	Blocks            uint64
+	Duration          time.Duration
+	AverageSpeed      uint64
+	TotalPayment      abi.TokenAmount
+	NumPayments       int
+	AskPrice          abi.TokenAmount
+
+	// TODO: we should be able to get this if we hook into the graphsync event stream
+	//TimeToFirstByte time.Duration
 }

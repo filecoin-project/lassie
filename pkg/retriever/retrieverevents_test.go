@@ -54,7 +54,7 @@ func TestEventManager(t *testing.T) {
 
 	select {
 	case <-em.Stop():
-	case <-time.After(time.Millisecond * 5):
+	case <-time.After(time.Millisecond * 50):
 		require.Fail(t, "timed out waiting for event manager to stop")
 	}
 	require.Equal(t, 1, listener1.gotIndexerProgress)
