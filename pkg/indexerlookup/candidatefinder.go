@@ -12,6 +12,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/ipfs/go-cid"
 	"github.com/ipni/storetheindex/api/v0/finder/model"
+	"github.com/multiformats/go-multicodec"
 )
 
 type IndexerCandidateFinder struct {
@@ -75,15 +76,26 @@ func (idxf *IndexerCandidateFinder) FindCandidates(ctx context.Context, cid cid.
 		}
 		for _, val := range multihashResult.ProviderResults {
 			// filter out any results that aren't filecoin graphsync
-			var dtm metadata.GraphsyncFilecoinV1
-			if err := dtm.UnmarshalBinary(val.Metadata); err != nil {
+			md := metadata.Metadata{}
+			if err := md.UnmarshalBinary(val.Metadata); err != nil {
 				continue
 			}
-
-			matches = append(matches, retriever.RetrievalCandidate{
-				RootCid:   cid,
-				MinerPeer: val.Provider,
-			})
+			protos := md.Protocols()
+			for _, p := range protos {
+				var pmd interface{}
+				if p == multicodec.TransportGraphsyncFilecoinv1 {
+					payload, ok := md.Get(p).(*metadata.GraphsyncFilecoinV1)
+					if ok {
+						pmd = payload
+					}
+				}
+				matches = append(matches, retriever.RetrievalCandidate{
+					RootCid:          cid,
+					SourcePeer:       val.Provider,
+					Protocol:         p,
+					ProtocolMetadata: pmd,
+				})
+			}
 		}
 	}
 	return matches, nil

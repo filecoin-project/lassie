@@ -17,6 +17,7 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multicodec"
 
 	qt "github.com/frankban/quicktest"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
@@ -101,7 +102,7 @@ func TestQueryFiltering(t *testing.T) {
 			mockInstrumentation := &mockInstrumentation{}
 			candidates := []RetrievalCandidate{}
 			for p := range tc.queryResponses {
-				candidates = append(candidates, RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID(p)}})
+				candidates = append(candidates, RetrievalCandidate{SourcePeer: peer.AddrInfo{ID: peer.ID(p)}})
 			}
 			mockCandidateFinder := &mockCandidateFinder{map[cid.Cid][]RetrievalCandidate{cid.Undef: candidates}}
 			retriever := &Retriever{config: RetrieverConfig{PaidRetrievals: tc.paid}} // used for isAcceptableQueryResponse() only
@@ -127,7 +128,7 @@ func TestQueryFiltering(t *testing.T) {
 				qt.Assert(t, mockClient.received_queriedPeers, qt.Contains, pid)
 				found := false
 				for _, rqfc := range mockInstrumentation.retrievalQueryForCandidate {
-					if rqfc.candidate.MinerPeer.ID == pid {
+					if rqfc.candidate.SourcePeer.ID == pid {
 						found = true
 						qt.Assert(t, rqfc.queryResponse, qt.CmpEquals(cmp.AllowUnexported(address.Address{}, mbig.Int{})), qr)
 					}
@@ -143,10 +144,10 @@ func TestQueryFiltering(t *testing.T) {
 			for _, p := range tc.expectedPeers {
 				pid := peer.ID(p)
 				qt.Assert(t, mockClient.received_retrievedPeers, qt.Contains, pid)
-				qt.Assert(t, mockInstrumentation.retrievingFromCandidate, qt.Any(qt.CmpEquals(cmp.AllowUnexported(cid.Cid{}))), RetrievalCandidate{peer.AddrInfo{ID: pid}, cid.Undef})
+				qt.Assert(t, mockInstrumentation.retrievingFromCandidate, qt.Any(qt.CmpEquals(cmp.AllowUnexported(cid.Cid{}))), RetrievalCandidate{peer.AddrInfo{ID: pid}, cid.Undef, multicodec.TransportGraphsyncFilecoinv1, nil})
 				found := false
 				for _, rqfc := range mockInstrumentation.filteredRetrievalQueryForCandidate {
-					if rqfc.candidate.MinerPeer.ID == pid {
+					if rqfc.candidate.SourcePeer.ID == pid {
 						found = true
 						qr := tc.queryResponses[p]
 						qt.Assert(t, rqfc.queryResponse, qt.CmpEquals(cmp.AllowUnexported(address.Address{}, mbig.Int{})), qr)
@@ -299,7 +300,7 @@ func TestRetrievalRacing(t *testing.T) {
 			mockInstrumentation := &mockInstrumentation{}
 			candidates := []RetrievalCandidate{}
 			for p := range tc.queryReturns {
-				candidates = append(candidates, RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID(p)}})
+				candidates = append(candidates, RetrievalCandidate{SourcePeer: peer.AddrInfo{ID: peer.ID(p)}})
 			}
 			mockCandidateFinder := &mockCandidateFinder{map[cid.Cid][]RetrievalCandidate{cid.Undef: candidates}}
 
@@ -390,14 +391,14 @@ func TestMultipleRetrievals(t *testing.T) {
 	mockInstrumentation := &mockInstrumentation{}
 	mockCandidateFinder := &mockCandidateFinder{map[cid.Cid][]RetrievalCandidate{
 		cid1: {
-			{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}},
-			{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}},
-			{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}},
+			{SourcePeer: peer.AddrInfo{ID: peer.ID("foo")}},
+			{SourcePeer: peer.AddrInfo{ID: peer.ID("bar")}},
+			{SourcePeer: peer.AddrInfo{ID: peer.ID("baz")}},
 		},
 		cid2: {
-			{MinerPeer: peer.AddrInfo{ID: peer.ID("bang")}},
-			{MinerPeer: peer.AddrInfo{ID: peer.ID("boom")}},
-			{MinerPeer: peer.AddrInfo{ID: peer.ID("bing")}},
+			{SourcePeer: peer.AddrInfo{ID: peer.ID("bang")}},
+			{SourcePeer: peer.AddrInfo{ID: peer.ID("boom")}},
+			{SourcePeer: peer.AddrInfo{ID: peer.ID("bing")}},
 		},
 	}}
 

@@ -156,7 +156,7 @@ func findCandidates(ctx context.Context, cfg *RetrievalConfig, candidateFinder C
 
 	acceptableCandidates := make([]RetrievalCandidate, 0)
 	for _, candidate := range candidates {
-		if cfg.IsAcceptableStorageProvider == nil || cfg.IsAcceptableStorageProvider(candidate.MinerPeer.ID) {
+		if cfg.IsAcceptableStorageProvider == nil || cfg.IsAcceptableStorageProvider(candidate.SourcePeer.ID) {
 			acceptableCandidates = append(acceptableCandidates, candidate)
 		}
 	}
@@ -219,7 +219,7 @@ func collectResults(ctx context.Context, retrieval *retrieval, candidates []Retr
 func runRetrievalCandidate(ctx context.Context, cfg *RetrievalConfig, client RetrievalClient, retrieval *retrieval, candidate RetrievalCandidate) {
 	var timeout time.Duration
 	if cfg.GetStorageProviderTimeout != nil {
-		timeout = cfg.GetStorageProviderTimeout(candidate.MinerPeer.ID)
+		timeout = cfg.GetStorageProviderTimeout(candidate.SourcePeer.ID)
 	}
 
 	var stats *RetrievalStats
@@ -305,12 +305,12 @@ func queryPhase(
 		defer timeoutFunc()
 	}
 
-	queryResponse, err := client.RetrievalQueryToPeer(queryCtx, candidate.MinerPeer, candidate.RootCid)
+	queryResponse, err := client.RetrievalQueryToPeer(queryCtx, candidate.SourcePeer, candidate.RootCid)
 	if err != nil {
 		if ctx.Err() == nil { // not cancelled, maybe timed out though
 			log.Warnf(
 				"Failed to query miner %s for %s: %v",
-				candidate.MinerPeer.ID,
+				candidate.SourcePeer.ID,
 				candidate.RootCid,
 				err,
 			)
@@ -353,7 +353,7 @@ func retrievalPhase(
 
 	log.Infof(
 		"Attempting retrieval from miner %s for %s",
-		candidate.MinerPeer.ID,
+		candidate.SourcePeer.ID,
 		candidate.RootCid,
 	)
 
@@ -373,7 +373,7 @@ func retrievalPhase(
 
 	resultChan, progressChan, gracefulShutdown := client.RetrieveContentFromPeerAsync(
 		retrieveCtx,
-		candidate.MinerPeer.ID,
+		candidate.SourcePeer.ID,
 		queryResponse.PaymentAddress,
 		proposal,
 	)

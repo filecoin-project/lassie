@@ -17,6 +17,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multicodec"
 	"go.opencensus.io/stats"
 )
 
@@ -84,8 +85,10 @@ type Retriever struct {
 }
 
 type RetrievalCandidate struct {
-	MinerPeer peer.AddrInfo
-	RootCid   cid.Cid
+	SourcePeer       peer.AddrInfo
+	RootCid          cid.Cid
+	Protocol         multicodec.Code
+	ProtocolMetadata interface{}
 }
 
 type CandidateFinder interface {
@@ -153,7 +156,7 @@ func (ri *retrievalInstrumentation) OnRetrievalCandidatesFiltered(filteredCount 
 }
 
 func (ri *retrievalInstrumentation) OnErrorQueryingRetrievalCandidate(candidate RetrievalCandidate, err error) {
-	ri.retriever.minerMonitor.recordFailure(candidate.MinerPeer.ID)
+	ri.retriever.minerMonitor.recordFailure(candidate.SourcePeer.ID)
 }
 
 func (ri *retrievalInstrumentation) OnErrorRetrievingFromCandidate(candidate RetrievalCandidate, err error) {
@@ -162,15 +165,15 @@ func (ri *retrievalInstrumentation) OnErrorRetrievingFromCandidate(candidate Ret
 		ri.retriever.OnRetrievalEvent(eventpublisher.NewRetrievalEventFailure(
 			eventpublisher.RetrievalPhase,
 			candidate.RootCid,
-			candidate.MinerPeer.ID,
+			candidate.SourcePeer.ID,
 			address.Undef,
-			fmt.Sprintf("timeout after %s", ri.retriever.getStorageProviderTimeout(candidate.MinerPeer.ID)),
+			fmt.Sprintf("timeout after %s", ri.retriever.getStorageProviderTimeout(candidate.SourcePeer.ID)),
 		))
 	} else if errors.Is(err, ErrProposalCreationFailed) {
 		ri.retriever.OnRetrievalEvent(eventpublisher.NewRetrievalEventFailure(
 			eventpublisher.RetrievalPhase,
 			candidate.RootCid,
-			candidate.MinerPeer.ID,
+			candidate.SourcePeer.ID,
 			address.Undef,
 			err.Error()),
 		)
@@ -178,13 +181,13 @@ func (ri *retrievalInstrumentation) OnErrorRetrievingFromCandidate(candidate Ret
 	atomic.AddInt64(&ri.failedCount, 1)
 	log.Warnf(
 		"Failed to retrieve from miner %s for %s: %v",
-		candidate.MinerPeer.ID,
+		candidate.SourcePeer.ID,
 		ri.cid,
 		err,
 	)
 	stats.Record(context.Background(), metrics.RetrievalDealFailCount.M(1))
 	stats.Record(context.Background(), metrics.RetrievalDealActiveCount.M(-1))
-	ri.retriever.minerMonitor.recordFailure(candidate.MinerPeer.ID)
+	ri.retriever.minerMonitor.recordFailure(candidate.SourcePeer.ID)
 }
 
 func (ri *retrievalInstrumentation) OnRetrievalQueryForCandidate(candidate RetrievalCandidate, queryResponse *retrievalmarket.QueryResponse) {
