@@ -67,7 +67,13 @@ func (dfc *MockClient) RetrieveFromPeer(
 	dfc.Received_retrievedPeers = append(dfc.Received_retrievedPeers, peerID)
 	dfc.lk.Unlock()
 	if drr, ok := dfc.Returns_retrievals[string(peerID)]; ok {
-		time.Sleep(drr.Delay)
+		select {
+		case <-ctx.Done():
+			return nil, context.Canceled
+		case <-gracefulShutdownRequested:
+			return nil, context.Canceled
+		case <-time.After(drr.Delay):
+		}
 		eventsCallback(datatransfer.Event{Code: datatransfer.Open}, nil)
 		return drr.ResultStats, drr.ResultErr
 	}

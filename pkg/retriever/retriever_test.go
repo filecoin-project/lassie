@@ -38,15 +38,14 @@ func TestRetriever(t *testing.T) {
 	peerA := peer.ID("A")
 	peerB := peer.ID("B")
 	blacklistedPeer := peer.ID("blacklisted")
-	config := retriever.RetrieverConfig{
-		MinerBlacklist: map[peer.ID]bool{blacklistedPeer: true},
-	}
 
 	tc := []struct {
 		name               string
+		setup              func(*retriever.RetrieverConfig)
 		candidates         []types.RetrievalCandidate
 		returns_queries    map[string]testutil.DelayedQueryReturn
 		returns_retrievals map[string]testutil.DelayedRetrievalReturn
+		successfulPeer     peer.ID
 		expectedEvents     []testutil.CollectedEvent
 	}{
 		{
@@ -194,7 +193,7 @@ func TestRetriever(t *testing.T) {
 			},
 			returns_retrievals: map[string]testutil.DelayedRetrievalReturn{
 				string(peerA): {ResultStats: &types.RetrievalStats{
-					StorageProviderId: peerB,
+					StorageProviderId: peerA,
 					Size:              10,
 					TotalPayment:      abi.NewStoragePower(0),
 					RootCid:           cid1,
@@ -220,6 +219,56 @@ func TestRetriever(t *testing.T) {
 				{Name: "RetrievalSuccess", Cid: cid1, StorageProviderIds: []peer.ID{peerA}},
 			},
 		},
+
+		{
+			name: "two candidates, first times out retrieval",
+			setup: func(rc *retriever.RetrieverConfig) {
+				rc.DefaultMinerConfig.RetrievalTimeout = time.Millisecond * 100
+			},
+			candidates: []types.RetrievalCandidate{
+				{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid1},
+				{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid1},
+			},
+			returns_queries: map[string]testutil.DelayedQueryReturn{
+				// fastest is blacklisted, shouldn't even touch it
+				string(peerA): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 5},
+				string(peerB): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 50},
+			},
+			returns_retrievals: map[string]testutil.DelayedRetrievalReturn{
+				string(peerA): {ResultStats: &types.RetrievalStats{
+					StorageProviderId: peerA,
+					Size:              10,
+					TotalPayment:      abi.NewStoragePower(0),
+					RootCid:           cid1,
+					AskPrice:          abi.NewTokenAmount(0),
+				}, Delay: time.Millisecond * 500},
+				string(peerB): {ResultStats: &types.RetrievalStats{
+					StorageProviderId: peerB,
+					Size:              20,
+					TotalPayment:      abi.NewStoragePower(0),
+					RootCid:           cid1,
+					AskPrice:          abi.NewTokenAmount(0),
+				}, Delay: time.Millisecond * 5},
+			},
+			successfulPeer: peerB,
+			expectedEvents: []testutil.CollectedEvent{
+				{Name: "IndexerProgress", Cid: cid1, Stage: eventpublisher.StartedCode},
+				{Name: "IndexerCandidates", Cid: cid1, Stage: eventpublisher.CandidatesFoundCode, StorageProviderIds: []peer.ID{peerA, peerB}},
+				{Name: "IndexerCandidates", Cid: cid1, Stage: eventpublisher.CandidatesFilteredCode, StorageProviderIds: []peer.ID{peerA, peerB}},
+				{Name: "QueryProgress", Cid: cid1, Stage: eventpublisher.StartedCode, StorageProviderIds: []peer.ID{peerA}},
+				{Name: "QueryProgress", Cid: cid1, Stage: eventpublisher.StartedCode, StorageProviderIds: []peer.ID{peerB}},
+				{Name: "QueryProgress", Cid: cid1, Stage: eventpublisher.ConnectedCode, StorageProviderIds: []peer.ID{peerA}},
+				{Name: "QuerySuccess", Cid: cid1, StorageProviderIds: []peer.ID{peerA}},
+				{Name: "RetrievalProgress", Cid: cid1, Stage: eventpublisher.StartedCode, StorageProviderIds: []peer.ID{peerA}},
+				{Name: "QueryProgress", Cid: cid1, Stage: eventpublisher.ConnectedCode, StorageProviderIds: []peer.ID{peerB}},
+				{Name: "QuerySuccess", Cid: cid1, StorageProviderIds: []peer.ID{peerB}},
+				// delay of 200ms for peerA retrieval happens here, no datatransfer.Open from DT so no ProposedCode event for peerA
+				{Name: "RetrievalFailure", Cid: cid1, StorageProviderIds: []peer.ID{peerA}, ErrorStr: "timeout after 100ms"},
+				{Name: "RetrievalProgress", Cid: cid1, Stage: eventpublisher.StartedCode, StorageProviderIds: []peer.ID{peerB}},
+				{Name: "RetrievalProgress", Cid: cid1, Stage: eventpublisher.ProposedCode, StorageProviderIds: []peer.ID{peerB}},
+				{Name: "RetrievalSuccess", Cid: cid1, StorageProviderIds: []peer.ID{peerB}},
+			},
+		},
 	}
 
 	for _, tc := range tc {
@@ -232,6 +281,12 @@ func TestRetriever(t *testing.T) {
 			}
 			eventsListener := testutil.NewCollectingEventsListener()
 			dummyBlockConfirmer := func(cid cid.Cid) (bool, error) { return true, nil }
+			config := retriever.RetrieverConfig{
+				MinerBlacklist: map[peer.ID]bool{blacklistedPeer: true},
+			}
+			if tc.setup != nil {
+				tc.setup(&config)
+			}
 
 			// --- create ---
 			ret, err := retriever.NewRetriever(context.Background(), config, client, candidateFinder, dummyBlockConfirmer)
@@ -250,10 +305,12 @@ func TestRetriever(t *testing.T) {
 			require.NoError(t, err)
 			result, err := ret.Retrieve(context.Background(), retrievalId, cid1)
 			require.NoError(t, err)
-			var successfulPeer string
-			for p, retrievalReturns := range tc.returns_retrievals {
-				if retrievalReturns.ResultStats != nil {
-					successfulPeer = p
+			successfulPeer := string(tc.successfulPeer)
+			if successfulPeer == "" {
+				for p, retrievalReturns := range tc.returns_retrievals {
+					if retrievalReturns.ResultStats != nil {
+						successfulPeer = p
+					}
 				}
 			}
 			require.Equal(t, client.Returns_retrievals[successfulPeer].ResultStats, result)
