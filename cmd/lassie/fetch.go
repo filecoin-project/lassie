@@ -13,6 +13,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/eventpublisher"
 	"github.com/filecoin-project/lassie/pkg/indexerlookup"
 	"github.com/filecoin-project/lassie/pkg/retriever"
+	ri "github.com/filecoin-project/lassie/pkg/retriever/interface"
 	"github.com/google/uuid"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
@@ -136,8 +137,8 @@ func setupRetriever(c *cli.Context, timeout time.Duration, blockstore blockstore
 		return blockstore.Has(c.Context, cid)
 	}
 
-	retrieverCfg := retriever.RetrieverConfig{
-		DefaultMinerConfig: retriever.MinerConfig{
+	retrieverCfg := ri.RetrieverConfig{
+		DefaultProviderConfig: ri.ProviderConfig{
 			RetrievalTimeout: timeout,
 		},
 	}

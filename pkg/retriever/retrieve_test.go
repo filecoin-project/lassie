@@ -17,9 +17,12 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multicodec"
 
 	qt "github.com/frankban/quicktest"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
+
+	ri "github.com/filecoin-project/lassie/pkg/retriever/interface"
 )
 
 func TestQueryFiltering(t *testing.T) {
@@ -99,14 +102,14 @@ func TestQueryFiltering(t *testing.T) {
 			}
 			mockClient := &mockClient{returns_queries: dqr}
 			mockInstrumentation := &mockInstrumentation{}
-			candidates := []RetrievalCandidate{}
+			candidates := []ri.RetrievalCandidate{}
 			for p := range tc.queryResponses {
-				candidates = append(candidates, RetrievalCandidate{SourcePeer: peer.AddrInfo{ID: peer.ID(p)}})
+				candidates = append(candidates, ri.RetrievalCandidate{SourcePeer: peer.AddrInfo{ID: peer.ID(p)}, Protocol: multicodec.TransportGraphsyncFilecoinv1})
 			}
-			mockCandidateFinder := &mockCandidateFinder{map[cid.Cid][]RetrievalCandidate{cid.Undef: candidates}}
-			retriever := &Retriever{config: RetrieverConfig{PaidRetrievals: tc.paid}} // used for isAcceptableQueryResponse() only
+			mockCandidateFinder := &mockCandidateFinder{map[cid.Cid][]ri.RetrievalCandidate{cid.Undef: candidates}}
+			retriever := &Retriever{config: ri.RetrieverConfig{PaidRetrievals: tc.paid}} // used for isAcceptableQueryResponse() only
 
-			cfg := &RetrievalConfig{
+			cfg := &ri.RetrievalConfig{
 				Instrumentation:             mockInstrumentation,
 				GetStorageProviderTimeout:   func(peer peer.ID) time.Duration { return time.Second },
 				IsAcceptableStorageProvider: func(peer peer.ID) bool { return true },
@@ -143,7 +146,12 @@ func TestQueryFiltering(t *testing.T) {
 			for _, p := range tc.expectedPeers {
 				pid := peer.ID(p)
 				qt.Assert(t, mockClient.received_retrievedPeers, qt.Contains, pid)
-				qt.Assert(t, mockInstrumentation.retrievingFromCandidate, qt.Any(qt.CmpEquals(cmp.AllowUnexported(cid.Cid{}))), RetrievalCandidate{peer.AddrInfo{ID: pid}, cid.Undef, 0, nil})
+				qt.Assert(t, mockInstrumentation.retrievingFromCandidate, qt.Any(qt.CmpEquals(cmp.AllowUnexported(cid.Cid{}))), ri.RetrievalCandidate{
+					SourcePeer:       peer.AddrInfo{ID: pid},
+					RootCid:          cid.Undef,
+					Protocol:         multicodec.TransportGraphsyncFilecoinv1,
+					ProtocolMetadata: nil,
+				})
 				found := false
 				for _, rqfc := range mockInstrumentation.filteredRetrievalQueryForCandidate {
 					if rqfc.candidate.SourcePeer.ID == pid {
@@ -297,13 +305,13 @@ func TestRetrievalRacing(t *testing.T) {
 				returns_retrievals: tc.retrievalReturns,
 			}
 			mockInstrumentation := &mockInstrumentation{}
-			candidates := []RetrievalCandidate{}
+			candidates := []ri.RetrievalCandidate{}
 			for p := range tc.queryReturns {
-				candidates = append(candidates, RetrievalCandidate{SourcePeer: peer.AddrInfo{ID: peer.ID(p)}})
+				candidates = append(candidates, ri.RetrievalCandidate{SourcePeer: peer.AddrInfo{ID: peer.ID(p)}, Protocol: multicodec.TransportGraphsyncFilecoinv1})
 			}
-			mockCandidateFinder := &mockCandidateFinder{map[cid.Cid][]RetrievalCandidate{cid.Undef: candidates}}
+			mockCandidateFinder := &mockCandidateFinder{map[cid.Cid][]ri.RetrievalCandidate{cid.Undef: candidates}}
 
-			cfg := &RetrievalConfig{
+			cfg := &ri.RetrievalConfig{
 				Instrumentation:             mockInstrumentation,
 				GetStorageProviderTimeout:   func(peer peer.ID) time.Duration { return time.Second },
 				IsAcceptableStorageProvider: func(peer peer.ID) bool { return true },
@@ -322,7 +330,7 @@ func TestRetrievalRacing(t *testing.T) {
 				qt.Assert(t, err, qt.IsNotNil)
 			}
 			waitStart := time.Now()
-			cfg.wait()
+			cfg.Wait()
 			waited := time.Since(waitStart)
 			// make sure we didn't have to wait long to have the goroutines cleaned up, they should
 			// return very quickly from the mockClient#RetrievalQueryToPeer after a context cancel
@@ -388,20 +396,20 @@ func TestMultipleRetrievals(t *testing.T) {
 		},
 	}
 	mockInstrumentation := &mockInstrumentation{}
-	mockCandidateFinder := &mockCandidateFinder{map[cid.Cid][]RetrievalCandidate{
+	mockCandidateFinder := &mockCandidateFinder{map[cid.Cid][]ri.RetrievalCandidate{
 		cid1: {
-			{SourcePeer: peer.AddrInfo{ID: peer.ID("foo")}},
-			{SourcePeer: peer.AddrInfo{ID: peer.ID("bar")}},
-			{SourcePeer: peer.AddrInfo{ID: peer.ID("baz")}},
+			{SourcePeer: peer.AddrInfo{ID: peer.ID("foo")}, Protocol: multicodec.TransportGraphsyncFilecoinv1},
+			{SourcePeer: peer.AddrInfo{ID: peer.ID("bar")}, Protocol: multicodec.TransportGraphsyncFilecoinv1},
+			{SourcePeer: peer.AddrInfo{ID: peer.ID("baz")}, Protocol: multicodec.TransportGraphsyncFilecoinv1},
 		},
 		cid2: {
-			{SourcePeer: peer.AddrInfo{ID: peer.ID("bang")}},
-			{SourcePeer: peer.AddrInfo{ID: peer.ID("boom")}},
-			{SourcePeer: peer.AddrInfo{ID: peer.ID("bing")}},
+			{SourcePeer: peer.AddrInfo{ID: peer.ID("bang")}, Protocol: multicodec.TransportGraphsyncFilecoinv1},
+			{SourcePeer: peer.AddrInfo{ID: peer.ID("boom")}, Protocol: multicodec.TransportGraphsyncFilecoinv1},
+			{SourcePeer: peer.AddrInfo{ID: peer.ID("bing")}, Protocol: multicodec.TransportGraphsyncFilecoinv1},
 		},
 	}}
 
-	cfg := &RetrievalConfig{
+	cfg := &ri.RetrievalConfig{
 		Instrumentation:             mockInstrumentation,
 		GetStorageProviderTimeout:   func(peer peer.ID) time.Duration { return time.Second },
 		IsAcceptableStorageProvider: func(peer peer.ID) bool { return true },
@@ -428,7 +436,7 @@ func TestMultipleRetrievals(t *testing.T) {
 	// both retrievals should be ~ 50+100ms
 
 	waitStart := time.Now()
-	cfg.wait() // internal goroutine cleanup
+	cfg.Wait() // internal goroutine cleanup
 	qt.Assert(t, time.Since(waitStart) < time.Millisecond*20, qt.IsTrue, qt.Commentf("wait took %s", time.Since(waitStart)))
 	wg.Wait() // make sure we're done with our own goroutine
 	qt.Assert(t, time.Since(waitStart) < time.Millisecond*20, qt.IsTrue, qt.Commentf("wg wait took %s", time.Since(waitStart)))
@@ -456,7 +464,7 @@ func TestMultipleRetrievals(t *testing.T) {
 var _ RetrievalClient = (*mockClient)(nil)
 var _ CandidateFinder = (*mockCandidateFinder)(nil)
 var _ BlockConfirmer = dummyBlockConfirmer
-var _ Instrumentation = (*mockInstrumentation)(nil)
+var _ ri.Instrumentation = (*mockInstrumentation)(nil)
 var testDealIdGen = shared.NewTimeCounter()
 
 type delayedQueryReturn struct {
@@ -540,10 +548,10 @@ func (dfc *mockClient) RetrieveContentFromPeerAsync(
 func (*mockClient) SubscribeToRetrievalEvents(subscriber eventpublisher.RetrievalSubscriber) {}
 
 type mockCandidateFinder struct {
-	candidates map[cid.Cid][]RetrievalCandidate
+	candidates map[cid.Cid][]ri.RetrievalCandidate
 }
 
-func (me *mockCandidateFinder) FindCandidates(ctx context.Context, cid cid.Cid) ([]RetrievalCandidate, error) {
+func (me *mockCandidateFinder) FindCandidates(ctx context.Context, cid cid.Cid) ([]ri.RetrievalCandidate, error) {
 	return me.candidates[cid], nil
 }
 
@@ -552,11 +560,11 @@ func dummyBlockConfirmer(c cid.Cid) (bool, error) {
 }
 
 type instrumentationCandidateError struct {
-	candidate RetrievalCandidate
+	candidate ri.RetrievalCandidate
 	err       error
 }
 type instrumentationCandidateQuery struct {
-	candidate     RetrievalCandidate
+	candidate     ri.RetrievalCandidate
 	queryResponse *retrievalmarket.QueryResponse
 }
 type mockInstrumentation struct {
@@ -567,7 +575,7 @@ type mockInstrumentation struct {
 	errorRetrievingFromCandidate       []instrumentationCandidateError
 	retrievalQueryForCandidate         []instrumentationCandidateQuery
 	filteredRetrievalQueryForCandidate []instrumentationCandidateQuery
-	retrievingFromCandidate            []RetrievalCandidate
+	retrievingFromCandidate            []ri.RetrievalCandidate
 }
 
 func (mi *mockInstrumentation) OnRetrievalCandidatesFound(foundCount int) error {
@@ -582,7 +590,7 @@ func (mi *mockInstrumentation) OnRetrievalCandidatesFiltered(filteredCount int) 
 	mi.filteredCount = &filteredCount
 	return nil
 }
-func (mi *mockInstrumentation) OnErrorQueryingRetrievalCandidate(candidate RetrievalCandidate, err error) {
+func (mi *mockInstrumentation) OnErrorQueryingRetrievalCandidate(candidate ri.RetrievalCandidate, err error) {
 	mi.lk.Lock()
 	defer mi.lk.Unlock()
 	if mi.errorQueryingRetrievalCandidate == nil {
@@ -590,7 +598,7 @@ func (mi *mockInstrumentation) OnErrorQueryingRetrievalCandidate(candidate Retri
 	}
 	mi.errorQueryingRetrievalCandidate = append(mi.errorQueryingRetrievalCandidate, instrumentationCandidateError{candidate, err})
 }
-func (mi *mockInstrumentation) OnErrorRetrievingFromCandidate(candidate RetrievalCandidate, err error) {
+func (mi *mockInstrumentation) OnErrorRetrievingFromCandidate(candidate ri.RetrievalCandidate, err error) {
 	mi.lk.Lock()
 	defer mi.lk.Unlock()
 	if mi.errorRetrievingFromCandidate == nil {
@@ -598,7 +606,7 @@ func (mi *mockInstrumentation) OnErrorRetrievingFromCandidate(candidate Retrieva
 	}
 	mi.errorRetrievingFromCandidate = append(mi.errorRetrievingFromCandidate, instrumentationCandidateError{candidate, err})
 }
-func (mi *mockInstrumentation) OnRetrievalQueryForCandidate(candidate RetrievalCandidate, queryResponse *retrievalmarket.QueryResponse) {
+func (mi *mockInstrumentation) OnRetrievalQueryForCandidate(candidate ri.RetrievalCandidate, queryResponse *retrievalmarket.QueryResponse) {
 	mi.lk.Lock()
 	defer mi.lk.Unlock()
 	if mi.retrievalQueryForCandidate == nil {
@@ -606,7 +614,7 @@ func (mi *mockInstrumentation) OnRetrievalQueryForCandidate(candidate RetrievalC
 	}
 	mi.retrievalQueryForCandidate = append(mi.retrievalQueryForCandidate, instrumentationCandidateQuery{candidate, queryResponse})
 }
-func (mi *mockInstrumentation) OnFilteredRetrievalQueryForCandidate(candidate RetrievalCandidate, queryResponse *retrievalmarket.QueryResponse) {
+func (mi *mockInstrumentation) OnFilteredRetrievalQueryForCandidate(candidate ri.RetrievalCandidate, queryResponse *retrievalmarket.QueryResponse) {
 	mi.lk.Lock()
 	defer mi.lk.Unlock()
 	if mi.filteredRetrievalQueryForCandidate == nil {
@@ -614,11 +622,11 @@ func (mi *mockInstrumentation) OnFilteredRetrievalQueryForCandidate(candidate Re
 	}
 	mi.filteredRetrievalQueryForCandidate = append(mi.filteredRetrievalQueryForCandidate, instrumentationCandidateQuery{candidate, queryResponse})
 }
-func (mi *mockInstrumentation) OnRetrievingFromCandidate(candidate RetrievalCandidate) {
+func (mi *mockInstrumentation) OnRetrievingFromCandidate(candidate ri.RetrievalCandidate) {
 	mi.lk.Lock()
 	defer mi.lk.Unlock()
 	if mi.retrievingFromCandidate == nil {
-		mi.retrievingFromCandidate = make([]RetrievalCandidate, 0)
+		mi.retrievingFromCandidate = make([]ri.RetrievalCandidate, 0)
 	}
 	mi.retrievingFromCandidate = append(mi.retrievingFromCandidate, candidate)
 }

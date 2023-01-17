@@ -9,6 +9,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
+
+	ri "github.com/filecoin-project/lassie/pkg/retriever/interface"
 )
 
 type activeRetrieval struct {
@@ -75,8 +77,8 @@ func (arm *ActiveRetrievalsManager) New(retrievalCid cid.Cid, queryCandidateCoun
 	defer arm.lk.Unlock()
 
 	if ar, ok := arm.findActiveRetrievalFor(retrievalCid); ok {
-		return uuid.UUID{}, ErrRetrievalAlreadyRunning{retrievalCid,
-			fmt.Sprintf("started %s ago with %d/%d query candidates and %d/%d retrieval candidates, %d active total",
+		return uuid.UUID{}, ri.ErrRetrievalAlreadyRunning{C: retrievalCid,
+			Extra: fmt.Sprintf("started %s ago with %d/%d query candidates and %d/%d retrieval candidates, %d active total",
 				time.Since(ar.queryStartTime),
 				ar.queriesFinished,
 				ar.queryCandidateCount,
@@ -179,7 +181,7 @@ func (arm *ActiveRetrievalsManager) SetRetrievalCandidate(retrievalCid, rootCid 
 	ar, found := arm.findActiveRetrievalFor(retrievalCid)
 	if !found {
 		log.Errorf("Unexpected active retrieval SetRetrievalCandidate for %s", retrievalCid)
-		return ErrUnexpectedRetrieval
+		return ri.ErrUnexpectedRetrieval
 	}
 
 	// If limit is enabled (non-zero) and we have already hit it, we can't
@@ -188,7 +190,7 @@ func (arm *ActiveRetrievalsManager) SetRetrievalCandidate(retrievalCid, rootCid 
 		if arm.countRetrievalsFor(storageProviderId) >= maxConcurrent {
 			ar.retrievalsFinished++ // this retrieval won't start so we won't get events for it, treat it as finished
 			arm.maybeFinish(retrievalCid, ar)
-			return ErrHitRetrievalLimit
+			return ri.ErrHitRetrievalLimit
 		}
 	}
 

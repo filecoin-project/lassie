@@ -11,35 +11,12 @@ import (
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/ipfs/go-cid"
-	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multicodec"
 	"github.com/rvagg/go-prioritywaitqueue"
 	"go.uber.org/multierr"
+
+	ri "github.com/filecoin-project/lassie/pkg/retriever/interface"
 )
-
-type CounterCallback func(int) error
-type CandidateCallback func(RetrievalCandidate) error
-type CandidateErrorCallback func(RetrievalCandidate, error)
-
-type GetStorageProviderTimeout func(peer peer.ID) time.Duration
-type IsAcceptableStorageProvider func(peer peer.ID) bool
-type IsAcceptableQueryResponse func(*retrievalmarket.QueryResponse) bool
-
-type Instrumentation interface {
-	// OnRetrievalCandidatesFound is called once after querying the indexer
-	OnRetrievalCandidatesFound(foundCount int) error
-	// OnRetrievalCandidatesFiltered is called once after filtering is applied to indexer candidates
-	OnRetrievalCandidatesFiltered(filteredCount int) error
-	// OnErrorQueryingRetrievalCandidate may be called up to once per retrieval candidate
-	OnErrorQueryingRetrievalCandidate(candidate RetrievalCandidate, err error)
-	// OnErrorRetrievingFromCandidate may be called up to once per retrieval candidate
-	OnErrorRetrievingFromCandidate(candidate RetrievalCandidate, err error)
-	// OnRetrievalQueryForCandidate may be called up to once per retrieval candidate
-	OnRetrievalQueryForCandidate(candidate RetrievalCandidate, queryResponse *retrievalmarket.QueryResponse)
-	// OnFilteredRetrievalQueryForCandidate may be called up to once per retrieval candidate
-	OnFilteredRetrievalQueryForCandidate(candidate RetrievalCandidate, queryResponse *retrievalmarket.QueryResponse)
-	// OnRetrievingFromCandidate may be called up to once per retrieval candidate
-	OnRetrievingFromCandidate(candidate RetrievalCandidate)
-}
 
 type queryCandidate struct {
 	*retrievalmarket.QueryResponse
@@ -72,20 +49,6 @@ var queryCompare prioritywaitqueue.ComparePriority[*queryCandidate] = func(a, b 
 	return a.Duration < b.Duration
 }
 
-type RetrievalConfig struct {
-	Instrumentation             Instrumentation
-	GetStorageProviderTimeout   GetStorageProviderTimeout
-	IsAcceptableStorageProvider IsAcceptableStorageProvider
-	IsAcceptableQueryResponse   IsAcceptableQueryResponse
-
-	waitGroup sync.WaitGroup // only used internally for testing cleanup
-}
-
-// wait is used internally for testing that we do proper goroutine cleanup
-func (cfg *RetrievalConfig) wait() {
-	cfg.waitGroup.Wait()
-}
-
 // retrieval handles state on a per-retrieval (across multiple candidates) basis
 type retrieval struct {
 	cid        cid.Cid
@@ -99,14 +62,14 @@ type retrieval struct {
 // from the best and fastest storage provider as the queries are received.
 func RetrieveFromCandidates(
 	ctx context.Context,
-	cfg *RetrievalConfig,
+	cfg *ri.RetrievalConfig,
 	candidateFinder CandidateFinder,
 	client RetrievalClient,
 	cid cid.Cid,
 ) (*RetrievalStats, error) {
 
 	if cfg == nil {
-		cfg = &RetrievalConfig{}
+		cfg = &ri.RetrievalConfig{}
 	}
 
 	// state local to this CID's retrieval
@@ -127,12 +90,16 @@ func RetrieveFromCandidates(
 	}
 
 	// start retrievals
-	cfg.waitGroup.Add(len(candidates))
+	cfg.WaitGroup.Add(len(candidates))
 	for _, candidate := range candidates {
 		candidate := candidate
 		go func() {
-			runRetrievalCandidate(ctx, cfg, client, retrieval, candidate)
-			cfg.waitGroup.Done()
+			if candidate.Protocol == multicodec.TransportGraphsyncFilecoinv1 {
+				runRetrievalCandidate(ctx, cfg, client, retrieval, candidate)
+				//} else if candidate.Protocol == multicodec.TransportBitswap {
+				//	bitswap.Retrieve(ctx, cfg, retrieval, candidate)
+			}
+			cfg.WaitGroup.Done()
 		}()
 	}
 
@@ -140,7 +107,7 @@ func RetrieveFromCandidates(
 }
 
 // findCandidates calls the indexer for the given CID
-func findCandidates(ctx context.Context, cfg *RetrievalConfig, candidateFinder CandidateFinder, cid cid.Cid) ([]RetrievalCandidate, error) {
+func findCandidates(ctx context.Context, cfg *ri.RetrievalConfig, candidateFinder CandidateFinder, cid cid.Cid) ([]ri.RetrievalCandidate, error) {
 	candidates, err := candidateFinder.FindCandidates(ctx, cid)
 	if err != nil {
 		return nil, fmt.Errorf("could not get retrieval candidates for %s: %w", cid, err)
@@ -151,10 +118,10 @@ func findCandidates(ctx context.Context, cfg *RetrievalConfig, candidateFinder C
 	}
 
 	if len(candidates) == 0 {
-		return nil, ErrNoCandidates
+		return nil, ri.ErrNoCandidates
 	}
 
-	acceptableCandidates := make([]RetrievalCandidate, 0)
+	acceptableCandidates := make([]ri.RetrievalCandidate, 0)
 	for _, candidate := range candidates {
 		if cfg.IsAcceptableStorageProvider == nil || cfg.IsAcceptableStorageProvider(candidate.SourcePeer.ID) {
 			acceptableCandidates = append(acceptableCandidates, candidate)
@@ -168,7 +135,7 @@ func findCandidates(ctx context.Context, cfg *RetrievalConfig, candidateFinder C
 	}
 
 	if len(acceptableCandidates) == 0 {
-		return nil, ErrNoCandidates
+		return nil, ri.ErrNoCandidates
 	}
 
 	return acceptableCandidates, nil
@@ -177,7 +144,7 @@ func findCandidates(ctx context.Context, cfg *RetrievalConfig, candidateFinder C
 // collectResults is responsible for receiving query errors, retrieval errors
 // and retrieval results and aggregating into an appropriate return of either
 // a complete RetrievalStats or an bundled multi-error
-func collectResults(ctx context.Context, retrieval *retrieval, candidates []RetrievalCandidate) (*RetrievalStats, error) {
+func collectResults(ctx context.Context, retrieval *retrieval, candidates []ri.RetrievalCandidate) (*RetrievalStats, error) {
 	var finishedCount int
 	var queryErrors error
 	var retrievalErrors error
@@ -186,7 +153,7 @@ func collectResults(ctx context.Context, retrieval *retrieval, candidates []Retr
 		select {
 		case result := <-retrieval.resultChan:
 			if result.Err != nil {
-				if errors.Is(result.Err, ErrQueryFailed) {
+				if errors.Is(result.Err, ri.ErrQueryFailed) {
 					queryErrors = multierr.Append(queryErrors, result.Err)
 				} else {
 					retrievalErrors = multierr.Append(retrievalErrors, result.Err)
@@ -200,10 +167,10 @@ func collectResults(ctx context.Context, retrieval *retrieval, candidates []Retr
 			if finishedCount >= len(candidates) {
 				if retrievalErrors == nil {
 					// we failed, but didn't get any retrieval errors, so must have only got query errors
-					retrievalErrors = ErrAllQueriesFailed
+					retrievalErrors = ri.ErrAllQueriesFailed
 				} else {
 					// we failed, and got only retrieval errors
-					retrievalErrors = multierr.Append(retrievalErrors, ErrAllRetrievalsFailed)
+					retrievalErrors = multierr.Append(retrievalErrors, ri.ErrAllRetrievalsFailed)
 				}
 				return nil, multierr.Append(queryErrors, retrievalErrors)
 			}
@@ -216,7 +183,7 @@ func collectResults(ctx context.Context, retrieval *retrieval, candidates []Retr
 // runRetrievalCandidate is a singular CID:SP retrieval, expected to be run in a goroutine
 // and coordinate with other candidate retrievals to block after query phase and
 // only attempt one retrieval-proper at a time.
-func runRetrievalCandidate(ctx context.Context, cfg *RetrievalConfig, client RetrievalClient, retrieval *retrieval, candidate RetrievalCandidate) {
+func runRetrievalCandidate(ctx context.Context, cfg *ri.RetrievalConfig, client RetrievalClient, retrieval *retrieval, candidate ri.RetrievalCandidate) {
 	var timeout time.Duration
 	if cfg.GetStorageProviderTimeout != nil {
 		timeout = cfg.GetStorageProviderTimeout(candidate.SourcePeer.ID)
@@ -292,10 +259,10 @@ func totalCost(qres *retrievalmarket.QueryResponse) big.Int {
 
 func queryPhase(
 	ctx context.Context,
-	cfg *RetrievalConfig,
+	cfg *ri.RetrievalConfig,
 	client RetrievalClient,
 	timeout time.Duration,
-	candidate RetrievalCandidate) (*retrievalmarket.QueryResponse, error) {
+	candidate ri.RetrievalCandidate) (*retrievalmarket.QueryResponse, error) {
 
 	queryCtx := ctx // separate context so we can capture cancellation vs timeout
 
@@ -317,7 +284,7 @@ func queryPhase(
 			if cfg.Instrumentation != nil {
 				cfg.Instrumentation.OnErrorQueryingRetrievalCandidate(candidate, err)
 			}
-			return nil, fmt.Errorf("%w: %v", ErrQueryFailed, err)
+			return nil, fmt.Errorf("%w: %v", ri.ErrQueryFailed, err)
 		}
 		// don't register an error on cancel, this is normal on a successful retrieval on an alternative SP
 		return nil, nil
@@ -341,10 +308,10 @@ func queryPhase(
 
 func retrievalPhase(
 	ctx context.Context,
-	cfg *RetrievalConfig,
+	cfg *ri.RetrievalConfig,
 	client RetrievalClient,
 	timeout time.Duration,
-	candidate RetrievalCandidate,
+	candidate ri.RetrievalCandidate,
 	queryResponse *retrievalmarket.QueryResponse) (*RetrievalStats, error) {
 
 	if cfg.Instrumentation != nil {
@@ -359,7 +326,7 @@ func retrievalPhase(
 
 	proposal, err := RetrievalProposalForAsk(queryResponse, candidate.RootCid, nil)
 	if err != nil {
-		return nil, multierr.Append(multierr.Append(ErrRetrievalFailed, ErrProposalCreationFailed), err)
+		return nil, multierr.Append(multierr.Append(ri.ErrRetrievalFailed, ri.ErrProposalCreationFailed), err)
 	}
 
 	startTime := time.Now()
@@ -405,10 +372,10 @@ func retrievalPhase(
 	})
 
 	if timedOut {
-		return nil, multierr.Append(ErrRetrievalFailed,
+		return nil, multierr.Append(ri.ErrRetrievalFailed,
 			fmt.Errorf(
 				"%w: did not receive data for %s (started %s ago, stopped at %s)",
-				ErrRetrievalTimedOut,
+				ri.ErrRetrievalTimedOut,
 				timeout,
 				time.Since(startTime),
 				humanize.IBytes(lastBytesReceived),
@@ -427,7 +394,7 @@ func retrievalPhase(
 		if cfg.Instrumentation != nil {
 			cfg.Instrumentation.OnErrorRetrievingFromCandidate(candidate, err)
 		}
-		return nil, fmt.Errorf("%w: %v", ErrRetrievalFailed, err)
+		return nil, fmt.Errorf("%w: %v", ri.ErrRetrievalFailed, err)
 	}
 
 	return stats, err
