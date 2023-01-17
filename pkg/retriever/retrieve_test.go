@@ -17,7 +17,6 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/multiformats/go-multicodec"
 
 	qt "github.com/frankban/quicktest"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
@@ -144,7 +143,7 @@ func TestQueryFiltering(t *testing.T) {
 			for _, p := range tc.expectedPeers {
 				pid := peer.ID(p)
 				qt.Assert(t, mockClient.received_retrievedPeers, qt.Contains, pid)
-				qt.Assert(t, mockInstrumentation.retrievingFromCandidate, qt.Any(qt.CmpEquals(cmp.AllowUnexported(cid.Cid{}))), RetrievalCandidate{peer.AddrInfo{ID: pid}, cid.Undef, multicodec.TransportGraphsyncFilecoinv1, nil})
+				qt.Assert(t, mockInstrumentation.retrievingFromCandidate, qt.Any(qt.CmpEquals(cmp.AllowUnexported(cid.Cid{}))), RetrievalCandidate{peer.AddrInfo{ID: pid}, cid.Undef, 0, nil})
 				found := false
 				for _, rqfc := range mockInstrumentation.filteredRetrievalQueryForCandidate {
 					if rqfc.candidate.SourcePeer.ID == pid {
