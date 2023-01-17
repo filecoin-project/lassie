@@ -21,7 +21,6 @@ import (
 )
 
 var (
-	ErrNoCandidates                = errors.New("no candidates")
 	ErrUnexpectedRetrieval         = errors.New("unexpected active retrieval")
 	ErrHitRetrievalLimit           = errors.New("hit retrieval limit")
 	ErrProposalCreationFailed      = errors.New("proposal creation failed")
@@ -40,6 +39,21 @@ type ErrRetrievalAlreadyRunning struct {
 
 func (e ErrRetrievalAlreadyRunning) Error() string {
 	return fmt.Sprintf("retrieval already running for CID: %s (%s)", e.c, e.extra)
+}
+
+type ErrNoCandidates struct {
+	unsupportedProtocols bool
+	unacceptable         bool
+}
+
+func (e ErrNoCandidates) Error() string {
+	if e.unsupportedProtocols {
+		return "no candidates with supported protocols"
+	}
+	if e.unacceptable {
+		return "no acceptable candidates"
+	}
+	return "no candidates"
 }
 
 type MinerConfig struct {
@@ -89,7 +103,7 @@ type RetrievalCandidate struct {
 }
 
 type CandidateFinder interface {
-	FindCandidates(context.Context, cid.Cid) ([]RetrievalCandidate, error)
+	FindCandidates(context.Context, cid.Cid) ([]RetrievalCandidate, int, error)
 }
 
 type BlockConfirmer func(c cid.Cid) (bool, error)

@@ -141,7 +141,7 @@ func RetrieveFromCandidates(
 
 // findCandidates calls the indexer for the given CID
 func findCandidates(ctx context.Context, cfg *RetrievalConfig, candidateFinder CandidateFinder, cid cid.Cid) ([]RetrievalCandidate, error) {
-	candidates, err := candidateFinder.FindCandidates(ctx, cid)
+	candidates, total, err := candidateFinder.FindCandidates(ctx, cid)
 	if err != nil {
 		return nil, fmt.Errorf("could not get retrieval candidates for %s: %w", cid, err)
 	}
@@ -151,7 +151,7 @@ func findCandidates(ctx context.Context, cfg *RetrievalConfig, candidateFinder C
 	}
 
 	if len(candidates) == 0 {
-		return nil, ErrNoCandidates
+		return nil, ErrNoCandidates{unsupportedProtocols: total != 0}
 	}
 
 	acceptableCandidates := make([]RetrievalCandidate, 0)
@@ -168,7 +168,9 @@ func findCandidates(ctx context.Context, cfg *RetrievalConfig, candidateFinder C
 	}
 
 	if len(acceptableCandidates) == 0 {
-		return nil, ErrNoCandidates
+		return nil, ErrNoCandidates{
+			unacceptable: true,
+		}
 	}
 
 	return acceptableCandidates, nil

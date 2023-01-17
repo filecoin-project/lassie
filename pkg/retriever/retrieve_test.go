@@ -543,8 +543,8 @@ type mockCandidateFinder struct {
 	candidates map[cid.Cid][]RetrievalCandidate
 }
 
-func (me *mockCandidateFinder) FindCandidates(ctx context.Context, cid cid.Cid) ([]RetrievalCandidate, error) {
-	return me.candidates[cid], nil
+func (me *mockCandidateFinder) FindCandidates(ctx context.Context, cid cid.Cid) ([]RetrievalCandidate, int, error) {
+	return me.candidates[cid], len(me.candidates[cid]), nil
 }
 
 func dummyBlockConfirmer(c cid.Cid) (bool, error) {

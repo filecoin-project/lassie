@@ -51,16 +51,16 @@ func (idxf *IndexerCandidateFinder) sendRequest(req *http.Request) (*model.FindR
 	return model.UnmarshalFindResponse(b)
 }
 
-func (idxf *IndexerCandidateFinder) FindCandidates(ctx context.Context, cid cid.Cid) ([]retriever.RetrievalCandidate, error) {
+func (idxf *IndexerCandidateFinder) FindCandidates(ctx context.Context, cid cid.Cid) ([]retriever.RetrievalCandidate, int, error) {
 	u := fmt.Sprint(idxf.baseUrl, "/multihash/", cid.Hash().B58String())
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	parsedResp, err := idxf.sendRequest(req)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	hash := string(cid.Hash())
 	// turn parsedResp into records.
@@ -86,5 +86,5 @@ func (idxf *IndexerCandidateFinder) FindCandidates(ctx context.Context, cid cid.
 			})
 		}
 	}
-	return matches, nil
+	return matches, len(indices), nil
 }
