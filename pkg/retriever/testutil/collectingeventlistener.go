@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
-	"github.com/filecoin-project/lassie/pkg/eventpublisher"
+	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -16,13 +16,13 @@ import (
 
 type CollectedEvent struct {
 	Name               string
-	Phase              eventpublisher.Phase
+	Phase              events.Phase
 	RetrievalId        types.RetrievalID
 	PhaseStart         time.Time
 	EventTime          time.Time
 	Cid                cid.Cid
 	StorageProviderIds []peer.ID
-	Stage              eventpublisher.Code
+	Stage              events.Code
 	ErrorStr           string
 	QueryResponse      *retrievalmarket.QueryResponse
 	ReceivedSize       uint64
@@ -41,12 +41,12 @@ func NewCollectingEventsListener() *CollectingEventsListener {
 	}
 }
 
-func (el *CollectingEventsListener) IndexerProgress(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, stage eventpublisher.Code) {
+func (el *CollectingEventsListener) IndexerProgress(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, stage events.Code) {
 	el.lk.Lock()
 	defer el.lk.Unlock()
 	el.CollectedEvents = append(el.CollectedEvents, CollectedEvent{
 		Name:        "IndexerProgress",
-		Phase:       eventpublisher.IndexerPhase,
+		Phase:       events.IndexerPhase,
 		RetrievalId: retrievalId,
 		PhaseStart:  phaseStartTime,
 		EventTime:   eventTime,
@@ -54,12 +54,12 @@ func (el *CollectingEventsListener) IndexerProgress(retrievalId types.RetrievalI
 		Stage:       stage,
 	})
 }
-func (el *CollectingEventsListener) IndexerCandidates(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, stage eventpublisher.Code, storageProviderIds []peer.ID) {
+func (el *CollectingEventsListener) IndexerCandidates(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, stage events.Code, storageProviderIds []peer.ID) {
 	el.lk.Lock()
 	defer el.lk.Unlock()
 	el.CollectedEvents = append(el.CollectedEvents, CollectedEvent{
 		Name:               "IndexerCandidates",
-		Phase:              eventpublisher.IndexerPhase,
+		Phase:              events.IndexerPhase,
 		RetrievalId:        retrievalId,
 		PhaseStart:         phaseStartTime,
 		EventTime:          eventTime,
@@ -68,12 +68,12 @@ func (el *CollectingEventsListener) IndexerCandidates(retrievalId types.Retrieva
 		StorageProviderIds: storageProviderIds,
 	})
 }
-func (el *CollectingEventsListener) QueryProgress(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage eventpublisher.Code) {
+func (el *CollectingEventsListener) QueryProgress(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage events.Code) {
 	el.lk.Lock()
 	defer el.lk.Unlock()
 	el.CollectedEvents = append(el.CollectedEvents, CollectedEvent{
 		Name:               "QueryProgress",
-		Phase:              eventpublisher.QueryPhase,
+		Phase:              events.QueryPhase,
 		RetrievalId:        retrievalId,
 		PhaseStart:         phaseStartTime,
 		EventTime:          eventTime,
@@ -87,7 +87,7 @@ func (el *CollectingEventsListener) QueryFailure(retrievalId types.RetrievalID, 
 	defer el.lk.Unlock()
 	el.CollectedEvents = append(el.CollectedEvents, CollectedEvent{
 		Name:               "QueryFailure",
-		Phase:              eventpublisher.QueryPhase,
+		Phase:              events.QueryPhase,
 		RetrievalId:        retrievalId,
 		PhaseStart:         phaseStartTime,
 		EventTime:          eventTime,
@@ -101,7 +101,7 @@ func (el *CollectingEventsListener) QuerySuccess(retrievalId types.RetrievalID, 
 	defer el.lk.Unlock()
 	el.CollectedEvents = append(el.CollectedEvents, CollectedEvent{
 		Name:               "QuerySuccess",
-		Phase:              eventpublisher.QueryPhase,
+		Phase:              events.QueryPhase,
 		RetrievalId:        retrievalId,
 		PhaseStart:         phaseStartTime,
 		EventTime:          eventTime,
@@ -110,12 +110,12 @@ func (el *CollectingEventsListener) QuerySuccess(retrievalId types.RetrievalID, 
 		QueryResponse:      &queryResponse,
 	})
 }
-func (el *CollectingEventsListener) RetrievalProgress(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage eventpublisher.Code) {
+func (el *CollectingEventsListener) RetrievalProgress(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage events.Code) {
 	el.lk.Lock()
 	defer el.lk.Unlock()
 	el.CollectedEvents = append(el.CollectedEvents, CollectedEvent{
 		Name:               "RetrievalProgress",
-		Phase:              eventpublisher.RetrievalPhase,
+		Phase:              events.RetrievalPhase,
 		RetrievalId:        retrievalId,
 		PhaseStart:         phaseStartTime,
 		EventTime:          eventTime,
@@ -129,7 +129,7 @@ func (el *CollectingEventsListener) RetrievalSuccess(retrievalId types.Retrieval
 	defer el.lk.Unlock()
 	el.CollectedEvents = append(el.CollectedEvents, CollectedEvent{
 		Name:               "RetrievalSuccess",
-		Phase:              eventpublisher.RetrievalPhase,
+		Phase:              events.RetrievalPhase,
 		RetrievalId:        retrievalId,
 		PhaseStart:         phaseStartTime,
 		EventTime:          eventTime,
@@ -145,7 +145,7 @@ func (el *CollectingEventsListener) RetrievalFailure(retrievalId types.Retrieval
 	defer el.lk.Unlock()
 	el.CollectedEvents = append(el.CollectedEvents, CollectedEvent{
 		Name:               "RetrievalFailure",
-		Phase:              eventpublisher.RetrievalPhase,
+		Phase:              events.RetrievalPhase,
 		RetrievalId:        retrievalId,
 		PhaseStart:         phaseStartTime,
 		EventTime:          eventTime,

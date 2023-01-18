@@ -9,7 +9,6 @@ import (
 	"github.com/filecoin-project/go-address"
 	datatransfer "github.com/filecoin-project/go-data-transfer/v2"
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
-	"github.com/filecoin-project/lassie/pkg/eventpublisher"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime/datamodel"
@@ -95,8 +94,6 @@ func (dfc *MockClient) RetrieveFromPeer(
 	}
 	return nil, errors.New("nope")
 }
-
-func (*MockClient) SubscribeToRetrievalEvents(subscriber eventpublisher.RetrievalSubscriber) {}
 
 type mockChannelState struct {
 	lastVoucherResult datamodel.Node

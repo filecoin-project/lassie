@@ -1,4 +1,4 @@
-package retriever_test
+package events_test
 
 import (
 	"context"
@@ -6,8 +6,7 @@ import (
 	"time"
 
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
-	"github.com/filecoin-project/lassie/pkg/eventpublisher"
-	"github.com/filecoin-project/lassie/pkg/retriever"
+	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
@@ -16,7 +15,7 @@ import (
 )
 
 func TestEventManager(t *testing.T) {
-	em := retriever.NewEventManager(context.Background())
+	em := events.NewEventManager(context.Background())
 	<-em.Start()
 	id := types.RetrievalID(uuid.New())
 	cid := cid.MustParse("bafkqaalb")
@@ -28,12 +27,12 @@ func TestEventManager(t *testing.T) {
 	unregister1 := em.RegisterListener(listener1)
 	unregister2 := em.RegisterListener(listener2)
 
-	em.FireIndexerProgress(id, cid, indexerStart, eventpublisher.StartedCode)
-	em.FireIndexerCandidates(id, cid, indexerStart, eventpublisher.StartedCode, []peer.ID{peer.ID("A"), peer.ID("B"), peer.ID("C")})
-	em.FireQueryProgress(id, cid, queryStart, peer.ID("A"), eventpublisher.StartedCode)
+	em.FireIndexerProgress(id, cid, indexerStart, events.StartedCode)
+	em.FireIndexerCandidates(id, cid, indexerStart, events.StartedCode, []peer.ID{peer.ID("A"), peer.ID("B"), peer.ID("C")})
+	em.FireQueryProgress(id, cid, queryStart, peer.ID("A"), events.StartedCode)
 	em.FireQueryFailure(id, cid, queryStart, peer.ID("A"), "error @ query failure")
 	em.FireQuerySuccess(id, cid, queryStart, peer.ID("A"), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseError, Size: 100, Message: "error @ response"})
-	em.FireRetrievalProgress(id, cid, retrievalStart, peer.ID("B"), eventpublisher.StartedCode)
+	em.FireRetrievalProgress(id, cid, retrievalStart, peer.ID("B"), events.StartedCode)
 	em.FireRetrievalSuccess(id, cid, retrievalStart, peer.ID("B"), 100, 200, true)
 	em.FireRetrievalFailure(id, cid, retrievalStart, peer.ID("B"), "error @ retrieval failure")
 
@@ -43,12 +42,12 @@ func TestEventManager(t *testing.T) {
 	unregister2()
 
 	// these should go nowhere and not be counted
-	em.FireIndexerProgress(id, cid, indexerStart, eventpublisher.StartedCode)
-	em.FireIndexerCandidates(id, cid, indexerStart, eventpublisher.StartedCode, []peer.ID{peer.ID("A"), peer.ID("B"), peer.ID("C")})
-	em.FireQueryProgress(id, cid, queryStart, peer.ID("A"), eventpublisher.StartedCode)
+	em.FireIndexerProgress(id, cid, indexerStart, events.StartedCode)
+	em.FireIndexerCandidates(id, cid, indexerStart, events.StartedCode, []peer.ID{peer.ID("A"), peer.ID("B"), peer.ID("C")})
+	em.FireQueryProgress(id, cid, queryStart, peer.ID("A"), events.StartedCode)
 	em.FireQueryFailure(id, cid, queryStart, peer.ID("A"), "error @ query failure")
 	em.FireQuerySuccess(id, cid, queryStart, peer.ID("A"), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseError, Size: 100, Message: "error @ response"})
-	em.FireRetrievalProgress(id, cid, retrievalStart, peer.ID("B"), eventpublisher.StartedCode)
+	em.FireRetrievalProgress(id, cid, retrievalStart, peer.ID("B"), events.StartedCode)
 	em.FireRetrievalSuccess(id, cid, retrievalStart, peer.ID("B"), 100, 200, true)
 	em.FireRetrievalFailure(id, cid, retrievalStart, peer.ID("B"), "error @ retrieval failure")
 
@@ -75,7 +74,7 @@ func TestEventManager(t *testing.T) {
 	require.Equal(t, 1, listener2.gotRetrievalFailure)
 }
 
-var _ retriever.RetrievalEventListener = &eventsListener{}
+var _ events.RetrievalEventListener = &eventsListener{}
 
 type eventsListener struct {
 	t                    *testing.T
@@ -94,19 +93,19 @@ type eventsListener struct {
 	gotRetrievalFailure  int
 }
 
-func (el *eventsListener) IndexerProgress(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, stage eventpublisher.Code) {
+func (el *eventsListener) IndexerProgress(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, stage events.Code) {
 	require.Equal(el.t, retrievalId, el.id)
 	require.Equal(el.t, requestedCid, el.cid)
 	require.Equal(el.t, phaseStartTime, el.indexerStart)
-	require.Equal(el.t, eventpublisher.StartedCode, stage)
+	require.Equal(el.t, events.StartedCode, stage)
 	el.gotIndexerProgress++
 }
 
-func (el *eventsListener) IndexerCandidates(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, stage eventpublisher.Code, storageProviderIds []peer.ID) {
+func (el *eventsListener) IndexerCandidates(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, stage events.Code, storageProviderIds []peer.ID) {
 	require.Equal(el.t, retrievalId, el.id)
 	require.Equal(el.t, requestedCid, el.cid)
 	require.Equal(el.t, phaseStartTime, el.indexerStart)
-	require.Equal(el.t, eventpublisher.StartedCode, stage)
+	require.Equal(el.t, events.StartedCode, stage)
 	require.Len(el.t, storageProviderIds, 3)
 	require.Equal(el.t, peer.ID("A"), storageProviderIds[0])
 	require.Equal(el.t, peer.ID("B"), storageProviderIds[1])
@@ -114,11 +113,11 @@ func (el *eventsListener) IndexerCandidates(retrievalId types.RetrievalID, phase
 	el.gotIndexerCandidates++
 }
 
-func (el *eventsListener) QueryProgress(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage eventpublisher.Code) {
+func (el *eventsListener) QueryProgress(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage events.Code) {
 	require.Equal(el.t, retrievalId, el.id)
 	require.Equal(el.t, requestedCid, el.cid)
 	require.Equal(el.t, el.queryStart, phaseStartTime)
-	require.Equal(el.t, eventpublisher.StartedCode, stage)
+	require.Equal(el.t, events.StartedCode, stage)
 	require.Equal(el.t, peer.ID("A"), storageProviderId)
 	el.gotQueryProgress++
 }
@@ -143,11 +142,11 @@ func (el *eventsListener) QuerySuccess(retrievalId types.RetrievalID, phaseStart
 	el.gotQuerySuccess++
 }
 
-func (el *eventsListener) RetrievalProgress(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage eventpublisher.Code) {
+func (el *eventsListener) RetrievalProgress(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage events.Code) {
 	require.Equal(el.t, retrievalId, el.id)
 	require.Equal(el.t, requestedCid, el.cid)
 	require.Equal(el.t, el.retrievalStart, phaseStartTime)
-	require.Equal(el.t, eventpublisher.StartedCode, stage)
+	require.Equal(el.t, events.StartedCode, stage)
 	require.Equal(el.t, peer.ID("B"), storageProviderId)
 	el.gotRetrievalProgress++
 }

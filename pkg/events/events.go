@@ -1,4 +1,4 @@
-package eventpublisher
+package events
 
 import (
 	"time"
@@ -50,6 +50,48 @@ type RetrievalEvent interface {
 	// StorageProviderId returns the peer ID of the storage provider if this
 	// retrieval was requested via peer ID
 	StorageProviderId() peer.ID
+}
+
+// RetrievalEventListener defines a type that receives events fired during a
+// retrieval process, including the process of querying available storage
+// providers to find compatible ones to attempt retrieval from.
+type RetrievalEventListener interface {
+	// IndexerProgress events occur during the Indexer process, stages.
+	// Currently this includes a "started" event.
+	IndexerProgress(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, stage Code)
+
+	// IndexerCandidates events occur after querying the indexer.
+	// Currently this includes "candidates-found" and "candidates-filtered" events.
+	IndexerCandidates(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, stage Code, storageProviderIds []peer.ID)
+
+	// QueryProgress events occur during the query process, stages.
+	// Currently this includes "started" and "connected" events.
+	QueryProgress(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage Code)
+
+	// QueryFailure events occur on the failure of querying a storage
+	// provider. A query will result in either a QueryFailure or
+	// a QuerySuccess event.
+	QueryFailure(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, errString string)
+
+	// QuerySuccess ("query-asked") events occur on successfully querying a storage
+	// provider. A query will result in either a QueryFailure or
+	// a QuerySuccess event.
+	QuerySuccess(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, queryResponse retrievalmarket.QueryResponse)
+
+	// RetrievalProgress events occur during the process of a retrieval. The
+	// Success and failure progress event types are not reported here, but are
+	// signalled via RetrievalSuccess or RetrievalFailure.
+	RetrievalProgress(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage Code)
+
+	// RetrievalSuccess events occur on the success of a retrieval. A retrieval
+	// will result in either a QueryFailure or a QuerySuccess
+	// event.
+	RetrievalSuccess(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, receivedSize uint64, receivedCids uint64, confirmed bool)
+
+	// RetrievalFailure events occur on the failure of a retrieval. A retrieval
+	// will result in either a QueryFailure or a QuerySuccess
+	// event.
+	RetrievalFailure(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, errString string)
 }
 
 var (

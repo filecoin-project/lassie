@@ -11,7 +11,7 @@ import (
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-state-types/big"
-	"github.com/filecoin-project/lassie/pkg/eventpublisher"
+	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/retriever/testutil"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/google/go-cmp/cmp"
@@ -115,14 +115,14 @@ func TestQueryFiltering(t *testing.T) {
 			candidateQueriesFiltered := make([]candidateQuery, 0)
 
 			// perform retrieval and test top-level results, we should only error in this test
-			stats, err := RetrieveFromCandidates(context.Background(), cfg, mockCandidateFinder, mockClient, cid.Undef, func(event eventpublisher.RetrievalEvent) {
+			stats, err := RetrieveFromCandidates(context.Background(), cfg, mockCandidateFinder, mockClient, cid.Undef, func(event events.RetrievalEvent) {
 				switch ret := event.(type) {
-				case eventpublisher.RetrievalEventQueryAsk:
+				case events.RetrievalEventQueryAsk:
 					candidateQueries = append(candidateQueries, candidateQuery{ret.StorageProviderId(), ret.QueryResponse()})
-				case eventpublisher.RetrievalEventQueryAskFiltered:
+				case events.RetrievalEventQueryAskFiltered:
 					candidateQueriesFiltered = append(candidateQueriesFiltered, candidateQuery{ret.StorageProviderId(), ret.QueryResponse()})
-				case eventpublisher.RetrievalEventStarted:
-					if ret.Phase() == eventpublisher.RetrievalPhase {
+				case events.RetrievalEventStarted:
+					if ret.Phase() == events.RetrievalPhase {
 						retrievingPeers = append(retrievingPeers, event.StorageProviderId())
 					}
 				}
@@ -323,14 +323,14 @@ func TestRetrievalRacing(t *testing.T) {
 			candidateQueriesFiltered := make([]candidateQuery, 0)
 
 			// perform retrieval and make sure we got a result
-			stats, err := RetrieveFromCandidates(context.Background(), cfg, mockCandidateFinder, mockClient, cid.Undef, func(event eventpublisher.RetrievalEvent) {
+			stats, err := RetrieveFromCandidates(context.Background(), cfg, mockCandidateFinder, mockClient, cid.Undef, func(event events.RetrievalEvent) {
 				switch ret := event.(type) {
-				case eventpublisher.RetrievalEventQueryAsk:
+				case events.RetrievalEventQueryAsk:
 					candidateQueries = append(candidateQueries, candidateQuery{ret.StorageProviderId(), ret.QueryResponse()})
-				case eventpublisher.RetrievalEventQueryAskFiltered:
+				case events.RetrievalEventQueryAskFiltered:
 					candidateQueriesFiltered = append(candidateQueriesFiltered, candidateQuery{ret.StorageProviderId(), ret.QueryResponse()})
-				case eventpublisher.RetrievalEventStarted:
-					if ret.Phase() == eventpublisher.RetrievalPhase {
+				case events.RetrievalEventStarted:
+					if ret.Phase() == events.RetrievalPhase {
 						retrievingPeers = append(retrievingPeers, event.StorageProviderId())
 					}
 				}
@@ -431,18 +431,18 @@ func TestMultipleRetrievals(t *testing.T) {
 	candidateQueriesFiltered := make([]candidateQuery, 0)
 	retrievingPeers := make([]peer.ID, 0)
 	var lk sync.Mutex
-	evtCb := func(event eventpublisher.RetrievalEvent) {
+	evtCb := func(event events.RetrievalEvent) {
 		switch ret := event.(type) {
-		case eventpublisher.RetrievalEventQueryAsk:
+		case events.RetrievalEventQueryAsk:
 			lk.Lock()
 			candidateQueries = append(candidateQueries, candidateQuery{ret.StorageProviderId(), ret.QueryResponse()})
 			lk.Unlock()
-		case eventpublisher.RetrievalEventQueryAskFiltered:
+		case events.RetrievalEventQueryAskFiltered:
 			lk.Lock()
 			candidateQueriesFiltered = append(candidateQueriesFiltered, candidateQuery{ret.StorageProviderId(), ret.QueryResponse()})
 			lk.Unlock()
-		case eventpublisher.RetrievalEventStarted:
-			if ret.Phase() == eventpublisher.RetrievalPhase {
+		case events.RetrievalEventStarted:
+			if ret.Phase() == events.RetrievalPhase {
 				lk.Lock()
 				retrievingPeers = append(retrievingPeers, event.StorageProviderId())
 				lk.Unlock()
