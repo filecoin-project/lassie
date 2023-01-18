@@ -1,4 +1,4 @@
-package retriever
+package events
 
 import (
 	"context"
@@ -6,59 +6,20 @@ import (
 	"time"
 
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
-	"github.com/filecoin-project/lassie/pkg/eventpublisher"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
-
-// RetrievalEventListener defines a type that receives events fired during a
-// retrieval process, including the process of querying available storage
-// providers to find compatible ones to attempt retrieval from.
-type RetrievalEventListener interface {
-	// IndexerProgress events occur during the Indexer process, stages.
-	// Currently this includes a "started" event.
-	IndexerProgress(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, stage eventpublisher.Code)
-
-	// IndexerCandidates events occur after querying the indexer.
-	// Currently this includes "candidates-found" and "candidates-filtered" events.
-	IndexerCandidates(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, stage eventpublisher.Code, storageProviderIds []peer.ID)
-
-	// QueryProgress events occur during the query process, stages.
-	// Currently this includes "started" and "connected" events.
-	QueryProgress(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage eventpublisher.Code)
-
-	// QueryFailure events occur on the failure of querying a storage
-	// provider. A query will result in either a QueryFailure or
-	// a QuerySuccess event.
-	QueryFailure(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, errString string)
-
-	// QuerySuccess ("query-asked") events occur on successfully querying a storage
-	// provider. A query will result in either a QueryFailure or
-	// a QuerySuccess event.
-	QuerySuccess(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, queryResponse retrievalmarket.QueryResponse)
-
-	// RetrievalProgress events occur during the process of a retrieval. The
-	// Success and failure progress event types are not reported here, but are
-	// signalled via RetrievalSuccess or RetrievalFailure.
-	RetrievalProgress(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage eventpublisher.Code)
-
-	// RetrievalSuccess events occur on the success of a retrieval. A retrieval
-	// will result in either a QueryFailure or a QuerySuccess
-	// event.
-	RetrievalSuccess(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, receivedSize uint64, receivedCids uint64, confirmed bool)
-
-	// RetrievalFailure events occur on the failure of a retrieval. A retrieval
-	// will result in either a QueryFailure or a QuerySuccess
-	// event.
-	RetrievalFailure(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, errString string)
-}
 
 type eventExecution struct {
 	ts time.Time
 	cb func(timestamp time.Time, listener RetrievalEventListener)
 }
 
+// EventManager is responsible for dispatching events to registered listeners.
+// Events are dispatched asynchronously, so listeners should not assume that
+// events are received within the window of a blocking retriever.Retrieve()
+// call.
 type EventManager struct {
 	ctx       context.Context
 	lk        sync.RWMutex
@@ -70,6 +31,8 @@ type EventManager struct {
 	stopped   chan struct{}
 }
 
+// NewEventManager creates a new EventManager. Start() must be called to start
+// the event loop.
 func NewEventManager(ctx context.Context) *EventManager {
 	var cancel context.CancelFunc
 	ctx, cancel = context.WithCancel(ctx)
@@ -82,6 +45,9 @@ func NewEventManager(ctx context.Context) *EventManager {
 	}
 }
 
+// Start starts the event loop. Start() must be called before any events can be
+// dispatched. A channel is returned that will receive a single value when the
+// event loop has started.
 func (em *EventManager) Start() chan struct{} {
 	startChan := make(chan struct{})
 	go func() {
@@ -111,17 +77,22 @@ func (em *EventManager) Start() chan struct{} {
 	return startChan
 }
 
+// IsStarted returns true if the event loop has been started.
 func (em *EventManager) IsStarted() bool {
 	em.lk.RLock()
 	defer em.lk.RUnlock()
 	return em.started
 }
 
+// Stop stops the event loop. A channel is returned that will receive a single
+// value when the event loop has stopped.
 func (em *EventManager) Stop() chan struct{} {
 	em.cancel()
 	return em.stopped
 }
 
+// RegisterListener registers a listener to receive events. The returned
+// function can be called to unregister the listener.
 func (em *EventManager) RegisterListener(listener RetrievalEventListener) func() {
 	em.lk.Lock()
 	defer em.lk.Unlock()
@@ -150,21 +121,21 @@ func (em *EventManager) queueEvent(cb func(timestamp time.Time, listener Retriev
 }
 
 // FireQueryProgress calls QueryProgress for all listeners
-func (em *EventManager) FireIndexerProgress(retrievalId types.RetrievalID, requestedCid cid.Cid, phaseStartTime time.Time, stage eventpublisher.Code) {
+func (em *EventManager) FireIndexerProgress(retrievalId types.RetrievalID, requestedCid cid.Cid, phaseStartTime time.Time, stage Code) {
 	em.queueEvent(func(timestamp time.Time, listener RetrievalEventListener) {
 		listener.IndexerProgress(retrievalId, phaseStartTime, timestamp, requestedCid, stage)
 	})
 }
 
 // FireIndexerCandidates calls IndexerCandidates for all listeners
-func (em *EventManager) FireIndexerCandidates(retrievalId types.RetrievalID, requestedCid cid.Cid, phaseStartTime time.Time, stage eventpublisher.Code, storageProviderIds []peer.ID) {
+func (em *EventManager) FireIndexerCandidates(retrievalId types.RetrievalID, requestedCid cid.Cid, phaseStartTime time.Time, stage Code, storageProviderIds []peer.ID) {
 	em.queueEvent(func(timestamp time.Time, listener RetrievalEventListener) {
 		listener.IndexerCandidates(retrievalId, phaseStartTime, timestamp, requestedCid, stage, storageProviderIds)
 	})
 }
 
 // FireQueryProgress calls QueryProgress for all listeners
-func (em *EventManager) FireQueryProgress(retrievalId types.RetrievalID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, stage eventpublisher.Code) {
+func (em *EventManager) FireQueryProgress(retrievalId types.RetrievalID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, stage Code) {
 	em.queueEvent(func(timestamp time.Time, listener RetrievalEventListener) {
 		listener.QueryProgress(retrievalId, phaseStartTime, timestamp, requestedCid, storageProviderId, stage)
 	})
@@ -185,7 +156,7 @@ func (em *EventManager) FireQuerySuccess(retrievalId types.RetrievalID, requeste
 }
 
 // FireRetrievalProgress calls RetrievalProgress for all listeners
-func (em *EventManager) FireRetrievalProgress(retrievalId types.RetrievalID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, stage eventpublisher.Code) {
+func (em *EventManager) FireRetrievalProgress(retrievalId types.RetrievalID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, stage Code) {
 	em.queueEvent(func(timestamp time.Time, listener RetrievalEventListener) {
 		listener.RetrievalProgress(retrievalId, phaseStartTime, timestamp, requestedCid, storageProviderId, stage)
 	})
