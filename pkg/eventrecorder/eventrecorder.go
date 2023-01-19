@@ -74,7 +74,7 @@ type eventReport struct {
 
 // eventDetailsSuccess is for the EventDetails in the case of a retrieval
 // success
-type eventDetailsSuccess struct {
+type EventDetailsSuccess struct {
 	ReceivedSize uint64 `json:"receivedSize"`
 	ReceivedCids uint64 `json:"receivedCids"`
 	Confirmed    bool   `json:"confirmed"`
@@ -82,7 +82,7 @@ type eventDetailsSuccess struct {
 
 // eventDetailsError is for the EventDetails in the case of a query or retrieval
 // failure
-type eventDetailsError struct {
+type EventDetailsError struct {
 	Error string `json:"error"`
 }
 
@@ -105,7 +105,7 @@ func (er *EventRecorder) QueryProgress(retrievalId types.RetrievalID, phaseStart
 // a QuerySuccess event.
 func (er *EventRecorder) QueryFailure(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, retrievalCid cid.Cid, storageProviderId peer.ID, errorString string) {
 	evt := eventReport{retrievalId, er.instanceId, retrievalCid.String(), storageProviderId, eventpublisher.QueryPhase, phaseStartTime, eventpublisher.FailureCode, eventTime, nil}
-	evt.EventDetails = &eventDetailsError{errorString}
+	evt.EventDetails = &EventDetailsError{errorString}
 	er.recordEvent("QueryFailure", evt)
 }
 
@@ -131,7 +131,7 @@ func (er *EventRecorder) RetrievalProgress(retrievalId types.RetrievalID, phaseS
 // event.
 func (er *EventRecorder) RetrievalSuccess(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, retrievalCid cid.Cid, storageProviderId peer.ID, retrievedSize uint64, receivedCids uint64, confirmed bool) {
 	evt := eventReport{retrievalId, er.instanceId, retrievalCid.String(), storageProviderId, eventpublisher.RetrievalPhase, phaseStartTime, eventpublisher.SuccessCode, eventTime, nil}
-	evt.EventDetails = &eventDetailsSuccess{retrievedSize, receivedCids, confirmed}
+	evt.EventDetails = &EventDetailsSuccess{retrievedSize, receivedCids, confirmed}
 	er.recordEvent("RetrievalSuccess", evt)
 }
 
@@ -139,7 +139,7 @@ func (er *EventRecorder) RetrievalSuccess(retrievalId types.RetrievalID, phaseSt
 // will result in either a QueryFailure or a QuerySuccess event.
 func (er *EventRecorder) RetrievalFailure(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, retrievalCid cid.Cid, storageProviderId peer.ID, errorString string) {
 	evt := eventReport{retrievalId, er.instanceId, retrievalCid.String(), storageProviderId, eventpublisher.RetrievalPhase, phaseStartTime, eventpublisher.FailureCode, eventTime, nil}
-	evt.EventDetails = &eventDetailsError{errorString}
+	evt.EventDetails = &EventDetailsError{errorString}
 	er.recordEvent("RetrievalFailure", evt)
 }
 
@@ -188,7 +188,7 @@ func (er *EventRecorder) postReports() {
 	}
 }
 
-type multiEventReport struct {
+type MultiEventReport struct {
 	Events []eventReport `json:"events"`
 }
 
@@ -205,7 +205,7 @@ func (er *EventRecorder) handleReports(client http.Client, reports []report) {
 		}
 	}
 
-	byts, err := json.Marshal(multiEventReport{eventReports})
+	byts, err := json.Marshal(MultiEventReport{eventReports})
 	if err != nil {
 		log.Errorf("Failed to JSONify and encode event [%s]: %w", sources, err.Error())
 		return
