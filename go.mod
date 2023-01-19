@@ -27,7 +27,6 @@ require (
 	github.com/libp2p/go-libp2p v0.23.2
 	github.com/multiformats/go-multiaddr v0.7.0
 	github.com/prometheus/client_golang v1.14.0
-	github.com/rvagg/go-prioritywaitqueue v1.0.3
 	github.com/stretchr/testify v1.8.1
 	github.com/urfave/cli/v2 v2.23.7
 	go.opencensus.io v0.24.0

@@ -14,7 +14,6 @@ import (
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/rvagg/go-prioritywaitqueue"
 	"go.uber.org/multierr"
 )
 
@@ -28,14 +27,15 @@ type IsAcceptableQueryResponse func(*retrievalmarket.QueryResponse) bool
 
 type queryCandidate struct {
 	*retrievalmarket.QueryResponse
-	Duration time.Duration
+	RetrievalCandidate types.RetrievalCandidate
+	Duration           time.Duration
 }
 
 // queryCompare compares two QueryResponses and returns true if the first is
-// preferable to the second. This is used for the PriorityWaitQueue that will
+// preferable to the second. This is used for the queue that will
 // prioritise execution of retrievals if two queries are available to compare
 // at the same time.
-var queryCompare prioritywaitqueue.ComparePriority[*queryCandidate] = func(a, b *queryCandidate) bool {
+var queryCompare = func(a, b *queryCandidate) bool {
 	// Always prefer unsealed to sealed, no matter what
 	if a.UnsealPrice.IsZero() && !b.UnsealPrice.IsZero() {
 		return true
@@ -80,11 +80,11 @@ type retrievalResult struct {
 
 // retrieval handles state on a per-retrieval (across multiple candidates) basis
 type retrieval struct {
-	cid                cid.Cid
-	waitQueue          prioritywaitqueue.PriorityWaitQueue[*queryCandidate]
-	retrievalStartTime time.Time
-	resultChan         chan retrievalResult
-	finishChan         chan struct{}
+	cid          cid.Cid
+	queue        PriorityQueue[*queryCandidate]
+	attemptsChan chan int
+	resultChan   chan retrievalResult
+	finishChan   chan struct{}
 }
 
 // RetrieveFromCandidates performs a retrieval for a given CID by querying the indexer, then
@@ -108,40 +108,43 @@ func RetrieveFromCandidates(
 
 	// state local to this CID's retrieval
 	retrieval := &retrieval{
-		cid:        cid,
-		resultChan: make(chan retrievalResult),
-		finishChan: make(chan struct{}),
-		waitQueue:  prioritywaitqueue.New(queryCompare),
+		cid:          cid,
+		queue:        NewPriorityQueue(queryCompare),
+		attemptsChan: make(chan int, 1),
+		resultChan:   make(chan retrievalResult),
+		finishChan:   make(chan struct{}, 1),
 	}
 
 	ctx, cancelCtx := context.WithCancel(ctx)
 	defer cancelCtx()
 
 	// fetch indexer candidates for CID
-	candidates, err := findCandidates(ctx, cfg, retrieval, candidateFinder, cid, eventsCallback)
+	candidates, err := findCandidates(ctx, cfg, candidateFinder, cid, eventsCallback)
 	if err != nil {
 		return nil, err
 	}
+	retrieval.attemptsChan <- len(candidates) // the most number of attempts we'll have to get a successful retrieval
 
-	// start retrievals
+	// query for candidates
 	queryStartTime := time.Now()
 	cfg.waitGroup.Add(len(candidates))
 	for _, candidate := range candidates {
 		candidate := candidate
 		go func() {
-			runRetrievalCandidate(ctx, cfg, client, retrieval, queryStartTime, candidate)
+			runQueryPhase(ctx, cfg, client, retrieval, queryStartTime, candidate)
 			cfg.waitGroup.Done()
 		}()
 	}
 
-	return collectResults(ctx, retrieval, len(candidates), eventsCallback)
+	go runRetrievalPhase(ctx, cfg, client, retrieval)
+
+	return collectResults(ctx, retrieval, eventsCallback)
 }
 
 // findCandidates calls the indexer for the given CID
 func findCandidates(
 	ctx context.Context,
 	cfg *RetrievalConfig,
-	retrieval *retrieval,
 	candidateFinder CandidateFinder,
 	cid cid.Cid,
 	eventsCallback func(eventpublisher.RetrievalEvent),
@@ -179,15 +182,14 @@ func findCandidates(
 
 // collectResults is responsible for receiving query errors, retrieval errors
 // and retrieval results and aggregating into an appropriate return of either
-// a complete RetrievalStats or an bundled multi-error
-func collectResults(ctx context.Context, retrieval *retrieval, expectedCandidates int, eventsCallback func(eventpublisher.RetrievalEvent)) (*types.RetrievalStats, error) {
-	var finishedCount int
+// a complete retrievalStats or an bundled multi-error
+func collectResults(ctx context.Context, retrieval *retrieval, eventsCallback func(eventpublisher.RetrievalEvent)) (*types.RetrievalStats, error) {
 	var queryErrors error
 	var retrievalErrors error
 
 	for {
 		select {
-		case result := <-retrieval.resultChan:
+		case result := <-retrieval.resultChan: // getting results from queries and retrievals
 			if result.Event != nil {
 				eventsCallback(*result.Event)
 				break
@@ -202,28 +204,43 @@ func collectResults(ctx context.Context, retrieval *retrieval, expectedCandidate
 			if result.Stats != nil {
 				return result.Stats, nil
 			}
-			// have we got all responses but no success?
-			finishedCount++
-			if finishedCount >= expectedCandidates {
-				if retrievalErrors == nil {
-					// we failed, but didn't get any retrieval errors, so must have only got query errors
-					retrievalErrors = ErrAllQueriesFailed
-				} else {
-					// we failed, and got only retrieval errors
-					retrievalErrors = multierr.Append(retrievalErrors, ErrAllRetrievalsFailed)
-				}
-				return nil, multierr.Append(queryErrors, retrievalErrors)
+
+		case <-retrieval.finishChan: // did we get a finish signal?
+			if retrievalErrors == nil {
+				// we failed, but didn't get any retrieval errors, so must have only got query errors
+				retrievalErrors = ErrAllQueriesFailed
+			} else {
+				// we failed, and got only retrieval errors
+				retrievalErrors = multierr.Append(retrievalErrors, ErrAllRetrievalsFailed)
 			}
-		case <-ctx.Done():
+			return nil, multierr.Append(queryErrors, retrievalErrors)
+
+		case <-ctx.Done(): // context was canceled
 			return nil, context.Canceled
 		}
 	}
 }
 
-// runRetrievalCandidate is a singular CID:SP retrieval, expected to be run in a goroutine
-// and coordinate with other candidate retrievals to block after query phase and
-// only attempt one retrieval-proper at a time.
-func runRetrievalCandidate(ctx context.Context, cfg *RetrievalConfig, client RetrievalClient, retrieval *retrieval, queryStartTime time.Time, candidate types.RetrievalCandidate) {
+func (r *retrieval) sendEvent(event eventpublisher.RetrievalEvent) {
+	r.resultChan <- retrievalResult{PeerID: event.StorageProviderId(), Event: &event}
+}
+
+func (r *retrieval) sendResult(result retrievalResult) {
+	r.resultChan <- result
+}
+
+func totalCost(qres *retrievalmarket.QueryResponse) big.Int {
+	return big.Add(big.Mul(qres.MinPricePerByte, big.NewIntUnsigned(qres.Size)), qres.UnsealPrice)
+}
+
+func runQueryPhase(
+	ctx context.Context,
+	cfg *RetrievalConfig,
+	client RetrievalClient,
+	retrieval *retrieval,
+	queryStartTime time.Time,
+	candidate types.RetrievalCandidate,
+) {
 	// phaseStartTime starts off as the queryStartTime, based on the start of all queries,
 	// but is updated to the retrievalStartTime when the retrieval starts. By the time we
 	// are sending the results, phaseStartTime may be the retrievalStartTime, or it may
@@ -235,152 +252,49 @@ func runRetrievalCandidate(ctx context.Context, cfg *RetrievalConfig, client Ret
 		timeout = cfg.GetStorageProviderTimeout(candidate.MinerPeer.ID)
 	}
 
-	var stats *types.RetrievalStats
-	var retrievalErr error
-	var done func()
-
 	retrieval.sendEvent(eventpublisher.Started(phaseStartTime, eventpublisher.QueryPhase, candidate))
 
 	// run the query phase
 	onConnected := func() {
 		retrieval.sendEvent(eventpublisher.Connect(phaseStartTime, eventpublisher.QueryPhase, candidate))
 	}
-	queryResponse, queryErr := queryPhase(ctx, cfg, client, timeout, candidate, onConnected)
-	if queryErr != nil {
-		retrieval.sendEvent(eventpublisher.Failure(phaseStartTime, eventpublisher.QueryPhase, candidate, queryErr.Error()))
-	}
+	queryResponse, err := queryPhase(ctx, cfg, client, timeout, candidate, onConnected)
 
+	// we check if both error and response are nil because
+	// it's possible we get both response and err as nil
 	if queryResponse != nil {
 		retrieval.sendEvent(eventpublisher.QueryAsk(phaseStartTime, candidate, *queryResponse))
 		if queryResponse.Status != retrievalmarket.QueryResponseAvailable ||
 			(cfg.IsAcceptableQueryResponse != nil && !cfg.IsAcceptableQueryResponse(queryResponse)) {
-			queryResponse = nil
-		}
-	}
 
-	if queryResponse != nil {
+			// Reduce attempts since we won't be making a retrieval for it
+			attempts := <-retrieval.attemptsChan
+			attempts--
+			retrieval.attemptsChan <- attempts
+
+			return
+		}
+
 		retrieval.sendEvent(eventpublisher.QueryAskFiltered(phaseStartTime, candidate, *queryResponse))
 
-		// if query is successful, then wait for priority and execute retrieval
-		done = retrieval.waitQueue.Wait(&queryCandidate{queryResponse, time.Since(phaseStartTime)})
+		queryCandidate := &queryCandidate{queryResponse, candidate, time.Since(phaseStartTime)}
+		retrieval.queue.Put(queryCandidate)
+	}
 
-		if retrieval.canSendResult() { // move on to retrieval phase
-			// only one goroutine is allowed to execute past here at a time, so retrieval.retrievalStartTime
-			// doesn't need to be protected by a mutex, but it should mark the time the first retrieval
-			// starts
-			if retrieval.retrievalStartTime.IsZero() {
-				retrieval.retrievalStartTime = time.Now()
-			}
-			phaseStartTime = retrieval.retrievalStartTime
-
-			var receivedFirstByte bool
-			eventsCallback := func(event datatransfer.Event, channelState datatransfer.ChannelState) {
-				switch event.Code {
-				case datatransfer.Open:
-					retrieval.sendEvent(eventpublisher.Proposed(phaseStartTime, candidate))
-				case datatransfer.NewVoucherResult:
-					lastVoucher := channelState.LastVoucherResult()
-					resType, err := retrievalmarket.DealResponseFromNode(lastVoucher.Voucher)
-					if err != nil {
-						return
-					}
-					if resType.Status == retrievalmarket.DealStatusAccepted {
-						retrieval.sendEvent(eventpublisher.Accepted(phaseStartTime, candidate))
-					}
-				case datatransfer.DataReceivedProgress:
-					if !receivedFirstByte {
-						receivedFirstByte = true
-						retrieval.sendEvent(eventpublisher.FirstByte(phaseStartTime, candidate))
-					}
-				}
-			}
-
-			retrieval.sendEvent(eventpublisher.Started(phaseStartTime, eventpublisher.RetrievalPhase, candidate))
-
-			stats, retrievalErr = retrievalPhase(ctx, cfg, client, timeout, candidate, queryResponse, eventsCallback)
-
-			if retrievalErr != nil {
-				msg := retrievalErr.Error()
-				if errors.Is(retrievalErr, ErrRetrievalTimedOut) {
-					msg = fmt.Sprintf("timeout after %s", timeout)
-				}
-				retrieval.sendEvent(eventpublisher.Failure(phaseStartTime, eventpublisher.RetrievalPhase, candidate, msg))
-			} else {
-				retrieval.sendEvent(eventpublisher.Success(
-					phaseStartTime,
-					candidate,
-					stats.Size,
-					stats.Blocks,
-					stats.Duration,
-					stats.TotalPayment),
-				)
-			}
-		} // else we didn't get to retrieval phase because we were cancelled
-	} // else we didn't get to retrieval phase because query failed
-
-	if retrieval.canSendResult() {
-		// as long as collectResults is still running, we need to increment finishedCount by
-		// sending a retrievalResult, so each path here sends one in some form
-		if queryErr != nil || retrievalErr != nil {
-			if ctx.Err() != nil { // cancelled, don't report the error
-				retrieval.sendResult(retrievalResult{PhaseStart: phaseStartTime, PeerID: candidate.MinerPeer.ID})
-			} else {
-				// an error of some kind to report
-				err := queryErr
-				if err == nil {
-					err = retrievalErr
-				}
-				retrieval.sendResult(retrievalResult{PhaseStart: phaseStartTime, PeerID: candidate.MinerPeer.ID, Err: err})
-			}
-		} else { // success, we have stats and no errors
-			retrieval.sendResult(retrievalResult{PhaseStart: phaseStartTime, PeerID: candidate.MinerPeer.ID, Stats: stats})
+	if err != nil {
+		retrieval.sendEvent(eventpublisher.Failure(phaseStartTime, eventpublisher.QueryPhase, candidate, err.Error()))
+		if ctx.Err() != nil { // cancelled, don't report the error
+			retrieval.sendResult(retrievalResult{PhaseStart: phaseStartTime, PeerID: candidate.MinerPeer.ID})
+		} else {
+			retrieval.sendResult(retrievalResult{PhaseStart: phaseStartTime, PeerID: candidate.MinerPeer.ID, Err: err})
 		}
-	} // else nothing to do, we were cancelled
 
-	if done != nil {
-		done() // allow prioritywaitqueue to move on to next candidate
+		// Reduce attempts since we won't be making a retrieval for it
+		attempts := <-retrieval.attemptsChan
+		attempts--
+		retrieval.attemptsChan <- attempts
 	}
 }
-
-// canSendResult will indicate whether a result is likely to be accepted (true)
-// or whether the retrieval is already finished (likely by a success)
-func (retrieval *retrieval) canSendResult() bool {
-	select {
-	case <-retrieval.finishChan:
-		return false
-	default:
-	}
-	return true
-}
-
-// sendResult will only send a result to the parent goroutine if a retrieval has
-// finished (likely by a success), otherwise it will send the result
-func (retrieval *retrieval) sendResult(result retrievalResult) bool {
-	select {
-	case <-retrieval.finishChan:
-		return false
-	case retrieval.resultChan <- result:
-		if result.Stats != nil {
-			// signals to goroutines to bail, this has to be done here, rather than on
-			// the receiving parent end, because immediately after this call we instruct
-			// the prioritywaitqueue that we're done and another may start
-			close(retrieval.finishChan)
-		}
-	}
-	return true
-}
-
-func (retrieval *retrieval) sendEvent(event eventpublisher.RetrievalEvent) {
-	retrieval.sendResult(retrievalResult{PeerID: event.StorageProviderId(), Event: &event})
-}
-
-func totalCost(qres *retrievalmarket.QueryResponse) big.Int {
-	return big.Add(big.Mul(qres.MinPricePerByte, big.NewIntUnsigned(qres.Size)), qres.UnsealPrice)
-}
-
-// retrieveCandidate performs the full retrieval flow for a single SP:CID
-// candidate, allowing for gating between query and retrieval using a
-// canProceed callback.
 
 func queryPhase(
 	ctx context.Context,
@@ -415,6 +329,123 @@ func queryPhase(
 	}
 
 	return queryResponse, nil
+}
+
+func runRetrievalPhase(
+	ctx context.Context,
+	cfg *RetrievalConfig,
+	client RetrievalClient,
+	retrieval *retrieval,
+) {
+	retrieveSem := make(chan struct{}, 1) // only allow one retriever at a time
+	success := make(chan struct{}, 1)     // success signal
+
+	phaseStartTime := time.Now()
+
+	retrieveSem <- struct{}{}
+	for {
+		// Exit routine on success
+		select {
+		case <-success:
+			return
+		default:
+		}
+
+		// check retrieval attempts, stop looping if we're out of attempts
+		attempts := <-retrieval.attemptsChan
+		if attempts <= 0 {
+			retrieval.attemptsChan <- attempts
+			break
+		}
+		retrieval.attemptsChan <- attempts
+
+		// retrieval routine
+		go func() {
+			// timeout the queue after a short time to not block forever,
+			// closing the routine and checking for success or no more attempts
+			getCtx, cancelCtx := context.WithTimeout(ctx, time.Second)
+			queryCandidate, err := retrieval.queue.Get(getCtx) // blocks until there is a value or timeout
+			cancelCtx()
+
+			if err != nil { // context cancel will release the retrieval
+				<-retrieveSem
+				return
+			}
+
+			// we're making another attempt, decrement
+			attempts := <-retrieval.attemptsChan
+			attempts--
+			retrieval.attemptsChan <- attempts
+
+			candidate := queryCandidate.RetrievalCandidate
+			queryResponse := queryCandidate.QueryResponse
+
+			var receivedFirstByte bool
+			eventsCallback := func(event datatransfer.Event, channelState datatransfer.ChannelState) {
+				switch event.Code {
+				case datatransfer.Open:
+					retrieval.sendEvent(eventpublisher.Proposed(phaseStartTime, candidate))
+				case datatransfer.NewVoucherResult:
+					lastVoucher := channelState.LastVoucherResult()
+					resType, err := retrievalmarket.DealResponseFromNode(lastVoucher.Voucher)
+					if err != nil {
+						return
+					}
+					if resType.Status == retrievalmarket.DealStatusAccepted {
+						retrieval.sendEvent(eventpublisher.Accepted(phaseStartTime, candidate))
+					}
+				case datatransfer.DataReceivedProgress:
+					if !receivedFirstByte {
+						receivedFirstByte = true
+						retrieval.sendEvent(eventpublisher.FirstByte(phaseStartTime, candidate))
+					}
+				}
+			}
+
+			retrieval.sendEvent(eventpublisher.Started(phaseStartTime, eventpublisher.RetrievalPhase, candidate))
+
+			var timeout time.Duration
+			if cfg.GetStorageProviderTimeout != nil {
+				timeout = cfg.GetStorageProviderTimeout(candidate.MinerPeer.ID)
+			}
+
+			stats, err := retrievalPhase(ctx, cfg, client, timeout, candidate, queryResponse, eventsCallback)
+			if err != nil {
+				msg := err.Error()
+				if errors.Is(err, ErrRetrievalTimedOut) {
+					msg = fmt.Sprintf("timeout after %s", timeout)
+				}
+				retrieval.sendEvent(eventpublisher.Failure(phaseStartTime, eventpublisher.RetrievalPhase, candidate, msg))
+
+				if ctx.Err() != nil { // cancelled, don't report the error
+					retrieval.sendResult(retrievalResult{PhaseStart: phaseStartTime, PeerID: candidate.MinerPeer.ID})
+				} else {
+					retrieval.sendResult(retrievalResult{PhaseStart: phaseStartTime, PeerID: candidate.MinerPeer.ID, Err: err})
+				}
+			} else {
+				retrieval.sendEvent(eventpublisher.Success(
+					phaseStartTime,
+					candidate,
+					stats.Size,
+					stats.Blocks,
+					stats.Duration,
+					stats.TotalPayment,
+				))
+				retrieval.sendResult(retrievalResult{PhaseStart: phaseStartTime, PeerID: candidate.MinerPeer.ID, Stats: stats})
+
+				success <- struct{}{}
+			}
+
+			// release a retrieval routine
+			<-retrieveSem
+		}()
+
+		// wait until we can acquire another retrieval routine to loop again
+		retrieveSem <- struct{}{}
+	}
+
+	// all the retrievals have failed, signal a finish
+	retrieval.finishChan <- struct{}{}
 }
 
 func retrievalPhase(
