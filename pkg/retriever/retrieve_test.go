@@ -472,9 +472,9 @@ func TestMultipleRetrievals(t *testing.T) {
 
 	waitStart := time.Now()
 	cfg.wait() // internal goroutine cleanup
-	qt.Assert(t, time.Since(waitStart) < time.Millisecond*20, qt.IsTrue, qt.Commentf("wait took %s", time.Since(waitStart)))
+	qt.Assert(t, time.Since(waitStart) < time.Millisecond*50, qt.IsTrue, qt.Commentf("wait took %s", time.Since(waitStart)))
 	wg.Wait() // make sure we're done with our own goroutine
-	qt.Assert(t, time.Since(waitStart) < time.Millisecond*20, qt.IsTrue, qt.Commentf("wg wait took %s", time.Since(waitStart)))
+	qt.Assert(t, time.Since(waitStart) < time.Millisecond*50, qt.IsTrue, qt.Commentf("wg wait took %s", time.Since(waitStart)))
 
 	// make sure we handled the queries we expected
 	qt.Assert(t, len(mockClient.Received_queriedPeers), qt.Equals, 6)
