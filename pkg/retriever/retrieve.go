@@ -80,11 +80,12 @@ type retrievalResult struct {
 
 // retrieval handles state on a per-retrieval (across multiple candidates) basis
 type retrieval struct {
-	cid          cid.Cid
-	queue        PriorityQueue[*queryCandidate]
-	attemptsChan chan int
-	resultChan   chan retrievalResult
-	finishChan   chan struct{}
+	cid        cid.Cid
+	queue      PriorityQueue[*queryCandidate]
+	attemptsMu sync.Mutex
+	attempts   int
+	resultChan chan retrievalResult
+	finishChan chan struct{}
 }
 
 // RetrieveFromCandidates performs a retrieval for a given CID by querying the indexer, then
@@ -108,11 +109,12 @@ func RetrieveFromCandidates(
 
 	// state local to this CID's retrieval
 	retrieval := &retrieval{
-		cid:          cid,
-		queue:        NewPriorityQueue(queryCompare),
-		attemptsChan: make(chan int, 1),
-		resultChan:   make(chan retrievalResult),
-		finishChan:   make(chan struct{}, 1),
+		cid:        cid,
+		queue:      NewPriorityQueue(queryCompare),
+		attemptsMu: sync.Mutex{},
+		attempts:   0,
+		resultChan: make(chan retrievalResult),
+		finishChan: make(chan struct{}, 1),
 	}
 
 	ctx, cancelCtx := context.WithCancel(ctx)
@@ -123,7 +125,7 @@ func RetrieveFromCandidates(
 	if err != nil {
 		return nil, err
 	}
-	retrieval.attemptsChan <- len(candidates) // the most number of attempts we'll have to get a successful retrieval
+	retrieval.attempts = len(candidates) // the most number of attempts we'll have to get a successful retrieval
 
 	// query for candidates
 	queryStartTime := time.Now()
@@ -268,9 +270,9 @@ func runQueryPhase(
 			(cfg.IsAcceptableQueryResponse != nil && !cfg.IsAcceptableQueryResponse(queryResponse)) {
 
 			// Reduce attempts since we won't be making a retrieval for it
-			attempts := <-retrieval.attemptsChan
-			attempts--
-			retrieval.attemptsChan <- attempts
+			retrieval.attemptsMu.Lock()
+			retrieval.attempts--
+			retrieval.attemptsMu.Unlock()
 
 			return
 		}
@@ -290,9 +292,9 @@ func runQueryPhase(
 		}
 
 		// Reduce attempts since we won't be making a retrieval for it
-		attempts := <-retrieval.attemptsChan
-		attempts--
-		retrieval.attemptsChan <- attempts
+		retrieval.attemptsMu.Lock()
+		retrieval.attempts--
+		retrieval.attemptsMu.Unlock()
 	}
 }
 
@@ -349,12 +351,12 @@ func runRetrievalPhase(
 		}
 
 		// check retrieval attempts, stop looping if we're out of attempts
-		attempts := <-retrieval.attemptsChan
-		if attempts <= 0 {
-			retrieval.attemptsChan <- attempts
+		retrieval.attemptsMu.Lock()
+		if retrieval.attempts <= 0 {
+			retrieval.attemptsMu.Unlock()
 			break
 		}
-		retrieval.attemptsChan <- attempts
+		retrieval.attemptsMu.Unlock()
 
 		queryCandidate, empty := retrieval.queue.Get()
 		if empty { // if there's nothing to get at the moment, release this retrieval
@@ -362,9 +364,9 @@ func runRetrievalPhase(
 		}
 
 		// we're making another attempt, decrement
-		attempts = <-retrieval.attemptsChan
-		attempts--
-		retrieval.attemptsChan <- attempts
+		retrieval.attemptsMu.Lock()
+		retrieval.attempts--
+		retrieval.attemptsMu.Unlock()
 
 		candidate := queryCandidate.RetrievalCandidate
 		queryResponse := queryCandidate.QueryResponse
