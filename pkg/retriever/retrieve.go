@@ -337,12 +337,9 @@ func runRetrievalPhase(
 	client RetrievalClient,
 	retrieval *retrieval,
 ) {
-	retrieveSem := make(chan struct{}, 1) // only allow one retriever at a time
-	success := make(chan struct{}, 1)     // success signal
-
+	success := make(chan struct{}, 1) // success signal
 	phaseStartTime := time.Now()
 
-	retrieveSem <- struct{}{}
 	for {
 		// Exit routine on success
 		select {
@@ -359,84 +356,74 @@ func runRetrievalPhase(
 		}
 		retrieval.attemptsChan <- attempts
 
-		// retrieval routine
-		go func() {
-			queryCandidate, empty := retrieval.queue.Get()
-			if empty { // if there's nothing to get at the moment, release this retrieval
-				<-retrieveSem
-				return
-			}
+		queryCandidate, empty := retrieval.queue.Get()
+		if empty { // if there's nothing to get at the moment, release this retrieval
+			continue
+		}
 
-			// we're making another attempt, decrement
-			attempts := <-retrieval.attemptsChan
-			attempts--
-			retrieval.attemptsChan <- attempts
+		// we're making another attempt, decrement
+		attempts = <-retrieval.attemptsChan
+		attempts--
+		retrieval.attemptsChan <- attempts
 
-			candidate := queryCandidate.RetrievalCandidate
-			queryResponse := queryCandidate.QueryResponse
+		candidate := queryCandidate.RetrievalCandidate
+		queryResponse := queryCandidate.QueryResponse
 
-			var receivedFirstByte bool
-			eventsCallback := func(event datatransfer.Event, channelState datatransfer.ChannelState) {
-				switch event.Code {
-				case datatransfer.Open:
-					retrieval.sendEvent(eventpublisher.Proposed(phaseStartTime, candidate))
-				case datatransfer.NewVoucherResult:
-					lastVoucher := channelState.LastVoucherResult()
-					resType, err := retrievalmarket.DealResponseFromNode(lastVoucher.Voucher)
-					if err != nil {
-						return
-					}
-					if resType.Status == retrievalmarket.DealStatusAccepted {
-						retrieval.sendEvent(eventpublisher.Accepted(phaseStartTime, candidate))
-					}
-				case datatransfer.DataReceivedProgress:
-					if !receivedFirstByte {
-						receivedFirstByte = true
-						retrieval.sendEvent(eventpublisher.FirstByte(phaseStartTime, candidate))
-					}
+		var receivedFirstByte bool
+		eventsCallback := func(event datatransfer.Event, channelState datatransfer.ChannelState) {
+			switch event.Code {
+			case datatransfer.Open:
+				retrieval.sendEvent(eventpublisher.Proposed(phaseStartTime, candidate))
+			case datatransfer.NewVoucherResult:
+				lastVoucher := channelState.LastVoucherResult()
+				resType, err := retrievalmarket.DealResponseFromNode(lastVoucher.Voucher)
+				if err != nil {
+					return
+				}
+				if resType.Status == retrievalmarket.DealStatusAccepted {
+					retrieval.sendEvent(eventpublisher.Accepted(phaseStartTime, candidate))
+				}
+			case datatransfer.DataReceivedProgress:
+				if !receivedFirstByte {
+					receivedFirstByte = true
+					retrieval.sendEvent(eventpublisher.FirstByte(phaseStartTime, candidate))
 				}
 			}
+		}
 
-			retrieval.sendEvent(eventpublisher.Started(phaseStartTime, eventpublisher.RetrievalPhase, candidate))
+		retrieval.sendEvent(eventpublisher.Started(phaseStartTime, eventpublisher.RetrievalPhase, candidate))
 
-			var timeout time.Duration
-			if cfg.GetStorageProviderTimeout != nil {
-				timeout = cfg.GetStorageProviderTimeout(candidate.MinerPeer.ID)
+		var timeout time.Duration
+		if cfg.GetStorageProviderTimeout != nil {
+			timeout = cfg.GetStorageProviderTimeout(candidate.MinerPeer.ID)
+		}
+
+		stats, err := retrievalPhase(ctx, cfg, client, timeout, candidate, queryResponse, eventsCallback)
+		if err != nil {
+			msg := err.Error()
+			if errors.Is(err, ErrRetrievalTimedOut) {
+				msg = fmt.Sprintf("timeout after %s", timeout)
 			}
+			retrieval.sendEvent(eventpublisher.Failure(phaseStartTime, eventpublisher.RetrievalPhase, candidate, msg))
 
-			stats, err := retrievalPhase(ctx, cfg, client, timeout, candidate, queryResponse, eventsCallback)
-			if err != nil {
-				msg := err.Error()
-				if errors.Is(err, ErrRetrievalTimedOut) {
-					msg = fmt.Sprintf("timeout after %s", timeout)
-				}
-				retrieval.sendEvent(eventpublisher.Failure(phaseStartTime, eventpublisher.RetrievalPhase, candidate, msg))
-
-				if ctx.Err() != nil { // cancelled, don't report the error
-					retrieval.sendResult(retrievalResult{PhaseStart: phaseStartTime, PeerID: candidate.MinerPeer.ID})
-				} else {
-					retrieval.sendResult(retrievalResult{PhaseStart: phaseStartTime, PeerID: candidate.MinerPeer.ID, Err: err})
-				}
+			if ctx.Err() != nil { // cancelled, don't report the error
+				retrieval.sendResult(retrievalResult{PhaseStart: phaseStartTime, PeerID: candidate.MinerPeer.ID})
 			} else {
-				retrieval.sendEvent(eventpublisher.Success(
-					phaseStartTime,
-					candidate,
-					stats.Size,
-					stats.Blocks,
-					stats.Duration,
-					stats.TotalPayment,
-				))
-				retrieval.sendResult(retrievalResult{PhaseStart: phaseStartTime, PeerID: candidate.MinerPeer.ID, Stats: stats})
-
-				success <- struct{}{}
+				retrieval.sendResult(retrievalResult{PhaseStart: phaseStartTime, PeerID: candidate.MinerPeer.ID, Err: err})
 			}
+		} else {
+			retrieval.sendEvent(eventpublisher.Success(
+				phaseStartTime,
+				candidate,
+				stats.Size,
+				stats.Blocks,
+				stats.Duration,
+				stats.TotalPayment,
+			))
+			retrieval.sendResult(retrievalResult{PhaseStart: phaseStartTime, PeerID: candidate.MinerPeer.ID, Stats: stats})
 
-			// release a retrieval routine
-			<-retrieveSem
-		}()
-
-		// wait until we can acquire another retrieval routine to loop again
-		retrieveSem <- struct{}{}
+			success <- struct{}{}
+		}
 	}
 
 	// all the retrievals have failed, signal a finish
