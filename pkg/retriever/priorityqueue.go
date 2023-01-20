@@ -2,7 +2,6 @@ package retriever
 
 import (
 	"container/heap"
-	"context"
 )
 
 type PriorityQueue[T any] struct {
@@ -19,13 +18,16 @@ func NewPriorityQueue[T any](cmp func(a, b T) bool) PriorityQueue[T] {
 	return PriorityQueue[T]{itemsCh, emptyCh, cmp}
 }
 
-func (q *PriorityQueue[T]) Get(ctx context.Context) (T, error) {
+// Get will return the priority item and whether or not the queue was empty.
+// If empty is true, the return item will be a nil pointer to T.
+func (q *PriorityQueue[T]) Get() (T, bool) {
 	var items sortableItems[T]
 
 	select {
 	case items = <-q.itemsCh: // grab the items
-	case <-ctx.Done():
-		return *new(T), ctx.Err()
+	case <-q.emptyCh:
+		q.emptyCh <- true
+		return *new(T), true
 	}
 
 	// safely grab last item
@@ -36,9 +38,10 @@ func (q *PriorityQueue[T]) Get(ctx context.Context) (T, error) {
 		q.itemsCh <- items // communicate remaining items back to the channel
 	}
 
-	return *item, nil
+	return *item, false
 }
 
+// Put adds an item to the queue and piroritizes it.
 func (q *PriorityQueue[T]) Put(item T) {
 	items := sortableItems[T]{[]*T{}, q.cmp}
 
@@ -52,6 +55,7 @@ func (q *PriorityQueue[T]) Put(item T) {
 	q.itemsCh <- items
 }
 
+// Len returns the number of items in the queue
 func (q *PriorityQueue[T]) Len() int { return len(q.itemsCh) }
 
 // sortableItems implements sort.Interface

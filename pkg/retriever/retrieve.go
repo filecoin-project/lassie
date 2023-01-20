@@ -361,13 +361,8 @@ func runRetrievalPhase(
 
 		// retrieval routine
 		go func() {
-			// timeout the queue after a short time to not block forever,
-			// closing the routine and checking for success or no more attempts
-			getCtx, cancelCtx := context.WithTimeout(ctx, time.Second)
-			queryCandidate, err := retrieval.queue.Get(getCtx) // blocks until there is a value or timeout
-			cancelCtx()
-
-			if err != nil { // context cancel will release the retrieval
+			queryCandidate, empty := retrieval.queue.Get()
+			if empty { // if there's nothing to get at the moment, release this retrieval
 				<-retrieveSem
 				return
 			}

@@ -1,7 +1,6 @@
 package retriever
 
 import (
-	"context"
 	"reflect"
 	"sync"
 	"testing"
@@ -69,9 +68,6 @@ func TestQueue(t *testing.T) {
 				items[i] = item{i, tc.puts[i], tc.gets[i]}
 			}
 
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-
 			for i := range tc.puts {
 				go func(t *item, q *PriorityQueue[*item]) {
 					defer wg.Done()
@@ -79,7 +75,7 @@ func TestQueue(t *testing.T) {
 					time.Sleep(time.Duration(t.put) * time.Millisecond)
 					q.Put(t)
 					time.Sleep(time.Duration(t.get) * time.Millisecond)
-					item, _ := q.Get(ctx)
+					item, _ := q.Get()
 					out <- item.id
 				}(&items[i], &queue)
 			}
