@@ -24,10 +24,6 @@ var (
 	_ types.RetrievalEvent = RetrievalEventSuccess{}
 )
 
-type EventWithStorageProviderId interface {
-	StorageProviderId() peer.ID
-}
-
 type EventWithCandidates interface {
 	Candidates() []types.RetrievalCandidate
 }

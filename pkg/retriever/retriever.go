@@ -400,7 +400,7 @@ func logEvent(event types.RetrievalEvent) {
 		"payloadCid", event.PayloadCid(),
 		"storageProviderId", event.StorageProviderId())
 	switch tevent := event.(type) {
-	case events.RetrievalEventQueryAsked:
+	case events.EventWithQueryResponse:
 		logadd("queryResponse:Status", tevent.QueryResponse().Status,
 			"queryResponse:PieceCIDFound", tevent.QueryResponse().PieceCIDFound,
 			"queryResponse:Size", tevent.QueryResponse().Size,
@@ -410,6 +410,12 @@ func logEvent(event types.RetrievalEvent) {
 			"queryResponse:MaxPaymentIntervalIncrease", tevent.QueryResponse().MaxPaymentIntervalIncrease,
 			"queryResponse:Message", tevent.QueryResponse().Message,
 			"queryResponse:UnsealPrice", tevent.QueryResponse().UnsealPrice)
+	case events.EventWithCandidates:
+		var cands = strings.Builder{}
+		for _, c := range tevent.Candidates() {
+			cands.WriteString(c.MinerPeer.ID.String())
+		}
+		logadd("candidates", cands.String())
 	case events.RetrievalEventFailed:
 		logadd("errorMessage", tevent.ErrorMessage())
 	case events.RetrievalEventSuccess:

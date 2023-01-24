@@ -54,12 +54,7 @@ func VerifyContainsCollectedEvent(t *testing.T, actualList []types.RetrievalEven
 			actual.RetrievalId() == expected.RetrievalId() &&
 			actual.PayloadCid() == expected.PayloadCid() &&
 			actual.Phase() == expected.Phase() {
-			asp, aok := actual.(events.EventWithStorageProviderId)
-			esp, eok := expected.(events.EventWithStorageProviderId)
-			if aok != eok {
-				continue
-			}
-			if !aok || asp.StorageProviderId() == esp.StorageProviderId() {
+			if actual.StorageProviderId() == expected.StorageProviderId() {
 				VerifyCollectedEvent(t, actual, expected)
 				return
 			}
@@ -74,13 +69,7 @@ func VerifyCollectedEvent(t *testing.T, actual types.RetrievalEvent, expected ty
 	require.Equal(t, expected.PayloadCid(), actual.PayloadCid(), fmt.Sprintf("cid for %s", expected.Code()))
 	require.Equal(t, expected.Phase(), actual.Phase(), fmt.Sprintf("phase for %s", expected.Code()))
 	// make this an option? require.Equal(t, expected.PhaseStartTime(), actual.PhaseStartTime(), fmt.Sprintf("phase start time for %s", expected.Code()))
-	if esp, ok := expected.(events.EventWithStorageProviderId); ok {
-		if asp, ok := actual.(events.EventWithStorageProviderId); ok {
-			require.Equal(t, esp.StorageProviderId(), asp.StorageProviderId(), fmt.Sprintf("storage provider id for %s", expected.Code()))
-		} else {
-			require.Fail(t, "wrong event type, no StorageProviderId", expected.Code())
-		}
-	}
+	require.Equal(t, expected.StorageProviderId(), actual.StorageProviderId(), fmt.Sprintf("storage provider id for %s", expected.Code()))
 	if ec, ok := expected.(events.EventWithCandidates); ok {
 		if ac, ok := actual.(events.EventWithCandidates); ok {
 			require.Len(t, ac.Candidates(), len(ec.Candidates()), fmt.Sprintf("candidate length for %s", expected.Code()))
