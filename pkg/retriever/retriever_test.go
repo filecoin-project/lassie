@@ -23,8 +23,7 @@ func TestRetrieverStart(t *testing.T) {
 	config := retriever.RetrieverConfig{}
 	candidateFinder := &testutil.MockCandidateFinder{}
 	client := &testutil.MockClient{}
-	dummyBlockConfirmer := func(cid cid.Cid) (bool, error) { return true, nil }
-	ret, err := retriever.NewRetriever(context.Background(), config, client, candidateFinder, dummyBlockConfirmer)
+	ret, err := retriever.NewRetriever(context.Background(), config, client, candidateFinder)
 	require.NoError(t, err)
 
 	// --- run ---
@@ -34,10 +33,14 @@ func TestRetrieverStart(t *testing.T) {
 }
 
 func TestRetriever(t *testing.T) {
+	rid := types.RetrievalID(uuid.New())
 	cid1 := cid.MustParse("bafkqaalb")
 	peerA := peer.ID("A")
 	peerB := peer.ID("B")
 	blacklistedPeer := peer.ID("blacklisted")
+	ist := time.Now().Add(time.Second * -10)
+	qst := time.Now().Add(time.Second * -5)
+	rst := time.Now().Add(time.Second)
 
 	tc := []struct {
 		name               string
@@ -46,7 +49,7 @@ func TestRetriever(t *testing.T) {
 		returns_queries    map[string]testutil.DelayedQueryReturn
 		returns_retrievals map[string]testutil.DelayedRetrievalReturn
 		successfulPeer     peer.ID
-		expectedEvents     []testutil.CollectedEvent
+		expectedEvents     []types.RetrievalEvent
 	}{
 		{
 			name: "single candidate and successful retrieval",
@@ -60,23 +63,26 @@ func TestRetriever(t *testing.T) {
 				string(peerA): {ResultStats: &types.RetrievalStats{
 					StorageProviderId: peerA,
 					Size:              1,
-					TotalPayment:      abi.NewStoragePower(0),
+					Blocks:            2,
+					Duration:          3 * time.Second,
+					TotalPayment:      big.Zero(),
 					RootCid:           cid1,
 					AskPrice:          abi.NewTokenAmount(0),
 				}, Delay: time.Millisecond * 5},
 			},
-			expectedEvents: []testutil.CollectedEvent{
-				{Name: "IndexerProgress", Cid: cid1, Stage: events.StartedCode},
-				{Name: "IndexerCandidates", Cid: cid1, Stage: events.CandidatesFoundCode, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "IndexerCandidates", Cid: cid1, Stage: events.CandidatesFilteredCode, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "QueryProgress", Cid: cid1, Stage: events.StartedCode, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "QueryProgress", Cid: cid1, Stage: events.ConnectedCode, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "QuerySuccess", Cid: cid1, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "RetrievalProgress", Cid: cid1, Stage: events.StartedCode, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "RetrievalProgress", Cid: cid1, Stage: events.ProposedCode, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "RetrievalProgress", Cid: cid1, Stage: events.AcceptedCode, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "RetrievalProgress", Cid: cid1, Stage: events.FirstByteCode, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "RetrievalSuccess", Cid: cid1, StorageProviderIds: []peer.ID{peerA}},
+			expectedEvents: []types.RetrievalEvent{
+				events.Started(rid, ist, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid1}),
+				events.CandidatesFound(rid, ist, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, cid1)}),
+				events.CandidatesFiltered(rid, ist, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, cid1)}),
+				events.Started(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerA, cid1)),
+				events.Connected(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerA, cid1)),
+				events.QueryAsked(rid, qst, types.NewRetrievalCandidate(peerA, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.QueryAskedFiltered(rid, qst, types.NewRetrievalCandidate(peerA, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.Started(rid, rst, types.RetrievalPhase, types.NewRetrievalCandidate(peerA, cid1)),
+				events.Proposed(rid, rst, types.NewRetrievalCandidate(peerA, cid1)),
+				events.Accepted(rid, rst, types.NewRetrievalCandidate(peerA, cid1)),
+				events.FirstByte(rid, rst, types.NewRetrievalCandidate(peerA, cid1)),
+				events.Success(rid, rst, types.NewRetrievalCandidate(peerA, cid1), 1, 2, 3*time.Second, big.Zero()),
 			},
 		},
 
@@ -95,24 +101,27 @@ func TestRetriever(t *testing.T) {
 				string(peerB): {ResultStats: &types.RetrievalStats{
 					StorageProviderId: peerB,
 					Size:              10,
-					TotalPayment:      abi.NewStoragePower(0),
+					Blocks:            11,
+					Duration:          12 * time.Second,
+					TotalPayment:      big.Zero(),
 					RootCid:           cid1,
 					AskPrice:          abi.NewTokenAmount(0),
 				}, Delay: time.Millisecond * 5},
 			},
-			expectedEvents: []testutil.CollectedEvent{
-				{Name: "IndexerProgress", Cid: cid1, Stage: events.StartedCode},
-				{Name: "IndexerCandidates", Cid: cid1, Stage: events.CandidatesFoundCode, StorageProviderIds: []peer.ID{peerA, peerB}},
-				{Name: "IndexerCandidates", Cid: cid1, Stage: events.CandidatesFilteredCode, StorageProviderIds: []peer.ID{peerA, peerB}},
-				{Name: "QueryProgress", Cid: cid1, Stage: events.StartedCode, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "QueryProgress", Cid: cid1, Stage: events.StartedCode, StorageProviderIds: []peer.ID{peerB}},
-				{Name: "QueryProgress", Cid: cid1, Stage: events.ConnectedCode, StorageProviderIds: []peer.ID{peerB}},
-				{Name: "QuerySuccess", Cid: cid1, StorageProviderIds: []peer.ID{peerB}},
-				{Name: "RetrievalProgress", Cid: cid1, Stage: events.StartedCode, StorageProviderIds: []peer.ID{peerB}},
-				{Name: "RetrievalProgress", Cid: cid1, Stage: events.ProposedCode, StorageProviderIds: []peer.ID{peerB}},
-				{Name: "RetrievalProgress", Cid: cid1, Stage: events.AcceptedCode, StorageProviderIds: []peer.ID{peerB}},
-				{Name: "RetrievalProgress", Cid: cid1, Stage: events.FirstByteCode, StorageProviderIds: []peer.ID{peerB}},
-				{Name: "RetrievalSuccess", Cid: cid1, StorageProviderIds: []peer.ID{peerB}},
+			expectedEvents: []types.RetrievalEvent{
+				events.Started(rid, qst, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid1}),
+				events.CandidatesFound(rid, ist, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, cid1), types.NewRetrievalCandidate(peerB, cid1)}),
+				events.CandidatesFiltered(rid, ist, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, cid1), types.NewRetrievalCandidate(peerB, cid1)}),
+				events.Started(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerB, cid1)),
+				events.Started(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerA, cid1)),
+				events.Connected(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerB, cid1)),
+				events.QueryAsked(rid, qst, types.NewRetrievalCandidate(peerB, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.QueryAskedFiltered(rid, qst, types.NewRetrievalCandidate(peerB, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.Started(rid, rst, types.RetrievalPhase, types.NewRetrievalCandidate(peerB, cid1)),
+				events.Proposed(rid, rst, types.NewRetrievalCandidate(peerB, cid1)),
+				events.Accepted(rid, rst, types.NewRetrievalCandidate(peerB, cid1)),
+				events.FirstByte(rid, rst, types.NewRetrievalCandidate(peerB, cid1)),
+				events.Success(rid, rst, types.NewRetrievalCandidate(peerB, cid1), 10, 11, 12*time.Second, big.Zero()),
 			},
 		},
 
@@ -131,23 +140,26 @@ func TestRetriever(t *testing.T) {
 				string(peerA): {ResultStats: &types.RetrievalStats{
 					StorageProviderId: peerA,
 					Size:              1,
-					TotalPayment:      abi.NewStoragePower(0),
+					Blocks:            2,
+					Duration:          3 * time.Second,
+					TotalPayment:      big.Zero(),
 					RootCid:           cid1,
 					AskPrice:          abi.NewTokenAmount(0),
 				}, Delay: time.Millisecond * 5},
 			},
-			expectedEvents: []testutil.CollectedEvent{
-				{Name: "IndexerProgress", Cid: cid1, Stage: events.StartedCode},
-				{Name: "IndexerCandidates", Cid: cid1, Stage: events.CandidatesFoundCode, StorageProviderIds: []peer.ID{blacklistedPeer, peerA}},
-				{Name: "IndexerCandidates", Cid: cid1, Stage: events.CandidatesFilteredCode, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "QueryProgress", Cid: cid1, Stage: events.StartedCode, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "QueryProgress", Cid: cid1, Stage: events.ConnectedCode, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "QuerySuccess", Cid: cid1, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "RetrievalProgress", Cid: cid1, Stage: events.StartedCode, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "RetrievalProgress", Cid: cid1, Stage: events.ProposedCode, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "RetrievalProgress", Cid: cid1, Stage: events.AcceptedCode, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "RetrievalProgress", Cid: cid1, Stage: events.FirstByteCode, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "RetrievalSuccess", Cid: cid1, StorageProviderIds: []peer.ID{peerA}},
+			expectedEvents: []types.RetrievalEvent{
+				events.Started(rid, rst, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid1}),
+				events.CandidatesFound(rid, ist, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(blacklistedPeer, cid1), types.NewRetrievalCandidate(peerA, cid1)}),
+				events.CandidatesFiltered(rid, ist, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, cid1)}),
+				events.Started(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerA, cid1)),
+				events.Connected(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerA, cid1)),
+				events.QueryAsked(rid, qst, types.NewRetrievalCandidate(peerA, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.QueryAskedFiltered(rid, qst, types.NewRetrievalCandidate(peerA, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.Started(rid, rst, types.RetrievalPhase, types.NewRetrievalCandidate(peerA, cid1)),
+				events.Proposed(rid, rst, types.NewRetrievalCandidate(peerA, cid1)),
+				events.Accepted(rid, rst, types.NewRetrievalCandidate(peerA, cid1)),
+				events.FirstByte(rid, rst, types.NewRetrievalCandidate(peerA, cid1)),
+				events.Success(rid, rst, types.NewRetrievalCandidate(peerA, cid1), 1, 2, 3*time.Second, big.Zero()),
 			},
 		},
 
@@ -166,25 +178,28 @@ func TestRetriever(t *testing.T) {
 				string(peerB): {ResultStats: &types.RetrievalStats{
 					StorageProviderId: peerA,
 					Size:              1,
-					TotalPayment:      abi.NewStoragePower(0),
+					Blocks:            2,
+					Duration:          3 * time.Second,
+					TotalPayment:      big.Zero(),
 					RootCid:           cid1,
 					AskPrice:          abi.NewTokenAmount(0),
 				}, Delay: time.Millisecond * 5},
 			},
-			expectedEvents: []testutil.CollectedEvent{
-				{Name: "IndexerProgress", Cid: cid1, Stage: events.StartedCode},
-				{Name: "IndexerCandidates", Cid: cid1, Stage: events.CandidatesFoundCode, StorageProviderIds: []peer.ID{peerA, peerB}},
-				{Name: "IndexerCandidates", Cid: cid1, Stage: events.CandidatesFilteredCode, StorageProviderIds: []peer.ID{peerA, peerB}},
-				{Name: "QueryProgress", Cid: cid1, Stage: events.StartedCode, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "QueryProgress", Cid: cid1, Stage: events.StartedCode, StorageProviderIds: []peer.ID{peerB}},
-				{Name: "QueryFailure", Cid: cid1, StorageProviderIds: []peer.ID{peerA}, ErrorStr: "query failed: blip"},
-				{Name: "QueryProgress", Cid: cid1, Stage: events.ConnectedCode, StorageProviderIds: []peer.ID{peerB}},
-				{Name: "QuerySuccess", Cid: cid1, StorageProviderIds: []peer.ID{peerB}},
-				{Name: "RetrievalProgress", Cid: cid1, Stage: events.StartedCode, StorageProviderIds: []peer.ID{peerB}},
-				{Name: "RetrievalProgress", Cid: cid1, Stage: events.ProposedCode, StorageProviderIds: []peer.ID{peerB}},
-				{Name: "RetrievalProgress", Cid: cid1, Stage: events.AcceptedCode, StorageProviderIds: []peer.ID{peerB}},
-				{Name: "RetrievalProgress", Cid: cid1, Stage: events.FirstByteCode, StorageProviderIds: []peer.ID{peerB}},
-				{Name: "RetrievalSuccess", Cid: cid1, StorageProviderIds: []peer.ID{peerB}},
+			expectedEvents: []types.RetrievalEvent{
+				events.Started(rid, rst, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid1}),
+				events.CandidatesFound(rid, ist, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, cid1), types.NewRetrievalCandidate(peerB, cid1)}),
+				events.CandidatesFiltered(rid, ist, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, cid1), types.NewRetrievalCandidate(peerB, cid1)}),
+				events.Started(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerA, cid1)),
+				events.Started(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerB, cid1)),
+				events.Failed(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerA, cid1), "query failed: blip"),
+				events.Connected(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerB, cid1)),
+				events.QueryAsked(rid, qst, types.NewRetrievalCandidate(peerB, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.QueryAskedFiltered(rid, qst, types.NewRetrievalCandidate(peerB, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.Started(rid, rst, types.RetrievalPhase, types.NewRetrievalCandidate(peerB, cid1)),
+				events.Proposed(rid, rst, types.NewRetrievalCandidate(peerB, cid1)),
+				events.Accepted(rid, rst, types.NewRetrievalCandidate(peerB, cid1)),
+				events.FirstByte(rid, rst, types.NewRetrievalCandidate(peerB, cid1)),
+				events.Success(rid, rst, types.NewRetrievalCandidate(peerB, cid1), 1, 2, 3*time.Second, big.Zero()),
 			},
 		},
 
@@ -203,30 +218,34 @@ func TestRetriever(t *testing.T) {
 				string(peerA): {ResultStats: &types.RetrievalStats{
 					StorageProviderId: peerA,
 					Size:              10,
-					TotalPayment:      abi.NewStoragePower(0),
+					Blocks:            20,
+					Duration:          30 * time.Second,
+					TotalPayment:      big.Zero(),
 					RootCid:           cid1,
 					AskPrice:          abi.NewTokenAmount(0),
 				}, Delay: time.Millisecond * 5},
 				string(peerB): {ResultStats: nil, ResultErr: errors.New("bork!"), Delay: time.Millisecond * 5},
 			},
-			expectedEvents: []testutil.CollectedEvent{
-				{Name: "IndexerProgress", Cid: cid1, Stage: events.StartedCode},
-				{Name: "IndexerCandidates", Cid: cid1, Stage: events.CandidatesFoundCode, StorageProviderIds: []peer.ID{peerA, peerB}},
-				{Name: "IndexerCandidates", Cid: cid1, Stage: events.CandidatesFilteredCode, StorageProviderIds: []peer.ID{peerA, peerB}},
-				{Name: "QueryProgress", Cid: cid1, Stage: events.StartedCode, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "QueryProgress", Cid: cid1, Stage: events.StartedCode, StorageProviderIds: []peer.ID{peerB}},
-				{Name: "QueryProgress", Cid: cid1, Stage: events.ConnectedCode, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "QuerySuccess", Cid: cid1, StorageProviderIds: []peer.ID{peerB}},
-				{Name: "RetrievalProgress", Cid: cid1, Stage: events.StartedCode, StorageProviderIds: []peer.ID{peerB}},
-				{Name: "RetrievalProgress", Cid: cid1, Stage: events.ProposedCode, StorageProviderIds: []peer.ID{peerB}},
-				{Name: "RetrievalFailure", Cid: cid1, StorageProviderIds: []peer.ID{peerB}, ErrorStr: "retrieval failed: bork!"},
-				{Name: "QueryProgress", Cid: cid1, Stage: events.ConnectedCode, StorageProviderIds: []peer.ID{peerB}},
-				{Name: "QuerySuccess", Cid: cid1, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "RetrievalProgress", Cid: cid1, Stage: events.StartedCode, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "RetrievalProgress", Cid: cid1, Stage: events.ProposedCode, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "RetrievalProgress", Cid: cid1, Stage: events.AcceptedCode, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "RetrievalProgress", Cid: cid1, Stage: events.FirstByteCode, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "RetrievalSuccess", Cid: cid1, StorageProviderIds: []peer.ID{peerA}},
+			expectedEvents: []types.RetrievalEvent{
+				events.Started(rid, rst, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid1}),
+				events.CandidatesFound(rid, ist, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, cid1), types.NewRetrievalCandidate(peerB, cid1)}),
+				events.CandidatesFiltered(rid, ist, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, cid1), types.NewRetrievalCandidate(peerB, cid1)}),
+				events.Started(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerA, cid1)),
+				events.Connected(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerA, cid1)),
+				events.Started(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerB, cid1)),
+				events.QueryAsked(rid, qst, types.NewRetrievalCandidate(peerB, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.QueryAskedFiltered(rid, qst, types.NewRetrievalCandidate(peerB, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.Started(rid, rst, types.RetrievalPhase, types.NewRetrievalCandidate(peerB, cid1)),
+				events.Proposed(rid, rst, types.NewRetrievalCandidate(peerB, cid1)),
+				events.Failed(rid, rst, types.RetrievalPhase, types.NewRetrievalCandidate(peerB, cid1), "retrieval failed: bork!"),
+				events.Connected(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerB, cid1)),
+				events.QueryAsked(rid, qst, types.NewRetrievalCandidate(peerA, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.QueryAskedFiltered(rid, qst, types.NewRetrievalCandidate(peerA, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.Started(rid, rst, types.RetrievalPhase, types.NewRetrievalCandidate(peerA, cid1)),
+				events.Proposed(rid, rst, types.NewRetrievalCandidate(peerA, cid1)),
+				events.Accepted(rid, rst, types.NewRetrievalCandidate(peerA, cid1)),
+				events.FirstByte(rid, rst, types.NewRetrievalCandidate(peerA, cid1)),
+				events.Success(rid, rst, types.NewRetrievalCandidate(peerA, cid1), 10, 20, 30*time.Second, big.Zero()),
 			},
 		},
 
@@ -248,37 +267,41 @@ func TestRetriever(t *testing.T) {
 				string(peerA): {ResultStats: &types.RetrievalStats{
 					StorageProviderId: peerA,
 					Size:              10,
-					TotalPayment:      abi.NewStoragePower(0),
+					TotalPayment:      big.Zero(),
 					RootCid:           cid1,
 					AskPrice:          abi.NewTokenAmount(0),
 				}, Delay: time.Millisecond * 500},
 				string(peerB): {ResultStats: &types.RetrievalStats{
 					StorageProviderId: peerB,
 					Size:              20,
-					TotalPayment:      abi.NewStoragePower(0),
+					Blocks:            30,
+					Duration:          40 * time.Second,
+					TotalPayment:      big.Zero(),
 					RootCid:           cid1,
 					AskPrice:          abi.NewTokenAmount(0),
 				}, Delay: time.Millisecond * 5},
 			},
 			successfulPeer: peerB,
-			expectedEvents: []testutil.CollectedEvent{
-				{Name: "IndexerProgress", Cid: cid1, Stage: events.StartedCode},
-				{Name: "IndexerCandidates", Cid: cid1, Stage: events.CandidatesFoundCode, StorageProviderIds: []peer.ID{peerA, peerB}},
-				{Name: "IndexerCandidates", Cid: cid1, Stage: events.CandidatesFilteredCode, StorageProviderIds: []peer.ID{peerA, peerB}},
-				{Name: "QueryProgress", Cid: cid1, Stage: events.StartedCode, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "QueryProgress", Cid: cid1, Stage: events.StartedCode, StorageProviderIds: []peer.ID{peerB}},
-				{Name: "QueryProgress", Cid: cid1, Stage: events.ConnectedCode, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "QuerySuccess", Cid: cid1, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "RetrievalProgress", Cid: cid1, Stage: events.StartedCode, StorageProviderIds: []peer.ID{peerA}},
-				{Name: "QueryProgress", Cid: cid1, Stage: events.ConnectedCode, StorageProviderIds: []peer.ID{peerB}},
-				{Name: "QuerySuccess", Cid: cid1, StorageProviderIds: []peer.ID{peerB}},
+			expectedEvents: []types.RetrievalEvent{
+				events.Started(rid, ist, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid1}),
+				events.CandidatesFound(rid, ist, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, cid1), types.NewRetrievalCandidate(peerB, cid1)}),
+				events.CandidatesFiltered(rid, ist, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, cid1), types.NewRetrievalCandidate(peerB, cid1)}),
+				events.Started(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerA, cid1)),
+				events.Started(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerB, cid1)),
+				events.Connected(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerA, cid1)),
+				events.QueryAsked(rid, qst, types.NewRetrievalCandidate(peerA, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.QueryAskedFiltered(rid, qst, types.NewRetrievalCandidate(peerA, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.Started(rid, rst, types.RetrievalPhase, types.NewRetrievalCandidate(peerA, cid1)),
+				events.Connected(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerB, cid1)),
+				events.QueryAsked(rid, qst, types.NewRetrievalCandidate(peerB, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.QueryAskedFiltered(rid, qst, types.NewRetrievalCandidate(peerB, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
 				// delay of 200ms for peerA retrieval happens here, no datatransfer.Open from DT so no ProposedCode event for peerA
-				{Name: "RetrievalFailure", Cid: cid1, StorageProviderIds: []peer.ID{peerA}, ErrorStr: "timeout after 100ms"},
-				{Name: "RetrievalProgress", Cid: cid1, Stage: events.StartedCode, StorageProviderIds: []peer.ID{peerB}},
-				{Name: "RetrievalProgress", Cid: cid1, Stage: events.ProposedCode, StorageProviderIds: []peer.ID{peerB}},
-				{Name: "RetrievalProgress", Cid: cid1, Stage: events.AcceptedCode, StorageProviderIds: []peer.ID{peerB}},
-				{Name: "RetrievalProgress", Cid: cid1, Stage: events.FirstByteCode, StorageProviderIds: []peer.ID{peerB}},
-				{Name: "RetrievalSuccess", Cid: cid1, StorageProviderIds: []peer.ID{peerB}},
+				events.Failed(rid, rst, types.RetrievalPhase, types.NewRetrievalCandidate(peerA, cid1), "timeout after 100ms"),
+				events.Started(rid, rst, types.RetrievalPhase, types.NewRetrievalCandidate(peerB, cid1)),
+				events.Proposed(rid, rst, types.NewRetrievalCandidate(peerB, cid1)),
+				events.Accepted(rid, rst, types.NewRetrievalCandidate(peerB, cid1)),
+				events.FirstByte(rid, rst, types.NewRetrievalCandidate(peerB, cid1)),
+				events.Success(rid, rst, types.NewRetrievalCandidate(peerB, cid1), 20, 30, 40*time.Second, big.Zero()),
 			},
 		},
 	}
@@ -291,8 +314,7 @@ func TestRetriever(t *testing.T) {
 				Returns_queries:    tc.returns_queries,
 				Returns_retrievals: tc.returns_retrievals,
 			}
-			eventsListener := testutil.NewCollectingEventsListener()
-			dummyBlockConfirmer := func(cid cid.Cid) (bool, error) { return true, nil }
+			subscriber := testutil.NewCollectingEventsListener()
 			config := retriever.RetrieverConfig{
 				MinerBlacklist: map[peer.ID]bool{blacklistedPeer: true},
 			}
@@ -301,9 +323,9 @@ func TestRetriever(t *testing.T) {
 			}
 
 			// --- create ---
-			ret, err := retriever.NewRetriever(context.Background(), config, client, candidateFinder, dummyBlockConfirmer)
+			ret, err := retriever.NewRetriever(context.Background(), config, client, candidateFinder)
 			require.NoError(t, err)
-			ret.RegisterListener(eventsListener)
+			ret.RegisterSubscriber(subscriber.Collect)
 
 			// --- start ---
 			select {
@@ -313,9 +335,8 @@ func TestRetriever(t *testing.T) {
 			}
 
 			// --- retrieve ---
-			retrievalId, err := types.NewRetrievalID()
 			require.NoError(t, err)
-			result, err := ret.Retrieve(context.Background(), retrievalId, cid1)
+			result, err := ret.Retrieve(context.Background(), rid, cid1)
 			require.NoError(t, err)
 			successfulPeer := string(tc.successfulPeer)
 			if successfulPeer == "" {
@@ -336,31 +357,21 @@ func TestRetriever(t *testing.T) {
 			}
 
 			// --- verify events ---
-			if len(eventsListener.CollectedEvents) != len(tc.expectedEvents) {
-				for _, event := range eventsListener.CollectedEvents {
+			if len(subscriber.CollectedEvents) != len(tc.expectedEvents) {
+				for _, event := range subscriber.CollectedEvents {
 					t.Logf("event: %+v", event)
 				}
 			}
-			require.Len(t, eventsListener.CollectedEvents, len(tc.expectedEvents))
+			require.Len(t, subscriber.CollectedEvents, len(tc.expectedEvents))
 			for i, event := range tc.expectedEvents {
-				// fill in some values that are easier here than in setup
-				event.RetrievalId = retrievalId
-				switch event.Name {
-				case "QuerySuccess":
-					event.QueryResponse = client.Returns_queries[string(event.StorageProviderIds[0])].QueryResponse
-				case "RetrievalSuccess":
-					event.ReceivedCids = client.Returns_retrievals[string(event.StorageProviderIds[0])].ResultStats.Blocks
-					event.ReceivedSize = client.Returns_retrievals[string(event.StorageProviderIds[0])].ResultStats.Size
-					event.Confirmed = true
-				case "QueryProgress":
+				if (event.Code() == types.StartedCode || event.Code() == types.ConnectedCode) && event.Phase() == types.QueryPhase {
 					// these events can come out of order, so we can't verify it in a specific position
-					testutil.VerifyContainsCollectedEvent(t, eventsListener.CollectedEvents, event)
+					testutil.VerifyContainsCollectedEvent(t, subscriber.CollectedEvents, event)
 					continue
 				}
-
-				testutil.VerifyCollectedEvent(t, eventsListener.CollectedEvents[i], event)
+				testutil.VerifyCollectedEvent(t, subscriber.CollectedEvents[i], event)
 			}
-			testutil.VerifyCollectedEventTimings(t, eventsListener.CollectedEvents)
+			testutil.VerifyCollectedEventTimings(t, subscriber.CollectedEvents)
 		})
 	}
 }

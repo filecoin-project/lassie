@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/lassie/cmd/lassie/internal"
 	"github.com/filecoin-project/lassie/pkg/client"
 	"github.com/filecoin-project/lassie/pkg/events"
@@ -20,7 +19,6 @@ import (
 	dss "github.com/ipfs/go-datastore/sync"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	carblockstore "github.com/ipld/go-car/v2/blockstore"
-	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/urfave/cli/v2"
 )
@@ -72,12 +70,14 @@ func Fetch(c *cli.Context) error {
 	}
 
 	var blockCount int
-	putCb := func(putCount int) {
+	var byteLength uint64
+	putCb := func(putCount int, putBytes int) {
 		blockCount += putCount
+		byteLength += uint64(putBytes)
 		if !progress {
 			fmt.Print(strings.Repeat(".", putCount))
-		} else if blockCount%10 == 0 {
-			fmt.Printf("Received %d blocks...\n", blockCount)
+		} else {
+			fmt.Printf("\rReceived %d blocks / %s...", blockCount, humanize.IBytes(byteLength))
 		}
 	}
 	bstore := &putCbBlockstore{parent: carStore, cb: putCb}
@@ -89,7 +89,8 @@ func Fetch(c *cli.Context) error {
 	fmt.Printf("Fetching %s", rootCid)
 	if progress {
 		fmt.Println()
-		ret.RegisterListener(&progressPrinter{})
+		pp := &progressPrinter{}
+		ret.RegisterSubscriber(pp.subscriber)
 	}
 	retrievalId, err := types.NewRetrievalID()
 	if err != nil {
@@ -136,17 +137,13 @@ func setupRetriever(c *cli.Context, timeout time.Duration, blockstore blockstore
 
 	indexer := indexerlookup.NewCandidateFinder("https://cid.contact")
 
-	confirmer := func(cid cid.Cid) (bool, error) {
-		return blockstore.Has(c.Context, cid)
-	}
-
 	retrieverCfg := retriever.RetrieverConfig{
 		DefaultMinerConfig: retriever.MinerConfig{
 			RetrievalTimeout: timeout,
 		},
 	}
 
-	ret, err := retriever.NewRetriever(c.Context, retrieverCfg, retrievalClient, indexer, confirmer)
+	ret, err := retriever.NewRetriever(c.Context, retrieverCfg, retrievalClient, indexer)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +156,7 @@ var _ blockstore.Blockstore = (*putCbBlockstore)(nil)
 
 type putCbBlockstore struct {
 	parent blockstore.Blockstore
-	cb     func(putCount int)
+	cb     func(putCount int, putBytes int)
 }
 
 func (pcb *putCbBlockstore) DeleteBlock(ctx context.Context, cid cid.Cid) error {
@@ -175,11 +172,15 @@ func (pcb *putCbBlockstore) GetSize(ctx context.Context, cid cid.Cid) (int, erro
 	return pcb.parent.GetSize(ctx, cid)
 }
 func (pcb *putCbBlockstore) Put(ctx context.Context, block blocks.Block) error {
-	pcb.cb(1)
+	pcb.cb(1, len(block.RawData()))
 	return pcb.parent.Put(ctx, block)
 }
 func (pcb *putCbBlockstore) PutMany(ctx context.Context, blocks []blocks.Block) error {
-	pcb.cb(len(blocks))
+	var byts int
+	for _, b := range blocks {
+		byts += len(b.RawData())
+	}
+	pcb.cb(len(blocks), byts)
 	return pcb.parent.PutMany(ctx, blocks)
 }
 func (pcb *putCbBlockstore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
@@ -189,46 +190,54 @@ func (pcb *putCbBlockstore) HashOnRead(enabled bool) {
 	pcb.parent.HashOnRead(enabled)
 }
 
-var _ events.RetrievalEventListener = (*progressPrinter)(nil)
-
 type progressPrinter struct {
 	candidatesFound int
 }
 
-func (progressPrinter) IndexerProgress(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, stage events.Code) {
-	fmt.Printf("Querying indexer for %s...\n", requestedCid)
-}
-func (pp *progressPrinter) IndexerCandidates(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, stage events.Code, storageProviderIds []peer.ID) {
-	switch stage {
-	case events.CandidatesFoundCode:
-		pp.candidatesFound = len(storageProviderIds)
-	case events.CandidatesFilteredCode:
+func (pp *progressPrinter) subscriber(event types.RetrievalEvent) {
+	switch ret := event.(type) {
+	case events.RetrievalEventStarted:
+		switch ret.Phase() {
+		case types.IndexerPhase:
+			fmt.Printf("\rQuerying indexer for %s...\n", ret.PayloadCid())
+		case types.QueryPhase:
+			fmt.Printf("\rQuerying [%s] (%s)...\n", ret.StorageProviderId(), ret.Code())
+		case types.RetrievalPhase:
+			fmt.Printf("\rRetrieving from [%s] (%s)...\n", ret.StorageProviderId(), ret.Code())
+		}
+	case events.RetrievalEventConnected:
+		switch ret.Phase() {
+		case types.QueryPhase:
+			fmt.Printf("\rQuerying [%s] (%s)...\n", ret.StorageProviderId(), ret.Code())
+		case types.RetrievalPhase:
+			fmt.Printf("\rRetrieving from [%s] (%s)...\n", ret.StorageProviderId(), ret.Code())
+		}
+	case events.RetrievalEventProposed:
+		fmt.Printf("\rRetrieving from [%s] (%s)...\n", ret.StorageProviderId(), ret.Code())
+	case events.RetrievalEventAccepted:
+		fmt.Printf("\rRetrieving from [%s] (%s)...\n", ret.StorageProviderId(), ret.Code())
+	case events.RetrievalEventFirstByte:
+		fmt.Printf("\rRetrieving from [%s] (%s)...\n", ret.StorageProviderId(), ret.Code())
+	case events.RetrievalEventCandidatesFound:
+		pp.candidatesFound = len(ret.Candidates())
+	case events.RetrievalEventCandidatesFiltered:
 		num := "all of them"
-		if pp.candidatesFound != len(storageProviderIds) {
-			num = fmt.Sprintf("%d of them", len(storageProviderIds))
+		if pp.candidatesFound != len(ret.Candidates()) {
+			num = fmt.Sprintf("%d of them", len(ret.Candidates()))
 		} else if pp.candidatesFound == 1 {
 			num = "it"
 		}
-		fmt.Printf("Found %d storage providers candidates from the indexer, querying %s:\n", pp.candidatesFound, num)
-		for _, id := range storageProviderIds {
-			fmt.Printf("\t%s\n", id)
+		fmt.Printf("\rFound %d storage providers candidates from the indexer, querying %s:\n", pp.candidatesFound, num)
+		for _, candidate := range ret.Candidates() {
+			fmt.Printf("\r\t%s\n", candidate.MinerPeer.ID)
 		}
+	case events.RetrievalEventQueryAsked:
+		fmt.Printf("\rGot query response from [%s] (checking): size=%s, price-per-byte=%s, unseal-price=%s, message=%s\n", ret.StorageProviderId(), humanize.IBytes(ret.QueryResponse().Size), ret.QueryResponse().MinPricePerByte, ret.QueryResponse().UnsealPrice, ret.QueryResponse().Message)
+	case events.RetrievalEventQueryAskedFiltered:
+		fmt.Printf("\rGot query response from [%s] (filtered): size=%s, price-per-byte=%s, unseal-price=%s, message=%s\n", ret.StorageProviderId(), humanize.IBytes(ret.QueryResponse().Size), ret.QueryResponse().MinPricePerByte, ret.QueryResponse().UnsealPrice, ret.QueryResponse().Message)
+	case events.RetrievalEventFailed:
+		fmt.Printf("\rRetrieval failure for [%s]: %s\n", ret.StorageProviderId(), ret.ErrorMessage())
+	case events.RetrievalEventSuccess:
+		// noop, handled at return from Retrieve()
 	}
-}
-func (progressPrinter) QueryProgress(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage events.Code) {
-	fmt.Printf("Querying [%s] (%s)...\n", storageProviderId, stage)
-}
-func (progressPrinter) QueryFailure(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, errString string) {
-	fmt.Printf("Query failure for [%s]: %s\n", storageProviderId, errString)
-}
-func (progressPrinter) QuerySuccess(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, queryResponse retrievalmarket.QueryResponse) {
-	fmt.Printf("Query response from [%s]: size=%s, price-per-byte=%s, unseal-price=%s, message=%s\n", storageProviderId, humanize.IBytes(queryResponse.Size), queryResponse.MinPricePerByte, queryResponse.UnsealPrice, queryResponse.Message)
-}
-func (progressPrinter) RetrievalProgress(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, stage events.Code) {
-	fmt.Printf("Retrieving from [%s] (%s)...\n", storageProviderId, stage)
-}
-func (progressPrinter) RetrievalSuccess(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, receivedSize uint64, receivedCids uint64, confirmed bool) {
-}
-func (progressPrinter) RetrievalFailure(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, errString string) {
-	fmt.Printf("Retrieval failure for [%s]: %s\n", storageProviderId, errString)
 }
