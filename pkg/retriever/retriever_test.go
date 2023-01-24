@@ -49,6 +49,7 @@ func TestRetriever(t *testing.T) {
 		returns_queries    map[string]testutil.DelayedQueryReturn
 		returns_retrievals map[string]testutil.DelayedRetrievalReturn
 		successfulPeer     peer.ID
+		err                error
 		expectedEvents     []types.RetrievalEvent
 	}{
 		{
@@ -304,6 +305,39 @@ func TestRetriever(t *testing.T) {
 				events.Success(rid, rst, types.NewRetrievalCandidate(peerB, cid1), 20, 30, 40*time.Second, big.Zero()),
 			},
 		},
+		{
+			name: "no candidates",
+			setup: func(rc *retriever.RetrieverConfig) {
+				rc.DefaultMinerConfig.RetrievalTimeout = time.Millisecond * 100
+			},
+			candidates:         []types.RetrievalCandidate{},
+			returns_queries:    map[string]testutil.DelayedQueryReturn{},
+			returns_retrievals: map[string]testutil.DelayedRetrievalReturn{},
+			successfulPeer:     peer.ID(""),
+			err:                retriever.ErrNoCandidates,
+			expectedEvents: []types.RetrievalEvent{
+				events.Started(rid, ist, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid1}),
+				events.Failed(rid, rst, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid1}, "no candidates"),
+			},
+		},
+		{
+			name: "no acceptable candidates",
+			setup: func(rc *retriever.RetrieverConfig) {
+				rc.DefaultMinerConfig.RetrievalTimeout = time.Millisecond * 100
+			},
+			candidates: []types.RetrievalCandidate{
+				{MinerPeer: peer.AddrInfo{ID: blacklistedPeer}, RootCid: cid1},
+			},
+			returns_queries:    map[string]testutil.DelayedQueryReturn{},
+			returns_retrievals: map[string]testutil.DelayedRetrievalReturn{},
+			successfulPeer:     peer.ID(""),
+			err:                retriever.ErrNoCandidates,
+			expectedEvents: []types.RetrievalEvent{
+				events.Started(rid, ist, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid1}),
+				events.CandidatesFound(rid, ist, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(blacklistedPeer, cid1)}),
+				events.Failed(rid, rst, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid1}, "no candidates"),
+			},
+		},
 	}
 
 	for _, tc := range tc {
@@ -337,16 +371,20 @@ func TestRetriever(t *testing.T) {
 			// --- retrieve ---
 			require.NoError(t, err)
 			result, err := ret.Retrieve(context.Background(), rid, cid1)
-			require.NoError(t, err)
-			successfulPeer := string(tc.successfulPeer)
-			if successfulPeer == "" {
-				for p, retrievalReturns := range tc.returns_retrievals {
-					if retrievalReturns.ResultStats != nil {
-						successfulPeer = p
+			if tc.err == nil {
+				require.NoError(t, err)
+				successfulPeer := string(tc.successfulPeer)
+				if successfulPeer == "" {
+					for p, retrievalReturns := range tc.returns_retrievals {
+						if retrievalReturns.ResultStats != nil {
+							successfulPeer = p
+						}
 					}
 				}
+				require.Equal(t, client.Returns_retrievals[successfulPeer].ResultStats, result)
+			} else {
+				require.ErrorIs(t, tc.err, err)
 			}
-			require.Equal(t, client.Returns_retrievals[successfulPeer].ResultStats, result)
 
 			// --- stop ---
 			time.Sleep(time.Millisecond * 5) // sleep to allow events to flush

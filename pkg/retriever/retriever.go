@@ -307,9 +307,11 @@ func handleFailureEvent(
 	eventStats *eventStats,
 	event events.RetrievalEventFailed,
 ) {
-	msg := event.ErrorMessage()
+	if event.Phase() != types.IndexerPhase {
+		spTracker.RecordFailure(event.StorageProviderId())
+	}
 
-	spTracker.RecordFailure(event.StorageProviderId())
+	msg := event.ErrorMessage()
 
 	switch event.Phase() {
 	case types.QueryPhase:
