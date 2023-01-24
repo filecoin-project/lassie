@@ -15,6 +15,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/retriever/testutil"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
 
@@ -92,6 +93,7 @@ func TestQueryFiltering(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			retrievalId := types.RetrievalID(uuid.New())
 			dqr := make(map[string]testutil.DelayedQueryReturn, 0)
 			for p, qr := range tc.queryResponses {
 				dqr[p] = testutil.DelayedQueryReturn{QueryResponse: qr, Err: nil, Delay: time.Millisecond * 50}
@@ -115,14 +117,15 @@ func TestQueryFiltering(t *testing.T) {
 			candidateQueriesFiltered := make([]candidateQuery, 0)
 
 			// perform retrieval and test top-level results, we should only error in this test
-			stats, err := RetrieveFromCandidates(context.Background(), cfg, mockCandidateFinder, mockClient, cid.Undef, func(event events.RetrievalEvent) {
+			stats, err := RetrieveFromCandidates(context.Background(), cfg, mockCandidateFinder, mockClient, retrievalId, cid.Undef, func(event types.RetrievalEvent) {
+				qt.Assert(t, event.RetrievalId(), qt.Equals, retrievalId)
 				switch ret := event.(type) {
-				case events.RetrievalEventQueryAsk:
+				case events.RetrievalEventQueryAsked:
 					candidateQueries = append(candidateQueries, candidateQuery{ret.StorageProviderId(), ret.QueryResponse()})
-				case events.RetrievalEventQueryAskFiltered:
+				case events.RetrievalEventQueryAskedFiltered:
 					candidateQueriesFiltered = append(candidateQueriesFiltered, candidateQuery{ret.StorageProviderId(), ret.QueryResponse()})
 				case events.RetrievalEventStarted:
-					if ret.Phase() == events.RetrievalPhase {
+					if ret.Phase() == types.RetrievalPhase {
 						retrievingPeers = append(retrievingPeers, event.StorageProviderId())
 					}
 				}
@@ -302,6 +305,7 @@ func TestRetrievalRacing(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			retrievalId := types.RetrievalID(uuid.New())
 			mockClient := &testutil.MockClient{
 				Returns_queries:    tc.queryReturns,
 				Returns_retrievals: tc.retrievalReturns,
@@ -323,14 +327,15 @@ func TestRetrievalRacing(t *testing.T) {
 			candidateQueriesFiltered := make([]candidateQuery, 0)
 
 			// perform retrieval and make sure we got a result
-			stats, err := RetrieveFromCandidates(context.Background(), cfg, mockCandidateFinder, mockClient, cid.Undef, func(event events.RetrievalEvent) {
+			stats, err := RetrieveFromCandidates(context.Background(), cfg, mockCandidateFinder, mockClient, retrievalId, cid.Undef, func(event types.RetrievalEvent) {
+				qt.Assert(t, event.RetrievalId(), qt.Equals, retrievalId)
 				switch ret := event.(type) {
-				case events.RetrievalEventQueryAsk:
+				case events.RetrievalEventQueryAsked:
 					candidateQueries = append(candidateQueries, candidateQuery{ret.StorageProviderId(), ret.QueryResponse()})
-				case events.RetrievalEventQueryAskFiltered:
+				case events.RetrievalEventQueryAskedFiltered:
 					candidateQueriesFiltered = append(candidateQueriesFiltered, candidateQuery{ret.StorageProviderId(), ret.QueryResponse()})
 				case events.RetrievalEventStarted:
-					if ret.Phase() == events.RetrievalPhase {
+					if ret.Phase() == types.RetrievalPhase {
 						retrievingPeers = append(retrievingPeers, event.StorageProviderId())
 					}
 				}
@@ -386,6 +391,7 @@ func TestRetrievalRacing(t *testing.T) {
 
 // run two retrievals simultaneously on a single CidRetrieval
 func TestMultipleRetrievals(t *testing.T) {
+	retrievalId := types.RetrievalID(uuid.New())
 	cid1 := cid.MustParse("bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")
 	cid2 := cid.MustParse("bafyrgqhai26anf3i7pips7q22coa4sz2fr4gk4q4sqdtymvvjyginfzaqewveaeqdh524nsktaq43j65v22xxrybrtertmcfxufdam3da3hbk")
 	successfulQueryResponse := retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}
@@ -431,18 +437,18 @@ func TestMultipleRetrievals(t *testing.T) {
 	candidateQueriesFiltered := make([]candidateQuery, 0)
 	retrievingPeers := make([]peer.ID, 0)
 	var lk sync.Mutex
-	evtCb := func(event events.RetrievalEvent) {
+	evtCb := func(event types.RetrievalEvent) {
 		switch ret := event.(type) {
-		case events.RetrievalEventQueryAsk:
+		case events.RetrievalEventQueryAsked:
 			lk.Lock()
 			candidateQueries = append(candidateQueries, candidateQuery{ret.StorageProviderId(), ret.QueryResponse()})
 			lk.Unlock()
-		case events.RetrievalEventQueryAskFiltered:
+		case events.RetrievalEventQueryAskedFiltered:
 			lk.Lock()
 			candidateQueriesFiltered = append(candidateQueriesFiltered, candidateQuery{ret.StorageProviderId(), ret.QueryResponse()})
 			lk.Unlock()
 		case events.RetrievalEventStarted:
-			if ret.Phase() == events.RetrievalPhase {
+			if ret.Phase() == types.RetrievalPhase {
 				lk.Lock()
 				retrievingPeers = append(retrievingPeers, event.StorageProviderId())
 				lk.Unlock()
@@ -454,7 +460,7 @@ func TestMultipleRetrievals(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
-		stats, err := RetrieveFromCandidates(context.Background(), cfg, mockCandidateFinder, mockClient, cid1, evtCb)
+		stats, err := RetrieveFromCandidates(context.Background(), cfg, mockCandidateFinder, mockClient, retrievalId, cid1, evtCb)
 		qt.Assert(t, stats, qt.IsNotNil)
 		qt.Assert(t, err, qt.IsNil)
 		// make sure we got the final retrieval we wanted
@@ -462,7 +468,7 @@ func TestMultipleRetrievals(t *testing.T) {
 		wg.Done()
 	}()
 
-	stats, err := RetrieveFromCandidates(context.Background(), cfg, mockCandidateFinder, mockClient, cid2, evtCb)
+	stats, err := RetrieveFromCandidates(context.Background(), cfg, mockCandidateFinder, mockClient, retrievalId, cid2, evtCb)
 	qt.Assert(t, stats, qt.IsNotNil)
 	qt.Assert(t, err, qt.IsNil)
 	// make sure we got the final retrieval we wanted

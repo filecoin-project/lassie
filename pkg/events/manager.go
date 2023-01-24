@@ -3,32 +3,23 @@ package events
 import (
 	"context"
 	"sync"
-	"time"
 
-	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/lassie/pkg/types"
-	"github.com/ipfs/go-cid"
-	"github.com/libp2p/go-libp2p/core/peer"
 )
 
-type eventExecution struct {
-	ts time.Time
-	cb func(timestamp time.Time, listener RetrievalEventListener)
-}
-
-// EventManager is responsible for dispatching events to registered listeners.
-// Events are dispatched asynchronously, so listeners should not assume that
+// EventManager is responsible for dispatching events to registered subscribers.
+// Events are dispatched asynchronously, so subscribers should not assume that
 // events are received within the window of a blocking retriever.Retrieve()
 // call.
 type EventManager struct {
-	ctx       context.Context
-	lk        sync.RWMutex
-	idx       int
-	started   bool
-	listeners map[int]RetrievalEventListener
-	events    chan eventExecution
-	cancel    context.CancelFunc
-	stopped   chan struct{}
+	ctx         context.Context
+	lk          sync.RWMutex
+	idx         int
+	started     bool
+	subscribers map[int]types.RetrievalEventSubscriber
+	events      chan types.RetrievalEvent
+	cancel      context.CancelFunc
+	stopped     chan struct{}
 }
 
 // NewEventManager creates a new EventManager. Start() must be called to start
@@ -37,11 +28,11 @@ func NewEventManager(ctx context.Context) *EventManager {
 	var cancel context.CancelFunc
 	ctx, cancel = context.WithCancel(ctx)
 	return &EventManager{
-		ctx:       ctx,
-		cancel:    cancel,
-		listeners: make(map[int]RetrievalEventListener),
-		events:    make(chan eventExecution, 16),
-		stopped:   make(chan struct{}, 1),
+		ctx:         ctx,
+		cancel:      cancel,
+		subscribers: make(map[int]types.RetrievalEventSubscriber),
+		events:      make(chan types.RetrievalEvent, 16),
+		stopped:     make(chan struct{}, 1),
 	}
 }
 
@@ -60,16 +51,16 @@ func (em *EventManager) Start() chan struct{} {
 			case <-em.ctx.Done():
 				em.stopped <- struct{}{}
 				return
-			case execution := <-em.events:
+			case event := <-em.events:
 				em.lk.RLock()
-				listeners := make([]RetrievalEventListener, 0, len(em.listeners))
-				for _, listener := range em.listeners {
-					listeners = append(listeners, listener)
+				subscribers := make([]types.RetrievalEventSubscriber, 0, len(em.subscribers))
+				for _, subscriber := range em.subscribers {
+					subscribers = append(subscribers, subscriber)
 				}
 				em.lk.RUnlock()
 
-				for _, listener := range listeners {
-					execution.cb(execution.ts, listener)
+				for _, subscriber := range subscribers {
+					subscriber(event)
 				}
 			}
 		}
@@ -91,87 +82,33 @@ func (em *EventManager) Stop() chan struct{} {
 	return em.stopped
 }
 
-// RegisterListener registers a listener to receive events. The returned
-// function can be called to unregister the listener.
-func (em *EventManager) RegisterListener(listener RetrievalEventListener) func() {
+// RegisterSubscriber registers a subscriber to receive events. The returned
+// function can be called to unregister the subscriber.
+func (em *EventManager) RegisterSubscriber(subscriber types.RetrievalEventSubscriber) func() {
 	em.lk.Lock()
 	defer em.lk.Unlock()
 
 	idx := em.idx
 	em.idx++
-	em.listeners[idx] = listener
+	em.subscribers[idx] = subscriber
 
 	// return unregister function
 	return func() {
 		em.lk.Lock()
 		defer em.lk.Unlock()
-		delete(em.listeners, idx)
+		delete(em.subscribers, idx)
 	}
 }
 
-func (em *EventManager) queueEvent(cb func(timestamp time.Time, listener RetrievalEventListener)) {
-	exec := eventExecution{time.Now(), cb} // time is _now_ even if we delay telling listeners
+// DispatchEvent queues the event to be dispatched to all event subscribers.
+// Calling the subscriber functions happens on a separate goroutine dedicated
+// to this function.
+func (em *EventManager) DispatchEvent(event types.RetrievalEvent) {
 	if em.ctx.Err() != nil {
 		return
 	}
 	select {
 	case <-em.ctx.Done():
-	case em.events <- exec:
+	case em.events <- event:
 	}
-}
-
-// FireQueryProgress calls QueryProgress for all listeners
-func (em *EventManager) FireIndexerProgress(retrievalId types.RetrievalID, requestedCid cid.Cid, phaseStartTime time.Time, stage Code) {
-	em.queueEvent(func(timestamp time.Time, listener RetrievalEventListener) {
-		listener.IndexerProgress(retrievalId, phaseStartTime, timestamp, requestedCid, stage)
-	})
-}
-
-// FireIndexerCandidates calls IndexerCandidates for all listeners
-func (em *EventManager) FireIndexerCandidates(retrievalId types.RetrievalID, requestedCid cid.Cid, phaseStartTime time.Time, stage Code, storageProviderIds []peer.ID) {
-	em.queueEvent(func(timestamp time.Time, listener RetrievalEventListener) {
-		listener.IndexerCandidates(retrievalId, phaseStartTime, timestamp, requestedCid, stage, storageProviderIds)
-	})
-}
-
-// FireQueryProgress calls QueryProgress for all listeners
-func (em *EventManager) FireQueryProgress(retrievalId types.RetrievalID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, stage Code) {
-	em.queueEvent(func(timestamp time.Time, listener RetrievalEventListener) {
-		listener.QueryProgress(retrievalId, phaseStartTime, timestamp, requestedCid, storageProviderId, stage)
-	})
-}
-
-// FireQueryFailure calls QueryFailure for all listeners
-func (em *EventManager) FireQueryFailure(retrievalId types.RetrievalID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, errString string) {
-	em.queueEvent(func(timestamp time.Time, listener RetrievalEventListener) {
-		listener.QueryFailure(retrievalId, phaseStartTime, timestamp, requestedCid, storageProviderId, errString)
-	})
-}
-
-// FireQuerySuccess calls QuerySuccess ("query-asked") for all listeners
-func (em *EventManager) FireQuerySuccess(retrievalId types.RetrievalID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, queryResponse retrievalmarket.QueryResponse) {
-	em.queueEvent(func(timestamp time.Time, listener RetrievalEventListener) {
-		listener.QuerySuccess(retrievalId, phaseStartTime, timestamp, requestedCid, storageProviderId, queryResponse)
-	})
-}
-
-// FireRetrievalProgress calls RetrievalProgress for all listeners
-func (em *EventManager) FireRetrievalProgress(retrievalId types.RetrievalID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, stage Code) {
-	em.queueEvent(func(timestamp time.Time, listener RetrievalEventListener) {
-		listener.RetrievalProgress(retrievalId, phaseStartTime, timestamp, requestedCid, storageProviderId, stage)
-	})
-}
-
-// FireRetrievalSuccess calls RetrievalSuccess for all listeners
-func (em *EventManager) FireRetrievalSuccess(retrievalId types.RetrievalID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, receivedSize uint64, receivedCids uint64, confirmed bool) {
-	em.queueEvent(func(timestamp time.Time, listener RetrievalEventListener) {
-		listener.RetrievalSuccess(retrievalId, phaseStartTime, timestamp, requestedCid, storageProviderId, receivedSize, receivedCids, confirmed)
-	})
-}
-
-// FireRetrievalFailure calls RetrievalFailure for all listeners
-func (em *EventManager) FireRetrievalFailure(retrievalId types.RetrievalID, requestedCid cid.Cid, phaseStartTime time.Time, storageProviderId peer.ID, errString string) {
-	em.queueEvent(func(timestamp time.Time, listener RetrievalEventListener) {
-		listener.RetrievalFailure(retrievalId, phaseStartTime, timestamp, requestedCid, storageProviderId, errString)
-	})
 }

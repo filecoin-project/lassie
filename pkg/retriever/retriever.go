@@ -71,14 +71,11 @@ type Retriever struct {
 	client          RetrievalClient
 	eventManager    *events.EventManager
 	spTracker       *spTracker
-	confirm         func(cid.Cid) (bool, error)
 }
 
 type CandidateFinder interface {
 	FindCandidates(context.Context, cid.Cid) ([]types.RetrievalCandidate, error)
 }
-
-type BlockConfirmer func(c cid.Cid) (bool, error)
 
 type eventStats struct {
 	failedCount        int64
@@ -91,7 +88,6 @@ func NewRetriever(
 	config RetrieverConfig,
 	client RetrievalClient,
 	candidateFinder CandidateFinder,
-	confirmer BlockConfirmer,
 ) (*Retriever, error) {
 	retriever := &Retriever{
 		config:          config,
@@ -99,7 +95,6 @@ func NewRetriever(
 		client:          client,
 		eventManager:    events.NewEventManager(ctx),
 		spTracker:       newSpTracker(nil),
-		confirm:         confirmer,
 	}
 
 	return retriever, nil
@@ -117,11 +112,11 @@ func (retriever *Retriever) Stop() chan struct{} {
 	return retriever.eventManager.Stop()
 }
 
-// RegisterListener registers a listener to receive all events fired during the
+// RegisterSubscriber registers a subscriber to receive all events fired during the
 // process of making a retrieval, including the process of querying available
 // storage providers to find compatible ones to attempt retrieval from.
-func (retriever *Retriever) RegisterListener(listener events.RetrievalEventListener) func() {
-	return retriever.eventManager.RegisterListener(listener)
+func (retriever *Retriever) RegisterSubscriber(subscriber types.RetrievalEventSubscriber) func() {
+	return retriever.eventManager.RegisterSubscriber(subscriber)
 }
 
 func (retriever *Retriever) getStorageProviderTimeout(storageProviderId peer.ID) time.Duration {
@@ -194,7 +189,6 @@ func (retriever *Retriever) Retrieve(ctx context.Context, retrievalId types.Retr
 	onRetrievalEvent := makeOnRetrievalEvent(ctx,
 		retriever.eventManager,
 		retriever.spTracker,
-		retriever.confirm,
 		cid,
 		retrievalId,
 		eventStats,
@@ -204,10 +198,12 @@ func (retriever *Retriever) Retrieve(ctx context.Context, retrievalId types.Retr
 	// (retrievalStats!=nil) _and_ also an error return because there may be
 	// multiple failures along the way, if we got a retrieval then we'll pretend
 	// to our caller that there was no error
-	retrievalStats, err := RetrieveFromCandidates(ctx,
+	retrievalStats, err := RetrieveFromCandidates(
+		ctx,
 		config,
 		retriever.candidateFinder,
 		retriever.client,
+		retrievalId,
 		cid,
 		onRetrievalEvent,
 	)
@@ -245,92 +241,32 @@ func makeOnRetrievalEvent(
 	ctx context.Context,
 	eventManager *events.EventManager,
 	spTracker *spTracker,
-	confirmer BlockConfirmer,
 	retrievalCid cid.Cid,
 	retrievalId types.RetrievalID,
 	eventStats *eventStats,
-) func(event events.RetrievalEvent) {
+) func(event types.RetrievalEvent) {
 	// this callback is only called in the main retrieval goroutine so is safe to
 	// modify local values (eventStats) without synchronization
-	return func(event events.RetrievalEvent) {
+	return func(event types.RetrievalEvent) {
 		logEvent(event)
 
 		switch ret := event.(type) {
 		case events.RetrievalEventCandidatesFound:
-			handleCandidatesFoundEvent(eventManager, retrievalId, ret)
+			handleCandidatesFoundEvent(ret)
 		case events.RetrievalEventCandidatesFiltered:
-			handleCandidatesFilteredEvent(eventManager, retrievalId, spTracker, retrievalCid, ret)
+			handleCandidatesFilteredEvent(retrievalId, spTracker, retrievalCid, ret)
 		case events.RetrievalEventStarted:
-			handleStartedEvent(eventManager, retrievalId, ret)
-		case events.RetrievalEventFailure:
-			handleFailureEvent(ctx, spTracker, eventManager, eventStats, retrievalId, ret)
-		case events.RetrievalEventQueryAsk: // query-ask success
-			handleQueryAskEvent(ctx, eventManager, eventStats, retrievalId, ret)
-		case events.RetrievalEventQueryAskFiltered:
+			handleStartedEvent(ret)
+		case events.RetrievalEventFailed:
+			handleFailureEvent(ctx, spTracker, eventStats, ret)
+		case events.RetrievalEventQueryAsked: // query-ask success
+			handleQueryAskEvent(ctx, eventStats, ret)
+		case events.RetrievalEventQueryAskedFiltered:
 			handleQueryAskFilteredEvent(eventStats)
-		case events.RetrievalEventProposed:
-			handleProposedEvent(eventManager, retrievalId, ret)
-		case events.RetrievalEventSuccess:
-			handleSuccessEvent(confirmer, eventManager, retrievalId, ret)
-		default:
-			handleProgressEvent(eventManager, retrievalId, event)
 		}
-	}
-}
 
-func handleProgressEvent(eventManager *events.EventManager, retrievalId types.RetrievalID, event events.RetrievalEvent) {
-	switch event.Phase() {
-	case events.QueryPhase:
-		eventManager.FireQueryProgress(
-			retrievalId,
-			event.PayloadCid(),
-			event.PhaseStartTime(),
-			event.StorageProviderId(),
-			event.Code(),
-		)
-	case events.RetrievalPhase:
-		eventManager.FireRetrievalProgress(
-			retrievalId,
-			event.PayloadCid(),
-			event.PhaseStartTime(),
-			event.StorageProviderId(),
-			event.Code(),
-		)
+		eventManager.DispatchEvent(event)
 	}
-}
-func handleProposedEvent(
-	eventManager *events.EventManager,
-	retrievalId types.RetrievalID,
-	event events.RetrievalEventProposed,
-) {
-	eventManager.FireRetrievalProgress(
-		retrievalId,
-		event.PayloadCid(),
-		event.PhaseStartTime(),
-		event.StorageProviderId(),
-		events.ProposedCode,
-	)
-}
-
-func handleSuccessEvent(
-	confirmer BlockConfirmer,
-	eventManager *events.EventManager,
-	retrievalId types.RetrievalID,
-	event events.RetrievalEventSuccess,
-) {
-	confirmed, err := confirmer(event.PayloadCid())
-	if err != nil {
-		log.Errorf("Error while confirming block [%s] for retrieval [%s]: %w", event.PayloadCid(), retrievalId, err)
-	}
-	eventManager.FireRetrievalSuccess(
-		retrievalId,
-		event.PayloadCid(),
-		event.PhaseStartTime(),
-		event.StorageProviderId(),
-		event.ReceivedSize(),
-		event.ReceivedCids(),
-		confirmed,
-	)
 }
 
 func handleQueryAskFilteredEvent(eventStats *eventStats) {
@@ -342,22 +278,13 @@ func handleQueryAskFilteredEvent(eventStats *eventStats) {
 
 func handleQueryAskEvent(
 	ctx context.Context,
-	eventManager *events.EventManager,
 	eventStats *eventStats,
-	retrievalId types.RetrievalID,
-	event events.RetrievalEventQueryAsk,
+	event events.RetrievalEventQueryAsked,
 ) {
 	eventStats.queryCount++
 	if eventStats.queryCount == 1 {
 		stats.Record(context.Background(), metrics.RequestWithSuccessfulQueriesCount.M(1))
 	}
-	eventManager.FireQuerySuccess(
-		retrievalId,
-		event.PayloadCid(),
-		event.PhaseStartTime(),
-		event.StorageProviderId(),
-		event.QueryResponse(),
-	)
 
 	if event.QueryResponse().Status == retrievalmarket.QueryResponseError {
 		var matched bool
@@ -377,17 +304,15 @@ func handleQueryAskEvent(
 func handleFailureEvent(
 	ctx context.Context,
 	spTracker *spTracker,
-	eventManager *events.EventManager,
 	eventStats *eventStats,
-	retrievalId types.RetrievalID,
-	event events.RetrievalEventFailure,
+	event events.RetrievalEventFailed,
 ) {
 	msg := event.ErrorMessage()
 
 	spTracker.RecordFailure(event.StorageProviderId())
 
 	switch event.Phase() {
-	case events.QueryPhase:
+	case types.QueryPhase:
 		var matched bool
 		for substr, metric := range metrics.QueryErrorMetricMatches {
 			if strings.Contains(msg, substr) {
@@ -399,15 +324,7 @@ func handleFailureEvent(
 		if !matched {
 			stats.Record(ctx, metrics.QueryErrorOtherCount.M(1))
 		}
-
-		eventManager.FireQueryFailure(
-			retrievalId,
-			event.PayloadCid(),
-			event.PhaseStartTime(),
-			event.StorageProviderId(),
-			msg,
-		)
-	case events.RetrievalPhase:
+	case types.RetrievalPhase:
 		eventStats.failedCount++
 		log.Warnf(
 			"Failed to retrieve from miner %s for %s: %s",
@@ -429,49 +346,17 @@ func handleFailureEvent(
 		if !matched {
 			stats.Record(ctx, metrics.RetrievalErrorOtherCount.M(1))
 		}
-
-		eventManager.FireRetrievalFailure(
-			retrievalId,
-			event.PayloadCid(),
-			event.PhaseStartTime(),
-			event.StorageProviderId(),
-			msg,
-		)
 	}
 }
 
-func handleStartedEvent(eventManager *events.EventManager, retrievalId types.RetrievalID, event events.RetrievalEventStarted) {
-	switch event.Phase() {
-	case events.RetrievalPhase:
+func handleStartedEvent(event events.RetrievalEventStarted) {
+	if event.Phase() == types.RetrievalPhase {
 		stats.Record(context.Background(), metrics.RetrievalRequestCount.M(1))
 		stats.Record(context.Background(), metrics.RetrievalDealActiveCount.M(1))
-		eventManager.FireRetrievalProgress(
-			retrievalId,
-			event.PayloadCid(),
-			event.PhaseStartTime(),
-			event.StorageProviderId(),
-			events.StartedCode,
-		)
-	case events.QueryPhase:
-		eventManager.FireQueryProgress(
-			retrievalId,
-			event.PayloadCid(),
-			event.PhaseStartTime(),
-			event.StorageProviderId(),
-			events.StartedCode,
-		)
-	case events.IndexerPhase:
-		eventManager.FireIndexerProgress(
-			retrievalId,
-			event.PayloadCid(),
-			event.PhaseStartTime(),
-			events.StartedCode,
-		)
 	}
 }
 
 func handleCandidatesFilteredEvent(
-	eventManager *events.EventManager,
 	retrievalId types.RetrievalID,
 	spTracker *spTracker,
 	retrievalCid cid.Cid,
@@ -479,7 +364,6 @@ func handleCandidatesFilteredEvent(
 ) {
 	if len(event.Candidates()) > 0 {
 		stats.Record(context.Background(), metrics.RequestWithIndexerCandidatesFilteredCount.M(1))
-
 		ids := make([]peer.ID, 0)
 		for _, c := range event.Candidates() {
 			ids = append(ids, c.MinerPeer.ID)
@@ -487,39 +371,17 @@ func handleCandidatesFilteredEvent(
 		if err := spTracker.AddToRetrieval(retrievalId, ids); err != nil {
 			log.Errorf("failed to add storage providers to tracked retrieval for %s: %s", retrievalCid, err.Error())
 		}
-		eventManager.FireIndexerCandidates(
-			retrievalId,
-			event.PayloadCid(),
-			event.PhaseStartTime(),
-			events.CandidatesFilteredCode,
-			ids,
-		)
 	}
 }
 
-func handleCandidatesFoundEvent(
-	eventManager *events.EventManager,
-	retrievalId types.RetrievalID,
-	event events.RetrievalEventCandidatesFound,
-) {
+func handleCandidatesFoundEvent(event events.RetrievalEventCandidatesFound) {
 	if len(event.Candidates()) > 0 {
 		stats.Record(context.Background(), metrics.RequestWithIndexerCandidatesCount.M(1))
-		ids := make([]peer.ID, 0)
-		for _, c := range event.Candidates() {
-			ids = append(ids, c.MinerPeer.ID)
-		}
-		eventManager.FireIndexerCandidates(
-			retrievalId,
-			event.PayloadCid(),
-			event.PhaseStartTime(),
-			events.CandidatesFoundCode,
-			ids,
-		)
 	}
 	stats.Record(context.Background(), metrics.IndexerCandidatesPerRequestCount.M(int64(len(event.Candidates()))))
 }
 
-func logEvent(event events.RetrievalEvent) {
+func logEvent(event types.RetrievalEvent) {
 	kv := make([]interface{}, 0)
 	logadd := func(kva ...interface{}) {
 		if len(kva)%2 != 0 {
@@ -538,7 +400,7 @@ func logEvent(event events.RetrievalEvent) {
 		"payloadCid", event.PayloadCid(),
 		"storageProviderId", event.StorageProviderId())
 	switch tevent := event.(type) {
-	case events.RetrievalEventQueryAsk:
+	case events.RetrievalEventQueryAsked:
 		logadd("queryResponse:Status", tevent.QueryResponse().Status,
 			"queryResponse:PieceCIDFound", tevent.QueryResponse().PieceCIDFound,
 			"queryResponse:Size", tevent.QueryResponse().Size,
@@ -548,7 +410,7 @@ func logEvent(event events.RetrievalEvent) {
 			"queryResponse:MaxPaymentIntervalIncrease", tevent.QueryResponse().MaxPaymentIntervalIncrease,
 			"queryResponse:Message", tevent.QueryResponse().Message,
 			"queryResponse:UnsealPrice", tevent.QueryResponse().UnsealPrice)
-	case events.RetrievalEventFailure:
+	case events.RetrievalEventFailed:
 		logadd("errorMessage", tevent.ErrorMessage())
 	case events.RetrievalEventSuccess:
 		logadd("receivedSize", tevent.ReceivedSize())
