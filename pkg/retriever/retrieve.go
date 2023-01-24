@@ -158,11 +158,12 @@ func findCandidates(
 		return nil, fmt.Errorf("could not get retrieval candidates for %s: %w", cid, err)
 	}
 
-	eventsCallback(events.CandidatesFound(retrieval.retrievalId, phaseStarted, cid, candidates))
-
 	if len(candidates) == 0 {
+		eventsCallback(events.Failed(retrieval.retrievalId, phaseStarted, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid}, ErrNoCandidates.Error()))
 		return nil, ErrNoCandidates
 	}
+
+	eventsCallback(events.CandidatesFound(retrieval.retrievalId, phaseStarted, cid, candidates))
 
 	acceptableCandidates := make([]types.RetrievalCandidate, 0)
 	for _, candidate := range candidates {
@@ -171,11 +172,12 @@ func findCandidates(
 		}
 	}
 
-	eventsCallback(events.CandidatesFiltered(retrieval.retrievalId, phaseStarted, cid, acceptableCandidates))
-
 	if len(acceptableCandidates) == 0 {
+		eventsCallback(events.Failed(retrieval.retrievalId, phaseStarted, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid}, ErrNoCandidates.Error()))
 		return nil, ErrNoCandidates
 	}
+
+	eventsCallback(events.CandidatesFiltered(retrieval.retrievalId, phaseStarted, cid, acceptableCandidates))
 
 	return acceptableCandidates, nil
 }
