@@ -11,7 +11,9 @@ import (
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-state-types/abi"
+	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/eventrecorder"
+	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/types"
 	qt "github.com/frankban/quicktest"
 	"github.com/ipfs/go-cid"
@@ -57,7 +59,7 @@ func TestEventRecorder(t *testing.T) {
 					MaxPaymentIntervalIncrease: 99,
 					PaymentAddress:             address.TestAddress,
 				}
-				er.QuerySuccess(id, ptime, etime, testCid1, spid, qr)
+				er.RecordEvent(events.QueryAsked(id, ptime, types.NewRetrievalCandidate(spid, testCid1), qr))
 
 				select {
 				case <-ctx.Done():
@@ -75,7 +77,9 @@ func TestEventRecorder(t *testing.T) {
 				verifyStringNode(t, event, "phase", "query")
 				verifyStringNode(t, event, "phaseStartTime", ptime.Format(time.RFC3339Nano))
 				verifyStringNode(t, event, "eventName", "query-asked")
-				verifyStringNode(t, event, "eventTime", etime.Format(time.RFC3339Nano))
+				atime, err := time.Parse(time.RFC3339Nano, nodeToString(t, event, "eventTime"))
+				qt.Assert(t, err, qt.IsNil)
+				qt.Assert(t, etime.Sub(atime) < 50*time.Millisecond, qt.IsTrue)
 
 				detailsNode, err := event.LookupByString("eventDetails")
 				qt.Assert(t, err, qt.IsNil)
@@ -94,7 +98,7 @@ func TestEventRecorder(t *testing.T) {
 		{
 			name: "RetrievalSuccess",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
-				er.RetrievalSuccess(id, ptime, etime, testCid1, spid, uint64(2020), 3030, true)
+				er.RecordEvent(events.Success(id, ptime, types.NewRetrievalCandidate(spid, testCid1), uint64(2020), 3030, 4*time.Second, big.Zero()))
 
 				select {
 				case <-ctx.Done():
@@ -112,20 +116,22 @@ func TestEventRecorder(t *testing.T) {
 				verifyStringNode(t, event, "phase", "retrieval")
 				verifyStringNode(t, event, "phaseStartTime", ptime.Format(time.RFC3339Nano))
 				verifyStringNode(t, event, "eventName", "success")
-				verifyStringNode(t, event, "eventTime", etime.Format(time.RFC3339Nano))
+				atime, err := time.Parse(time.RFC3339Nano, nodeToString(t, event, "eventTime"))
+				qt.Assert(t, err, qt.IsNil)
+				qt.Assert(t, etime.Sub(atime) < 50*time.Millisecond, qt.IsTrue)
 
 				detailsNode, err := event.LookupByString("eventDetails")
 				qt.Assert(t, err, qt.IsNil)
 				qt.Assert(t, detailsNode.Length(), qt.Equals, int64(3))
 				verifyIntNode(t, detailsNode, "receivedSize", 2020)
 				verifyIntNode(t, detailsNode, "receivedCids", 3030)
-				verifyBoolNode(t, detailsNode, "confirmed", true)
+				verifyIntNode(t, detailsNode, "durationMs", 4000)
 			},
 		},
 		{
 			name: "QueryFailure",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
-				er.QueryFailure(id, ptime, etime, testCid1, spid, "ha ha no")
+				er.RecordEvent(events.Failed(id, ptime, types.QueryPhase, types.NewRetrievalCandidate(spid, testCid1), "ha ha no"))
 
 				select {
 				case <-ctx.Done():
@@ -142,7 +148,9 @@ func TestEventRecorder(t *testing.T) {
 				verifyStringNode(t, event, "phase", "query")
 				verifyStringNode(t, event, "phaseStartTime", ptime.Format(time.RFC3339Nano))
 				verifyStringNode(t, event, "eventName", "failure")
-				verifyStringNode(t, event, "eventTime", etime.Format(time.RFC3339Nano))
+				atime, err := time.Parse(time.RFC3339Nano, nodeToString(t, event, "eventTime"))
+				qt.Assert(t, err, qt.IsNil)
+				qt.Assert(t, etime.Sub(atime) < 50*time.Millisecond, qt.IsTrue)
 
 				detailsNode, err := event.LookupByString("eventDetails")
 				qt.Assert(t, err, qt.IsNil)
@@ -153,7 +161,7 @@ func TestEventRecorder(t *testing.T) {
 		{
 			name: "RetrievalFailure",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
-				er.RetrievalFailure(id, ptime, etime, testCid1, spid, "ha ha no, silly silly")
+				er.RecordEvent(events.Failed(id, ptime, types.RetrievalPhase, types.NewRetrievalCandidate(spid, testCid1), "ha ha no, silly silly"))
 
 				select {
 				case <-ctx.Done():
@@ -171,7 +179,9 @@ func TestEventRecorder(t *testing.T) {
 				verifyStringNode(t, event, "phase", "retrieval")
 				verifyStringNode(t, event, "phaseStartTime", ptime.Format(time.RFC3339Nano))
 				verifyStringNode(t, event, "eventName", "failure")
-				verifyStringNode(t, event, "eventTime", etime.Format(time.RFC3339Nano))
+				atime, err := time.Parse(time.RFC3339Nano, nodeToString(t, event, "eventTime"))
+				qt.Assert(t, err, qt.IsNil)
+				qt.Assert(t, etime.Sub(atime) < 50*time.Millisecond, qt.IsTrue)
 
 				detailsNode, err := event.LookupByString("eventDetails")
 				qt.Assert(t, err, qt.IsNil)
@@ -182,7 +192,7 @@ func TestEventRecorder(t *testing.T) {
 		{
 			name: "QueryProgress",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
-				er.QueryProgress(id, ptime, etime, testCid1, spid, types.ConnectedCode)
+				er.RecordEvent(events.Connected(id, ptime, types.QueryPhase, types.NewRetrievalCandidate(spid, testCid1)))
 
 				select {
 				case <-ctx.Done():
@@ -200,13 +210,15 @@ func TestEventRecorder(t *testing.T) {
 				verifyStringNode(t, event, "phase", "query")
 				verifyStringNode(t, event, "phaseStartTime", ptime.Format(time.RFC3339Nano))
 				verifyStringNode(t, event, "eventName", "connected")
-				verifyStringNode(t, event, "eventTime", etime.Format(time.RFC3339Nano))
+				atime, err := time.Parse(time.RFC3339Nano, nodeToString(t, event, "eventTime"))
+				qt.Assert(t, err, qt.IsNil)
+				qt.Assert(t, etime.Sub(atime) < 50*time.Millisecond, qt.IsTrue)
 			},
 		},
 		{
 			name: "RetrievalProgress",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
-				er.RetrievalProgress(id, ptime, etime, testCid1, spid, types.FirstByteCode)
+				er.RecordEvent(events.FirstByte(id, ptime, types.NewRetrievalCandidate(spid, testCid1)))
 
 				select {
 				case <-ctx.Done():
@@ -224,7 +236,9 @@ func TestEventRecorder(t *testing.T) {
 				verifyStringNode(t, event, "phase", "retrieval")
 				verifyStringNode(t, event, "phaseStartTime", ptime.Format(time.RFC3339Nano))
 				verifyStringNode(t, event, "eventName", "first-byte-received")
-				verifyStringNode(t, event, "eventTime", etime.Format(time.RFC3339Nano))
+				atime, err := time.Parse(time.RFC3339Nano, nodeToString(t, event, "eventTime"))
+				qt.Assert(t, err, qt.IsNil)
+				qt.Assert(t, etime.Sub(atime) < 50*time.Millisecond, qt.IsTrue)
 			},
 		},
 	}
@@ -261,11 +275,16 @@ func verifyListElement(t *testing.T, node datamodel.Node, index int64) datamodel
 }
 
 func verifyStringNode(t *testing.T, node datamodel.Node, key string, expected string) {
+	str := nodeToString(t, node, key)
+	qt.Assert(t, str, qt.Equals, expected)
+}
+
+func nodeToString(t *testing.T, node datamodel.Node, key string) string {
 	subNode, err := node.LookupByString(key)
 	qt.Assert(t, err, qt.IsNil)
 	str, err := subNode.AsString()
 	qt.Assert(t, err, qt.IsNil)
-	qt.Assert(t, str, qt.Equals, expected)
+	return str
 }
 
 func verifyIntNode(t *testing.T, node datamodel.Node, key string, expected int64) {
@@ -274,14 +293,6 @@ func verifyIntNode(t *testing.T, node datamodel.Node, key string, expected int64
 	ii, err := subNode.AsInt()
 	qt.Assert(t, err, qt.IsNil)
 	qt.Assert(t, ii, qt.Equals, expected)
-}
-
-func verifyBoolNode(t *testing.T, node datamodel.Node, key string, expected bool) {
-	subNode, err := node.LookupByString(key)
-	qt.Assert(t, err, qt.IsNil)
-	bb, err := subNode.AsBool()
-	qt.Assert(t, err, qt.IsNil)
-	qt.Assert(t, bb, qt.Equals, expected)
 }
 
 func mustCid(cstr string) cid.Cid {
@@ -324,7 +335,6 @@ func TestEventRecorderSlowPost(t *testing.T) {
 	er := eventrecorder.NewEventRecorder(ctx, "test-instance", fmt.Sprintf("%s/test-path/here", ts.URL), authHeaderValue)
 	id, err := types.NewRetrievalID()
 	qt.Assert(t, err, qt.IsNil)
-	etime := time.Now()
 	ptime := time.Now().Add(time.Hour * -1)
 	spid := peer.NewPeerRecord().PeerID
 
@@ -334,7 +344,7 @@ func TestEventRecorderSlowPost(t *testing.T) {
 		requestWg.Add(1)
 		go func() {
 			defer wg.Done()
-			er.RetrievalProgress(id, ptime, etime, testCid1, spid, types.FirstByteCode)
+			er.RecordEvent(events.FirstByte(id, ptime, types.NewRetrievalCandidate(spid, testCid1)))
 		}()
 	}
 	if !waitGroupWait(ctx, &wg) {
