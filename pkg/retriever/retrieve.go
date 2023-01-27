@@ -8,7 +8,6 @@ import (
 	"time"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer/v2"
-	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/types"
@@ -24,10 +23,10 @@ type CandidateErrorCallback func(types.RetrievalCandidate, error)
 
 type GetStorageProviderTimeout func(peer peer.ID) time.Duration
 type IsAcceptableStorageProvider func(peer peer.ID) bool
-type IsAcceptableQueryResponse func(*retrievalmarket.QueryResponse) bool
+type IsAcceptableQueryResponse func(*types.QueryResponse) bool
 
 type queryCandidate struct {
-	*retrievalmarket.QueryResponse
+	*types.QueryResponse
 	Duration time.Duration
 }
 
@@ -257,7 +256,7 @@ func runRetrievalCandidate(ctx context.Context, cfg *RetrievalConfig, client Ret
 
 	if queryResponse != nil {
 		retrieval.sendEvent(events.QueryAsked(retrieval.retrievalId, phaseStartTime, candidate, *queryResponse))
-		if queryResponse.Status != retrievalmarket.QueryResponseAvailable ||
+		if queryResponse.Status != types.QueryResponseAvailable ||
 			(cfg.IsAcceptableQueryResponse != nil && !cfg.IsAcceptableQueryResponse(queryResponse)) {
 			queryResponse = nil
 		}
@@ -285,11 +284,11 @@ func runRetrievalCandidate(ctx context.Context, cfg *RetrievalConfig, client Ret
 					retrieval.sendEvent(events.Proposed(retrieval.retrievalId, phaseStartTime, candidate))
 				case datatransfer.NewVoucherResult:
 					lastVoucher := channelState.LastVoucherResult()
-					resType, err := retrievalmarket.DealResponseFromNode(lastVoucher.Voucher)
+					resType, err := types.DealResponseFromNode(lastVoucher.Voucher)
 					if err != nil {
 						return
 					}
-					if resType.Status == retrievalmarket.DealStatusAccepted {
+					if resType.Status == types.DealStatusAccepted {
 						retrieval.sendEvent(events.Accepted(retrieval.retrievalId, phaseStartTime, candidate))
 					}
 				case datatransfer.DataReceivedProgress:
@@ -380,7 +379,7 @@ func (retrieval *retrieval) sendEvent(event types.RetrievalEvent) {
 	retrieval.sendResult(retrievalResult{PeerID: event.StorageProviderId(), Event: &event})
 }
 
-func totalCost(qres *retrievalmarket.QueryResponse) big.Int {
+func totalCost(qres *types.QueryResponse) big.Int {
 	return big.Add(big.Mul(qres.MinPricePerByte, big.NewIntUnsigned(qres.Size)), qres.UnsealPrice)
 }
 
@@ -395,7 +394,7 @@ func queryPhase(
 	timeout time.Duration,
 	candidate types.RetrievalCandidate,
 	onConnected func(),
-) (*retrievalmarket.QueryResponse, error) {
+) (*types.QueryResponse, error) {
 
 	queryCtx := ctx // separate context so we can capture cancellation vs timeout
 
@@ -429,7 +428,7 @@ func retrievalPhase(
 	client RetrievalClient,
 	timeout time.Duration,
 	candidate types.RetrievalCandidate,
-	queryResponse *retrievalmarket.QueryResponse,
+	queryResponse *types.QueryResponse,
 	eventsCallback datatransfer.Subscriber,
 ) (*types.RetrievalStats, error) {
 	log.Infof(

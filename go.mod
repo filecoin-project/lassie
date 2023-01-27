@@ -8,7 +8,6 @@ require (
 	github.com/filecoin-project/go-address v1.1.0
 	github.com/filecoin-project/go-cbor-util v0.0.1
 	github.com/filecoin-project/go-data-transfer/v2 v2.0.0-rc1.0.20230111032640-1da99777ed8b
-	github.com/filecoin-project/go-fil-markets v1.25.3-0.20230107010325-143abaddd0f3
 	github.com/filecoin-project/go-state-types v0.9.9
 	github.com/filecoin-project/index-provider v0.9.2
 	github.com/frankban/quicktest v1.14.4
@@ -30,11 +29,13 @@ require (
 	github.com/rvagg/go-prioritywaitqueue v1.0.3
 	github.com/stretchr/testify v1.8.1
 	github.com/urfave/cli/v2 v2.23.7
+	github.com/whyrusleeping/cbor-gen v0.0.0-20230126041949-52956bd4c9aa
 	go.opencensus.io v0.24.0
 	go.opentelemetry.io/otel v1.10.0
 	go.opentelemetry.io/otel/trace v1.10.0
 	go.uber.org/multierr v1.8.0
 	golang.org/x/net v0.0.0-20220920183852-bf014ff85ad5
+	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2
 )
 
 require (
@@ -52,10 +53,9 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/elastic/gosigar v0.14.2 // indirect
 	github.com/filecoin-project/go-amt-ipld/v4 v4.0.0 // indirect
-	github.com/filecoin-project/go-bitfield v0.2.4 // indirect
+	github.com/filecoin-project/go-data-transfer v1.15.3 // indirect
 	github.com/filecoin-project/go-ds-versioning v0.1.2 // indirect
 	github.com/filecoin-project/go-hamt-ipld/v3 v3.1.0 // indirect
-	github.com/filecoin-project/go-padreader v0.0.1 // indirect
 	github.com/filecoin-project/go-statemachine v1.0.3 // indirect
 	github.com/filecoin-project/go-statestore v0.2.0 // indirect
 	github.com/flynn/noise v1.0.0 // indirect
@@ -77,6 +77,7 @@ require (
 	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/huin/goupnp v1.0.3 // indirect
 	github.com/ipfs/bbloom v0.0.4 // indirect
+	github.com/ipfs/go-bitswap v0.10.2 // indirect
 	github.com/ipfs/go-blockservice v0.4.0 // indirect
 	github.com/ipfs/go-ipfs-ds-help v1.1.0 // indirect
 	github.com/ipfs/go-ipfs-exchange-interface v0.2.0 // indirect
@@ -152,7 +153,6 @@ require (
 	github.com/spacemonkeygo/spacelog v0.0.0-20180420211403-2296661a0572 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/whyrusleeping/cbor v0.0.0-20171005072247-63513f603b11 // indirect
-	github.com/whyrusleeping/cbor-gen v0.0.0-20220514204315-f29c37e9c44c // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/zap v1.23.0 // indirect
@@ -162,7 +162,6 @@ require (
 	golang.org/x/sync v0.0.0-20220907140024-f12130a52804 // indirect
 	golang.org/x/sys v0.0.0-20220919091848-fb04ddd9f9c8 // indirect
 	golang.org/x/tools v0.1.12 // indirect
-	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
@@ -29,7 +28,7 @@ type EventWithCandidates interface {
 }
 
 type EventWithQueryResponse interface {
-	QueryResponse() retrievalmarket.QueryResponse
+	QueryResponse() types.QueryResponse
 }
 
 type RetrievalEventCandidatesFound struct {
@@ -79,10 +78,10 @@ type RetrievalEventQueryAsked struct {
 	phaseStartTime    time.Time
 	payloadCid        cid.Cid
 	storageProviderId peer.ID
-	queryResponse     retrievalmarket.QueryResponse
+	queryResponse     types.QueryResponse
 }
 
-func QueryAsked(retrievalId types.RetrievalID, phaseStartTime time.Time, candidate types.RetrievalCandidate, queryResponse retrievalmarket.QueryResponse) RetrievalEventQueryAsked {
+func QueryAsked(retrievalId types.RetrievalID, phaseStartTime time.Time, candidate types.RetrievalCandidate, queryResponse types.QueryResponse) RetrievalEventQueryAsked {
 	return RetrievalEventQueryAsked{time.Now(), retrievalId, phaseStartTime, candidate.RootCid, candidate.MinerPeer.ID, queryResponse}
 }
 
@@ -92,10 +91,10 @@ type RetrievalEventQueryAskedFiltered struct {
 	phaseStartTime    time.Time
 	payloadCid        cid.Cid
 	storageProviderId peer.ID
-	queryResponse     retrievalmarket.QueryResponse
+	queryResponse     types.QueryResponse
 }
 
-func QueryAskedFiltered(retrievalId types.RetrievalID, phaseStartTime time.Time, candidate types.RetrievalCandidate, queryResponse retrievalmarket.QueryResponse) RetrievalEventQueryAskedFiltered {
+func QueryAskedFiltered(retrievalId types.RetrievalID, phaseStartTime time.Time, candidate types.RetrievalCandidate, queryResponse types.QueryResponse) RetrievalEventQueryAskedFiltered {
 	return RetrievalEventQueryAskedFiltered{time.Now(), retrievalId, phaseStartTime, candidate.RootCid, candidate.MinerPeer.ID, queryResponse}
 }
 
@@ -229,7 +228,7 @@ func (r RetrievalEventQueryAsked) Phase() types.Phase             { return types
 func (r RetrievalEventQueryAsked) PhaseStartTime() time.Time      { return r.phaseStartTime }
 func (r RetrievalEventQueryAsked) PayloadCid() cid.Cid            { return r.payloadCid }
 func (r RetrievalEventQueryAsked) StorageProviderId() peer.ID     { return r.storageProviderId }
-func (r RetrievalEventQueryAsked) QueryResponse() retrievalmarket.QueryResponse {
+func (r RetrievalEventQueryAsked) QueryResponse() types.QueryResponse {
 	return r.queryResponse
 }
 func (r RetrievalEventQueryAsked) String() string {
@@ -242,7 +241,7 @@ func (r RetrievalEventQueryAskedFiltered) Phase() types.Phase             { retu
 func (r RetrievalEventQueryAskedFiltered) PhaseStartTime() time.Time      { return r.phaseStartTime }
 func (r RetrievalEventQueryAskedFiltered) PayloadCid() cid.Cid            { return r.payloadCid }
 func (r RetrievalEventQueryAskedFiltered) StorageProviderId() peer.ID     { return r.storageProviderId }
-func (r RetrievalEventQueryAskedFiltered) QueryResponse() retrievalmarket.QueryResponse {
+func (r RetrievalEventQueryAskedFiltered) QueryResponse() types.QueryResponse {
 	return r.queryResponse
 } // QueryResponse returns the response from a storage provider to a query-ask
 func (r RetrievalEventQueryAskedFiltered) String() string {

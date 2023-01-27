@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/events"
@@ -58,7 +57,7 @@ func TestRetriever(t *testing.T) {
 				{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid1},
 			},
 			returns_queries: map[string]testutil.DelayedQueryReturn{
-				string(peerA): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 20},
+				string(peerA): {QueryResponse: &types.QueryResponse{Status: types.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 20},
 			},
 			returns_retrievals: map[string]testutil.DelayedRetrievalReturn{
 				string(peerA): {ResultStats: &types.RetrievalStats{
@@ -77,8 +76,8 @@ func TestRetriever(t *testing.T) {
 				events.CandidatesFiltered(rid, ist, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, cid1)}),
 				events.Started(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerA, cid1)),
 				events.Connected(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerA, cid1)),
-				events.QueryAsked(rid, qst, types.NewRetrievalCandidate(peerA, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
-				events.QueryAskedFiltered(rid, qst, types.NewRetrievalCandidate(peerA, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.QueryAsked(rid, qst, types.NewRetrievalCandidate(peerA, cid1), types.QueryResponse{Status: types.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.QueryAskedFiltered(rid, qst, types.NewRetrievalCandidate(peerA, cid1), types.QueryResponse{Status: types.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
 				events.Started(rid, rst, types.RetrievalPhase, types.NewRetrievalCandidate(peerA, cid1)),
 				events.Proposed(rid, rst, types.NewRetrievalCandidate(peerA, cid1)),
 				events.Accepted(rid, rst, types.NewRetrievalCandidate(peerA, cid1)),
@@ -95,8 +94,8 @@ func TestRetriever(t *testing.T) {
 			},
 			returns_queries: map[string]testutil.DelayedQueryReturn{
 				// fastest is blacklisted, shouldn't even touch it
-				string(peerA): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 50},
-				string(peerB): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 5},
+				string(peerA): {QueryResponse: &types.QueryResponse{Status: types.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 50},
+				string(peerB): {QueryResponse: &types.QueryResponse{Status: types.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 5},
 			},
 			returns_retrievals: map[string]testutil.DelayedRetrievalReturn{
 				string(peerB): {ResultStats: &types.RetrievalStats{
@@ -116,8 +115,8 @@ func TestRetriever(t *testing.T) {
 				events.Started(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerB, cid1)),
 				events.Started(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerA, cid1)),
 				events.Connected(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerB, cid1)),
-				events.QueryAsked(rid, qst, types.NewRetrievalCandidate(peerB, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
-				events.QueryAskedFiltered(rid, qst, types.NewRetrievalCandidate(peerB, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.QueryAsked(rid, qst, types.NewRetrievalCandidate(peerB, cid1), types.QueryResponse{Status: types.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.QueryAskedFiltered(rid, qst, types.NewRetrievalCandidate(peerB, cid1), types.QueryResponse{Status: types.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
 				events.Started(rid, rst, types.RetrievalPhase, types.NewRetrievalCandidate(peerB, cid1)),
 				events.Proposed(rid, rst, types.NewRetrievalCandidate(peerB, cid1)),
 				events.Accepted(rid, rst, types.NewRetrievalCandidate(peerB, cid1)),
@@ -134,8 +133,8 @@ func TestRetriever(t *testing.T) {
 			},
 			returns_queries: map[string]testutil.DelayedQueryReturn{
 				// fastest is blacklisted, shouldn't even touch it
-				string(blacklistedPeer): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 1, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 5},
-				string(peerA):           {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 50},
+				string(blacklistedPeer): {QueryResponse: &types.QueryResponse{Status: types.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 1, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 5},
+				string(peerA):           {QueryResponse: &types.QueryResponse{Status: types.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 50},
 			},
 			returns_retrievals: map[string]testutil.DelayedRetrievalReturn{
 				string(peerA): {ResultStats: &types.RetrievalStats{
@@ -154,8 +153,8 @@ func TestRetriever(t *testing.T) {
 				events.CandidatesFiltered(rid, ist, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, cid1)}),
 				events.Started(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerA, cid1)),
 				events.Connected(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerA, cid1)),
-				events.QueryAsked(rid, qst, types.NewRetrievalCandidate(peerA, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
-				events.QueryAskedFiltered(rid, qst, types.NewRetrievalCandidate(peerA, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.QueryAsked(rid, qst, types.NewRetrievalCandidate(peerA, cid1), types.QueryResponse{Status: types.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.QueryAskedFiltered(rid, qst, types.NewRetrievalCandidate(peerA, cid1), types.QueryResponse{Status: types.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
 				events.Started(rid, rst, types.RetrievalPhase, types.NewRetrievalCandidate(peerA, cid1)),
 				events.Proposed(rid, rst, types.NewRetrievalCandidate(peerA, cid1)),
 				events.Accepted(rid, rst, types.NewRetrievalCandidate(peerA, cid1)),
@@ -173,7 +172,7 @@ func TestRetriever(t *testing.T) {
 			returns_queries: map[string]testutil.DelayedQueryReturn{
 				// fastest is blacklisted, shouldn't even touch it
 				string(peerA): {Err: errors.New("blip"), Delay: time.Millisecond * 5},
-				string(peerB): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 50},
+				string(peerB): {QueryResponse: &types.QueryResponse{Status: types.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 50},
 			},
 			returns_retrievals: map[string]testutil.DelayedRetrievalReturn{
 				string(peerB): {ResultStats: &types.RetrievalStats{
@@ -194,8 +193,8 @@ func TestRetriever(t *testing.T) {
 				events.Started(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerB, cid1)),
 				events.Failed(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerA, cid1), "query failed: blip"),
 				events.Connected(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerB, cid1)),
-				events.QueryAsked(rid, qst, types.NewRetrievalCandidate(peerB, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
-				events.QueryAskedFiltered(rid, qst, types.NewRetrievalCandidate(peerB, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.QueryAsked(rid, qst, types.NewRetrievalCandidate(peerB, cid1), types.QueryResponse{Status: types.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.QueryAskedFiltered(rid, qst, types.NewRetrievalCandidate(peerB, cid1), types.QueryResponse{Status: types.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
 				events.Started(rid, rst, types.RetrievalPhase, types.NewRetrievalCandidate(peerB, cid1)),
 				events.Proposed(rid, rst, types.NewRetrievalCandidate(peerB, cid1)),
 				events.Accepted(rid, rst, types.NewRetrievalCandidate(peerB, cid1)),
@@ -212,8 +211,8 @@ func TestRetriever(t *testing.T) {
 			},
 			returns_queries: map[string]testutil.DelayedQueryReturn{
 				// fastest is blacklisted, shouldn't even touch it
-				string(peerA): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 50},
-				string(peerB): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 5},
+				string(peerA): {QueryResponse: &types.QueryResponse{Status: types.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 50},
+				string(peerB): {QueryResponse: &types.QueryResponse{Status: types.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 5},
 			},
 			returns_retrievals: map[string]testutil.DelayedRetrievalReturn{
 				string(peerA): {ResultStats: &types.RetrievalStats{
@@ -234,14 +233,14 @@ func TestRetriever(t *testing.T) {
 				events.Started(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerA, cid1)),
 				events.Connected(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerA, cid1)),
 				events.Started(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerB, cid1)),
-				events.QueryAsked(rid, qst, types.NewRetrievalCandidate(peerB, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
-				events.QueryAskedFiltered(rid, qst, types.NewRetrievalCandidate(peerB, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.QueryAsked(rid, qst, types.NewRetrievalCandidate(peerB, cid1), types.QueryResponse{Status: types.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.QueryAskedFiltered(rid, qst, types.NewRetrievalCandidate(peerB, cid1), types.QueryResponse{Status: types.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
 				events.Started(rid, rst, types.RetrievalPhase, types.NewRetrievalCandidate(peerB, cid1)),
 				events.Proposed(rid, rst, types.NewRetrievalCandidate(peerB, cid1)),
 				events.Failed(rid, rst, types.RetrievalPhase, types.NewRetrievalCandidate(peerB, cid1), "retrieval failed: bork!"),
 				events.Connected(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerB, cid1)),
-				events.QueryAsked(rid, qst, types.NewRetrievalCandidate(peerA, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
-				events.QueryAskedFiltered(rid, qst, types.NewRetrievalCandidate(peerA, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.QueryAsked(rid, qst, types.NewRetrievalCandidate(peerA, cid1), types.QueryResponse{Status: types.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.QueryAskedFiltered(rid, qst, types.NewRetrievalCandidate(peerA, cid1), types.QueryResponse{Status: types.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
 				events.Started(rid, rst, types.RetrievalPhase, types.NewRetrievalCandidate(peerA, cid1)),
 				events.Proposed(rid, rst, types.NewRetrievalCandidate(peerA, cid1)),
 				events.Accepted(rid, rst, types.NewRetrievalCandidate(peerA, cid1)),
@@ -261,8 +260,8 @@ func TestRetriever(t *testing.T) {
 			},
 			returns_queries: map[string]testutil.DelayedQueryReturn{
 				// fastest is blacklisted, shouldn't even touch it
-				string(peerA): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 5},
-				string(peerB): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 50},
+				string(peerA): {QueryResponse: &types.QueryResponse{Status: types.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 5},
+				string(peerB): {QueryResponse: &types.QueryResponse{Status: types.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 50},
 			},
 			returns_retrievals: map[string]testutil.DelayedRetrievalReturn{
 				string(peerA): {ResultStats: &types.RetrievalStats{
@@ -290,12 +289,12 @@ func TestRetriever(t *testing.T) {
 				events.Started(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerA, cid1)),
 				events.Started(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerB, cid1)),
 				events.Connected(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerA, cid1)),
-				events.QueryAsked(rid, qst, types.NewRetrievalCandidate(peerA, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
-				events.QueryAskedFiltered(rid, qst, types.NewRetrievalCandidate(peerA, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.QueryAsked(rid, qst, types.NewRetrievalCandidate(peerA, cid1), types.QueryResponse{Status: types.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.QueryAskedFiltered(rid, qst, types.NewRetrievalCandidate(peerA, cid1), types.QueryResponse{Status: types.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
 				events.Started(rid, rst, types.RetrievalPhase, types.NewRetrievalCandidate(peerA, cid1)),
 				events.Connected(rid, qst, types.QueryPhase, types.NewRetrievalCandidate(peerB, cid1)),
-				events.QueryAsked(rid, qst, types.NewRetrievalCandidate(peerB, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
-				events.QueryAskedFiltered(rid, qst, types.NewRetrievalCandidate(peerB, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.QueryAsked(rid, qst, types.NewRetrievalCandidate(peerB, cid1), types.QueryResponse{Status: types.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
+				events.QueryAskedFiltered(rid, qst, types.NewRetrievalCandidate(peerB, cid1), types.QueryResponse{Status: types.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
 				// delay of 200ms for peerA retrieval happens here, no datatransfer.Open from DT so no ProposedCode event for peerA
 				events.Failed(rid, rst, types.RetrievalPhase, types.NewRetrievalCandidate(peerA, cid1), "timeout after 100ms"),
 				events.Started(rid, rst, types.RetrievalPhase, types.NewRetrievalCandidate(peerB, cid1)),

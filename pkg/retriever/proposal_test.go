@@ -3,8 +3,8 @@ package retriever
 import (
 	"testing"
 
-	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-state-types/abi"
+	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/stretchr/testify/require"
@@ -12,7 +12,7 @@ import (
 
 func TestRetrievalProposalForAsk(t *testing.T) {
 	cid1 := cid.MustParse("bafkqaalb")
-	ask := &retrievalmarket.QueryResponse{
+	ask := &types.QueryResponse{
 		MinPricePerByte:            abi.NewTokenAmount(1),
 		MaxPaymentInterval:         2,
 		MaxPaymentIntervalIncrease: 3,

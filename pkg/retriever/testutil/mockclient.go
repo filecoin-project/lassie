@@ -8,7 +8,6 @@ import (
 
 	"github.com/filecoin-project/go-address"
 	datatransfer "github.com/filecoin-project/go-data-transfer/v2"
-	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime/datamodel"
@@ -22,7 +21,7 @@ var ch1 = datatransfer.ChannelID{
 }
 
 type DelayedQueryReturn struct {
-	QueryResponse *retrievalmarket.QueryResponse
+	QueryResponse *types.QueryResponse
 	Err           error
 	Delay         time.Duration
 }
@@ -42,7 +41,7 @@ type MockClient struct {
 	Returns_retrievals map[string]DelayedRetrievalReturn
 }
 
-func (dfc *MockClient) RetrievalQueryToPeer(ctx context.Context, minerPeer peer.AddrInfo, pcid cid.Cid, onConnected func()) (*retrievalmarket.QueryResponse, error) {
+func (dfc *MockClient) RetrievalQueryToPeer(ctx context.Context, minerPeer peer.AddrInfo, pcid cid.Cid, onConnected func()) (*types.QueryResponse, error) {
 	dfc.lk.Lock()
 	dfc.Received_queriedPeers = append(dfc.Received_queriedPeers, minerPeer.ID)
 	dfc.lk.Unlock()
@@ -58,14 +57,14 @@ func (dfc *MockClient) RetrievalQueryToPeer(ctx context.Context, minerPeer peer.
 		}
 		return dqr.QueryResponse, dqr.Err
 	}
-	return &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseUnavailable}, nil
+	return &types.QueryResponse{Status: types.QueryResponseUnavailable}, nil
 }
 
 func (dfc *MockClient) RetrieveFromPeer(
 	ctx context.Context,
 	peerID peer.ID,
 	minerWallet address.Address,
-	proposal *retrievalmarket.DealProposal,
+	proposal *types.DealProposal,
 	eventsCallback datatransfer.Subscriber,
 	gracefulShutdownRequested <-chan struct{},
 ) (*types.RetrievalStats, error) {
@@ -82,10 +81,10 @@ func (dfc *MockClient) RetrieveFromPeer(
 		}
 		eventsCallback(datatransfer.Event{Code: datatransfer.Open}, nil)
 		if drr.ResultStats != nil {
-			acceptedResponse := &retrievalmarket.DealResponse{
-				Status: retrievalmarket.DealStatusAccepted,
+			acceptedResponse := &types.DealResponse{
+				Status: types.DealStatusAccepted,
 			}
-			acceptedResponseNode := retrievalmarket.BindnodeRegistry.TypeToNode(acceptedResponse)
+			acceptedResponseNode := types.BindnodeRegistry.TypeToNode(acceptedResponse)
 			channelState := &mockChannelState{acceptedResponseNode, 100}
 			eventsCallback(datatransfer.Event{Code: datatransfer.NewVoucherResult}, channelState)
 			eventsCallback(datatransfer.Event{Code: datatransfer.DataReceivedProgress}, channelState)
@@ -155,7 +154,7 @@ func (m *mockChannelState) LastVoucher() datatransfer.TypedVoucher {
 	panic("not implemented")
 }
 func (m *mockChannelState) LastVoucherResult() datatransfer.TypedVoucher {
-	return datatransfer.TypedVoucher{Voucher: m.lastVoucherResult, Type: retrievalmarket.DealResponseType}
+	return datatransfer.TypedVoucher{Voucher: m.lastVoucherResult, Type: types.DealResponseType}
 }
 func (m *mockChannelState) ReceivedCidsTotal() int64 {
 	panic("not implemented")
