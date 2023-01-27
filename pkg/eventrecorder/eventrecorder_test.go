@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/filecoin-project/go-address"
-	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/eventrecorder"
@@ -48,8 +47,8 @@ func TestEventRecorder(t *testing.T) {
 		{
 			name: "QuerySuccess",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
-				qr := retrievalmarket.QueryResponse{
-					Status:                     retrievalmarket.QueryResponseUnavailable,
+				qr := types.QueryResponse{
+					Status:                     types.QueryResponseUnavailable,
 					Size:                       10101,
 					MinPricePerByte:            abi.NewTokenAmount(202020),
 					UnsealPrice:                abi.NewTokenAmount(0),
