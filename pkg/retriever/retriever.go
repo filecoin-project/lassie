@@ -100,10 +100,9 @@ func NewRetriever(
 	return retriever, nil
 }
 
-// Start will start the retriever events system and return a channel that will
-// be closed when startup has completed
-func (retriever *Retriever) Start() chan struct{} {
-	return retriever.eventManager.Start()
+// Start will start the retriever events system
+func (retriever *Retriever) Start() {
+	retriever.eventManager.Start()
 }
 
 // Stop will stop the retriever events system and return a channel that will be

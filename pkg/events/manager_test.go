@@ -17,7 +17,7 @@ import (
 
 func TestEventManager(t *testing.T) {
 	em := events.NewEventManager(context.Background())
-	<-em.Start()
+	em.Start()
 	id := types.RetrievalID(uuid.New())
 	cid := cid.MustParse("bafkqaalb")
 	peerA := peer.ID("A")
