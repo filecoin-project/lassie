@@ -13,6 +13,12 @@ import (
 )
 
 func TestSuspend(t *testing.T) {
+	ret := types.RetrievalID(uuid.New())
+	cid := cid.MustParse("bafkqaalb")
+	testSPA := peer.ID("A")
+	testSPB := peer.ID("B")
+	testSPC := peer.ID("C")
+
 	cfg := &spTrackerConfig{
 		maxFailuresBeforeSuspend: 3,
 		failureHistoryDuration:   time.Millisecond * 50,
@@ -21,14 +27,13 @@ func TestSuspend(t *testing.T) {
 
 	tracker := newSpTracker(cfg)
 
-	testSPA := peer.ID("A")
-	testSPB := peer.ID("B")
-	testSPC := peer.ID("C")
+	assert.True(t, tracker.RegisterRetrieval(ret, cid))
 
 	// Must have max failures + 1 logged and be marked as suspended... and then
 	// no longer be marked as suspended after the suspension duration is up
 	for i := uint(0); i < cfg.maxFailuresBeforeSuspend+1; i++ {
-		tracker.RecordFailure(testSPA)
+		require.NoError(t, tracker.AddToRetrieval(ret, []peer.ID{testSPA}))
+		require.NoError(t, tracker.RecordFailure(testSPA, ret))
 	}
 	require.Len(t, tracker.spm[testSPA].failures, int(cfg.maxFailuresBeforeSuspend+1))
 	require.True(t, tracker.IsSuspended(testSPA))
@@ -41,7 +46,8 @@ func TestSuspend(t *testing.T) {
 
 	// Must have max failures and not be marked as suspended
 	for i := uint(0); i < cfg.maxFailuresBeforeSuspend; i++ {
-		tracker.RecordFailure(testSPB)
+		require.NoError(t, tracker.AddToRetrieval(ret, []peer.ID{testSPB}))
+		require.NoError(t, tracker.RecordFailure(testSPB, ret))
 	}
 	require.Len(t, tracker.spm[testSPB].failures, int(cfg.maxFailuresBeforeSuspend))
 	require.False(t, tracker.IsSuspended(testSPB))
@@ -98,6 +104,32 @@ func TestSPConcurrency(t *testing.T) {
 	require.Equal(t, uint(0), tracker.GetConcurrency(p3))
 
 	assert.NoError(t, tracker.EndRetrieval(ret3))
+	require.Equal(t, uint(0), tracker.GetConcurrency(p1))
+	require.Equal(t, uint(0), tracker.GetConcurrency(p2))
+	require.Equal(t, uint(0), tracker.GetConcurrency(p3))
+
+	// test failures reducing concurrency
+	assert.True(t, tracker.RegisterRetrieval(ret1, cid1))
+	assert.True(t, tracker.RegisterRetrieval(ret2, cid2))
+	require.NoError(t, tracker.AddToRetrieval(ret1, []peer.ID{p1, p2, p3}))
+	require.NoError(t, tracker.AddToRetrieval(ret2, []peer.ID{p1, p2, p3}))
+
+	require.Equal(t, uint(2), tracker.GetConcurrency(p1))
+	require.Equal(t, uint(2), tracker.GetConcurrency(p2))
+	require.Equal(t, uint(2), tracker.GetConcurrency(p3))
+
+	require.NoError(t, tracker.RecordFailure(p1, ret1))
+	require.Equal(t, uint(1), tracker.GetConcurrency(p1))
+	require.Equal(t, uint(2), tracker.GetConcurrency(p2))
+	require.Equal(t, uint(2), tracker.GetConcurrency(p3))
+	require.ErrorContains(t, tracker.RecordFailure(p1, ret1), "no such storage provider")
+
+	assert.NoError(t, tracker.EndRetrieval(ret2))
+	require.Equal(t, uint(0), tracker.GetConcurrency(p1))
+	require.Equal(t, uint(1), tracker.GetConcurrency(p2))
+	require.Equal(t, uint(1), tracker.GetConcurrency(p3))
+
+	assert.NoError(t, tracker.EndRetrieval(ret1))
 	require.Equal(t, uint(0), tracker.GetConcurrency(p1))
 	require.Equal(t, uint(0), tracker.GetConcurrency(p2))
 	require.Equal(t, uint(0), tracker.GetConcurrency(p3))

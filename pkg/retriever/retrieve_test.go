@@ -319,7 +319,7 @@ func TestRetrievalRacing(t *testing.T) {
 			cfg := &RetrievalConfig{
 				GetStorageProviderTimeout:   func(peer peer.ID) time.Duration { return time.Second },
 				IsAcceptableStorageProvider: func(peer peer.ID) bool { return true },
-				IsAcceptableQueryResponse:   func(qr *retrievalmarket.QueryResponse) bool { return true },
+				IsAcceptableQueryResponse:   func(peer peer.ID, qr *retrievalmarket.QueryResponse) bool { return true },
 			}
 
 			retrievingPeers := make([]peer.ID, 0)
@@ -430,7 +430,7 @@ func TestMultipleRetrievals(t *testing.T) {
 	cfg := &RetrievalConfig{
 		GetStorageProviderTimeout:   func(peer peer.ID) time.Duration { return time.Second },
 		IsAcceptableStorageProvider: func(peer peer.ID) bool { return true },
-		IsAcceptableQueryResponse:   func(qr *retrievalmarket.QueryResponse) bool { return true },
+		IsAcceptableQueryResponse:   func(peer peer.ID, qr *retrievalmarket.QueryResponse) bool { return true },
 	}
 
 	candidateQueries := make([]candidateQuery, 0)
