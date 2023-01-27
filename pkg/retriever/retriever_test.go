@@ -362,11 +362,7 @@ func TestRetriever(t *testing.T) {
 			ret.RegisterSubscriber(subscriber.Collect)
 
 			// --- start ---
-			select {
-			case <-ret.Start():
-			case <-time.After(time.Millisecond * 50):
-				require.Fail(t, "timed out waiting for retriever to start")
-			}
+			ret.Start()
 
 			// --- retrieve ---
 			require.NoError(t, err)

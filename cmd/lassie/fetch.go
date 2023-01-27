@@ -173,7 +173,7 @@ func setupRetrieverWithFinder(c *cli.Context, timeout time.Duration, blockstore 
 	if err != nil {
 		return nil, err
 	}
-	<-ret.Start()
+	ret.Start()
 	return ret, nil
 }
 
