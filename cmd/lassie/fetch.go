@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -66,9 +67,8 @@ func Fetch(c *cli.Context) error {
 		outfile = c.String("output")
 	}
 
-	carStore, err := carblockstore.OpenReadWrite(outfile, []cid.Cid{rootCid})
-	if err != nil {
-		return err
+	var parentOpener = func() (*carblockstore.ReadWrite, error) {
+		return carblockstore.OpenReadWrite(outfile, []cid.Cid{rootCid})
 	}
 
 	var blockCount int
@@ -80,7 +80,7 @@ func Fetch(c *cli.Context) error {
 			fmt.Printf("Received %d blocks...\n", blockCount)
 		}
 	}
-	bstore := &putCbBlockstore{parent: carStore, cb: putCb}
+	bstore := &putCbBlockstore{parentOpener: parentOpener, cb: putCb}
 	ret, err := setupRetriever(c, c.Duration("timeout"), bstore)
 	if err != nil {
 		return err
@@ -111,9 +111,7 @@ func Fetch(c *cli.Context) error {
 		humanize.IBytes(stats.Size),
 	)
 
-	carStore.Finalize()
-
-	return nil
+	return bstore.Finalize()
 }
 
 func setupRetriever(c *cli.Context, timeout time.Duration, blockstore blockstore.Blockstore) (*retriever.Retriever, error) {
@@ -158,35 +156,89 @@ func setupRetriever(c *cli.Context, timeout time.Duration, blockstore blockstore
 var _ blockstore.Blockstore = (*putCbBlockstore)(nil)
 
 type putCbBlockstore struct {
-	parent blockstore.Blockstore
+	// parentOpener lazily opens the parent blockstore upon first call to this blockstore.
+	// This avoids blockstore instantiation until there is some interaction from the retriever.
+	// In the case of CARv2 blockstores, this will avoid creation of empty .car files should
+	// the retriever fail to find any candidates.
+	parentOpener func() (*carblockstore.ReadWrite, error)
+	// parent is lazily instantiated and should not be directly used; use parentBlockstore instead.
+	parent *carblockstore.ReadWrite
 	cb     func(putCount int)
 }
 
 func (pcb *putCbBlockstore) DeleteBlock(ctx context.Context, cid cid.Cid) error {
-	return pcb.parent.DeleteBlock(ctx, cid)
+	pbs, err := pcb.parentBlockstore()
+	if err != nil {
+		return err
+	}
+	return pbs.DeleteBlock(ctx, cid)
 }
 func (pcb *putCbBlockstore) Has(ctx context.Context, cid cid.Cid) (bool, error) {
-	return pcb.parent.Has(ctx, cid)
+	pbs, err := pcb.parentBlockstore()
+	if err != nil {
+		return false, err
+	}
+	return pbs.Has(ctx, cid)
 }
 func (pcb *putCbBlockstore) Get(ctx context.Context, cid cid.Cid) (blocks.Block, error) {
-	return pcb.parent.Get(ctx, cid)
+	pbs, err := pcb.parentBlockstore()
+	if err != nil {
+		return nil, err
+	}
+	return pbs.Get(ctx, cid)
 }
 func (pcb *putCbBlockstore) GetSize(ctx context.Context, cid cid.Cid) (int, error) {
-	return pcb.parent.GetSize(ctx, cid)
+	pbs, err := pcb.parentBlockstore()
+	if err != nil {
+		return 0, err
+	}
+	return pbs.GetSize(ctx, cid)
 }
 func (pcb *putCbBlockstore) Put(ctx context.Context, block blocks.Block) error {
+	pbs, err := pcb.parentBlockstore()
+	if err != nil {
+		return err
+	}
 	pcb.cb(1)
-	return pcb.parent.Put(ctx, block)
+	return pbs.Put(ctx, block)
 }
 func (pcb *putCbBlockstore) PutMany(ctx context.Context, blocks []blocks.Block) error {
+	pbs, err := pcb.parentBlockstore()
+	if err != nil {
+		return err
+	}
 	pcb.cb(len(blocks))
-	return pcb.parent.PutMany(ctx, blocks)
+	return pbs.PutMany(ctx, blocks)
 }
 func (pcb *putCbBlockstore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
-	return pcb.parent.AllKeysChan(ctx)
+	pbs, err := pcb.parentBlockstore()
+	if err != nil {
+		return nil, err
+	}
+	return pbs.AllKeysChan(ctx)
 }
 func (pcb *putCbBlockstore) HashOnRead(enabled bool) {
-	pcb.parent.HashOnRead(enabled)
+	if pbs, err := pcb.parentBlockstore(); err != nil {
+		log.Printf("Failed to instantiate blockstore while setting HashOnRead: %v\n", err)
+	} else {
+		pbs.HashOnRead(enabled)
+	}
+}
+func (pcb *putCbBlockstore) Finalize() error {
+	if pbs, err := pcb.parentBlockstore(); err != nil {
+		return err
+	} else {
+		return pbs.Finalize()
+	}
+}
+func (pcb *putCbBlockstore) parentBlockstore() (*carblockstore.ReadWrite, error) {
+	if pcb.parent == nil {
+		var err error
+		if pcb.parent, err = pcb.parentOpener(); err != nil {
+			return nil, err
+		}
+	}
+	return pcb.parent, nil
 }
 
 var _ retriever.RetrievalEventListener = (*progressPrinter)(nil)
