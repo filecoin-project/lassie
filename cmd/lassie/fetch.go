@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -15,11 +17,11 @@ import (
 	"github.com/filecoin-project/lassie/pkg/indexerlookup"
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/types"
-	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	dss "github.com/ipfs/go-datastore/sync"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
+	blocks "github.com/ipfs/go-libipfs/blocks"
 	carblockstore "github.com/ipld/go-car/v2/blockstore"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
@@ -67,8 +69,16 @@ func Fetch(c *cli.Context) error {
 		outfile = c.String("output")
 	}
 
-	var parentOpener = func() (*carblockstore.ReadWrite, error) {
-		return carblockstore.OpenReadWrite(outfile, []cid.Cid{rootCid})
+	var parentOpener = func() (blockstore.Blockstore, io.Closer, error) {
+		f, err := os.OpenFile(outfile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+		if err != nil {
+			return nil, nil, err
+		}
+		bs, err := carblockstore.CreateWriteOnlyV1(f, []cid.Cid{rootCid})
+		if err != nil {
+			return nil, nil, f.Close()
+		}
+		return bs, f, err
 	}
 
 	var blockCount int
@@ -160,9 +170,10 @@ type putCbBlockstore struct {
 	// This avoids blockstore instantiation until there is some interaction from the retriever.
 	// In the case of CARv2 blockstores, this will avoid creation of empty .car files should
 	// the retriever fail to find any candidates.
-	parentOpener func() (*carblockstore.ReadWrite, error)
+	parentOpener func() (blockstore.Blockstore, io.Closer, error)
 	// parent is lazily instantiated and should not be directly used; use parentBlockstore instead.
-	parent *carblockstore.ReadWrite
+	parent blockstore.Blockstore
+	closer io.Closer
 	cb     func(putCount int)
 }
 
@@ -225,16 +236,16 @@ func (pcb *putCbBlockstore) HashOnRead(enabled bool) {
 	}
 }
 func (pcb *putCbBlockstore) Finalize() error {
-	if pbs, err := pcb.parentBlockstore(); err != nil {
-		return err
-	} else {
-		return pbs.Finalize()
+	if pcb.closer != nil {
+		return pcb.closer.Close()
 	}
+	return nil
 }
-func (pcb *putCbBlockstore) parentBlockstore() (*carblockstore.ReadWrite, error) {
+
+func (pcb *putCbBlockstore) parentBlockstore() (blockstore.Blockstore, error) {
 	if pcb.parent == nil {
 		var err error
-		if pcb.parent, err = pcb.parentOpener(); err != nil {
+		if pcb.parent, pcb.closer, err = pcb.parentOpener(); err != nil {
 			return nil, err
 		}
 	}
