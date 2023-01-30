@@ -26,6 +26,8 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+var fetchProviderAddrInfo *peer.AddrInfo
+
 var fetchCmd = &cli.Command{
 	Name:   "fetch",
 	Usage:  "fetch content from Filecoin",
@@ -47,6 +49,16 @@ var fetchCmd = &cli.Command{
 			Name:    "progress",
 			Aliases: []string{"p"},
 			Usage:   "Print progress output",
+		},
+		&cli.StringFlag{
+			Name:        "provider",
+			DefaultText: "The provider will be discovered automatically",
+			Usage:       "The provider addr including its peer ID. Example: /ip4/1.2.3.4/tcp/1234/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4",
+			Action: func(cctx *cli.Context, v string) error {
+				var err error
+				fetchProviderAddrInfo, err = peer.AddrInfoFromString(v)
+				return err
+			},
 		},
 	},
 }
@@ -80,13 +92,24 @@ func Fetch(c *cli.Context) error {
 			fmt.Printf("Received %d blocks...\n", blockCount)
 		}
 	}
+	timeout := c.Duration("timeout")
 	bstore := &putCbBlockstore{parentOpener: parentOpener, cb: putCb}
-	ret, err := setupRetriever(c, c.Duration("timeout"), bstore)
+
+	var ret *retriever.Retriever
+	if fetchProviderAddrInfo == nil {
+		ret, err = setupRetriever(c, timeout, bstore)
+	} else {
+		ret, err = setupRetrieverWithFinder(c, timeout, bstore, explicitCandidateFinder{provider: *fetchProviderAddrInfo})
+	}
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("Fetching %s", rootCid)
+	if fetchProviderAddrInfo == nil {
+		fmt.Printf("Fetching %s", rootCid)
+	} else {
+		fmt.Printf("Fetching %s from %s", rootCid, fetchProviderAddrInfo.String())
+	}
 	if progress {
 		fmt.Println()
 		ret.RegisterListener(&progressPrinter{})
@@ -115,6 +138,10 @@ func Fetch(c *cli.Context) error {
 }
 
 func setupRetriever(c *cli.Context, timeout time.Duration, blockstore blockstore.Blockstore) (*retriever.Retriever, error) {
+	return setupRetrieverWithFinder(c, timeout, blockstore, indexerlookup.NewCandidateFinder("https://cid.contact"))
+}
+
+func setupRetrieverWithFinder(c *cli.Context, timeout time.Duration, blockstore blockstore.Blockstore, finder retriever.CandidateFinder) (*retriever.Retriever, error) {
 	datastore := dss.MutexWrap(datastore.NewMapDatastore())
 
 	host, err := internal.InitHost(c.Context, multiaddr.StringCast("/ip4/0.0.0.0/tcp/6746"))
@@ -132,8 +159,6 @@ func setupRetriever(c *cli.Context, timeout time.Duration, blockstore blockstore
 		return nil, err
 	}
 
-	indexer := indexerlookup.NewCandidateFinder("https://cid.contact")
-
 	confirmer := func(cid cid.Cid) (bool, error) {
 		return blockstore.Has(c.Context, cid)
 	}
@@ -144,7 +169,7 @@ func setupRetriever(c *cli.Context, timeout time.Duration, blockstore blockstore
 		},
 	}
 
-	ret, err := retriever.NewRetriever(c.Context, retrieverCfg, retrievalClient, indexer, confirmer)
+	ret, err := retriever.NewRetriever(c.Context, retrieverCfg, retrievalClient, finder, confirmer)
 	if err != nil {
 		return nil, err
 	}
@@ -261,7 +286,11 @@ func (pp *progressPrinter) IndexerCandidates(retrievalId types.RetrievalID, phas
 		} else if pp.candidatesFound == 1 {
 			num = "it"
 		}
-		fmt.Printf("Found %d storage providers candidates from the indexer, querying %s:\n", pp.candidatesFound, num)
+		if fetchProviderAddrInfo == nil {
+			fmt.Printf("Found %d storage providers candidates from the indexer, querying %s:\n", pp.candidatesFound, num)
+		} else {
+			fmt.Printf("Using the explicitly specified storage provider, querying %s:\n", num)
+		}
 		for _, id := range storageProviderIds {
 			fmt.Printf("\t%s\n", id)
 		}
@@ -283,4 +312,19 @@ func (progressPrinter) RetrievalSuccess(retrievalId types.RetrievalID, phaseStar
 }
 func (progressPrinter) RetrievalFailure(retrievalId types.RetrievalID, phaseStartTime, eventTime time.Time, requestedCid cid.Cid, storageProviderId peer.ID, errString string) {
 	fmt.Printf("Retrieval failure for [%s]: %s\n", storageProviderId, errString)
+}
+
+var _ retriever.CandidateFinder = (*explicitCandidateFinder)(nil)
+
+type explicitCandidateFinder struct {
+	provider peer.AddrInfo
+}
+
+func (e explicitCandidateFinder) FindCandidates(_ context.Context, c cid.Cid) ([]types.RetrievalCandidate, error) {
+	return []types.RetrievalCandidate{
+		{
+			MinerPeer: e.provider,
+			RootCid:   c,
+		},
+	}, nil
 }
