@@ -10,7 +10,7 @@ import (
 	datatransfer "github.com/filecoin-project/go-data-transfer/v2"
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-state-types/big"
-	"github.com/filecoin-project/lassie/pkg/eventpublisher"
+	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -74,13 +74,14 @@ type retrievalResult struct {
 	PeerID     peer.ID
 	PhaseStart time.Time
 	Stats      *types.RetrievalStats
-	Event      *eventpublisher.RetrievalEvent
+	Event      *types.RetrievalEvent
 	Err        error
 }
 
 // retrieval handles state on a per-retrieval (across multiple candidates) basis
 type retrieval struct {
 	cid                cid.Cid
+	retrievalId        types.RetrievalID
 	waitQueue          prioritywaitqueue.PriorityWaitQueue[*queryCandidate]
 	retrievalStartTime time.Time
 	resultChan         chan retrievalResult
@@ -95,23 +96,25 @@ func RetrieveFromCandidates(
 	cfg *RetrievalConfig,
 	candidateFinder CandidateFinder,
 	client RetrievalClient,
+	retrievalId types.RetrievalID,
 	cid cid.Cid,
-	eventsCallback func(eventpublisher.RetrievalEvent),
+	eventsCallback func(types.RetrievalEvent),
 ) (*types.RetrievalStats, error) {
 
 	if cfg == nil {
 		cfg = &RetrievalConfig{}
 	}
 	if eventsCallback == nil {
-		eventsCallback = func(re eventpublisher.RetrievalEvent) {}
+		eventsCallback = func(re types.RetrievalEvent) {}
 	}
 
 	// state local to this CID's retrieval
 	retrieval := &retrieval{
-		cid:        cid,
-		resultChan: make(chan retrievalResult),
-		finishChan: make(chan struct{}),
-		waitQueue:  prioritywaitqueue.New(queryCompare),
+		cid:         cid,
+		retrievalId: retrievalId,
+		resultChan:  make(chan retrievalResult),
+		finishChan:  make(chan struct{}),
+		waitQueue:   prioritywaitqueue.New(queryCompare),
 	}
 
 	ctx, cancelCtx := context.WithCancel(ctx)
@@ -144,22 +147,23 @@ func findCandidates(
 	retrieval *retrieval,
 	candidateFinder CandidateFinder,
 	cid cid.Cid,
-	eventsCallback func(eventpublisher.RetrievalEvent),
+	eventsCallback func(types.RetrievalEvent),
 ) ([]types.RetrievalCandidate, error) {
 	phaseStarted := time.Now()
 
-	eventsCallback(eventpublisher.Started(phaseStarted, eventpublisher.IndexerPhase, types.RetrievalCandidate{RootCid: cid}))
+	eventsCallback(events.Started(retrieval.retrievalId, phaseStarted, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid}))
 
 	candidates, err := candidateFinder.FindCandidates(ctx, cid)
 	if err != nil {
 		return nil, fmt.Errorf("could not get retrieval candidates for %s: %w", cid, err)
 	}
 
-	eventsCallback(eventpublisher.CandidatesFound(phaseStarted, cid, candidates))
-
 	if len(candidates) == 0 {
+		eventsCallback(events.Failed(retrieval.retrievalId, phaseStarted, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid}, ErrNoCandidates.Error()))
 		return nil, ErrNoCandidates
 	}
+
+	eventsCallback(events.CandidatesFound(retrieval.retrievalId, phaseStarted, cid, candidates))
 
 	acceptableCandidates := make([]types.RetrievalCandidate, 0)
 	for _, candidate := range candidates {
@@ -168,11 +172,12 @@ func findCandidates(
 		}
 	}
 
-	eventsCallback(eventpublisher.CandidatesFiltered(phaseStarted, cid, acceptableCandidates))
-
 	if len(acceptableCandidates) == 0 {
+		eventsCallback(events.Failed(retrieval.retrievalId, phaseStarted, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid}, ErrNoCandidates.Error()))
 		return nil, ErrNoCandidates
 	}
+
+	eventsCallback(events.CandidatesFiltered(retrieval.retrievalId, phaseStarted, cid, acceptableCandidates))
 
 	return acceptableCandidates, nil
 }
@@ -180,7 +185,7 @@ func findCandidates(
 // collectResults is responsible for receiving query errors, retrieval errors
 // and retrieval results and aggregating into an appropriate return of either
 // a complete RetrievalStats or an bundled multi-error
-func collectResults(ctx context.Context, retrieval *retrieval, expectedCandidates int, eventsCallback func(eventpublisher.RetrievalEvent)) (*types.RetrievalStats, error) {
+func collectResults(ctx context.Context, retrieval *retrieval, expectedCandidates int, eventsCallback func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
 	var finishedCount int
 	var queryErrors error
 	var retrievalErrors error
@@ -239,19 +244,19 @@ func runRetrievalCandidate(ctx context.Context, cfg *RetrievalConfig, client Ret
 	var retrievalErr error
 	var done func()
 
-	retrieval.sendEvent(eventpublisher.Started(phaseStartTime, eventpublisher.QueryPhase, candidate))
+	retrieval.sendEvent(events.Started(retrieval.retrievalId, phaseStartTime, types.QueryPhase, candidate))
 
 	// run the query phase
 	onConnected := func() {
-		retrieval.sendEvent(eventpublisher.Connect(phaseStartTime, eventpublisher.QueryPhase, candidate))
+		retrieval.sendEvent(events.Connected(retrieval.retrievalId, phaseStartTime, types.QueryPhase, candidate))
 	}
 	queryResponse, queryErr := queryPhase(ctx, cfg, client, timeout, candidate, onConnected)
 	if queryErr != nil {
-		retrieval.sendEvent(eventpublisher.Failure(phaseStartTime, eventpublisher.QueryPhase, candidate, queryErr.Error()))
+		retrieval.sendEvent(events.Failed(retrieval.retrievalId, phaseStartTime, types.QueryPhase, candidate, queryErr.Error()))
 	}
 
 	if queryResponse != nil {
-		retrieval.sendEvent(eventpublisher.QueryAsk(phaseStartTime, candidate, *queryResponse))
+		retrieval.sendEvent(events.QueryAsked(retrieval.retrievalId, phaseStartTime, candidate, *queryResponse))
 		if queryResponse.Status != retrievalmarket.QueryResponseAvailable ||
 			(cfg.IsAcceptableQueryResponse != nil && !cfg.IsAcceptableQueryResponse(queryResponse)) {
 			queryResponse = nil
@@ -259,7 +264,7 @@ func runRetrievalCandidate(ctx context.Context, cfg *RetrievalConfig, client Ret
 	}
 
 	if queryResponse != nil {
-		retrieval.sendEvent(eventpublisher.QueryAskFiltered(phaseStartTime, candidate, *queryResponse))
+		retrieval.sendEvent(events.QueryAskedFiltered(retrieval.retrievalId, phaseStartTime, candidate, *queryResponse))
 
 		// if query is successful, then wait for priority and execute retrieval
 		done = retrieval.waitQueue.Wait(&queryCandidate{queryResponse, time.Since(phaseStartTime)})
@@ -277,7 +282,7 @@ func runRetrievalCandidate(ctx context.Context, cfg *RetrievalConfig, client Ret
 			eventsCallback := func(event datatransfer.Event, channelState datatransfer.ChannelState) {
 				switch event.Code {
 				case datatransfer.Open:
-					retrieval.sendEvent(eventpublisher.Proposed(phaseStartTime, candidate))
+					retrieval.sendEvent(events.Proposed(retrieval.retrievalId, phaseStartTime, candidate))
 				case datatransfer.NewVoucherResult:
 					lastVoucher := channelState.LastVoucherResult()
 					resType, err := retrievalmarket.DealResponseFromNode(lastVoucher.Voucher)
@@ -285,17 +290,17 @@ func runRetrievalCandidate(ctx context.Context, cfg *RetrievalConfig, client Ret
 						return
 					}
 					if resType.Status == retrievalmarket.DealStatusAccepted {
-						retrieval.sendEvent(eventpublisher.Accepted(phaseStartTime, candidate))
+						retrieval.sendEvent(events.Accepted(retrieval.retrievalId, phaseStartTime, candidate))
 					}
 				case datatransfer.DataReceivedProgress:
 					if !receivedFirstByte {
 						receivedFirstByte = true
-						retrieval.sendEvent(eventpublisher.FirstByte(phaseStartTime, candidate))
+						retrieval.sendEvent(events.FirstByte(retrieval.retrievalId, phaseStartTime, candidate))
 					}
 				}
 			}
 
-			retrieval.sendEvent(eventpublisher.Started(phaseStartTime, eventpublisher.RetrievalPhase, candidate))
+			retrieval.sendEvent(events.Started(retrieval.retrievalId, phaseStartTime, types.RetrievalPhase, candidate))
 
 			stats, retrievalErr = retrievalPhase(ctx, cfg, client, timeout, candidate, queryResponse, eventsCallback)
 
@@ -304,9 +309,10 @@ func runRetrievalCandidate(ctx context.Context, cfg *RetrievalConfig, client Ret
 				if errors.Is(retrievalErr, ErrRetrievalTimedOut) {
 					msg = fmt.Sprintf("timeout after %s", timeout)
 				}
-				retrieval.sendEvent(eventpublisher.Failure(phaseStartTime, eventpublisher.RetrievalPhase, candidate, msg))
+				retrieval.sendEvent(events.Failed(retrieval.retrievalId, phaseStartTime, types.RetrievalPhase, candidate, msg))
 			} else {
-				retrieval.sendEvent(eventpublisher.Success(
+				retrieval.sendEvent(events.Success(
+					retrieval.retrievalId,
 					phaseStartTime,
 					candidate,
 					stats.Size,
@@ -370,7 +376,7 @@ func (retrieval *retrieval) sendResult(result retrievalResult) bool {
 	return true
 }
 
-func (retrieval *retrieval) sendEvent(event eventpublisher.RetrievalEvent) {
+func (retrieval *retrieval) sendEvent(event types.RetrievalEvent) {
 	retrieval.sendResult(retrievalResult{PeerID: event.StorageProviderId(), Event: &event})
 }
 
