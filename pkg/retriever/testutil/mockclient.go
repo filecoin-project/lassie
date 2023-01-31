@@ -11,6 +11,7 @@ import (
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
+	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
@@ -34,20 +35,85 @@ type DelayedRetrievalReturn struct {
 }
 
 type MockClient struct {
-	lk                      sync.Mutex
-	Received_queriedPeers   []peer.ID
-	Received_retrievedPeers []peer.ID
+	lk                            sync.Mutex
+	received_queriedPeers         []peer.ID
+	received_retrievedPeers       []peer.ID
+	received_retrievedLinkSystems []ipld.LinkSystem
 
-	Returns_queries    map[string]DelayedQueryReturn
-	Returns_retrievals map[string]DelayedRetrievalReturn
+	returns_queries    map[string]DelayedQueryReturn
+	returns_retrievals map[string]DelayedRetrievalReturn
 }
 
-func (dfc *MockClient) RetrievalQueryToPeer(ctx context.Context, minerPeer peer.AddrInfo, pcid cid.Cid, onConnected func()) (*retrievalmarket.QueryResponse, error) {
-	dfc.lk.Lock()
-	dfc.Received_queriedPeers = append(dfc.Received_queriedPeers, minerPeer.ID)
-	dfc.lk.Unlock()
+func NewMockClient(queryReturns map[string]DelayedQueryReturn, retrievalReturns map[string]DelayedRetrievalReturn) *MockClient {
+	return &MockClient{
+		returns_queries:    queryReturns,
+		returns_retrievals: retrievalReturns,
+	}
+}
 
-	if dqr, ok := dfc.Returns_queries[string(minerPeer.ID)]; ok {
+func (mc *MockClient) GetReceivedQueries() []peer.ID {
+	mc.lk.Lock()
+	defer mc.lk.Unlock()
+	return append([]peer.ID{}, mc.received_queriedPeers...)
+}
+
+func (mc *MockClient) GetReceivedRetrievals() []peer.ID {
+	mc.lk.Lock()
+	defer mc.lk.Unlock()
+	return append([]peer.ID{}, mc.received_retrievedPeers...)
+}
+
+func (mc *MockClient) GetReceivedLinkSystems() []ipld.LinkSystem {
+	mc.lk.Lock()
+	defer mc.lk.Unlock()
+	return append([]ipld.LinkSystem{}, mc.received_retrievedLinkSystems...)
+}
+
+func (mc *MockClient) GetRetrievalReturns() map[string]DelayedRetrievalReturn {
+	mc.lk.Lock()
+	defer mc.lk.Unlock()
+	ret := make(map[string]DelayedRetrievalReturn, 0)
+	for k, v := range mc.returns_retrievals {
+		ret[k] = v
+	}
+	return ret
+}
+
+func (mc *MockClient) GetQueryReturns() map[string]DelayedQueryReturn {
+	mc.lk.Lock()
+	defer mc.lk.Unlock()
+	ret := make(map[string]DelayedQueryReturn, 0)
+	for k, v := range mc.returns_queries {
+		ret[k] = v
+	}
+	return ret
+}
+
+func (mc *MockClient) SetQueryReturns(queryReturns map[string]DelayedQueryReturn) {
+	mc.lk.Lock()
+	defer mc.lk.Unlock()
+	mc.returns_queries = queryReturns
+}
+
+func (mc *MockClient) SetRetrievalReturns(retrievalReturns map[string]DelayedRetrievalReturn) {
+	mc.lk.Lock()
+	defer mc.lk.Unlock()
+	mc.returns_retrievals = retrievalReturns
+}
+
+func (mc *MockClient) RetrievalQueryToPeer(
+	ctx context.Context,
+	minerPeer peer.AddrInfo,
+	pcid cid.Cid,
+	onConnected func(),
+) (*retrievalmarket.QueryResponse, error) {
+
+	mc.lk.Lock()
+	mc.received_queriedPeers = append(mc.received_queriedPeers, minerPeer.ID)
+	dqr, has := mc.returns_queries[string(minerPeer.ID)]
+	mc.lk.Unlock()
+
+	if has {
 		select {
 		case <-ctx.Done():
 			return nil, context.Canceled
@@ -61,18 +127,22 @@ func (dfc *MockClient) RetrievalQueryToPeer(ctx context.Context, minerPeer peer.
 	return &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseUnavailable}, nil
 }
 
-func (dfc *MockClient) RetrieveFromPeer(
+func (mc *MockClient) RetrieveFromPeer(
 	ctx context.Context,
+	linkSystem ipld.LinkSystem,
 	peerID peer.ID,
 	minerWallet address.Address,
 	proposal *retrievalmarket.DealProposal,
 	eventsCallback datatransfer.Subscriber,
 	gracefulShutdownRequested <-chan struct{},
 ) (*types.RetrievalStats, error) {
-	dfc.lk.Lock()
-	dfc.Received_retrievedPeers = append(dfc.Received_retrievedPeers, peerID)
-	dfc.lk.Unlock()
-	if drr, ok := dfc.Returns_retrievals[string(peerID)]; ok {
+	mc.lk.Lock()
+	mc.received_retrievedPeers = append(mc.received_retrievedPeers, peerID)
+	mc.received_retrievedLinkSystems = append(mc.received_retrievedLinkSystems, linkSystem)
+	drr, has := mc.returns_retrievals[string(peerID)]
+	mc.lk.Unlock()
+
+	if has {
 		select {
 		case <-ctx.Done():
 			return nil, context.Canceled

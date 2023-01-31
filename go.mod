@@ -7,7 +7,7 @@ require (
 	github.com/dustin/go-humanize v1.0.0
 	github.com/filecoin-project/go-address v1.1.0
 	github.com/filecoin-project/go-cbor-util v0.0.1
-	github.com/filecoin-project/go-data-transfer/v2 v2.0.0-rc1.0.20230111032640-1da99777ed8b
+	github.com/filecoin-project/go-data-transfer/v2 v2.0.0-rc2
 	github.com/filecoin-project/go-fil-markets v1.25.3-0.20230107010325-143abaddd0f3
 	github.com/filecoin-project/go-state-types v0.9.9
 	github.com/filecoin-project/index-provider v0.9.2
@@ -20,6 +20,7 @@ require (
 	github.com/ipfs/go-datastore v0.6.0
 	github.com/ipfs/go-graphsync v0.14.0
 	github.com/ipfs/go-ipfs-blockstore v1.2.0
+	github.com/ipfs/go-ipld-format v0.4.0
 	github.com/ipfs/go-log/v2 v2.5.1
 	github.com/ipld/go-car/v2 v2.5.1
 	github.com/ipld/go-ipld-prime v0.19.0
@@ -83,7 +84,6 @@ require (
 	github.com/ipfs/go-ipfs-pq v0.0.2 // indirect
 	github.com/ipfs/go-ipfs-util v0.0.2 // indirect
 	github.com/ipfs/go-ipld-cbor v0.0.6 // indirect
-	github.com/ipfs/go-ipld-format v0.4.0 // indirect
 	github.com/ipfs/go-ipld-legacy v0.1.1 // indirect
 	github.com/ipfs/go-log v1.0.5 // indirect
 	github.com/ipfs/go-merkledag v0.8.1 // indirect

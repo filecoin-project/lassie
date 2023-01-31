@@ -18,6 +18,7 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	dss "github.com/ipfs/go-datastore/sync"
+	"github.com/ipfs/go-graphsync/storeutil"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	carblockstore "github.com/ipld/go-car/v2/blockstore"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -96,11 +97,13 @@ func Fetch(c *cli.Context) error {
 	timeout := c.Duration("timeout")
 	bstore := &putCbBlockstore{parentOpener: parentOpener, cb: putCb}
 
+	linkSystem := storeutil.LinkSystemForBlockstore(bstore)
+
 	var ret *retriever.Retriever
 	if fetchProviderAddrInfo == nil {
-		ret, err = setupRetriever(c, timeout, bstore)
+		ret, err = setupRetriever(c, timeout)
 	} else {
-		ret, err = setupRetrieverWithFinder(c, timeout, bstore, explicitCandidateFinder{provider: *fetchProviderAddrInfo})
+		ret, err = setupRetrieverWithFinder(c, timeout, explicitCandidateFinder{provider: *fetchProviderAddrInfo})
 	}
 	if err != nil {
 		return err
@@ -120,7 +123,7 @@ func Fetch(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	stats, err := ret.Retrieve(c.Context, retrievalId, rootCid)
+	stats, err := ret.Retrieve(c.Context, linkSystem, retrievalId, rootCid)
 	if err != nil {
 		fmt.Println()
 		return err
@@ -139,11 +142,11 @@ func Fetch(c *cli.Context) error {
 	return bstore.Finalize()
 }
 
-func setupRetriever(c *cli.Context, timeout time.Duration, blockstore blockstore.Blockstore) (*retriever.Retriever, error) {
-	return setupRetrieverWithFinder(c, timeout, blockstore, indexerlookup.NewCandidateFinder("https://cid.contact"))
+func setupRetriever(c *cli.Context, timeout time.Duration) (*retriever.Retriever, error) {
+	return setupRetrieverWithFinder(c, timeout, indexerlookup.NewCandidateFinder("https://cid.contact"))
 }
 
-func setupRetrieverWithFinder(c *cli.Context, timeout time.Duration, blockstore blockstore.Blockstore, finder retriever.CandidateFinder) (*retriever.Retriever, error) {
+func setupRetrieverWithFinder(c *cli.Context, timeout time.Duration, finder retriever.CandidateFinder) (*retriever.Retriever, error) {
 	datastore := dss.MutexWrap(datastore.NewMapDatastore())
 
 	host, err := internal.InitHost(c.Context, multiaddr.StringCast("/ip4/0.0.0.0/tcp/6746"))
@@ -151,12 +154,7 @@ func setupRetrieverWithFinder(c *cli.Context, timeout time.Duration, blockstore 
 		return nil, err
 	}
 
-	retrievalClient, err := client.NewClient(
-		blockstore,
-		datastore,
-		host,
-		nil,
-	)
+	retrievalClient, err := client.NewClient(datastore, host, nil)
 	if err != nil {
 		return nil, err
 	}
