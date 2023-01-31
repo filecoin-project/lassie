@@ -8,6 +8,7 @@ import (
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
+	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
@@ -21,6 +22,7 @@ type RetrievalClient interface {
 
 	RetrieveFromPeer(
 		ctx context.Context,
+		linkSystem ipld.LinkSystem,
 		peerID peer.ID,
 		minerWallet address.Address,
 		proposal *retrievalmarket.DealProposal,

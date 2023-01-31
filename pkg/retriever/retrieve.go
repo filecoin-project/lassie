@@ -13,6 +13,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
+	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/rvagg/go-prioritywaitqueue"
 	"go.uber.org/multierr"
@@ -94,6 +95,7 @@ type retrieval struct {
 func RetrieveFromCandidates(
 	ctx context.Context,
 	cfg *RetrievalConfig,
+	linkSystem ipld.LinkSystem,
 	candidateFinder CandidateFinder,
 	client RetrievalClient,
 	retrievalId types.RetrievalID,
@@ -132,7 +134,7 @@ func RetrieveFromCandidates(
 	for _, candidate := range candidates {
 		candidate := candidate
 		go func() {
-			runRetrievalCandidate(ctx, cfg, client, retrieval, queryStartTime, candidate)
+			runRetrievalCandidate(ctx, cfg, linkSystem, client, retrieval, queryStartTime, candidate)
 			cfg.waitGroup.Done()
 		}()
 	}
@@ -228,7 +230,15 @@ func collectResults(ctx context.Context, retrieval *retrieval, expectedCandidate
 // runRetrievalCandidate is a singular CID:SP retrieval, expected to be run in a goroutine
 // and coordinate with other candidate retrievals to block after query phase and
 // only attempt one retrieval-proper at a time.
-func runRetrievalCandidate(ctx context.Context, cfg *RetrievalConfig, client RetrievalClient, retrieval *retrieval, queryStartTime time.Time, candidate types.RetrievalCandidate) {
+func runRetrievalCandidate(
+	ctx context.Context,
+	cfg *RetrievalConfig,
+	linkSystem ipld.LinkSystem,
+	client RetrievalClient,
+	retrieval *retrieval,
+	queryStartTime time.Time,
+	candidate types.RetrievalCandidate,
+) {
 	// phaseStartTime starts off as the queryStartTime, based on the start of all queries,
 	// but is updated to the retrievalStartTime when the retrieval starts. By the time we
 	// are sending the results, phaseStartTime may be the retrievalStartTime, or it may
@@ -302,7 +312,7 @@ func runRetrievalCandidate(ctx context.Context, cfg *RetrievalConfig, client Ret
 
 			retrieval.sendEvent(events.Started(retrieval.retrievalId, phaseStartTime, types.RetrievalPhase, candidate))
 
-			stats, retrievalErr = retrievalPhase(ctx, cfg, client, timeout, candidate, queryResponse, eventsCallback)
+			stats, retrievalErr = retrievalPhase(ctx, cfg, linkSystem, client, timeout, candidate, queryResponse, eventsCallback)
 
 			if retrievalErr != nil {
 				msg := retrievalErr.Error()
@@ -426,6 +436,7 @@ func queryPhase(
 func retrievalPhase(
 	ctx context.Context,
 	cfg *RetrievalConfig,
+	linkSystem ipld.LinkSystem,
 	client RetrievalClient,
 	timeout time.Duration,
 	candidate types.RetrievalCandidate,
@@ -484,6 +495,7 @@ func retrievalPhase(
 
 	stats, err := client.RetrieveFromPeer(
 		retrieveCtx,
+		linkSystem,
 		candidate.MinerPeer.ID,
 		queryResponse.PaymentAddress,
 		proposal,

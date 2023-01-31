@@ -15,6 +15,8 @@ import (
 
 	"github.com/filecoin-project/go-address"
 
+	"github.com/ipld/go-ipld-prime"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 
 	cborutil "github.com/filecoin-project/go-cbor-util"
@@ -31,12 +33,10 @@ import (
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
-
-	blockstore "github.com/ipfs/go-ipfs-blockstore"
+	format "github.com/ipfs/go-ipld-format"
 
 	graphsync "github.com/ipfs/go-graphsync/impl"
 	gsnetwork "github.com/ipfs/go-graphsync/network"
-	gsutil "github.com/ipfs/go-graphsync/storeutil"
 
 	logging "github.com/ipfs/go-log/v2"
 
@@ -73,7 +73,6 @@ const messageSendRetries = 2
 const sendMessageTimeout = 2 * time.Minute
 
 type RetrievalClient struct {
-	blockstore   blockstore.Blockstore
 	dataTransfer datatransfer.Manager
 	host         host.Host
 	payChanMgr   PayChannelManager
@@ -81,7 +80,6 @@ type RetrievalClient struct {
 }
 
 type Config struct {
-	Blockstore           blockstore.Blockstore
 	ChannelMonitorConfig dtchannelmonitor.Config
 	Datastore            datastore.Batching
 	GraphsyncOpts        []graphsync.Option
@@ -91,9 +89,8 @@ type Config struct {
 }
 
 // Creates a new RetrievalClient
-func NewClient(blockstore blockstore.Blockstore, datastore datastore.Batching, host host.Host, payChanMgr PayChannelManager, opts ...func(*Config)) (*RetrievalClient, error) {
+func NewClient(datastore datastore.Batching, host host.Host, payChanMgr PayChannelManager, opts ...func(*Config)) (*RetrievalClient, error) {
 	cfg := &Config{
-		Blockstore: blockstore,
 		ChannelMonitorConfig: dtchannelmonitor.Config{
 			AcceptTimeout:          acceptTimeout,
 			RestartDebounce:        restartDebounce,
@@ -140,7 +137,7 @@ func NewClientWithConfig(cfg *Config) (*RetrievalClient, error) {
 
 	graphSync := graphsync.New(context.Background(),
 		gsnetwork.NewFromLibp2pHost(cfg.Host),
-		gsutil.LinkSystemForBlockstore(cfg.Blockstore),
+		cidlink.DefaultLinkSystem(),
 		cfg.GraphsyncOpts...,
 	).(*graphsync.GraphSync)
 
@@ -185,7 +182,6 @@ func NewClientWithConfig(cfg *Config) (*RetrievalClient, error) {
 	}
 
 	client := &RetrievalClient{
-		blockstore:   cfg.Blockstore,
 		dataTransfer: dataTransfer,
 		host:         cfg.Host,
 		payChanMgr:   cfg.PayChannelManager,
@@ -201,6 +197,7 @@ func (rc *RetrievalClient) AwaitReady() error {
 
 func (rc *RetrievalClient) RetrieveFromPeer(
 	ctx context.Context,
+	linkSystem ipld.LinkSystem,
 	peerID peer.ID,
 	minerWallet address.Address,
 	proposal *retrievalmarket.DealProposal,
@@ -403,7 +400,9 @@ func (rc *RetrievalClient) RetrieveFromPeer(
 		datatransfer.TypedVoucher{Type: retrievalmarket.DealProposalType, Voucher: proposalVoucher},
 		proposal.PayloadCID,
 		selectorparse.CommonSelector_ExploreAllRecursively,
-		datatransfer.WithSubscriber(eventsCb))
+		datatransfer.WithSubscriber(eventsCb),
+		datatransfer.WithTransportOptions(dttransport.UseStore(linkSystem)),
+	)
 	if err != nil {
 		// We could fail before a successful proposal
 		return nil, fmt.Errorf("%w: %s", retriever.ErrDealProposalFailed, err)
@@ -432,9 +431,10 @@ awaitfinished:
 
 	// Confirm that we actually ended up with the root block we wanted, failure
 	// here indicates a data transfer error that was not properly reported
-	if has, err := rc.blockstore.Has(ctx, rootCid); err != nil {
-		return nil, fmt.Errorf("could not get query blockstore: %w", err)
-	} else if !has {
+	if _, err := linkSystem.StorageReadOpener(ipld.LinkContext{}, cidlink.Link{Cid: rootCid}); err != nil {
+		if !errors.Is(err, format.ErrNotFound{}) { // may or may not get a go-ipld-format/ErrNotFound for not-found
+			log.Errorf("could not query block store: %w", err)
+		}
 		return nil, errors.New("data transfer failed: unconfirmed block transfer")
 	}
 

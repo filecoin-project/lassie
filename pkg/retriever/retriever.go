@@ -14,6 +14,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/metrics"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
+	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"go.opencensus.io/stats"
 )
@@ -164,7 +165,13 @@ func (retriever *Retriever) isAcceptableQueryResponse(queryResponse *retrievalma
 
 // Retrieve attempts to retrieve the given CID using the configured
 // CandidateFinder to find storage providers that should have the CID.
-func (retriever *Retriever) Retrieve(ctx context.Context, retrievalId types.RetrievalID, cid cid.Cid) (*types.RetrievalStats, error) {
+func (retriever *Retriever) Retrieve(
+	ctx context.Context,
+	linkSystem ipld.LinkSystem,
+	retrievalId types.RetrievalID,
+	cid cid.Cid,
+) (*types.RetrievalStats, error) {
+
 	if !retriever.eventManager.IsStarted() {
 		return nil, ErrRetrieverNotStarted
 	}
@@ -200,6 +207,7 @@ func (retriever *Retriever) Retrieve(ctx context.Context, retrievalId types.Retr
 	retrievalStats, err := RetrieveFromCandidates(
 		ctx,
 		config,
+		linkSystem,
 		retriever.candidateFinder,
 		retriever.client,
 		retrievalId,
