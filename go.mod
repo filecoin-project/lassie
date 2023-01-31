@@ -7,7 +7,7 @@ require (
 	github.com/dustin/go-humanize v1.0.0
 	github.com/filecoin-project/go-address v1.1.0
 	github.com/filecoin-project/go-cbor-util v0.0.1
-	github.com/filecoin-project/go-data-transfer/v2 v2.0.0-rc1.0.20230131030609-5f9a1d9b4d60
+	github.com/filecoin-project/go-data-transfer/v2 v2.0.0-rc2
 	github.com/filecoin-project/go-fil-markets v1.25.3-0.20230107010325-143abaddd0f3
 	github.com/filecoin-project/go-state-types v0.9.9
 	github.com/filecoin-project/index-provider v0.9.2
