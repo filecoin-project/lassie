@@ -157,7 +157,7 @@ func (retriever *Retriever) isAcceptableStorageProvider(storageProviderId peer.I
 // isAcceptableQueryResponse determines whether a queryResponse is acceptable
 // according to the current configuration. For now this is just checking whether
 // PaidRetrievals is set and not accepting paid retrievals if so.
-func (retriever *Retriever) isAcceptableQueryResponse(queryResponse *retrievalmarket.QueryResponse) bool {
+func (retriever *Retriever) isAcceptableQueryResponse(peer peer.ID, queryResponse *retrievalmarket.QueryResponse) bool {
 	// filter out paid retrievals if necessary
 	return retriever.config.PaidRetrievals || totalCost(queryResponse).Equals(big.Zero())
 }
@@ -177,10 +177,19 @@ func (retriever *Retriever) Retrieve(ctx context.Context, retrievalId types.Retr
 		}
 	}()
 
+	isAcceptableQueryResponse := func(peer peer.ID, queryResponse *retrievalmarket.QueryResponse) bool {
+		acceptable := retriever.isAcceptableQueryResponse(peer, queryResponse)
+		if !acceptable {
+			log.Debugf("skipping query response from %s for %s: paid retrieval not allowed", peer, cid)
+			retriever.spTracker.RemoveStorageProviderFromRetrieval(peer, retrievalId)
+		}
+		return acceptable
+	}
+
 	config := &RetrievalConfig{
 		GetStorageProviderTimeout:   retriever.getStorageProviderTimeout,
 		IsAcceptableStorageProvider: retriever.isAcceptableStorageProvider,
-		IsAcceptableQueryResponse:   retriever.isAcceptableQueryResponse,
+		IsAcceptableQueryResponse:   isAcceptableQueryResponse,
 	}
 
 	// setup the event handler to track progress
@@ -257,7 +266,7 @@ func makeOnRetrievalEvent(
 		case events.RetrievalEventStarted:
 			handleStartedEvent(ret)
 		case events.RetrievalEventFailed:
-			handleFailureEvent(ctx, spTracker, eventStats, ret)
+			handleFailureEvent(ctx, spTracker, retrievalId, eventStats, ret)
 		case events.RetrievalEventQueryAsked: // query-ask success
 			handleQueryAskEvent(ctx, eventStats, ret)
 		case events.RetrievalEventQueryAskedFiltered:
@@ -300,14 +309,16 @@ func handleQueryAskEvent(
 	}
 }
 
+// handleFailureEvent is called when a query _or_ retrieval fails
 func handleFailureEvent(
 	ctx context.Context,
 	spTracker *spTracker,
+	retrievalId types.RetrievalID,
 	eventStats *eventStats,
 	event events.RetrievalEventFailed,
 ) {
-	if event.Phase() != types.IndexerPhase {
-		spTracker.RecordFailure(event.StorageProviderId())
+	if event.Phase() != types.IndexerPhase { // indexer failures don't have a storageProviderId
+		spTracker.RecordFailure(event.StorageProviderId(), retrievalId)
 	}
 
 	msg := event.ErrorMessage()

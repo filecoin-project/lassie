@@ -138,9 +138,49 @@ func (spt *spTracker) IsSuspended(storageProviderId peer.ID) bool {
 	return false
 }
 
+// RemoveStorageProviderFromRetrieval removes a storage provider from a an
+// active retrieval, decreasing the concurrency for that storage provider. Used
+// in both the case of a retrieval failure (RecordFailure) and when a
+// QueryResponse is unacceptable.
+func (spt *spTracker) RemoveStorageProviderFromRetrieval(storageProviderId peer.ID, retrievalId types.RetrievalID) error {
+	spt.lk.Lock()
+	defer spt.lk.Unlock()
+
+	if ar, has := spt.arm[retrievalId]; has {
+		var foundSp bool
+		for ii, id := range ar.storageProviderIds {
+			if id == storageProviderId {
+				foundSp = true
+				// remove from this retrieval
+				ar.storageProviderIds = append(ar.storageProviderIds[:ii], ar.storageProviderIds[ii+1:]...)
+				if c, has := spt.spm[id]; has && c.concurrency > 0 {
+					c.concurrency--
+					spt.spm[id] = c
+				} else {
+					return fmt.Errorf("internal error, peer.ID not properly double-recorded %s", retrievalId)
+				}
+				break
+			}
+		}
+		if !foundSp {
+			return fmt.Errorf("internal error, no such storage provider %s for retrieval %s", storageProviderId, retrievalId)
+		}
+		spt.arm[retrievalId] = ar
+	} else {
+		return fmt.Errorf("internal error, no such active retrieval %s", retrievalId)
+	}
+
+	return nil
+}
+
 // RecordFailure records a failure for a storage provider, potentially leading
-// to a suspension
-func (spt *spTracker) RecordFailure(storageProviderId peer.ID) {
+// to a suspension; this is used on both query and retrieval phases
+func (spt *spTracker) RecordFailure(storageProviderId peer.ID, retrievalId types.RetrievalID) error {
+	// remove from this retrieval to free up the SP to be tried again for a future retrieval
+	if err := spt.RemoveStorageProviderFromRetrieval(storageProviderId, retrievalId); err != nil {
+		return err
+	}
+
 	spt.lk.Lock()
 	defer spt.lk.Unlock()
 
@@ -177,4 +217,5 @@ func (spt *spTracker) RecordFailure(storageProviderId peer.ID) {
 
 	// Write updated status back to map
 	spt.spm[storageProviderId] = status
+	return nil
 }

@@ -24,7 +24,7 @@ type CandidateErrorCallback func(types.RetrievalCandidate, error)
 
 type GetStorageProviderTimeout func(peer peer.ID) time.Duration
 type IsAcceptableStorageProvider func(peer peer.ID) bool
-type IsAcceptableQueryResponse func(*retrievalmarket.QueryResponse) bool
+type IsAcceptableQueryResponse func(peer peer.ID, qr *retrievalmarket.QueryResponse) bool
 
 type queryCandidate struct {
 	*retrievalmarket.QueryResponse
@@ -258,7 +258,7 @@ func runRetrievalCandidate(ctx context.Context, cfg *RetrievalConfig, client Ret
 	if queryResponse != nil {
 		retrieval.sendEvent(events.QueryAsked(retrieval.retrievalId, phaseStartTime, candidate, *queryResponse))
 		if queryResponse.Status != retrievalmarket.QueryResponseAvailable ||
-			(cfg.IsAcceptableQueryResponse != nil && !cfg.IsAcceptableQueryResponse(queryResponse)) {
+			(cfg.IsAcceptableQueryResponse != nil && !cfg.IsAcceptableQueryResponse(candidate.MinerPeer.ID, queryResponse)) {
 			queryResponse = nil
 		}
 	}
