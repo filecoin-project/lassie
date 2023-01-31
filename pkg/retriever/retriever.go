@@ -14,7 +14,6 @@ import (
 	"github.com/filecoin-project/lassie/pkg/metrics"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
-	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"go.opencensus.io/stats"
 )
@@ -67,11 +66,10 @@ func (cfg *RetrieverConfig) getMinerConfig(peer peer.ID) MinerConfig {
 
 type Retriever struct {
 	// Assumed immutable during operation
-	config          RetrieverConfig
-	candidateFinder CandidateFinder
-	client          RetrievalClient
-	eventManager    *events.EventManager
-	spTracker       *spTracker
+	config       RetrieverConfig
+	executor     types.Retriever
+	eventManager *events.EventManager
+	spTracker    *spTracker
 }
 
 type CandidateFinder interface {
@@ -91,12 +89,17 @@ func NewRetriever(
 	candidateFinder CandidateFinder,
 ) (*Retriever, error) {
 	retriever := &Retriever{
-		config:          config,
-		candidateFinder: candidateFinder,
-		client:          client,
-		eventManager:    events.NewEventManager(ctx),
-		spTracker:       newSpTracker(nil),
+		config:       config,
+		eventManager: events.NewEventManager(ctx),
+		spTracker:    newSpTracker(nil),
 	}
+	executor := &Executor{
+		GetStorageProviderTimeout:   retriever.getStorageProviderTimeout,
+		IsAcceptableStorageProvider: retriever.isAcceptableStorageProvider,
+		IsAcceptableQueryResponse:   retriever.isAcceptableQueryResponse,
+		Client:                      client,
+	}
+	retriever.executor = WithCandidateFinding(retriever.isAcceptableStorageProvider, candidateFinder, executor.RetrieveFromCandidates)
 
 	return retriever, nil
 }
@@ -158,69 +161,55 @@ func (retriever *Retriever) isAcceptableStorageProvider(storageProviderId peer.I
 // isAcceptableQueryResponse determines whether a queryResponse is acceptable
 // according to the current configuration. For now this is just checking whether
 // PaidRetrievals is set and not accepting paid retrievals if so.
-func (retriever *Retriever) isAcceptableQueryResponse(peer peer.ID, queryResponse *retrievalmarket.QueryResponse) bool {
+func (retriever *Retriever) isAcceptableQueryResponse(peer peer.ID, req types.RetrievalRequest, queryResponse *retrievalmarket.QueryResponse) bool {
 	// filter out paid retrievals if necessary
-	return retriever.config.PaidRetrievals || totalCost(queryResponse).Equals(big.Zero())
+
+	acceptable := retriever.config.PaidRetrievals || totalCost(queryResponse).Equals(big.Zero())
+	if !acceptable {
+		log.Debugf("skipping query response from %s for %s: paid retrieval not allowed", peer, req.Cid)
+		retriever.spTracker.RemoveStorageProviderFromRetrieval(peer, req.RetrievalID)
+	}
+	return acceptable
 }
 
 // Retrieve attempts to retrieve the given CID using the configured
 // CandidateFinder to find storage providers that should have the CID.
 func (retriever *Retriever) Retrieve(
 	ctx context.Context,
-	linkSystem ipld.LinkSystem,
-	retrievalId types.RetrievalID,
-	cid cid.Cid,
+	request types.RetrievalRequest,
+	eventsCB func(types.RetrievalEvent),
 ) (*types.RetrievalStats, error) {
 
 	if !retriever.eventManager.IsStarted() {
 		return nil, ErrRetrieverNotStarted
 	}
-	if !retriever.spTracker.RegisterRetrieval(retrievalId, cid) {
-		return nil, fmt.Errorf("%w: %s", ErrRetrievalAlreadyRunning, cid)
+	if !retriever.spTracker.RegisterRetrieval(request.RetrievalID, request.Cid) {
+		return nil, fmt.Errorf("%w: %s", ErrRetrievalAlreadyRunning, request.Cid)
 	}
 	defer func() {
-		if err := retriever.spTracker.EndRetrieval(retrievalId); err != nil {
-			log.Errorf("failed to end retrieval tracking for %s: %s", cid, err.Error())
+		if err := retriever.spTracker.EndRetrieval(request.RetrievalID); err != nil {
+			log.Errorf("failed to end retrieval tracking for %s: %s", request.Cid, err.Error())
 		}
 	}()
-
-	isAcceptableQueryResponse := func(peer peer.ID, queryResponse *retrievalmarket.QueryResponse) bool {
-		acceptable := retriever.isAcceptableQueryResponse(peer, queryResponse)
-		if !acceptable {
-			log.Debugf("skipping query response from %s for %s: paid retrieval not allowed", peer, cid)
-			retriever.spTracker.RemoveStorageProviderFromRetrieval(peer, retrievalId)
-		}
-		return acceptable
-	}
-
-	config := &RetrievalConfig{
-		GetStorageProviderTimeout:   retriever.getStorageProviderTimeout,
-		IsAcceptableStorageProvider: retriever.isAcceptableStorageProvider,
-		IsAcceptableQueryResponse:   isAcceptableQueryResponse,
-	}
 
 	// setup the event handler to track progress
 	eventStats := &eventStats{}
 	onRetrievalEvent := makeOnRetrievalEvent(ctx,
 		retriever.eventManager,
 		retriever.spTracker,
-		cid,
-		retrievalId,
+		request.Cid,
+		request.RetrievalID,
 		eventStats,
+		eventsCB,
 	)
 
 	// retrieve, note that we could get a successful retrieval
 	// (retrievalStats!=nil) _and_ also an error return because there may be
 	// multiple failures along the way, if we got a retrieval then we'll pretend
 	// to our caller that there was no error
-	retrievalStats, err := RetrieveFromCandidates(
+	retrievalStats, err := retriever.executor(
 		ctx,
-		config,
-		linkSystem,
-		retriever.candidateFinder,
-		retriever.client,
-		retrievalId,
-		cid,
+		request,
 		onRetrievalEvent,
 	)
 	if err != nil && retrievalStats == nil {
@@ -234,7 +223,7 @@ func (retriever *Retriever) Retrieve(
 			"\tBytes Received: %s\n"+
 			"\tTotal Payment: %s",
 		retrievalStats.StorageProviderId,
-		cid,
+		request.Cid,
 		retrievalStats.Duration,
 		humanize.IBytes(retrievalStats.Size),
 		types.FIL(retrievalStats.TotalPayment),
@@ -260,6 +249,7 @@ func makeOnRetrievalEvent(
 	retrievalCid cid.Cid,
 	retrievalId types.RetrievalID,
 	eventStats *eventStats,
+	eventsCb func(event types.RetrievalEvent),
 ) func(event types.RetrievalEvent) {
 	// this callback is only called in the main retrieval goroutine so is safe to
 	// modify local values (eventStats) without synchronization
@@ -282,6 +272,7 @@ func makeOnRetrievalEvent(
 		}
 
 		eventManager.DispatchEvent(event)
+		eventsCb(event)
 	}
 }
 

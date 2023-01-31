@@ -98,7 +98,7 @@ func (l *Lassie) Fetch(ctx context.Context, rootCid cid.Cid, linkSystem linking.
 	}
 
 	// retrieve!
-	stats, err := l.retriever.Retrieve(ctx, linkSystem, retrievalId, rootCid)
+	stats, err := l.retriever.Retrieve(ctx, types.RetrievalRequest{RetrievalID: retrievalId, Cid: rootCid, LinkSystem: linkSystem}, func(types.RetrievalEvent) {})
 	if err != nil {
 		fmt.Println()
 		return retrievalId, nil, err
