@@ -170,6 +170,7 @@ func (retriever *Retriever) Retrieve(
 	linkSystem ipld.LinkSystem,
 	retrievalId types.RetrievalID,
 	cid cid.Cid,
+	eventsCb func(event types.RetrievalEvent),
 ) (*types.RetrievalStats, error) {
 
 	if !retriever.eventManager.IsStarted() {
@@ -201,9 +202,11 @@ func (retriever *Retriever) Retrieve(
 
 	// setup the event handler to track progress
 	eventStats := &eventStats{}
-	onRetrievalEvent := makeOnRetrievalEvent(ctx,
+	onRetrievalEvent := makeOnRetrievalEvent(
+		ctx,
 		retriever.eventManager,
 		retriever.spTracker,
+		eventsCb,
 		cid,
 		retrievalId,
 		eventStats,
@@ -257,6 +260,7 @@ func makeOnRetrievalEvent(
 	ctx context.Context,
 	eventManager *events.EventManager,
 	spTracker *spTracker,
+	eventsCb func(event types.RetrievalEvent),
 	retrievalCid cid.Cid,
 	retrievalId types.RetrievalID,
 	eventStats *eventStats,
@@ -282,6 +286,9 @@ func makeOnRetrievalEvent(
 		}
 
 		eventManager.DispatchEvent(event)
+		if eventsCb != nil {
+			eventsCb(event)
+		}
 	}
 }
 

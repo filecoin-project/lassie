@@ -9,7 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/filecoin-project/lassie/internal"
 	lassie "github.com/filecoin-project/lassie/pkg/lassie"
+	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 )
 
@@ -110,11 +112,45 @@ func ipfsHandler(res http.ResponseWriter, req *http.Request) {
 		res.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-
+	cartee := internal.NewTeeingFile(req.Context(), carfile)
 	var lassie = lassie.NewLassie(20 * time.Second)
 	log.Debugw("fetching cid into car file", "cid", cid.String(), "file", carfile.Name())
-	_, id, err := lassie.Fetch(context.Background(), cid, carfile)
+
+	retrievalId, err := types.NewRetrievalID()
 	if err != nil {
+		logger.LogStatus(http.StatusInternalServerError, fmt.Sprintf("Failed to create RetrievalID: %v", err))
+		res.WriteHeader(http.StatusInternalServerError)
+	}
+
+	var writing bool
+	eventsCb := func(event types.RetrievalEvent) {
+		if !writing && event.Code() == types.FirstByteCode {
+			writing = true
+
+			// set Content-Disposition header based on filename url parameter
+			var filename string
+			if req.URL.Query().Has("filename") {
+				filename = req.URL.Query().Get("filename")
+			} else {
+				filename = fmt.Sprintf("%s.car", cid.String())
+			}
+			res.Header().Set("Content-Disposition", "attachment; filename="+filename)
+			res.Header().Set("Accept-Ranges", "none")
+			res.Header().Set("Cache-Control", "public, max-age=29030400, immutable")
+			res.Header().Set("Content-Type", "application/vnd.ipld.car; version=1")
+			res.Header().Set("Etag", fmt.Sprintf("%s.car", cid.String()))
+			res.Header().Set("C-Content-Type-Options", "nosniff")
+			res.Header().Set("X-Ipfs-Path", req.URL.Path)
+			// TODO: set X-Ipfs-Roots header
+			res.Header().Set("X-Trace-Id", retrievalId.String())
+
+			logger.LogStatus(200, "OK")
+			http.ServeFile(res, req, carfile.Name())
+			cartee.WriteTo(res)
+		}
+	}
+
+	if _, err = lassie.Fetch(context.Background(), retrievalId, cid, cartee, eventsCb); err != nil {
 		logger.LogStatus(http.StatusInternalServerError, fmt.Sprintf("Failed to fetch cid: %v", err))
 		res.WriteHeader(http.StatusInternalServerError)
 		carfile.Close()
@@ -128,27 +164,6 @@ func ipfsHandler(res http.ResponseWriter, req *http.Request) {
 		res.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-
-	// set Content-Disposition header based on filename url parameter
-	var filename string
-	if req.URL.Query().Has("filename") {
-		filename = req.URL.Query().Get("filename")
-	} else {
-		filename = fmt.Sprintf("%s.car", cid.String())
-	}
-	res.Header().Set("Content-Disposition", "attachment; filename="+filename)
-
-	res.Header().Set("Accept-Ranges", "none")
-	res.Header().Set("Cache-Control", "public, max-age=29030400, immutable")
-	res.Header().Set("Content-Type", "application/vnd.ipld.car; version=1")
-	res.Header().Set("Etag", fmt.Sprintf("%s.car", cid.String()))
-	res.Header().Set("C-Content-Type-Options", "nosniff")
-	res.Header().Set("X-Ipfs-Path", req.URL.Path)
-	// TODO: set X-Ipfs-Roots header
-	res.Header().Set("X-Trace-Id", id.String())
-
-	logger.LogStatus(200, "OK")
-	http.ServeFile(res, req, carfile.Name())
 
 	log.Debugw("removing temp car file", "file", carfile.Name())
 	err = os.Remove(carfile.Name())

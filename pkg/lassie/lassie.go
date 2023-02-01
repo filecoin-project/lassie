@@ -3,7 +3,6 @@ package lassie
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/filecoin-project/lassie/internal"
@@ -24,9 +23,9 @@ func NewLassie(timeout time.Duration) *Lassie {
 	}
 }
 
-func (l *Lassie) Fetch(ctx context.Context, rootCid cid.Cid, outfile *os.File) (*types.RetrievalStats, types.RetrievalID, error) {
+func (l *Lassie) Fetch(ctx context.Context, retrievalId types.RetrievalID, rootCid cid.Cid, outfile carblockstore.File, eventsCb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
 	var parentOpener = func() (*carblockstore.ReadWrite, error) {
-		return carblockstore.OpenReadWriteFile(outfile, []cid.Cid{rootCid})
+		return carblockstore.OpenReadWriteFile(outfile, []cid.Cid{rootCid}, carblockstore.WriteAsCarV1(true))
 	}
 
 	var blockCount int
@@ -42,19 +41,14 @@ func (l *Lassie) Fetch(ctx context.Context, rootCid cid.Cid, outfile *os.File) (
 	var ret *retriever.Retriever
 	ret, err := internal.SetupRetriever(ctx, l.timeout)
 	if err != nil {
-		return nil, types.RetrievalID{}, err
+		return nil, err
 	}
 
-	retrievalId, err := types.NewRetrievalID()
-	if err != nil {
-		return nil, types.RetrievalID{}, err
-	}
-
-	stats, err := ret.Retrieve(ctx, linkSystem, retrievalId, rootCid)
+	stats, err := ret.Retrieve(ctx, linkSystem, retrievalId, rootCid, eventsCb)
 	if err != nil {
 		fmt.Println()
-		return nil, retrievalId, err
+		return nil, err
 	}
 
-	return stats, retrievalId, nil
+	return stats, nil
 }

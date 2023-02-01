@@ -76,7 +76,7 @@ func Fetch(c *cli.Context) error {
 	}
 
 	var parentOpener = func() (*carblockstore.ReadWrite, error) {
-		return carblockstore.OpenReadWrite(outfile, []cid.Cid{rootCid})
+		return carblockstore.OpenReadWrite(outfile, []cid.Cid{rootCid}, carblockstore.WriteAsCarV1(true))
 	}
 
 	var blockCount int
@@ -110,16 +110,17 @@ func Fetch(c *cli.Context) error {
 	} else {
 		fmt.Printf("Fetching %s from %s", rootCid, fetchProviderAddrInfo.String())
 	}
+	var eventsCb func(types.RetrievalEvent) = nil
 	if progress {
 		fmt.Println()
 		pp := &progressPrinter{}
-		ret.RegisterSubscriber(pp.subscriber)
+		eventsCb = pp.subscriber
 	}
 	retrievalId, err := types.NewRetrievalID()
 	if err != nil {
 		return err
 	}
-	stats, err := ret.Retrieve(c.Context, linkSystem, retrievalId, rootCid)
+	stats, err := ret.Retrieve(c.Context, linkSystem, retrievalId, rootCid, eventsCb)
 	if err != nil {
 		fmt.Println()
 		return err
