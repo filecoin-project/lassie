@@ -1,11 +1,13 @@
 package types
 
 import (
+	"context"
 	"time"
 
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
+	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
@@ -41,6 +43,28 @@ func (id RetrievalID) MarshalText() ([]byte, error) {
 
 func (id *RetrievalID) UnmarshalText(data []byte) error {
 	return (*uuid.UUID)(id).UnmarshalText(data)
+}
+
+// RetrievalRequest is the top level parameters for a request --
+// this should be left unchanged as you move down a retriever tree
+type RetrievalRequest struct {
+	RetrievalID RetrievalID
+	Cid         cid.Cid
+	LinkSystem  ipld.LinkSystem
+}
+
+type Retriever func(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) (*RetrievalStats, error)
+type CandidateRetriever func(ctx context.Context, request RetrievalRequest, candidates []RetrievalCandidate, events func(RetrievalEvent)) (*RetrievalStats, error)
+type RetrievalCandidateFinder func(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) ([]RetrievalCandidate, error)
+
+func WithCandidates(retrievalCandidateFinder RetrievalCandidateFinder, childRetriever CandidateRetriever) Retriever {
+	return func(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) (*RetrievalStats, error) {
+		candidates, err := retrievalCandidateFinder(ctx, request, events)
+		if err != nil {
+			return nil, err
+		}
+		return childRetriever(ctx, request, candidates, events)
+	}
 }
 
 type RetrievalStats struct {

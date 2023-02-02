@@ -31,7 +31,11 @@ func TestRetrieverStart(t *testing.T) {
 	require.NoError(t, err)
 
 	// --- run ---
-	result, err := ret.Retrieve(context.Background(), cidlink.DefaultLinkSystem(), types.RetrievalID(uuid.New()), cid.MustParse("bafkqaalb"))
+	result, err := ret.Retrieve(context.Background(), types.RetrievalRequest{
+		LinkSystem:  cidlink.DefaultLinkSystem(),
+		RetrievalID: types.RetrievalID(uuid.New()),
+		Cid:         cid.MustParse("bafkqaalb"),
+	}, func(types.RetrievalEvent) {})
 	require.ErrorIs(t, err, retriever.ErrRetrieverNotStarted)
 	require.Nil(t, result)
 }
@@ -367,7 +371,11 @@ func TestRetriever(t *testing.T) {
 
 			// --- retrieve ---
 			require.NoError(t, err)
-			result, err := ret.Retrieve(context.Background(), cidlink.DefaultLinkSystem(), rid, cid1)
+			result, err := ret.Retrieve(context.Background(), types.RetrievalRequest{
+				LinkSystem:  cidlink.DefaultLinkSystem(),
+				RetrievalID: rid,
+				Cid:         cid1,
+			}, func(types.RetrievalEvent) {})
 			if tc.err == nil {
 				require.NoError(t, err)
 				successfulPeer := string(tc.successfulPeer)
@@ -468,7 +476,11 @@ func TestLinkSystemPerRequest(t *testing.T) {
 	lsB.NodeReifier = func(lc linking.LinkContext, n datamodel.Node, ls *linking.LinkSystem) (datamodel.Node, error) {
 		return basicnode.NewString("linkSystem B"), nil
 	}
-	result, err := ret.Retrieve(context.Background(), lsA, rid, cid1)
+	result, err := ret.Retrieve(context.Background(), types.RetrievalRequest{
+		LinkSystem:  lsA,
+		RetrievalID: rid,
+		Cid:         cid1,
+	}, func(types.RetrievalEvent) {})
 	require.NoError(t, err)
 	require.Equal(t, returnsRetrievals[string(peerA)].ResultStats, result)
 
@@ -480,10 +492,13 @@ func TestLinkSystemPerRequest(t *testing.T) {
 	client.SetQueryReturns(returnsQueries)
 
 	// --- retrieve ---
-	result, err = ret.Retrieve(context.Background(), lsB, rid, cid1)
+	result, err = ret.Retrieve(context.Background(), types.RetrievalRequest{
+		LinkSystem:  lsB,
+		RetrievalID: rid,
+		Cid:         cid1,
+	}, func(types.RetrievalEvent) {})
 	require.NoError(t, err)
 	require.Equal(t, returnsRetrievals[string(peerB)].ResultStats, result)
-
 	// --- stop ---
 	time.Sleep(time.Millisecond * 5) // sleep to allow events to flush
 	select {
