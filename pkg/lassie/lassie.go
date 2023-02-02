@@ -39,7 +39,11 @@ func NewLassie(ctx context.Context, opts ...LassieOption) (*Lassie, error) {
 
 func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error) {
 	if cfg.Finder == nil {
-		cfg.Finder = indexerlookup.NewCandidateFinder("https://cid.contact")
+		var err error
+		cfg.Finder, err = indexerlookup.NewCandidateFinder()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if cfg.Timeout == 0 {

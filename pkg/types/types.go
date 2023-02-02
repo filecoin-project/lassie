@@ -79,7 +79,7 @@ type RetrievalStats struct {
 	AskPrice          abi.TokenAmount
 
 	// TODO: we should be able to get this if we hook into the graphsync event stream
-	//TimeToFirstByte time.Duration
+	// TimeToFirstByte time.Duration
 }
 
 type Phase string
@@ -129,6 +129,11 @@ type RetrievalEvent interface {
 
 // RetrievalEventSubscriber is a function that receives a stream of retrieval
 // events from all retrievals that are in progress. Various different types
-// implement the RetrievalEvent interface and may contain additionl information
+// implement the RetrievalEvent interface and may contain additional information
 // about the event beyond what is available on the RetrievalEvent interface.
 type RetrievalEventSubscriber func(event RetrievalEvent)
+
+type FindCandidatesResult struct {
+	Candidate RetrievalCandidate
+	Err       error
+}

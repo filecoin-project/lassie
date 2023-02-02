@@ -12,6 +12,25 @@ type MockCandidateFinder struct {
 	Candidates map[cid.Cid][]types.RetrievalCandidate
 }
 
+func (me *MockCandidateFinder) FindCandidatesAsync(ctx context.Context, c cid.Cid) (<-chan types.FindCandidatesResult, error) {
+	rs, err := me.FindCandidates(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	switch len(rs) {
+	case 0:
+		return nil, nil
+	default:
+		rch := make(chan types.FindCandidatesResult, len(rs))
+		for _, r := range rs {
+			rch <- types.FindCandidatesResult{
+				Candidate: r,
+			}
+		}
+		return rch, nil
+	}
+}
+
 func (me *MockCandidateFinder) FindCandidates(ctx context.Context, cid cid.Cid) ([]types.RetrievalCandidate, error) {
 	if me.Error != nil {
 		return nil, me.Error

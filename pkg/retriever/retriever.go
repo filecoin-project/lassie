@@ -74,6 +74,7 @@ type Retriever struct {
 
 type CandidateFinder interface {
 	FindCandidates(context.Context, cid.Cid) ([]types.RetrievalCandidate, error)
+	FindCandidatesAsync(context.Context, cid.Cid) (<-chan types.FindCandidatesResult, error)
 }
 
 type eventStats struct {
