@@ -9,6 +9,7 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
+	"path"
 
 	"github.com/filecoin-project/index-provider/metadata"
 	"github.com/filecoin-project/lassie/pkg/retriever"
@@ -180,5 +181,7 @@ func (idxf *IndexerCandidateFinder) decodeProviderResultStream(ctx context.Conte
 }
 
 func (idxf *IndexerCandidateFinder) findByMultihashEndpoint(mh multihash.Multihash) string {
-	return idxf.httpEndpoint.JoinPath("multihash", mh.B58String()).String()
+	// TODO: Replace with URL.JoinPath once minimum go version in CI is updated to 1.19; like this:
+	//       return idxf.httpEndpoint.JoinPath("multihash", mh.B58String()).String()
+	return idxf.httpEndpoint.String() + path.Join("/multihash", mh.B58String())
 }
