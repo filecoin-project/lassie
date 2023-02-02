@@ -164,7 +164,7 @@ func (retriever *Retriever) isAcceptableStorageProvider(storageProviderId peer.I
 func (retriever *Retriever) isAcceptableQueryResponse(peer peer.ID, req types.RetrievalRequest, queryResponse *retrievalmarket.QueryResponse) bool {
 	// filter out paid retrievals if necessary
 
-	acceptable := retriever.config.PaidRetrievals || totalCost(queryResponse).Equals(big.Zero())
+	acceptable := retriever.config.PaidRetrievals || big.Add(big.Mul(queryResponse.MinPricePerByte, big.NewIntUnsigned(queryResponse.Size)), queryResponse.UnsealPrice).Equals(big.Zero())
 	if !acceptable {
 		log.Debugf("skipping query response from %s for %s: paid retrieval not allowed", peer, req.Cid)
 		retriever.spTracker.RemoveStorageProviderFromRetrieval(peer, req.RetrievalID)
