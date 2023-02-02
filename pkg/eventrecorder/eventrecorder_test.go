@@ -24,7 +24,7 @@ import (
 	"golang.org/x/net/context"
 )
 
-var testCid1 cid.Cid = mustCid("bafybeihrqe2hmfauph5yfbd6ucv7njqpiy4tvbewlvhzjl4bhnyiu6h7pm")
+var testCid1 = mustCid("bafybeihrqe2hmfauph5yfbd6ucv7njqpiy4tvbewlvhzjl4bhnyiu6h7pm")
 
 func TestEventRecorder(t *testing.T) {
 	var req datamodel.Node
@@ -63,6 +63,7 @@ func TestEventRecorder(t *testing.T) {
 
 				select {
 				case <-ctx.Done():
+					t.Fatal(ctx.Err())
 				case <-receivedChan:
 				}
 
@@ -102,6 +103,7 @@ func TestEventRecorder(t *testing.T) {
 
 				select {
 				case <-ctx.Done():
+					t.Fatal(ctx.Err())
 				case <-receivedChan:
 				}
 
@@ -135,6 +137,7 @@ func TestEventRecorder(t *testing.T) {
 
 				select {
 				case <-ctx.Done():
+					t.Fatal(ctx.Err())
 				case <-receivedChan:
 				}
 				qt.Assert(t, req.Length(), qt.Equals, int64(1))
@@ -165,6 +168,7 @@ func TestEventRecorder(t *testing.T) {
 
 				select {
 				case <-ctx.Done():
+					t.Fatal(ctx.Err())
 				case <-receivedChan:
 				}
 
@@ -196,6 +200,7 @@ func TestEventRecorder(t *testing.T) {
 
 				select {
 				case <-ctx.Done():
+					t.Fatal(ctx.Err())
 				case <-receivedChan:
 				}
 
@@ -222,6 +227,7 @@ func TestEventRecorder(t *testing.T) {
 
 				select {
 				case <-ctx.Done():
+					t.Fatal(ctx.Err())
 				case <-receivedChan:
 				}
 
@@ -245,7 +251,7 @@ func TestEventRecorder(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
 			er := eventrecorder.NewEventRecorder(ctx, "test-instance", fmt.Sprintf("%s/test-path/here", ts.URL), authHeaderValue)
 			id, err := types.NewRetrievalID()
