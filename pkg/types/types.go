@@ -55,6 +55,17 @@ type RetrievalRequest struct {
 
 type Retriever func(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) (*RetrievalStats, error)
 type CandidateRetriever func(ctx context.Context, request RetrievalRequest, candidates []RetrievalCandidate, events func(RetrievalEvent)) (*RetrievalStats, error)
+type RetrievalCandidateFinder func(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) ([]RetrievalCandidate, error)
+
+func WithCandidates(retrievalCandidateFinder RetrievalCandidateFinder, childRetriever CandidateRetriever) Retriever {
+	return func(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) (*RetrievalStats, error) {
+		candidates, err := retrievalCandidateFinder(ctx, request, events)
+		if err != nil {
+			return nil, err
+		}
+		return childRetriever(ctx, request, candidates, events)
+	}
+}
 
 type RetrievalStats struct {
 	StorageProviderId peer.ID

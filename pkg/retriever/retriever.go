@@ -99,7 +99,8 @@ func NewRetriever(
 		IsAcceptableQueryResponse:   retriever.isAcceptableQueryResponse,
 		Client:                      client,
 	}
-	retriever.executor = WithCandidateFinding(retriever.isAcceptableStorageProvider, candidateFinder, executor.RetrieveFromCandidates)
+	retrievalCandidateFinder := NewRetrievalCandidateFinder(candidateFinder, retriever.isAcceptableStorageProvider)
+	retriever.executor = types.WithCandidates(retrievalCandidateFinder.FindCandidates, executor.RetrieveFromCandidates)
 
 	return retriever, nil
 }

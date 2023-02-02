@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestWithCandidateFinding(t *testing.T) {
+func TestRetrievalCandidateFinder(t *testing.T) {
 	ctx := context.Background()
 	cid1 := cid.MustParse("bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")
 	cid2 := cid.MustParse("bafyrgqhai26anf3i7pips7q22coa4sz2fr4gk4q4sqdtymvvjyginfzaqewveaeqdh524nsktaq43j65v22xxrybrtertmcfxufdam3da3hbk")
@@ -133,39 +133,42 @@ func TestWithCandidateFinding(t *testing.T) {
 				return true
 			}
 			receivedCandidates := make(map[cid.Cid][]string)
-			childRetriever := func(ctx context.Context, request types.RetrievalRequest, candidates []types.RetrievalCandidate, eventsCB func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
+			appendCandidates := func(cid cid.Cid, candidates []types.RetrievalCandidate) {
 				stringCandidates := make([]string, 0, len(candidates))
 				for _, candidate := range candidates {
 					stringCandidates = append(stringCandidates, string(candidate.MinerPeer.ID))
 				}
-				receivedCandidates[request.Cid] = stringCandidates
-				return &types.RetrievalStats{}, nil
+				receivedCandidates[cid] = stringCandidates
 			}
 			receivedEvents := make(map[cid.Cid][]types.RetrievalEvent)
 			retrievalCollector := func(evt types.RetrievalEvent) {
 				receivedEvents[evt.PayloadCid()] = append(receivedEvents[evt.PayloadCid()], evt)
 			}
-			retriever := retriever.WithCandidateFinding(isAcceptableStorageProvider, candidateFinder, childRetriever)
+			retrievalCandidateFinder := retriever.NewRetrievalCandidateFinder(candidateFinder, isAcceptableStorageProvider)
 			rid1, err := types.NewRetrievalID()
 			req.NoError(err)
 			receivedErrors := make(map[cid.Cid]error)
-			_, err = retriever(ctx, types.RetrievalRequest{
+			candidates, err := retrievalCandidateFinder.FindCandidates(ctx, types.RetrievalRequest{
 				RetrievalID: rid1,
 				Cid:         cid1,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
 			}, retrievalCollector)
 			if err != nil {
 				receivedErrors[cid1] = err
+			} else {
+				appendCandidates(cid1, candidates)
 			}
 			rid2, err := types.NewRetrievalID()
 			req.NoError(err)
-			_, err = retriever(ctx, types.RetrievalRequest{
+			candidates, err = retrievalCandidateFinder.FindCandidates(ctx, types.RetrievalRequest{
 				RetrievalID: rid2,
 				Cid:         cid2,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
 			}, retrievalCollector)
 			if err != nil {
 				receivedErrors[cid2] = err
+			} else {
+				appendCandidates(cid2, candidates)
 			}
 			expectedCandidates := testCase.expectedCandidates
 			if expectedCandidates == nil {
