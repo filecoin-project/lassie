@@ -272,7 +272,9 @@ func makeOnRetrievalEvent(
 		}
 
 		eventManager.DispatchEvent(event)
-		eventsCb(event)
+		if eventsCb != nil {
+			eventsCb(event)
+		}
 	}
 }
 
