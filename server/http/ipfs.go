@@ -152,9 +152,10 @@ func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request)
 		res.Header().Set("Cache-Control", "public, max-age=29030400, immutable")
 		res.Header().Set("Content-Type", "application/vnd.ipld.car; version=1")
 		res.Header().Set("Etag", fmt.Sprintf("%s.car", rootCid.String()))
-		res.Header().Set("C-Content-Type-Options", "nosniff")
+		res.Header().Set("X-Content-Type-Options", "nosniff")
 		res.Header().Set("X-Ipfs-Path", req.URL.Path)
-		// TODO: set X-Ipfs-Roots header
+		// TODO: set X-Ipfs-Roots header when we support root+path
+		// see https://github.com/ipfs/kubo/pull/8720
 		res.Header().Set("X-Trace-Id", id.String())
 
 		logger.LogStatus(200, "OK")
