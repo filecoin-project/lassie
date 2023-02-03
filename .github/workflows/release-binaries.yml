@@ -6,6 +6,8 @@ jobs:
   releases-matrix:
     name: Release Go Binary
     runs-on: ubuntu-latest
+    env:
+      APP_VERSION: ""
     strategy:
       matrix:
         # build and publish in parallel: linux/386, linux/amd64, linux/arm64, windows/386, windows/amd64, darwin/amd64, darwin/arm64
@@ -18,6 +20,8 @@ jobs:
             goos: windows
     steps:
     - uses: actions/checkout@v3
+    - name: Determine version
+      run: echo "APP_VERSION=$(jq -r .version version.json)" >> $GITHUB_ENV
     - uses: wangyoucao577/go-release-action@v1.34
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -26,4 +30,5 @@ jobs:
         goversion: "https://go.dev/dl/go1.19.5.linux-amd64.tar.gz"
         project_path: "./cmd/lassie"
         binary_name: "lassie"
+        ldflags: "-X main.version=${{ env.APP_VERSION }}"
         extra_files: LICENSE-APACHE LICENSE-MIT README.md
