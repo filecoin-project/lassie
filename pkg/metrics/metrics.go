@@ -60,14 +60,8 @@ var QueryErrorMetricMatches = map[string]*stats.Int64Measure{
 	"failed to open stream to peer":         QueryErrorFailedToOpenStreamCount,
 	"failed to read response: EOF":          QueryErrorResponseEOFCount,
 	"failed to read response: stream reset": QueryErrorResponseStreamResetCount,
-}
-
-// QueryResponseMetricMatches is a mapping of retrieval error message substrings
-// during the query phase when a response is sent but it is a failure
-// and metrics to report for that failure.
-var QueryResponseMetricMatches = map[string]*stats.Int64Measure{
-	"getting pieces for cid":             QueryErrorDAGStoreCount,
-	"failed to fetch storage deal state": QueryErrorDealNotFoundCount,
+	"getting pieces for cid":                QueryErrorDAGStoreCount,
+	"failed to fetch storage deal state":    QueryErrorDealNotFoundCount,
 }
 
 // ErrorMetricMatches is a mapping of retrieval error message substrings (i.e.

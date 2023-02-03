@@ -209,6 +209,12 @@ func runRetrievalCandidate(
 		retrieval.sendEvent(events.Failed(req.RetrievalID, phaseStartTime, types.QueryPhase, candidate, queryErr.Error()))
 	}
 
+	// treat QueryResponseError as a failure
+	if queryResponse != nil && queryResponse.Status == retrievalmarket.QueryResponseError {
+		retrieval.sendEvent(events.Failed(req.RetrievalID, phaseStartTime, types.QueryPhase, candidate, queryResponse.Message))
+		queryResponse = nil
+	}
+
 	if queryResponse != nil {
 		retrieval.sendEvent(events.QueryAsked(req.RetrievalID, phaseStartTime, candidate, *queryResponse))
 		if queryResponse.Status != retrievalmarket.QueryResponseAvailable ||

@@ -295,20 +295,6 @@ func handleQueryAskEvent(
 	if eventStats.queryCount == 1 {
 		stats.Record(context.Background(), metrics.RequestWithSuccessfulQueriesCount.M(1))
 	}
-
-	if event.QueryResponse().Status == retrievalmarket.QueryResponseError {
-		var matched bool
-		for substr, metric := range metrics.QueryResponseMetricMatches {
-			if strings.Contains(event.QueryResponse().Message, substr) {
-				stats.Record(ctx, metric.M(1))
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			stats.Record(ctx, metrics.QueryErrorOtherCount.M(1))
-		}
-	}
 }
 
 // handleFailureEvent is called when a query _or_ retrieval fails
