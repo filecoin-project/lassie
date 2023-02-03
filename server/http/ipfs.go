@@ -114,7 +114,7 @@ func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request)
 		}
 
 		// create blockstore from defined car file and use it for the link system
-		blockstore, err := blockstore.OpenReadWriteFile(carfile, []cid.Cid{rootCid})
+		blockstore, err := blockstore.OpenReadWriteFile(carfile, []cid.Cid{rootCid}, blockstore.WriteAsCarV1(true))
 		if err != nil {
 			logger.LogStatus(http.StatusInternalServerError, fmt.Sprintf("Failed to create blockstore from temp car file before retrieval: %v", err))
 			res.WriteHeader(http.StatusInternalServerError)

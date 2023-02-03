@@ -101,7 +101,7 @@ func Fetch(c *cli.Context) error {
 	}
 
 	var parentOpener = func() (*carblockstore.ReadWrite, error) {
-		return carblockstore.OpenReadWrite(outfile, []cid.Cid{rootCid})
+		return carblockstore.OpenReadWrite(outfile, []cid.Cid{rootCid}, carblockstore.WriteAsCarV1(true))
 	}
 
 	var blockCount int
