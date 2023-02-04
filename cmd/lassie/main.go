@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 
 var log = logging.Logger("lassie")
 
-func main() {
+func Run() {
 	// set up a context that is canceled when a command is interrupted
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
