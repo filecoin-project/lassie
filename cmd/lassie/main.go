@@ -12,8 +12,11 @@ import (
 )
 
 var log = logging.Logger("lassie")
+var buildVersion string
 
-func Run() {
+func Run(version string) {
+	buildVersion = version
+
 	// set up a context that is canceled when a command is interrupted
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

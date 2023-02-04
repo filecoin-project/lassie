@@ -2,34 +2,34 @@ package cmd
 
 import (
 	"fmt"
+	"runtime/debug"
 
 	"github.com/urfave/cli/v2"
 )
-
-var version string // supplied during build with `go build -ldflags="-X main.version=v0.0.0"`
-
-type Version struct {
-	Version string `json:"version"`
-}
 
 var versionCmd = &cli.Command{
 	Name:      "version",
 	Before:    before,
 	Usage:     "Prints the version and exits",
 	UsageText: "lassie version",
-	Flags: []cli.Flag{
-		FlagVerbose,
-	},
-	Action: versionCommand,
+	Action:    versionCommand,
 }
 
 func versionCommand(cctx *cli.Context) error {
-	if version == "" {
-		log.Warn("executable built without a version")
-		log.Warn("set version with `go build -ldflags=\"-X main.version=v0.0.0\"")
-		version = "[not set]"
+	// buildVersion will be populated if we're running an official built binary
+	if buildVersion != "" {
+		fmt.Printf("lassie version %s\n", buildVersion)
+		return nil
 	}
 
-	fmt.Printf("lassie version %s\n", version)
+	// build info main version will be populated if installed from commit hash
+	info, ok := debug.ReadBuildInfo()
+	if ok && info.Main.Version != "(devel)" {
+		fmt.Printf("lassie version %s\n", info.Main.Version)
+		return nil
+	}
+
+	// otherwise we don't know the version
+	fmt.Println("lassie version (devel)")
 	return nil
 }
