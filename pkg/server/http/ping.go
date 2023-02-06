@@ -1,6 +1,8 @@
 package httpserver
 
-import "net/http"
+import (
+	"net/http"
+)
 
 func pingHandler(res http.ResponseWriter, req *http.Request) {
 	log.Info("request received at /ping")
