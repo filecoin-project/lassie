@@ -13,6 +13,7 @@ import (
 
 var log = logging.Logger("lassie/httpserver")
 
+// HttpServer is a Lassie server for fetching data from the network via HTTP
 type HttpServer struct {
 	cancel   context.CancelFunc
 	ctx      context.Context
@@ -21,6 +22,7 @@ type HttpServer struct {
 	server   *http.Server
 }
 
+// NewHttpServer creates a new HttpServer
 func NewHttpServer(ctx context.Context, address string, port uint) (*HttpServer, error) {
 	addr := fmt.Sprintf("%s:%d", address, port)
 	listener, err := net.Listen("tcp", addr) // assigns a port if port is 0
@@ -54,16 +56,17 @@ func NewHttpServer(ctx context.Context, address string, port uint) (*HttpServer,
 	}
 
 	// Routes
-	mux.HandleFunc("/ping", pingHandler)
 	mux.HandleFunc("/ipfs/", ipfsHandler(lassie))
 
 	return httpServer, nil
 }
 
+// Addr returns the listening address of the server
 func (s HttpServer) Addr() string {
 	return s.listener.Addr().String()
 }
 
+// Start starts the http server, returning an error if the server failed to start
 func (s *HttpServer) Start() error {
 	log.Infow("starting http server", "listen_addr", s.listener.Addr())
 	err := s.server.Serve(s.listener)
@@ -75,6 +78,7 @@ func (s *HttpServer) Start() error {
 	return nil
 }
 
+// Close shutsdown the server and cancels the server context
 func (s *HttpServer) Close() error {
 	log.Info("closing http server")
 	s.cancel()

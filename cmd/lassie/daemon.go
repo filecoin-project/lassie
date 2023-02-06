@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	httpserver "github.com/filecoin-project/lassie/server/http"
+	httpserver "github.com/filecoin-project/lassie/pkg/server/http"
 	"github.com/urfave/cli/v2"
 )
 

@@ -17,8 +17,8 @@ import (
 
 func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
-		logger := NewRequestLogger(req.Method, req.URL.Path)
-		logger.LogPath()
+		logger := newRequestLogger(req.Method, req.URL.Path)
+		logger.logPath()
 
 		urlPath := strings.Split(req.URL.Path, "/")[1:]
 
@@ -27,7 +27,7 @@ func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request)
 		case http.MethodGet:
 			break
 		default:
-			logger.LogStatus(http.StatusMethodNotAllowed, "Method not allowed")
+			logger.logStatus(http.StatusMethodNotAllowed, "Method not allowed")
 			res.Header().Add("Allow", http.MethodGet)
 			res.WriteHeader(http.StatusMethodNotAllowed)
 			return
@@ -36,7 +36,7 @@ func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request)
 		// check if CID path param is missing
 		if len(urlPath) < 2 {
 			// not a valid path to hit
-			logger.LogStatus(http.StatusNotFound, "Not found")
+			logger.logStatus(http.StatusNotFound, "Not found")
 			res.WriteHeader(http.StatusNotFound)
 			return
 		}
@@ -53,7 +53,7 @@ func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request)
 			}
 		}
 		if hasAccept && !validAccept {
-			logger.LogStatus(http.StatusBadRequest, "No acceptable content type")
+			logger.logStatus(http.StatusBadRequest, "No acceptable content type")
 			res.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -61,7 +61,7 @@ func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request)
 		// check if format is car
 		hasFormat := req.URL.Query().Has("format")
 		if hasFormat && req.URL.Query().Get("format") != "car" {
-			logger.LogStatus(http.StatusBadRequest, fmt.Sprintf("Requested non-supported format %s", req.URL.Query().Get("format")))
+			logger.logStatus(http.StatusBadRequest, fmt.Sprintf("Requested non-supported format %s", req.URL.Query().Get("format")))
 			res.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -69,7 +69,7 @@ func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request)
 		// if neither are provided return
 		// one of them has to be given with a CAR type since we only return CAR data
 		if !validAccept && !hasFormat {
-			logger.LogStatus(http.StatusBadRequest, "Neither a valid accept header or format parameter were provided")
+			logger.logStatus(http.StatusBadRequest, "Neither a valid accept header or format parameter were provided")
 			res.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -79,12 +79,12 @@ func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request)
 			filename := req.URL.Query().Get("filename")
 			ext := filepath.Ext(filename)
 			if ext == "" {
-				logger.LogStatus(http.StatusBadRequest, "Filename missing extension")
+				logger.logStatus(http.StatusBadRequest, "Filename missing extension")
 				res.WriteHeader(http.StatusBadRequest)
 				return
 			}
 			if ext != ".car" {
-				logger.LogStatus(http.StatusBadRequest, fmt.Sprintf("Filename uses non-supported extension %s", ext))
+				logger.logStatus(http.StatusBadRequest, fmt.Sprintf("Filename uses non-supported extension %s", ext))
 				res.WriteHeader(http.StatusBadRequest)
 				return
 			}
@@ -94,7 +94,7 @@ func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request)
 		cidStr := urlPath[1]
 		rootCid, err := cid.Parse(cidStr)
 		if err != nil {
-			logger.LogStatus(http.StatusInternalServerError, "Failed to parse CID path parameter")
+			logger.logStatus(http.StatusInternalServerError, "Failed to parse CID path parameter")
 			http.Error(res, "Failed to parse CID path parameter", http.StatusInternalServerError)
 			return
 		}
@@ -117,7 +117,7 @@ func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request)
 		retrievalId, err := types.NewRetrievalID()
 		if err != nil {
 			msg := fmt.Sprintf("Failed to generate retrieval ID: %s", err.Error())
-			logger.LogStatus(http.StatusInternalServerError, msg)
+			logger.logStatus(http.StatusInternalServerError, msg)
 			http.Error(res, msg, http.StatusInternalServerError)
 			return
 		}
@@ -135,7 +135,7 @@ func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request)
 			// see https://github.com/ipfs/kubo/pull/8720
 			res.Header().Set("X-Trace-Id", retrievalId.String())
 
-			logger.LogStatus(200, "OK")
+			logger.logStatus(200, "OK")
 
 			return res, nil
 		}
@@ -148,7 +148,7 @@ func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request)
 			if !errored {
 				errored = true
 				msg := fmt.Sprintf("Failed to write to CAR: %s", err.Error())
-				logger.LogStatus(http.StatusInternalServerError, msg)
+				logger.logStatus(http.StatusInternalServerError, msg)
 				http.Error(res, msg, http.StatusInternalServerError)
 			}
 		}
@@ -169,7 +169,7 @@ func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request)
 		stats, err := lassie.Retrieve(req.Context(), request)
 		if err != nil {
 			msg := fmt.Sprintf("Failed to fetch CID: %s", err.Error())
-			logger.LogStatus(http.StatusInternalServerError, msg)
+			logger.logStatus(http.StatusInternalServerError, msg)
 			http.Error(res, msg, http.StatusInternalServerError)
 			return
 		}
@@ -188,18 +188,18 @@ type requestLogger struct {
 	path   string
 }
 
-func NewRequestLogger(method string, path string) *requestLogger {
+func newRequestLogger(method string, path string) *requestLogger {
 	return &requestLogger{method, path}
 }
 
 // Logs the method and path
-func (l requestLogger) LogPath() {
+func (l requestLogger) logPath() {
 	now := time.Now().UTC().Local().Format(time.RFC3339)
 	fmt.Printf("%s\t%s\t%s\n", now, l.method, l.path)
 }
 
 // Logs the method, path, and any status code and message depending on the status code
-func (l requestLogger) LogStatus(statusCode int, message string) {
+func (l requestLogger) logStatus(statusCode int, message string) {
 	now := time.Now().UTC().Local().Format(time.RFC3339)
 	if statusCode == http.StatusOK {
 		fmt.Printf("%s\t%s\t%s\t%s\n", now, l.method, l.path, message)
