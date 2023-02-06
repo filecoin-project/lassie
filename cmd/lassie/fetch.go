@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -13,8 +14,9 @@ import (
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-graphsync/storeutil"
-	carblockstore "github.com/ipld/go-car/v2/blockstore"
+	carv2 "github.com/ipld/go-car/v2"
+	carstore "github.com/ipld/go-car/v2/storage"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/urfave/cli/v2"
 )
@@ -99,9 +101,28 @@ func Fetch(c *cli.Context) error {
 	if c.IsSet("output") {
 		outfile = c.String("output")
 	}
+	var openedFile *os.File
+	defer func() {
+		if openedFile != nil {
+			openedFile.Close()
+		}
+	}()
 
-	var parentOpener = func() (*carblockstore.ReadWrite, error) {
-		return carblockstore.OpenReadWrite(outfile, []cid.Cid{rootCid}, carblockstore.WriteAsCarV1(true))
+	// TODO: unfortunately errors from here have to propagate through graphsync
+	// then data-transfer and all the way back up to retrieval; we should
+	// probably have a way to cancel the retrieval and return an error
+	// immediately if this fails.
+	var parentOpener = func() (*carstore.StorageCar, error) {
+		var err error
+		// always Create, truncating and making a new store - can't resume here
+		// because our headers (roots) won't match
+		// TODO: option to resume existing CAR and ignore mismatching header? it
+		// could just append blocks and leave the header as it is
+		openedFile, err = os.Create(outfile)
+		if err != nil {
+			return nil, err
+		}
+		return carstore.NewReadableWritable(openedFile, []cid.Cid{rootCid}, carv2.WriteAsCarV1(true))
 	}
 
 	var blockCount int
@@ -115,8 +136,10 @@ func Fetch(c *cli.Context) error {
 			fmt.Printf("\rReceived %d blocks / %s...", blockCount, humanize.IBytes(byteLength))
 		}
 	}
-	bstore := cmdinternal.NewPutCbBlockstore(parentOpener, putCb)
-	linkSystem := storeutil.LinkSystemForBlockstore(bstore)
+	store := cmdinternal.NewPutCbStore(parentOpener, putCb)
+	linkSystem := cidlink.DefaultLinkSystem()
+	linkSystem.SetReadStorage(store)
+	linkSystem.SetWriteStorage(store)
 
 	_, stats, err := lassie.Fetch(c.Context, rootCid, linkSystem)
 	if err != nil {
@@ -134,7 +157,7 @@ func Fetch(c *cli.Context) error {
 		humanize.IBytes(stats.Size),
 	)
 
-	return bstore.Finalize()
+	return store.Finalize()
 }
 
 type progressPrinter struct {

@@ -2,16 +2,17 @@ package httpserver
 
 import (
 	"fmt"
+	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/filecoin-project/lassie/internal/streamingstore"
 	lassie "github.com/filecoin-project/lassie/pkg/lassie"
+	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-graphsync/storeutil"
-	"github.com/ipld/go-car/v2/blockstore"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 )
 
 func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request) {
@@ -32,7 +33,7 @@ func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request)
 			return
 		}
 
-		// check if cid path param is missing
+		// check if CID path param is missing
 		if len(urlPath) < 2 {
 			// not a valid path to hit
 			logger.LogStatus(http.StatusNotFound, "Not found")
@@ -66,7 +67,7 @@ func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request)
 		}
 
 		// if neither are provided return
-		// one of them has to be given with a car type since we only return car files
+		// one of them has to be given with a CAR type since we only return CAR data
 		if !validAccept && !hasFormat {
 			logger.LogStatus(http.StatusBadRequest, "Neither a valid accept header or format parameter were provided")
 			res.WriteHeader(http.StatusBadRequest)
@@ -89,12 +90,12 @@ func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request)
 			}
 		}
 
-		// validate cid path parameter
+		// validate CID path parameter
 		cidStr := urlPath[1]
 		rootCid, err := cid.Parse(cidStr)
 		if err != nil {
-			logger.LogStatus(http.StatusInternalServerError, "Failed to parse cid path parameter")
-			res.WriteHeader(http.StatusInternalServerError)
+			logger.LogStatus(http.StatusInternalServerError, "Failed to parse CID path parameter")
+			http.Error(res, "Failed to parse CID path parameter", http.StatusInternalServerError)
 			return
 		}
 
@@ -105,67 +106,78 @@ func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request)
 		// }
 		// TODO: Do something with unixfs path
 
-		log.Debug("creating temp car file")
-		carfile, err := os.CreateTemp("", rootCid.String())
-		if err != nil {
-			logger.LogStatus(http.StatusInternalServerError, fmt.Sprintf("Failed to create temp car file before retrieval: %v", err))
-			res.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		// create blockstore from defined car file and use it for the link system
-		blockstore, err := blockstore.OpenReadWriteFile(carfile, []cid.Cid{rootCid}, blockstore.WriteAsCarV1(true))
-		if err != nil {
-			logger.LogStatus(http.StatusInternalServerError, fmt.Sprintf("Failed to create blockstore from temp car file before retrieval: %v", err))
-			res.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		linkSystem := storeutil.LinkSystemForBlockstore(blockstore)
-
-		log.Debugw("fetching cid into car file", "cid", rootCid.String(), "file", carfile.Name())
-		id, _, err := lassie.Fetch(req.Context(), rootCid, linkSystem)
-		if err != nil {
-			logger.LogStatus(http.StatusInternalServerError, fmt.Sprintf("Failed to fetch cid: %v", err))
-			res.WriteHeader(http.StatusInternalServerError)
-			carfile.Close()
-			return
-		}
-
-		log.Debugw("closing car file", "file", carfile.Name())
-		err = carfile.Close()
-		if err != nil {
-			logger.LogStatus(http.StatusInternalServerError, fmt.Sprintf("Failed to close temp car file after retrieval: %v", err))
-			res.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		// set Content-Disposition header based on filename url parameter
+		// for setting Content-Disposition header based on filename url parameter
 		var filename string
 		if req.URL.Query().Has("filename") {
 			filename = req.URL.Query().Get("filename")
 		} else {
 			filename = fmt.Sprintf("%s.car", rootCid.String())
 		}
-		res.Header().Set("Content-Disposition", "attachment; filename="+filename)
 
-		res.Header().Set("Accept-Ranges", "none")
-		res.Header().Set("Cache-Control", "public, max-age=29030400, immutable")
-		res.Header().Set("Content-Type", "application/vnd.ipld.car; version=1")
-		res.Header().Set("Etag", fmt.Sprintf("%s.car", rootCid.String()))
-		res.Header().Set("X-Content-Type-Options", "nosniff")
-		res.Header().Set("X-Ipfs-Path", req.URL.Path)
-		// TODO: set X-Ipfs-Roots header when we support root+path
-		// see https://github.com/ipfs/kubo/pull/8720
-		res.Header().Set("X-Trace-Id", id.String())
-
-		logger.LogStatus(200, "OK")
-		http.ServeFile(res, req, carfile.Name())
-
-		log.Debugw("removing temp car file", "file", carfile.Name())
-		err = os.Remove(carfile.Name())
+		retrievalId, err := types.NewRetrievalID()
 		if err != nil {
-			log.Errorw("failed to remove temp car file after retrieval", "file", carfile.Name(), "err", err)
+			msg := fmt.Sprintf("Failed to generate retrieval ID: %s", err.Error())
+			logger.LogStatus(http.StatusInternalServerError, msg)
+			http.Error(res, msg, http.StatusInternalServerError)
+			return
 		}
+
+		// called once we start writing blocks into the CAR (on the first Put())
+		getWriter := func() (io.Writer, error) {
+			res.Header().Set("Content-Disposition", "attachment; filename="+filename)
+			res.Header().Set("Accept-Ranges", "none")
+			res.Header().Set("Cache-Control", "public, max-age=29030400, immutable")
+			res.Header().Set("Content-Type", "application/vnd.ipld.car; version=1")
+			res.Header().Set("Etag", fmt.Sprintf("%s.car", rootCid.String()))
+			res.Header().Set("X-Content-Type-Options", "nosniff")
+			res.Header().Set("X-Ipfs-Path", req.URL.Path)
+			// TODO: set X-Ipfs-Roots header when we support root+path
+			// see https://github.com/ipfs/kubo/pull/8720
+			res.Header().Set("X-Trace-Id", retrievalId.String())
+
+			logger.LogStatus(200, "OK")
+
+			return res, nil
+		}
+
+		// called when the store errors from any of its operations; only log the
+		// first error and assume that the error will propagate through to
+		// lassie.Retrieve
+		var errored bool
+		errorCb := func(error) {
+			if !errored {
+				errored = true
+				msg := fmt.Sprintf("Failed to write to CAR: %s", err.Error())
+				logger.LogStatus(http.StatusInternalServerError, msg)
+				http.Error(res, msg, http.StatusInternalServerError)
+			}
+		}
+
+		store := streamingstore.NewStreamingStore(req.Context(), []cid.Cid{rootCid}, getWriter, errorCb)
+		defer func() {
+			if err := store.Close(); err != nil {
+				log.Errorw("failed to close streaming store after retrieval", "retrievalId", retrievalId, "err", err)
+			}
+		}()
+		linkSystem := cidlink.DefaultLinkSystem()
+		linkSystem.SetReadStorage(store)
+		linkSystem.SetWriteStorage(store)
+
+		log.Debugw("fetching CID", "retrievalId", retrievalId, "CID", rootCid.String())
+		request := types.RetrievalRequest{RetrievalID: retrievalId, Cid: rootCid, LinkSystem: linkSystem}
+		stats, err := lassie.Retrieve(req.Context(), request)
+		if err != nil {
+			msg := fmt.Sprintf("Failed to fetch CID: %s", err.Error())
+			logger.LogStatus(http.StatusInternalServerError, msg)
+			http.Error(res, msg, http.StatusInternalServerError)
+			return
+		}
+		log.Debugw("successfully fetched CID",
+			"retrievalId", retrievalId,
+			"CID", rootCid,
+			"duration", stats.Duration,
+			"bytes", stats.Size,
+		)
 	}
 }
 
