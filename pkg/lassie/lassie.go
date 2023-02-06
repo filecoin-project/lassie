@@ -2,7 +2,6 @@ package lassie
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/filecoin-project/lassie/internal"
@@ -94,6 +93,10 @@ func WithTimeout(timeout time.Duration) LassieOption {
 	}
 }
 
+func (l *Lassie) Retrieve(ctx context.Context, request types.RetrievalRequest) (*types.RetrievalStats, error) {
+	return l.retriever.Retrieve(ctx, request, func(types.RetrievalEvent) {})
+}
+
 func (l *Lassie) Fetch(ctx context.Context, rootCid cid.Cid, linkSystem linking.LinkSystem) (types.RetrievalID, *types.RetrievalStats, error) {
 	// Assign an ID to this retrieval
 	retrievalId, err := types.NewRetrievalID()
@@ -105,7 +108,6 @@ func (l *Lassie) Fetch(ctx context.Context, rootCid cid.Cid, linkSystem linking.
 	request := types.RetrievalRequest{RetrievalID: retrievalId, Cid: rootCid, LinkSystem: linkSystem}
 	stats, err := l.retriever.Retrieve(ctx, request, func(types.RetrievalEvent) {})
 	if err != nil {
-		fmt.Println()
 		return retrievalId, nil, err
 	}
 
