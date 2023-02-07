@@ -155,7 +155,7 @@ func TestRaceRetrievers(t *testing.T) {
 				stats, err := retriever(childCtx, types.RetrievalRequest{}, func(types.RetrievalEvent) {})
 				select {
 				case <-ctx.Done():
-				case resultChan <- types.RetrievalResult{stats, err}:
+				case resultChan <- types.RetrievalResult{Stats: stats, Err: err}:
 				}
 			}()
 			for range childRetrievers {

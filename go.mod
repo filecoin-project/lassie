@@ -4,6 +4,7 @@ go 1.19
 
 require (
 	contrib.go.opencensus.io/exporter/prometheus v0.4.2
+	github.com/benbjohnson/clock v1.3.0
 	github.com/dustin/go-humanize v1.0.0
 	github.com/filecoin-project/go-address v1.1.0
 	github.com/filecoin-project/go-data-transfer/v2 v2.0.0-rc2
@@ -38,7 +39,6 @@ require (
 )
 
 require (
-	github.com/benbjohnson/clock v1.3.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect

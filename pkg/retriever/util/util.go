@@ -63,7 +63,7 @@ func RaceRetrievers(retrievers []types.Retriever) types.Retriever {
 				defer waitGroup.Done()
 				stats, err := retriever(ctx, request, events)
 				select {
-				case resultChan <- types.RetrievalResult{stats, err}:
+				case resultChan <- types.RetrievalResult{Stats: stats, Err: err}:
 				case <-ctx.Done():
 				}
 			}()
