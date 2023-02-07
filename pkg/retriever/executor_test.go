@@ -100,7 +100,7 @@ func TestQueryFiltering(t *testing.T) {
 				dqr[p] = testutil.DelayedQueryReturn{QueryResponse: qr, Err: nil, Delay: time.Millisecond * 50}
 			}
 			mockClient := testutil.NewMockClient(dqr, nil)
-			candidates := []types.RetrievalCandidate{}
+			var candidates []types.RetrievalCandidate
 			for p := range tc.queryResponses {
 				candidates = append(candidates, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID(p)}})
 			}
