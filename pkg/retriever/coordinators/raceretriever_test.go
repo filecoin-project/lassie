@@ -1,4 +1,4 @@
-package util_test
+package coordinators_test
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/benbjohnson/clock"
-	"github.com/filecoin-project/lassie/pkg/retriever/util"
+	"github.com/filecoin-project/lassie/pkg/retriever/coordinators"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/require"
@@ -145,14 +145,14 @@ func TestRaceRetrievers(t *testing.T) {
 			startChan := make(chan struct{})
 			childRetrievers := make([]types.Retriever, 0, len(testCase.results))
 			for _, result := range testCase.results {
-				childRetrievers = append(childRetrievers, (&timeoutRetriever{result, clock, startChan}).Retrieve)
+				childRetrievers = append(childRetrievers, &timeoutRetriever{result, clock, startChan})
 			}
-			retriever := util.RaceRetrievers(childRetrievers)
+			retriever := coordinators.RaceRetriever{Retrievers: childRetrievers}
 			resultChan := make(chan types.RetrievalResult)
 			childCtx, childCancel := context.WithCancel(ctx)
 			defer childCancel()
 			go func() {
-				stats, err := retriever(childCtx, types.RetrievalRequest{}, func(types.RetrievalEvent) {})
+				stats, err := retriever.Retrieve(childCtx, types.RetrievalRequest{}, func(types.RetrievalEvent) {})
 				select {
 				case <-ctx.Done():
 				case resultChan <- types.RetrievalResult{Stats: stats, Err: err}:
@@ -180,93 +180,6 @@ func TestRaceRetrievers(t *testing.T) {
 	}
 }
 
-func TestSequenceRetrievers(t *testing.T) {
-	ctx := context.Background()
-	testCases := []struct {
-		name          string
-		results       []types.RetrievalResult
-		expectedStats *types.RetrievalStats
-		expectedErr   error
-	}{
-		{
-			name: "two successes, returns first in sequence",
-			results: []types.RetrievalResult{
-				{
-					Stats: &types.RetrievalStats{
-						StorageProviderId: peer.ID("apples"),
-					},
-				},
-				{
-					Stats: &types.RetrievalStats{
-						StorageProviderId: peer.ID("oranges"),
-					},
-				},
-			},
-			expectedStats: &types.RetrievalStats{
-				StorageProviderId: peer.ID("apples"),
-			},
-		},
-		{
-			name: "two errors, returns multi error in sequence",
-			results: []types.RetrievalResult{
-				{
-					Err: errors.New("something went wrong"),
-				},
-				{
-					Err: errors.New("something else went wrong"),
-				},
-			},
-			expectedErr: multierr.Append(errors.New("something went wrong"), errors.New("something else went wrong")),
-		},
-		{
-			name: "error then success, returns success",
-			results: []types.RetrievalResult{
-				{
-					Err: errors.New("something went wrong"),
-				},
-				{
-					Stats: &types.RetrievalStats{
-						StorageProviderId: peer.ID("oranges"),
-					},
-				},
-			},
-			expectedStats: &types.RetrievalStats{
-				StorageProviderId: peer.ID("oranges"),
-			},
-		},
-		{
-			name: "success then error, returns success",
-			results: []types.RetrievalResult{
-				{
-					Stats: &types.RetrievalStats{
-						StorageProviderId: peer.ID("apples"),
-					},
-				},
-				{
-					Err: errors.New("something went wrong"),
-				},
-			},
-			expectedStats: &types.RetrievalStats{
-				StorageProviderId: peer.ID("apples"),
-			},
-		},
-	}
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(ctx, time.Second)
-			defer cancel()
-			childRetrievers := make([]types.Retriever, 0, len(testCase.results))
-			for _, result := range testCase.results {
-				childRetrievers = append(childRetrievers, (&stubRetriever{result}).Retrieve)
-			}
-			retriever := util.SequenceRetrievers(childRetrievers)
-			stats, err := retriever(ctx, types.RetrievalRequest{}, func(types.RetrievalEvent) {})
-			require.Equal(t, testCase.expectedStats, stats)
-			require.Equal(t, testCase.expectedErr, err)
-		})
-	}
-}
-
 type timeoutResult struct {
 	duration time.Duration
 	stats    *types.RetrievalStats
@@ -288,12 +201,4 @@ func (t *timeoutRetriever) Retrieve(ctx context.Context, request types.Retrieval
 	case <-timer.C:
 		return t.stats, t.err
 	}
-}
-
-type stubRetriever struct {
-	types.RetrievalResult
-}
-
-func (s *stubRetriever) Retrieve(ctx context.Context, request types.RetrievalRequest, events func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
-	return s.Stats, s.Err
 }

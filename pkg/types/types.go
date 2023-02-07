@@ -55,10 +55,23 @@ type RetrievalRequest struct {
 	LinkSystem  ipld.LinkSystem
 }
 
-type Retriever func(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) (*RetrievalStats, error)
-type CandidateRetriever func(ctx context.Context, request RetrievalRequest, candidates []RetrievalCandidate, events func(RetrievalEvent)) (*RetrievalStats, error)
-type RetrievalCandidateFinder func(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) ([]RetrievalCandidate, error)
-type CandidateSplitter func(ctx context.Context, request RetrievalRequest, candidates []RetrievalCandidate, events func(RetrievalEvent)) ([][]RetrievalCandidate, error)
+type CandidateStream []RetrievalCandidate
+
+type Retriever interface {
+	Retrieve(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) (*RetrievalStats, error)
+}
+
+type CandidateRetriever interface {
+	RetrieveFromCandidates(ctx context.Context, request RetrievalRequest, candidates CandidateStream, events func(RetrievalEvent)) (*RetrievalStats, error)
+}
+
+type RetrievalCandidateFinder interface {
+	FindCandidates(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) (CandidateStream, error)
+}
+
+type CandidateSplitter interface {
+	SplitCandidates(ctx context.Context, request RetrievalRequest, candidates []RetrievalCandidate, events func(RetrievalEvent)) ([][]RetrievalCandidate, error)
+}
 
 type RetrievalStats struct {
 	StorageProviderId peer.ID

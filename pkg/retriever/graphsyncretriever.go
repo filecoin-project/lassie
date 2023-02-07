@@ -93,7 +93,7 @@ type retrieval struct {
 func (cfg *GraphSyncRetriever) RetrieveFromCandidates(
 	ctx context.Context,
 	retrievalRequest types.RetrievalRequest,
-	candidates []types.RetrievalCandidate,
+	candidates types.CandidateStream,
 	eventsCallback func(types.RetrievalEvent),
 ) (*types.RetrievalStats, error) {
 

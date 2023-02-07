@@ -18,7 +18,7 @@ type RetrievalCandidateFinder struct {
 func NewRetrievalCandidateFinder(candidateFinder CandidateFinder, isAcceptableStorageProvider IsAcceptableStorageProvider) *RetrievalCandidateFinder {
 	return &RetrievalCandidateFinder{candidateFinder: candidateFinder, isAcceptableStorageProvider: isAcceptableStorageProvider}
 }
-func (rcf *RetrievalCandidateFinder) FindCandidates(ctx context.Context, request types.RetrievalRequest, eventsCallback func(types.RetrievalEvent)) ([]types.RetrievalCandidate, error) {
+func (rcf *RetrievalCandidateFinder) FindCandidates(ctx context.Context, request types.RetrievalRequest, eventsCallback func(types.RetrievalEvent)) (types.CandidateStream, error) {
 	ctx, cancelCtx := context.WithCancel(ctx)
 	defer cancelCtx()
 	phaseStarted := time.Now()

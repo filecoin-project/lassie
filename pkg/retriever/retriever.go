@@ -12,7 +12,7 @@ import (
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/metrics"
-	"github.com/filecoin-project/lassie/pkg/retriever/util"
+	"github.com/filecoin-project/lassie/pkg/retriever/combinators"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -96,17 +96,22 @@ func NewRetriever(
 		eventManager: events.NewEventManager(ctx),
 		spTracker:    newSpTracker(nil),
 	}
-	graphsyncRetriever := &GraphSyncRetriever{
-		GetStorageProviderTimeout:   retriever.getStorageProviderTimeout,
-		IsAcceptableStorageProvider: retriever.isAcceptableStorageProvider,
-		IsAcceptableQueryResponse:   retriever.isAcceptableQueryResponse,
-		Client:                      client,
+	retriever.executor = combinators.RetrieverWithCandidateFinder{
+		CandidateFinder: NewRetrievalCandidateFinder(candidateFinder, retriever.isAcceptableStorageProvider),
+		CandidateRetriever: combinators.SplitRetriever{
+			CandidateSplitter: NewProtocolSplitter([]multicodec.Code{multicodec.TransportGraphsyncFilecoinv1, multicodec.TransportBitswap}),
+			CandidateRetrievers: []types.CandidateRetriever{
+				&GraphSyncRetriever{
+					GetStorageProviderTimeout:   retriever.getStorageProviderTimeout,
+					IsAcceptableStorageProvider: retriever.isAcceptableStorageProvider,
+					IsAcceptableQueryResponse:   retriever.isAcceptableQueryResponse,
+					Client:                      client,
+				},
+				NewBitswapRetriever(),
+			},
+			CoordinationKind: types.RaceCoordination,
+		},
 	}
-	bitswapRetriever := NewBitswapRetriever()
-	protocolSplitter := NewProtocolSplitter([]multicodec.Code{multicodec.TransportGraphsyncFilecoinv1, multicodec.TransportBitswap})
-	retrievalCandidateFinder := NewRetrievalCandidateFinder(candidateFinder, retriever.isAcceptableStorageProvider)
-	executor := util.MultiRetriever(protocolSplitter.SplitCandidates, []types.CandidateRetriever{graphsyncRetriever.RetrieveFromCandidates, bitswapRetriever.Retrieve}, types.RaceCoordination)
-	retriever.executor = util.WithCandidates(retrievalCandidateFinder.FindCandidates, executor)
 
 	return retriever, nil
 }
@@ -214,7 +219,7 @@ func (retriever *Retriever) Retrieve(
 	// (retrievalStats!=nil) _and_ also an error return because there may be
 	// multiple failures along the way, if we got a retrieval then we'll pretend
 	// to our caller that there was no error
-	retrievalStats, err := retriever.executor(
+	retrievalStats, err := retriever.executor.Retrieve(
 		ctx,
 		request,
 		onRetrievalEvent,
