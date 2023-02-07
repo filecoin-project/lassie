@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/filecoin-project/go-state-types/abi"
+	"github.com/filecoin-project/index-provider/metadata"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
@@ -14,6 +15,7 @@ import (
 type RetrievalCandidate struct {
 	MinerPeer peer.AddrInfo
 	RootCid   cid.Cid
+	Metadata  metadata.Metadata
 }
 
 func NewRetrievalCandidate(pid peer.ID, rootCid cid.Cid) RetrievalCandidate {
@@ -56,16 +58,7 @@ type RetrievalRequest struct {
 type Retriever func(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) (*RetrievalStats, error)
 type CandidateRetriever func(ctx context.Context, request RetrievalRequest, candidates []RetrievalCandidate, events func(RetrievalEvent)) (*RetrievalStats, error)
 type RetrievalCandidateFinder func(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) ([]RetrievalCandidate, error)
-
-func WithCandidates(retrievalCandidateFinder RetrievalCandidateFinder, childRetriever CandidateRetriever) Retriever {
-	return func(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) (*RetrievalStats, error) {
-		candidates, err := retrievalCandidateFinder(ctx, request, events)
-		if err != nil {
-			return nil, err
-		}
-		return childRetriever(ctx, request, candidates, events)
-	}
-}
+type CandidateSplitter func(ctx context.Context, request RetrievalRequest, candidates []RetrievalCandidate, events func(RetrievalEvent)) ([][]RetrievalCandidate, error)
 
 type RetrievalStats struct {
 	StorageProviderId peer.ID
@@ -81,6 +74,18 @@ type RetrievalStats struct {
 	// TODO: we should be able to get this if we hook into the graphsync event stream
 	// TimeToFirstByte time.Duration
 }
+
+type RetrievalResult struct {
+	Stats *RetrievalStats
+	Err   error
+}
+
+type CoordinationKind string
+
+const (
+	RaceCoordination       = "race"
+	SequentialCoordination = "sequential"
+)
 
 type Phase string
 

@@ -12,9 +12,11 @@ import (
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/metrics"
+	"github.com/filecoin-project/lassie/pkg/retriever/util"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multicodec"
 	"go.opencensus.io/stats"
 )
 
@@ -94,14 +96,17 @@ func NewRetriever(
 		eventManager: events.NewEventManager(ctx),
 		spTracker:    newSpTracker(nil),
 	}
-	executor := &Executor{
+	graphsyncRetriever := &GraphSyncRetriever{
 		GetStorageProviderTimeout:   retriever.getStorageProviderTimeout,
 		IsAcceptableStorageProvider: retriever.isAcceptableStorageProvider,
 		IsAcceptableQueryResponse:   retriever.isAcceptableQueryResponse,
 		Client:                      client,
 	}
+	bitswapRetriever := NewBitswapRetriever()
+	protocolSplitter := NewProtocolSplitter([]multicodec.Code{multicodec.TransportGraphsyncFilecoinv1, multicodec.TransportBitswap})
 	retrievalCandidateFinder := NewRetrievalCandidateFinder(candidateFinder, retriever.isAcceptableStorageProvider)
-	retriever.executor = types.WithCandidates(retrievalCandidateFinder.FindCandidates, executor.RetrieveFromCandidates)
+	executor := util.MultiRetriever(protocolSplitter.SplitCandidates, []types.CandidateRetriever{graphsyncRetriever.RetrieveFromCandidates, bitswapRetriever.Retrieve}, types.RaceCoordination)
+	retriever.executor = util.WithCandidates(retrievalCandidateFinder.FindCandidates, executor)
 
 	return retriever, nil
 }
