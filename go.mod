@@ -20,7 +20,7 @@ require (
 	github.com/ipfs/go-graphsync v0.14.0
 	github.com/ipfs/go-ipld-format v0.4.0
 	github.com/ipfs/go-log/v2 v2.5.1
-	github.com/ipld/go-car/v2 v2.6.1-0.20230206113223-02849a8ac62f
+	github.com/ipld/go-car/v2 v2.7.0
 	github.com/ipld/go-ipld-prime v0.19.0
 	github.com/ipni/storetheindex v0.5.4
 	github.com/libp2p/go-libp2p v0.23.4
