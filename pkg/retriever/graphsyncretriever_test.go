@@ -106,8 +106,7 @@ func TestQueryFiltering(t *testing.T) {
 			}
 
 			cfg := &GraphSyncRetriever{
-				GetStorageProviderTimeout:   func(peer peer.ID) time.Duration { return time.Second },
-				IsAcceptableStorageProvider: func(peer peer.ID) bool { return true },
+				GetStorageProviderTimeout: func(peer peer.ID) time.Duration { return time.Second },
 				IsAcceptableQueryResponse: func(peer peer.ID, req types.RetrievalRequest, queryResponse *retrievalmarket.QueryResponse) bool {
 					return tc.paid || big.Add(big.Mul(queryResponse.MinPricePerByte, big.NewIntUnsigned(queryResponse.Size)), queryResponse.UnsealPrice).Equals(big.Zero())
 				},
@@ -318,10 +317,9 @@ func TestRetrievalRacing(t *testing.T) {
 				candidates = append(candidates, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID(p)}})
 			}
 			cfg := &GraphSyncRetriever{
-				GetStorageProviderTimeout:   func(peer peer.ID) time.Duration { return time.Second },
-				IsAcceptableStorageProvider: func(peer peer.ID) bool { return true },
-				IsAcceptableQueryResponse:   func(peer peer.ID, req types.RetrievalRequest, qr *retrievalmarket.QueryResponse) bool { return true },
-				Client:                      mockClient,
+				GetStorageProviderTimeout: func(peer peer.ID) time.Duration { return time.Second },
+				IsAcceptableQueryResponse: func(peer peer.ID, req types.RetrievalRequest, qr *retrievalmarket.QueryResponse) bool { return true },
+				Client:                    mockClient,
 			}
 
 			retrievingPeers := make([]peer.ID, 0)
@@ -422,10 +420,9 @@ func TestMultipleRetrievals(t *testing.T) {
 	)
 
 	cfg := &GraphSyncRetriever{
-		GetStorageProviderTimeout:   func(peer peer.ID) time.Duration { return time.Second },
-		IsAcceptableStorageProvider: func(peer peer.ID) bool { return true },
-		IsAcceptableQueryResponse:   func(peer peer.ID, req types.RetrievalRequest, qr *retrievalmarket.QueryResponse) bool { return true },
-		Client:                      mockClient,
+		GetStorageProviderTimeout: func(peer peer.ID) time.Duration { return time.Second },
+		IsAcceptableQueryResponse: func(peer peer.ID, req types.RetrievalRequest, qr *retrievalmarket.QueryResponse) bool { return true },
+		Client:                    mockClient,
 	}
 
 	candidateQueries := make([]candidateQuery, 0)

@@ -13,7 +13,6 @@ import (
 	"path"
 
 	"github.com/filecoin-project/index-provider/metadata"
-	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-log/v2"
@@ -22,7 +21,7 @@ import (
 )
 
 var (
-	_ retriever.CandidateFinder = (*IndexerCandidateFinder)(nil)
+	_ types.CandidateFinder = (*IndexerCandidateFinder)(nil)
 
 	logger = log.Logger("indexerlookup")
 )
@@ -94,21 +93,6 @@ func (idxf *IndexerCandidateFinder) FindCandidates(ctx context.Context, cid cid.
 		}
 	}
 	return matches, nil
-}
-
-func decodeMetadata(pr model.ProviderResult) (metadata.Metadata, error) {
-	if len(pr.Metadata) == 0 {
-		return metadata.Metadata{}, errors.New("no metadata")
-	}
-	// Metadata may contain more than one protocol, sorted by ascending order of their protocol ID.
-	// Therefore, decode the metadata as metadata.Metadata, then check if it supports Graphsync.
-	// See: https://github.com/ipni/specs/blob/main/IPNI.md#metadata
-	dtm := metadata.Default.New()
-	if err := dtm.UnmarshalBinary(pr.Metadata); err != nil {
-		logger.Debugw("Failed to unmarshal metadata", "err", err)
-		return metadata.Metadata{}, err
-	}
-	return dtm, nil
 }
 
 func (idxf *IndexerCandidateFinder) FindCandidatesAsync(ctx context.Context, c cid.Cid) (<-chan types.FindCandidatesResult, error) {
@@ -189,4 +173,19 @@ func (idxf *IndexerCandidateFinder) findByMultihashEndpoint(mh multihash.Multiha
 	// TODO: Replace with URL.JoinPath once minimum go version in CI is updated to 1.19; like this:
 	//       return idxf.httpEndpoint.JoinPath("multihash", mh.B58String()).String()
 	return idxf.httpEndpoint.String() + path.Join("/multihash", mh.B58String())
+}
+
+func decodeMetadata(pr model.ProviderResult) (metadata.Metadata, error) {
+	if len(pr.Metadata) == 0 {
+		return metadata.Metadata{}, errors.New("no metadata")
+	}
+	// Metadata may contain more than one protocol, sorted by ascending order of their protocol ID.
+	// Therefore, decode the metadata as metadata.Metadata, then check if it supports Graphsync.
+	// See: https://github.com/ipni/specs/blob/main/IPNI.md#metadata
+	dtm := metadata.Default.New()
+	if err := dtm.UnmarshalBinary(pr.Metadata); err != nil {
+		logger.Debugw("Failed to unmarshal metadata", "err", err)
+		return metadata.Metadata{}, err
+	}
+	return dtm, nil
 }

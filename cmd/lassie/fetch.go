@@ -10,7 +10,6 @@ import (
 	cmdinternal "github.com/filecoin-project/lassie/cmd/lassie/internal"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/lassie"
-	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-graphsync/storeutil"
@@ -193,7 +192,7 @@ func (pp *progressPrinter) subscriber(event types.RetrievalEvent) {
 	}
 }
 
-var _ retriever.CandidateFinder = (*explicitCandidateFinder)(nil)
+var _ types.CandidateFinder = (*explicitCandidateFinder)(nil)
 
 type explicitCandidateFinder struct {
 	provider peer.AddrInfo

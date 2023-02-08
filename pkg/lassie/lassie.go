@@ -23,7 +23,7 @@ type Lassie struct {
 }
 
 type LassieConfig struct {
-	Finder  retriever.CandidateFinder
+	Finder  types.CandidateFinder
 	Timeout time.Duration
 }
 
@@ -82,7 +82,7 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 	return lassie, nil
 }
 
-func WithFinder(finder retriever.CandidateFinder) LassieOption {
+func WithFinder(finder types.CandidateFinder) LassieOption {
 	return func(cfg *LassieConfig) {
 		cfg.Finder = finder
 	}

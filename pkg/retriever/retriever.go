@@ -66,15 +66,13 @@ func (cfg *RetrieverConfig) getMinerConfig(peer peer.ID) MinerConfig {
 
 type Retriever struct {
 	// Assumed immutable during operation
-	config       RetrieverConfig
-	executor     types.Retriever
-	eventManager *events.EventManager
-	spTracker    *spTracker
-}
-
-type CandidateFinder interface {
-	FindCandidates(context.Context, cid.Cid) ([]types.RetrievalCandidate, error)
-	FindCandidatesAsync(context.Context, cid.Cid) (<-chan types.FindCandidatesResult, error)
+	acceptableCandidateFinder *AcceptableCandidateFinder
+	candidateFinder           types.CandidateFinder
+	client                    RetrievalClient
+	config                    RetrieverConfig
+	eventManager              *events.EventManager
+	graphsyncRetriever        types.Retriever
+	spTracker                 *spTracker
 }
 
 type eventStats struct {
@@ -87,21 +85,16 @@ func NewRetriever(
 	ctx context.Context,
 	config RetrieverConfig,
 	client RetrievalClient,
-	candidateFinder CandidateFinder,
+	candidateFinder types.CandidateFinder,
 ) (*Retriever, error) {
 	retriever := &Retriever{
-		config:       config,
-		eventManager: events.NewEventManager(ctx),
-		spTracker:    newSpTracker(nil),
+		candidateFinder: candidateFinder,
+		client:          client,
+		config:          config,
+		eventManager:    events.NewEventManager(ctx),
+		spTracker:       newSpTracker(nil),
 	}
-	executor := &GraphSyncRetriever{
-		GetStorageProviderTimeout:   retriever.getStorageProviderTimeout,
-		IsAcceptableStorageProvider: retriever.isAcceptableStorageProvider,
-		IsAcceptableQueryResponse:   retriever.isAcceptableQueryResponse,
-		Client:                      client,
-	}
-	retrievalCandidateFinder := NewRetrievalCandidateFinder(candidateFinder, retriever.isAcceptableStorageProvider)
-	retriever.executor = types.WithCandidates(retrievalCandidateFinder.FindCandidates, executor.RetrieveFromCandidates)
+	retriever.acceptableCandidateFinder = NewAcceptableCandidateFinder(candidateFinder, retriever.isAcceptableCandidate)
 
 	return retriever, nil
 }
@@ -128,11 +121,11 @@ func (retriever *Retriever) getStorageProviderTimeout(storageProviderId peer.ID)
 	return retriever.config.getMinerConfig(storageProviderId).RetrievalTimeout
 }
 
-// isAcceptableStorageProvider checks whether the storage provider in question
+// isAcceptableCandidate checks whether the storage provider in question
 // is acceptable as a retrieval candidate. It checks the blacklists and
 // whitelists, the miner monitor for failures and whether we are already at
 // concurrency limit for this SP.
-func (retriever *Retriever) isAcceptableStorageProvider(storageProviderId peer.ID) bool {
+func (retriever *Retriever) isAcceptableCandidate(storageProviderId peer.ID) bool {
 	// Skip blacklist
 	if retriever.config.MinerBlacklist[storageProviderId] {
 		return false
@@ -205,42 +198,55 @@ func (retriever *Retriever) Retrieve(
 		eventsCB,
 	)
 
-	// retrieve, note that we could get a successful retrieval
-	// (retrievalStats!=nil) _and_ also an error return because there may be
-	// multiple failures along the way, if we got a retrieval then we'll pretend
-	// to our caller that there was no error
-	retrievalStats, err := retriever.executor(
-		ctx,
-		request,
-		onRetrievalEvent,
-	)
-	if err != nil && retrievalStats == nil {
+	candidateResults, err := retriever.acceptableCandidateFinder.FindCandidatesAsync(ctx, request, onRetrievalEvent)
+	if err != nil {
 		return nil, err
 	}
 
-	// success
-	log.Infof(
-		"Successfully retrieved from miner %s for %s\n"+
-			"\tDuration: %s\n"+
-			"\tBytes Received: %s\n"+
-			"\tTotal Payment: %s",
-		retrievalStats.StorageProviderId,
-		request.Cid,
-		retrievalStats.Duration,
-		humanize.IBytes(retrievalStats.Size),
-		types.FIL(retrievalStats.TotalPayment),
+	// Instead of a graphsync retriever, we abstract further into a protocol decider retriever
+	graphsyncRetriever, statsChan := NewGraphSyncRetriever(
+		ctx,
+		request,
+		eventsCB,
+		retriever.client,
+		retriever.getStorageProviderTimeout,
+		retriever.isAcceptableQueryResponse,
 	)
 
-	stats.Record(ctx, metrics.RetrievalDealActiveCount.M(-1))
-	stats.Record(ctx, metrics.RetrievalDealSuccessCount.M(1))
-	stats.Record(ctx, metrics.RetrievalDealDuration.M(retrievalStats.Duration.Seconds()))
-	stats.Record(ctx, metrics.RetrievalDealSize.M(int64(retrievalStats.Size)))
-	stats.Record(ctx, metrics.RetrievalDealCost.M(retrievalStats.TotalPayment.Int64()))
-	stats.Record(ctx, metrics.FailedRetrievalsPerRequestCount.M(eventStats.failedCount))
-	stats.Record(ctx, metrics.SuccessfulQueriesPerRequestCount.M(eventStats.queryCount))
-	stats.Record(ctx, metrics.SuccessfulQueriesPerRequestFilteredCount.M(eventStats.filteredQueryCount))
+	for {
+		select {
+		case candidateResult := <-candidateResults:
+			if candidateResult.Err != nil {
+				return nil, candidateResult.Err
+			}
+			graphsyncRetriever.Retrieve(ctx, candidateResult.Candidate)
+		case statsResult := <-statsChan:
+			// success
+			log.Infof(
+				"Successfully retrieved from miner %s for %s\n"+
+					"\tDuration: %s\n"+
+					"\tBytes Received: %s\n"+
+					"\tTotal Payment: %s",
+				statsResult.Stats.StorageProviderId,
+				request.Cid,
+				statsResult.Stats.Duration,
+				humanize.IBytes(statsResult.Stats.Size),
+				types.FIL(statsResult.Stats.TotalPayment),
+			)
 
-	return retrievalStats, nil
+			stats.Record(ctx, metrics.RetrievalDealActiveCount.M(-1))
+			stats.Record(ctx, metrics.RetrievalDealSuccessCount.M(1))
+			stats.Record(ctx, metrics.RetrievalDealDuration.M(statsResult.Stats.Duration.Seconds()))
+			stats.Record(ctx, metrics.RetrievalDealSize.M(int64(statsResult.Stats.Size)))
+			stats.Record(ctx, metrics.RetrievalDealCost.M(statsResult.Stats.TotalPayment.Int64()))
+			stats.Record(ctx, metrics.FailedRetrievalsPerRequestCount.M(eventStats.failedCount))
+			stats.Record(ctx, metrics.SuccessfulQueriesPerRequestCount.M(eventStats.queryCount))
+			stats.Record(ctx, metrics.SuccessfulQueriesPerRequestFilteredCount.M(eventStats.filteredQueryCount))
+
+			return statsResult.Stats, nil
+		default:
+		}
+	}
 }
 
 // Implement RetrievalSubscriber

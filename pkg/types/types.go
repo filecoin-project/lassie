@@ -55,18 +55,16 @@ type RetrievalRequest struct {
 	LinkSystem  ipld.LinkSystem
 }
 
-type Retriever func(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) (*RetrievalStats, error)
-type CandidateRetriever func(ctx context.Context, request RetrievalRequest, candidates []RetrievalCandidate, events func(RetrievalEvent)) (*RetrievalStats, error)
-type RetrievalCandidateFinder func(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) ([]RetrievalCandidate, error)
+type Retriever interface {
+	Retrieve(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) (*RetrievalStats, error)
+}
 
-func WithCandidates(retrievalCandidateFinder RetrievalCandidateFinder, childRetriever CandidateRetriever) Retriever {
-	return func(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) (*RetrievalStats, error) {
-		candidates, err := retrievalCandidateFinder(ctx, request, events)
-		if err != nil {
-			return nil, err
-		}
-		return childRetriever(ctx, request, candidates, events)
-	}
+type CandidateRetriever interface {
+	RetrieveFromCandidates(ctx context.Context, request RetrievalRequest, candidates []RetrievalCandidate, events func(RetrievalEvent)) (*RetrievalStats, error)
+}
+
+type RetrievalCandidateFinder interface {
+	FindCandidates(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) ([]RetrievalCandidate, error)
 }
 
 type RetrievalStats struct {
@@ -82,6 +80,11 @@ type RetrievalStats struct {
 
 	// TODO: we should be able to get this if we hook into the graphsync event stream
 	// TimeToFirstByte time.Duration
+}
+
+type RetrieveResult struct {
+	Stats *RetrievalStats
+	Err   error
 }
 
 type Phase string
@@ -138,4 +141,9 @@ type RetrievalEventSubscriber func(event RetrievalEvent)
 type FindCandidatesResult struct {
 	Candidate RetrievalCandidate
 	Err       error
+}
+
+type CandidateFinder interface {
+	FindCandidates(context.Context, cid.Cid) ([]RetrievalCandidate, error)
+	FindCandidatesAsync(context.Context, cid.Cid) (<-chan FindCandidatesResult, error)
 }

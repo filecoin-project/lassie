@@ -23,12 +23,19 @@ type CandidateCallback func(types.RetrievalCandidate) error
 type CandidateErrorCallback func(types.RetrievalCandidate, error)
 
 type GetStorageProviderTimeout func(peer peer.ID) time.Duration
-type IsAcceptableStorageProvider func(peer peer.ID) bool
 type IsAcceptableQueryResponse func(peer peer.ID, req types.RetrievalRequest, queryResponse *retrievalmarket.QueryResponse) bool
 
 type queryCandidate struct {
 	*retrievalmarket.QueryResponse
 	Duration time.Duration
+}
+
+type retrievalResult struct {
+	PeerID     peer.ID
+	PhaseStart time.Time
+	Stats      *types.RetrievalStats
+	Event      *types.RetrievalEvent
+	Err        error
 }
 
 // queryCompare compares two QueryResponses and returns true if the first is
@@ -58,47 +65,79 @@ var queryCompare prioritywaitqueue.ComparePriority[*queryCandidate] = func(a, b 
 }
 
 type GraphSyncRetriever struct {
-	GetStorageProviderTimeout   GetStorageProviderTimeout
-	IsAcceptableStorageProvider IsAcceptableStorageProvider
-	IsAcceptableQueryResponse   IsAcceptableQueryResponse
-	Client                      RetrievalClient
+	candidateChan chan types.RetrievalCandidate
+	finishChan    chan struct{}
+	resultChan    chan retrievalResult
+	statsChan     chan types.RetrieveResult
+	waitQueue     prioritywaitqueue.PriorityWaitQueue[*queryCandidate]
 
-	waitGroup sync.WaitGroup // only used internally for testing cleanup
+	Client                    RetrievalClient
+	eventsCallback            func(types.RetrievalEvent)
+	GetStorageProviderTimeout GetStorageProviderTimeout
+	IsAcceptableQueryResponse IsAcceptableQueryResponse
+	request                   types.RetrievalRequest
+	waitGroup                 sync.WaitGroup // only used internally for testing cleanup
 }
 
-// wait is used internally for testing that we do proper goroutine cleanup
-func (cfg *GraphSyncRetriever) wait() {
-	cfg.waitGroup.Wait()
+func NewGraphSyncRetriever(
+	ctx context.Context,
+	request types.RetrievalRequest,
+	events func(types.RetrievalEvent),
+	client RetrievalClient,
+	getStorageProviderTimeout GetStorageProviderTimeout,
+	isAcceptableQueryResponse IsAcceptableQueryResponse,
+) (*GraphSyncRetriever, <-chan types.RetrieveResult) {
+	if events == nil {
+		events = func(types.RetrievalEvent) {}
+	}
+
+	gsr := &GraphSyncRetriever{
+		candidateChan: make(chan types.RetrievalCandidate),
+		finishChan:    make(chan struct{}),
+		resultChan:    make(chan retrievalResult),
+		statsChan:     make(chan types.RetrieveResult),
+		waitQueue:     prioritywaitqueue.New(queryCompare),
+
+		Client:                    client,
+		eventsCallback:            events,
+		GetStorageProviderTimeout: getStorageProviderTimeout,
+		IsAcceptableQueryResponse: isAcceptableQueryResponse,
+		request:                   request,
+	}
+
+	go func() {
+		gsr.collectResults(ctx, 100) // BUG: we'll have to rethink how we manage the "out of candidates" state
+	}()
+
+	return gsr, gsr.statsChan
 }
 
-type retrievalResult struct {
-	PeerID     peer.ID
-	PhaseStart time.Time
-	Stats      *types.RetrievalStats
-	Event      *types.RetrievalEvent
-	Err        error
-}
+// I know this doesn't follow the Retrieve interface
+func (gsr *GraphSyncRetriever) Retrieve(ctx context.Context, candidate types.RetrievalCandidate) {
+	ctx, cancelCtx := context.WithCancel(ctx)
+	defer cancelCtx()
 
-// retrieval handles state on a per-retrieval (across multiple candidates) basis
-type retrieval struct {
-	waitQueue          prioritywaitqueue.PriorityWaitQueue[*queryCandidate]
-	retrievalStartTime time.Time
-	resultChan         chan retrievalResult
-	finishChan         chan struct{}
+	// start retrievals
+	queryStartTime := time.Now()
+	gsr.waitGroup.Add(1)
+	go func() {
+		gsr.runRetrievalCandidate(ctx, queryStartTime, candidate)
+		gsr.waitGroup.Done()
+	}()
 }
 
 // RetrieveFromCandidates performs a retrieval for a given CID by querying the indexer, then
 // attempting to query all candidates and attempting to perform a full retrieval
 // from the best and fastest storage provider as the queries are received.
-func (cfg *GraphSyncRetriever) RetrieveFromCandidates(
+func (gsr *GraphSyncRetriever) RetrieveFromCandidates(
 	ctx context.Context,
 	retrievalRequest types.RetrievalRequest,
 	candidates []types.RetrievalCandidate,
 	eventsCallback func(types.RetrievalEvent),
 ) (*types.RetrievalStats, error) {
 
-	if cfg == nil {
-		cfg = &GraphSyncRetriever{}
+	if gsr == nil {
+		gsr = &GraphSyncRetriever{}
 	}
 	if eventsCallback == nil {
 		eventsCallback = func(re types.RetrievalEvent) {}
@@ -116,12 +155,12 @@ func (cfg *GraphSyncRetriever) RetrieveFromCandidates(
 
 	// start retrievals
 	queryStartTime := time.Now()
-	cfg.waitGroup.Add(len(candidates))
+	gsr.waitGroup.Add(len(candidates))
 	for _, candidate := range candidates {
 		candidate := candidate
 		go func() {
-			runRetrievalCandidate(ctx, cfg, retrievalRequest, cfg.Client, retrieval, queryStartTime, candidate)
-			cfg.waitGroup.Done()
+			runRetrievalCandidate(ctx, gsr, retrievalRequest, gsr.Client, retrieval, queryStartTime, candidate)
+			gsr.waitGroup.Done()
 		}()
 	}
 
@@ -131,16 +170,16 @@ func (cfg *GraphSyncRetriever) RetrieveFromCandidates(
 // collectResults is responsible for receiving query errors, retrieval errors
 // and retrieval results and aggregating into an appropriate return of either
 // a complete RetrievalStats or an bundled multi-error
-func collectResults(ctx context.Context, retrieval *retrieval, expectedCandidates int, eventsCallback func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
+func (gsr *GraphSyncRetriever) collectResults(ctx context.Context, expectedCandidates int) {
 	var finishedCount int
 	var queryErrors error
 	var retrievalErrors error
 
 	for {
 		select {
-		case result := <-retrieval.resultChan:
+		case result := <-gsr.resultChan:
 			if result.Event != nil {
-				eventsCallback(*result.Event)
+				gsr.eventsCallback(*result.Event)
 				break
 			}
 			if result.Err != nil {
@@ -151,7 +190,8 @@ func collectResults(ctx context.Context, retrieval *retrieval, expectedCandidate
 				}
 			}
 			if result.Stats != nil {
-				return result.Stats, nil
+				gsr.statsChan <- types.RetrieveResult{result.Stats, nil}
+				return
 			}
 			// have we got all responses but no success?
 			finishedCount++
@@ -163,10 +203,12 @@ func collectResults(ctx context.Context, retrieval *retrieval, expectedCandidate
 					// we failed, and got only retrieval errors
 					retrievalErrors = multierr.Append(retrievalErrors, ErrAllRetrievalsFailed)
 				}
-				return nil, multierr.Append(queryErrors, retrievalErrors)
+				gsr.statsChan <- types.RetrieveResult{nil, multierr.Append(queryErrors, retrievalErrors)}
+				return
 			}
 		case <-ctx.Done():
-			return nil, context.Canceled
+			gsr.statsChan <- types.RetrieveResult{nil, context.Canceled}
+			return
 		}
 	}
 }
@@ -174,12 +216,8 @@ func collectResults(ctx context.Context, retrieval *retrieval, expectedCandidate
 // runRetrievalCandidate is a singular CID:SP retrieval, expected to be run in a goroutine
 // and coordinate with other candidate retrievals to block after query phase and
 // only attempt one retrieval-proper at a time.
-func runRetrievalCandidate(
+func (gsr *GraphSyncRetriever) runRetrievalCandidate(
 	ctx context.Context,
-	cfg *GraphSyncRetriever,
-	req types.RetrievalRequest,
-	client RetrievalClient,
-	retrieval *retrieval,
 	queryStartTime time.Time,
 	candidate types.RetrievalCandidate,
 ) {
@@ -190,8 +228,8 @@ func runRetrievalCandidate(
 	phaseStartTime := queryStartTime
 
 	var timeout time.Duration
-	if cfg.GetStorageProviderTimeout != nil {
-		timeout = cfg.GetStorageProviderTimeout(candidate.MinerPeer.ID)
+	if gsr.GetStorageProviderTimeout != nil {
+		timeout = gsr.GetStorageProviderTimeout(candidate.MinerPeer.ID)
 	}
 
 	var stats *types.RetrievalStats
@@ -310,9 +348,9 @@ func runRetrievalCandidate(
 
 // canSendResult will indicate whether a result is likely to be accepted (true)
 // or whether the retrieval is already finished (likely by a success)
-func (retrieval *retrieval) canSendResult() bool {
+func (gsr *GraphSyncRetriever) canSendResult() bool {
 	select {
-	case <-retrieval.finishChan:
+	case <-gsr.finishChan:
 		return false
 	default:
 	}
@@ -321,23 +359,28 @@ func (retrieval *retrieval) canSendResult() bool {
 
 // sendResult will only send a result to the parent goroutine if a retrieval has
 // finished (likely by a success), otherwise it will send the result
-func (retrieval *retrieval) sendResult(result retrievalResult) bool {
+func (gsr *GraphSyncRetriever) sendResult(result retrievalResult) bool {
 	select {
-	case <-retrieval.finishChan:
+	case <-gsr.finishChan:
 		return false
-	case retrieval.resultChan <- result:
+	case gsr.resultChan <- result:
 		if result.Stats != nil {
 			// signals to goroutines to bail, this has to be done here, rather than on
 			// the receiving parent end, because immediately after this call we instruct
 			// the prioritywaitqueue that we're done and another may start
-			close(retrieval.finishChan)
+			close(gsr.finishChan)
 		}
 	}
 	return true
 }
 
-func (retrieval *retrieval) sendEvent(event types.RetrievalEvent) {
-	retrieval.sendResult(retrievalResult{PeerID: event.StorageProviderId(), Event: &event})
+func (gsr *GraphSyncRetriever) sendEvent(event types.RetrievalEvent) {
+	gsr.sendResult(retrievalResult{PeerID: event.StorageProviderId(), Event: &event})
+}
+
+// wait is used internally for testing that we do proper goroutine cleanup
+func (gsr *GraphSyncRetriever) wait() {
+	gsr.waitGroup.Wait()
 }
 
 func totalCost(qres *retrievalmarket.QueryResponse) big.Int {
@@ -350,7 +393,7 @@ func totalCost(qres *retrievalmarket.QueryResponse) big.Int {
 
 func queryPhase(
 	ctx context.Context,
-	cfg *GraphSyncRetriever,
+	gsr *GraphSyncRetriever,
 	client RetrievalClient,
 	timeout time.Duration,
 	candidate types.RetrievalCandidate,
@@ -385,7 +428,7 @@ func queryPhase(
 
 func retrievalPhase(
 	ctx context.Context,
-	cfg *GraphSyncRetriever,
+	gsr *GraphSyncRetriever,
 	linkSystem ipld.LinkSystem,
 	client RetrievalClient,
 	timeout time.Duration,

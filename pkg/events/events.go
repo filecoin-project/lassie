@@ -56,6 +56,10 @@ type RetrievalEventCandidatesFound struct {
 	indexerEvent
 }
 
+func CandidateFound(retrievalId types.RetrievalID, phaseStartTime time.Time, payloadCid cid.Cid, candidate types.RetrievalCandidate) RetrievalEventCandidatesFound {
+	return CandidatesFound(retrievalId, phaseStartTime, payloadCid, []types.RetrievalCandidate{candidate})
+}
+
 func CandidatesFound(retrievalId types.RetrievalID, phaseStartTime time.Time, payloadCid cid.Cid, candidates []types.RetrievalCandidate) RetrievalEventCandidatesFound {
 	c := make([]types.RetrievalCandidate, len(candidates))
 	copy(c, candidates)
@@ -64,6 +68,10 @@ func CandidatesFound(retrievalId types.RetrievalID, phaseStartTime time.Time, pa
 
 type RetrievalEventCandidatesFiltered struct {
 	indexerEvent
+}
+
+func CandidateFiltered(retrievalId types.RetrievalID, phaseStartTime time.Time, payloadCid cid.Cid, candidate types.RetrievalCandidate) RetrievalEventCandidatesFiltered {
+	return CandidatesFiltered(retrievalId, phaseStartTime, payloadCid, []types.RetrievalCandidate{candidate})
 }
 
 func CandidatesFiltered(retrievalId types.RetrievalID, phaseStartTime time.Time, payloadCid cid.Cid, candidates []types.RetrievalCandidate) RetrievalEventCandidatesFiltered {
