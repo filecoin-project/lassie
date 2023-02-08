@@ -81,7 +81,6 @@ type RetrievalClient struct {
 
 type Config struct {
 	ChannelMonitorConfig dtchannelmonitor.Config
-	Datastore            datastore.Batching
 	GraphsyncOpts        []graphsync.Option
 	Host                 host.Host
 	PayChannelManager    PayChannelManager
@@ -102,7 +101,6 @@ func NewClient(datastore datastore.Batching, host host.Host, payChanMgr PayChann
 			// Called when a restart completes successfully
 			//OnRestartComplete func(id datatransfer.ChannelID)
 		},
-		Datastore: datastore,
 		GraphsyncOpts: []graphsync.Option{
 			graphsync.MaxInProgressIncomingRequests(maxInProgressIncomingRequests),
 			graphsync.MaxInProgressOutgoingRequests(maxInProgressOutgoingRequests),
@@ -146,7 +144,8 @@ func NewClientWithConfig(cfg *Config) (*RetrievalClient, error) {
 
 	dtRestartConfig := dtimpl.ChannelRestartConfig(cfg.ChannelMonitorConfig)
 
-	dataTransfer, err := dtimpl.NewDataTransfer(cfg.Datastore, dtNetwork, dtTransport, dtRestartConfig)
+	datastore := datastore.NewMapDatastore() // don't persist state across restarts
+	dataTransfer, err := dtimpl.NewDataTransfer(datastore, dtNetwork, dtTransport, dtRestartConfig)
 	if err != nil {
 		return nil, err
 	}
