@@ -173,6 +173,9 @@ func (idxf *IndexerCandidateFinder) decodeProviderResultStream(ctx context.Conte
 				} else if r.Err = scanner.Err(); r.Err != nil {
 					rch <- r
 					return
+				} else {
+					// There are no more lines remaining to scan as we have reached EOF.
+					return
 				}
 			}
 		}
