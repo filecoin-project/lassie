@@ -192,14 +192,14 @@ func TestRetrievalRacing(t *testing.T) {
 			name: "single fast",
 			queryReturns: map[string]testutil.DelayedQueryReturn{
 				"foo": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 20},
-				"bar": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 200},
-				"baz": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 200},
+				"bar": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 500},
+				"baz": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 500},
 			},
 			expectedQueryReturns: []string{"foo"},
 			retrievalReturns: map[string]testutil.DelayedRetrievalReturn{
 				"foo": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("foo"), Size: 1}, Delay: time.Millisecond * 20},
-				"bar": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}, Delay: time.Millisecond * 200},
-				"baz": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 3}, Delay: time.Millisecond * 200},
+				"bar": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}, Delay: time.Millisecond * 500},
+				"baz": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 3}, Delay: time.Millisecond * 500},
 			},
 			expectedRetrievalAttempts: []string{"foo"},
 			expectedRetrieval:         "foo",
@@ -213,9 +213,9 @@ func TestRetrievalRacing(t *testing.T) {
 			},
 			expectedQueryReturns: []string{"foo", "bar", "baz"},
 			retrievalReturns: map[string]testutil.DelayedRetrievalReturn{
-				"foo": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("foo"), Size: 1}, Delay: time.Millisecond * 200},
-				"bar": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}, Delay: time.Millisecond * 200},
-				"baz": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 3}, Delay: time.Millisecond * 200},
+				"foo": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("foo"), Size: 1}, Delay: time.Millisecond * 500},
+				"bar": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}, Delay: time.Millisecond * 500},
+				"baz": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 3}, Delay: time.Millisecond * 500},
 			},
 			expectedRetrievalAttempts: []string{"foo"},
 			expectedRetrieval:         "foo",
@@ -240,7 +240,7 @@ func TestRetrievalRacing(t *testing.T) {
 			queryReturns: map[string]testutil.DelayedQueryReturn{
 				"foo": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 20},
 				"bar": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 50},
-				"baz": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 200},
+				"baz": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 500},
 			},
 			expectedQueryReturns: []string{"foo", "bar"},
 			retrievalReturns: map[string]testutil.DelayedRetrievalReturn{
@@ -406,8 +406,8 @@ func TestMultipleRetrievals(t *testing.T) {
 		map[string]testutil.DelayedQueryReturn{
 			"foo":  {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 20},
 			"bar":  {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 50},
-			"baz":  {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 200}, // should not finish this
-			"bang": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 200}, // should not finish this
+			"baz":  {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 500}, // should not finish this
+			"bang": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 500}, // should not finish this
 			"boom": {QueryResponse: nil, Err: errors.New("Nope"), Delay: time.Millisecond * 20},
 			"bing": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 50},
 		},
