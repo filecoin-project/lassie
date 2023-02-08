@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/filecoin-project/go-state-types/abi"
+	"github.com/filecoin-project/index-provider/metadata"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
@@ -14,6 +15,7 @@ import (
 type RetrievalCandidate struct {
 	MinerPeer peer.AddrInfo
 	RootCid   cid.Cid
+	Metadata  metadata.Metadata
 }
 
 func NewRetrievalCandidate(pid peer.ID, rootCid cid.Cid) RetrievalCandidate {
