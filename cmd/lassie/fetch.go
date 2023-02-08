@@ -211,7 +211,11 @@ func (pp *progressPrinter) subscriber(event types.RetrievalEvent) {
 	case events.RetrievalEventQueryAskedFiltered:
 		fmt.Printf("\rGot query response from [%s] (filtered): size=%s, price-per-byte=%s, unseal-price=%s, message=%s\n", ret.StorageProviderId(), humanize.IBytes(ret.QueryResponse().Size), ret.QueryResponse().MinPricePerByte, ret.QueryResponse().UnsealPrice, ret.QueryResponse().Message)
 	case events.RetrievalEventFailed:
-		fmt.Printf("\rRetrieval failure for [%s]: %s\n", ret.StorageProviderId(), ret.ErrorMessage())
+		if ret.Phase() == types.IndexerPhase {
+			fmt.Printf("\rRetrieval failure from indexer: %s\n", ret.ErrorMessage())
+		} else {
+			fmt.Printf("\rRetrieval failure for [%s]: %s\n", ret.StorageProviderId(), ret.ErrorMessage())
+		}
 	case events.RetrievalEventSuccess:
 		// noop, handled at return from Retrieve()
 	}
