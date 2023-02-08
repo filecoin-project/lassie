@@ -162,6 +162,7 @@ func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request)
 		linkSystem := cidlink.DefaultLinkSystem()
 		linkSystem.SetReadStorage(store)
 		linkSystem.SetWriteStorage(store)
+		linkSystem.TrustedStorage = true
 
 		log.Debugw("fetching CID", "retrievalId", retrievalId, "CID", rootCid.String())
 		request := types.RetrievalRequest{RetrievalID: retrievalId, Cid: rootCid, LinkSystem: linkSystem}

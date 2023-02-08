@@ -26,6 +26,9 @@ var errClosed = errors.New("streaming store closed")
 // read and write operations to serve as the block service for graphsync; and
 // the other that only performs write operations, that can be used to stream
 // CAR contents to the client.
+// A getWriter callback is used to get a writer to the streaming storage only
+// when it's needed. This can be used to trigger additional work when the
+// storage is actually being setup.
 // Put() operations will write to both storage systems, and will block until
 // both are written.
 type StreamingStore struct {
@@ -54,7 +57,7 @@ func (ss *StreamingStore) Has(ctx context.Context, key string) (bool, error) {
 	if ss.ctx.Err() != nil {
 		return false, ss.ctx.Err()
 	}
-	reader, err := ss.lazyReadWrite(true)
+	reader, err := ss.lazyReadWrite()
 	if err != nil {
 		ss.errorCb(err)
 		return false, err
@@ -66,7 +69,7 @@ func (ss *StreamingStore) Get(ctx context.Context, key string) ([]byte, error) {
 	if ss.ctx.Err() != nil {
 		return nil, ss.ctx.Err()
 	}
-	reader, err := ss.lazyReadWrite(true)
+	reader, err := ss.lazyReadWrite()
 	if err != nil {
 		ss.errorCb(err)
 		return nil, err
@@ -78,7 +81,7 @@ func (ss *StreamingStore) GetStream(ctx context.Context, key string) (io.ReadClo
 	if ss.ctx.Err() != nil {
 		return nil, ss.ctx.Err()
 	}
-	reader, err := ss.lazyReadWrite(true)
+	reader, err := ss.lazyReadWrite()
 	if err != nil {
 		ss.errorCb(err)
 		return nil, err
@@ -113,29 +116,33 @@ func (ss *StreamingStore) Close() error {
 	return nil
 }
 
-func (ss *StreamingStore) lazyReadWrite(lock bool) (*carstore.StorageCar, error) {
-	if lock {
-		ss.lk.Lock()
-		defer ss.lk.Unlock()
-	}
+func (ss *StreamingStore) lazyReadWrite() (*carstore.StorageCar, error) {
+	ss.lk.Lock()
+	defer ss.lk.Unlock()
 
 	if ss.closed {
 		return nil, errClosed
 	}
 
 	if ss.readWrite == nil {
-		var err error
-		ss.f, err = os.CreateTemp("", "lassie_carstore")
-		if err != nil {
-			return nil, err
-		}
-		ss.readWrite, err = carstore.NewReadableWritable(ss.f, ss.roots, carv2.WriteAsCarV1(true))
-		if err != nil {
+		if err := ss.setupReadWrite(); err != nil {
 			return nil, err
 		}
 	}
 
 	return ss.readWrite, nil
+}
+
+// setupReadWrite is not synchronized and should only be called from the
+// lazy*() methods.
+func (ss *StreamingStore) setupReadWrite() error {
+	var err error
+	ss.f, err = os.CreateTemp("", "lassie_carstore")
+	if err != nil {
+		return err
+	}
+	ss.readWrite, err = carstore.NewReadableWritable(ss.f, ss.roots, carv2.WriteAsCarV1(true))
+	return err
 }
 
 func (ss *StreamingStore) lazyWriter() (storage.WritableStorage, error) {
@@ -147,9 +154,10 @@ func (ss *StreamingStore) lazyWriter() (storage.WritableStorage, error) {
 	}
 
 	if ss.write == nil {
-		readWrite, err := ss.lazyReadWrite(false)
-		if err != nil {
-			return nil, err
+		if ss.readWrite == nil {
+			if err := ss.setupReadWrite(); err != nil {
+				return nil, err
+			}
 		}
 
 		write, err := ss.getWriter()
@@ -164,7 +172,7 @@ func (ss *StreamingStore) lazyWriter() (storage.WritableStorage, error) {
 			return nil, err
 		}
 		ss.write = &teeWriteStorage{
-			w1: readWrite,
+			w1: ss.readWrite,
 			w2: writeStore,
 		}
 	}

@@ -140,6 +140,7 @@ func Fetch(c *cli.Context) error {
 	linkSystem := cidlink.DefaultLinkSystem()
 	linkSystem.SetReadStorage(store)
 	linkSystem.SetWriteStorage(store)
+	linkSystem.TrustedStorage = true
 
 	_, stats, err := lassie.Fetch(c.Context, rootCid, linkSystem)
 	if err != nil {
