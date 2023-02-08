@@ -105,7 +105,7 @@ func TestQueryFiltering(t *testing.T) {
 				candidates = append(candidates, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID(p)}})
 			}
 
-			cfg := &Executor{
+			cfg := &GraphSyncRetriever{
 				GetStorageProviderTimeout:   func(peer peer.ID) time.Duration { return time.Second },
 				IsAcceptableStorageProvider: func(peer peer.ID) bool { return true },
 				IsAcceptableQueryResponse: func(peer peer.ID, req types.RetrievalRequest, queryResponse *retrievalmarket.QueryResponse) bool {
@@ -317,7 +317,7 @@ func TestRetrievalRacing(t *testing.T) {
 			for p := range tc.queryReturns {
 				candidates = append(candidates, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID(p)}})
 			}
-			cfg := &Executor{
+			cfg := &GraphSyncRetriever{
 				GetStorageProviderTimeout:   func(peer peer.ID) time.Duration { return time.Second },
 				IsAcceptableStorageProvider: func(peer peer.ID) bool { return true },
 				IsAcceptableQueryResponse:   func(peer peer.ID, req types.RetrievalRequest, qr *retrievalmarket.QueryResponse) bool { return true },
@@ -421,7 +421,7 @@ func TestMultipleRetrievals(t *testing.T) {
 		},
 	)
 
-	cfg := &Executor{
+	cfg := &GraphSyncRetriever{
 		GetStorageProviderTimeout:   func(peer peer.ID) time.Duration { return time.Second },
 		IsAcceptableStorageProvider: func(peer peer.ID) bool { return true },
 		IsAcceptableQueryResponse:   func(peer peer.ID, req types.RetrievalRequest, qr *retrievalmarket.QueryResponse) bool { return true },

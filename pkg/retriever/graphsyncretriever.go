@@ -57,7 +57,7 @@ var queryCompare prioritywaitqueue.ComparePriority[*queryCandidate] = func(a, b 
 	return a.Duration < b.Duration
 }
 
-type Executor struct {
+type GraphSyncRetriever struct {
 	GetStorageProviderTimeout   GetStorageProviderTimeout
 	IsAcceptableStorageProvider IsAcceptableStorageProvider
 	IsAcceptableQueryResponse   IsAcceptableQueryResponse
@@ -67,7 +67,7 @@ type Executor struct {
 }
 
 // wait is used internally for testing that we do proper goroutine cleanup
-func (cfg *Executor) wait() {
+func (cfg *GraphSyncRetriever) wait() {
 	cfg.waitGroup.Wait()
 }
 
@@ -90,7 +90,7 @@ type retrieval struct {
 // RetrieveFromCandidates performs a retrieval for a given CID by querying the indexer, then
 // attempting to query all candidates and attempting to perform a full retrieval
 // from the best and fastest storage provider as the queries are received.
-func (cfg *Executor) RetrieveFromCandidates(
+func (cfg *GraphSyncRetriever) RetrieveFromCandidates(
 	ctx context.Context,
 	retrievalRequest types.RetrievalRequest,
 	candidates []types.RetrievalCandidate,
@@ -98,7 +98,7 @@ func (cfg *Executor) RetrieveFromCandidates(
 ) (*types.RetrievalStats, error) {
 
 	if cfg == nil {
-		cfg = &Executor{}
+		cfg = &GraphSyncRetriever{}
 	}
 	if eventsCallback == nil {
 		eventsCallback = func(re types.RetrievalEvent) {}
@@ -176,7 +176,7 @@ func collectResults(ctx context.Context, retrieval *retrieval, expectedCandidate
 // only attempt one retrieval-proper at a time.
 func runRetrievalCandidate(
 	ctx context.Context,
-	cfg *Executor,
+	cfg *GraphSyncRetriever,
 	req types.RetrievalRequest,
 	client RetrievalClient,
 	retrieval *retrieval,
@@ -350,7 +350,7 @@ func totalCost(qres *retrievalmarket.QueryResponse) big.Int {
 
 func queryPhase(
 	ctx context.Context,
-	cfg *Executor,
+	cfg *GraphSyncRetriever,
 	client RetrievalClient,
 	timeout time.Duration,
 	candidate types.RetrievalCandidate,
@@ -385,7 +385,7 @@ func queryPhase(
 
 func retrievalPhase(
 	ctx context.Context,
-	cfg *Executor,
+	cfg *GraphSyncRetriever,
 	linkSystem ipld.LinkSystem,
 	client RetrievalClient,
 	timeout time.Duration,

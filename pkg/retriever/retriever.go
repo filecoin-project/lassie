@@ -94,7 +94,7 @@ func NewRetriever(
 		eventManager: events.NewEventManager(ctx),
 		spTracker:    newSpTracker(nil),
 	}
-	executor := &Executor{
+	executor := &GraphSyncRetriever{
 		GetStorageProviderTimeout:   retriever.getStorageProviderTimeout,
 		IsAcceptableStorageProvider: retriever.isAcceptableStorageProvider,
 		IsAcceptableQueryResponse:   retriever.isAcceptableQueryResponse,
