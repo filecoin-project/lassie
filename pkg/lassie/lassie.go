@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/filecoin-project/lassie/internal"
 	"github.com/filecoin-project/lassie/pkg/client"
 	"github.com/filecoin-project/lassie/pkg/indexerlookup"
+	"github.com/filecoin-project/lassie/pkg/internal"
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"

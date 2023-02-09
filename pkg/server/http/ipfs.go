@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/filecoin-project/lassie/internal/streamingstore"
+	"github.com/filecoin-project/lassie/pkg/internal/streamingstore"
 	lassie "github.com/filecoin-project/lassie/pkg/lassie"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
