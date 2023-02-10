@@ -55,22 +55,28 @@ type RetrievalRequest struct {
 	LinkSystem  ipld.LinkSystem
 }
 
-type CandidateStream []RetrievalCandidate
-
 type Retriever interface {
 	Retrieve(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) (*RetrievalStats, error)
 }
 
-type CandidateRetriever interface {
-	RetrieveFromCandidates(ctx context.Context, request RetrievalRequest, candidates CandidateStream, events func(RetrievalEvent)) (*RetrievalStats, error)
+type CandidateFinder interface {
+	FindCandidates(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) ([]RetrievalCandidate, error)
 }
 
-type RetrievalCandidateFinder interface {
-	FindCandidates(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) (CandidateStream, error)
+type CandidateRetrieval interface {
+	RetrieveFromCandidates([]RetrievalCandidate) (*RetrievalStats, error)
+}
+
+type CandidateRetriever interface {
+	Retrieve(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) CandidateRetrieval
+}
+
+type RetrievalSplitter interface {
+	SplitCandidates([]RetrievalCandidate) ([][]RetrievalCandidate, error)
 }
 
 type CandidateSplitter interface {
-	SplitCandidates(ctx context.Context, request RetrievalRequest, candidates []RetrievalCandidate, events func(RetrievalEvent)) ([][]RetrievalCandidate, error)
+	SplitRetrieval(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) RetrievalSplitter
 }
 
 type RetrievalStats struct {
@@ -92,6 +98,13 @@ type RetrievalResult struct {
 	Stats *RetrievalStats
 	Err   error
 }
+
+type CandidateRetrievalCall struct {
+	Candidates         []RetrievalCandidate
+	CandidateRetrieval CandidateRetrieval
+}
+
+type RetrievalCoordinator func(context.Context, []CandidateRetrievalCall) (*RetrievalStats, error)
 
 type CoordinationKind string
 

@@ -9,16 +9,16 @@ import (
 	"github.com/filecoin-project/lassie/pkg/types"
 )
 
-// RetrievalCandidateFinder finds and filters candidates for a given retrieval
-type RetrievalCandidateFinder struct {
+// AssignableCandidateFinder finds and filters candidates for a given retrieval
+type AssignableCandidateFinder struct {
 	isAcceptableStorageProvider IsAcceptableStorageProvider
 	candidateFinder             CandidateFinder
 }
 
-func NewRetrievalCandidateFinder(candidateFinder CandidateFinder, isAcceptableStorageProvider IsAcceptableStorageProvider) *RetrievalCandidateFinder {
-	return &RetrievalCandidateFinder{candidateFinder: candidateFinder, isAcceptableStorageProvider: isAcceptableStorageProvider}
+func NewAssignableCandidateFinder(candidateFinder CandidateFinder, isAcceptableStorageProvider IsAcceptableStorageProvider) AssignableCandidateFinder {
+	return AssignableCandidateFinder{candidateFinder: candidateFinder, isAcceptableStorageProvider: isAcceptableStorageProvider}
 }
-func (rcf *RetrievalCandidateFinder) FindCandidates(ctx context.Context, request types.RetrievalRequest, eventsCallback func(types.RetrievalEvent)) (types.CandidateStream, error) {
+func (rcf AssignableCandidateFinder) FindCandidates(ctx context.Context, request types.RetrievalRequest, eventsCallback func(types.RetrievalEvent)) ([]types.RetrievalCandidate, error) {
 	ctx, cancelCtx := context.WithCancel(ctx)
 	defer cancelCtx()
 	phaseStarted := time.Now()

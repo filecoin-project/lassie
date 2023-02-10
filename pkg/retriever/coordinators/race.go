@@ -8,33 +8,26 @@ import (
 	"go.uber.org/multierr"
 )
 
-// RaceRetriever retrieves by racing one or more retrievers together, taking the first successful result or returning a combined error if all fail
-type RaceRetriever struct {
-	Retrievers []types.Retriever
-}
-
-var _ types.Retriever = RaceRetriever{}
-
-func (rr RaceRetriever) Retrieve(ctx context.Context, request types.RetrievalRequest, events func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
+// Race retrieves by racing one or more canditate retrievals together, taking the first successful result or returning a combined error if all fail
+func Race(ctx context.Context, retrievalCalls []types.CandidateRetrievalCall) (*types.RetrievalStats, error) {
 	resultChan := make(chan types.RetrievalResult)
 	ctx, cancel := context.WithCancel(ctx)
 
 	var waitGroup sync.WaitGroup
-	waitGroup.Add(len(rr.Retrievers))
-	for _, retriever := range rr.Retrievers {
-		retriever := retriever
+	waitGroup.Add(len(retrievalCalls))
+	for _, retrievalCall := range retrievalCalls {
+		retrievalCall := retrievalCall
 		go func() {
 			defer waitGroup.Done()
-			stats, err := retriever.Retrieve(ctx, request, events)
+			stats, err := retrievalCall.CandidateRetrieval.RetrieveFromCandidates(retrievalCall.Candidates)
 			select {
 			case resultChan <- types.RetrievalResult{Stats: stats, Err: err}:
 			case <-ctx.Done():
 			}
 		}()
 	}
-	stats, err := collectResults(ctx, resultChan, len(rr.Retrievers))
+	stats, err := collectResults(ctx, resultChan, len(retrievalCalls))
 	cancel()
-	waitGroup.Wait()
 	return stats, err
 }
 

@@ -119,11 +119,11 @@ func TestQueryFiltering(t *testing.T) {
 			candidateQueriesFiltered := make([]candidateQuery, 0)
 
 			// perform retrieval and test top-level results, we should only error in this test
-			stats, err := cfg.RetrieveFromCandidates(context.Background(), types.RetrievalRequest{
+			stats, err := cfg.Retrieve(context.Background(), types.RetrievalRequest{
 				Cid:         cid.Undef,
 				RetrievalID: retrievalId,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
-			}, candidates, func(event types.RetrievalEvent) {
+			}, func(event types.RetrievalEvent) {
 				qt.Assert(t, event.RetrievalId(), qt.Equals, retrievalId)
 				switch ret := event.(type) {
 				case events.RetrievalEventQueryAsked:
@@ -135,7 +135,7 @@ func TestQueryFiltering(t *testing.T) {
 						retrievingPeers = append(retrievingPeers, event.StorageProviderId())
 					}
 				}
-			})
+			}).RetrieveFromCandidates(candidates)
 			qt.Assert(t, stats, qt.IsNil)
 			qt.Assert(t, err, qt.IsNotNil)
 
@@ -329,11 +329,11 @@ func TestRetrievalRacing(t *testing.T) {
 			candidateQueriesFiltered := make([]candidateQuery, 0)
 
 			// perform retrieval and make sure we got a result
-			stats, err := cfg.RetrieveFromCandidates(context.Background(), types.RetrievalRequest{
+			stats, err := cfg.Retrieve(context.Background(), types.RetrievalRequest{
 				Cid:         cid.Undef,
 				RetrievalID: retrievalId,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
-			}, candidates, func(event types.RetrievalEvent) {
+			}, func(event types.RetrievalEvent) {
 				qt.Assert(t, event.RetrievalId(), qt.Equals, retrievalId)
 				switch ret := event.(type) {
 				case events.RetrievalEventQueryAsked:
@@ -345,7 +345,7 @@ func TestRetrievalRacing(t *testing.T) {
 						retrievingPeers = append(retrievingPeers, event.StorageProviderId())
 					}
 				}
-			})
+			}).RetrieveFromCandidates(candidates)
 			if tc.expectedRetrieval != "" {
 				qt.Assert(t, stats, qt.IsNotNil)
 				qt.Assert(t, err, qt.IsNil)
@@ -455,15 +455,15 @@ func TestMultipleRetrievals(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
-		stats, err := cfg.RetrieveFromCandidates(context.Background(), types.RetrievalRequest{
+		stats, err := cfg.Retrieve(context.Background(), types.RetrievalRequest{
 			Cid:         cid1,
 			RetrievalID: retrievalId,
 			LinkSystem:  cidlink.DefaultLinkSystem(),
-		}, []types.RetrievalCandidate{
+		}, evtCb).RetrieveFromCandidates([]types.RetrievalCandidate{
 			{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}},
 			{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}},
 			{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}},
-		}, evtCb)
+		})
 		qt.Assert(t, stats, qt.IsNotNil)
 		qt.Assert(t, err, qt.IsNil)
 		// make sure we got the final retrieval we wanted
@@ -471,15 +471,15 @@ func TestMultipleRetrievals(t *testing.T) {
 		wg.Done()
 	}()
 
-	stats, err := cfg.RetrieveFromCandidates(context.Background(), types.RetrievalRequest{
+	stats, err := cfg.Retrieve(context.Background(), types.RetrievalRequest{
 		Cid:         cid2,
 		RetrievalID: retrievalId,
 		LinkSystem:  cidlink.DefaultLinkSystem(),
-	}, []types.RetrievalCandidate{
+	}, evtCb).RetrieveFromCandidates([]types.RetrievalCandidate{
 		{MinerPeer: peer.AddrInfo{ID: peer.ID("bang")}},
 		{MinerPeer: peer.AddrInfo{ID: peer.ID("boom")}},
 		{MinerPeer: peer.AddrInfo{ID: peer.ID("bing")}},
-	}, evtCb)
+	})
 	qt.Assert(t, stats, qt.IsNotNil)
 	qt.Assert(t, err, qt.IsNil)
 	// make sure we got the final retrieval we wanted

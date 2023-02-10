@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRetrievalCandidateFinder(t *testing.T) {
+func TestAssignableCandidateFinder(t *testing.T) {
 	ctx := context.Background()
 	cid1 := cid.MustParse("bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")
 	cid2 := cid.MustParse("bafyrgqhai26anf3i7pips7q22coa4sz2fr4gk4q4sqdtymvvjyginfzaqewveaeqdh524nsktaq43j65v22xxrybrtertmcfxufdam3da3hbk")
@@ -144,7 +144,7 @@ func TestRetrievalCandidateFinder(t *testing.T) {
 			retrievalCollector := func(evt types.RetrievalEvent) {
 				receivedEvents[evt.PayloadCid()] = append(receivedEvents[evt.PayloadCid()], evt)
 			}
-			retrievalCandidateFinder := retriever.NewRetrievalCandidateFinder(candidateFinder, isAcceptableStorageProvider)
+			retrievalCandidateFinder := retriever.NewAssignableCandidateFinder(candidateFinder, isAcceptableStorageProvider)
 			rid1, err := types.NewRetrievalID()
 			req.NoError(err)
 			receivedErrors := make(map[cid.Cid]error)

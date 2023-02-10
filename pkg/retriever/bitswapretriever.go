@@ -13,6 +13,17 @@ func NewBitswapRetriever() *BitswapRetriever {
 	return &BitswapRetriever{}
 }
 
-func (br *BitswapRetriever) RetrieveFromCandidates(ctx context.Context, request types.RetrievalRequest, candidates types.CandidateStream, events func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
+func (br *BitswapRetriever) Retrieve(ctx context.Context, request types.RetrievalRequest, events func(types.RetrievalEvent)) types.CandidateRetrieval {
+	return &bitswapRetrieval{br, ctx, request, events}
+}
+
+type bitswapRetrieval struct {
+	*BitswapRetriever
+	ctx     context.Context
+	request types.RetrievalRequest
+	events  func(types.RetrievalEvent)
+}
+
+func (br *bitswapRetrieval) RetrieveFromCandidates(candidates []types.RetrievalCandidate) (*types.RetrievalStats, error) {
 	return nil, errors.New("not implemented")
 }

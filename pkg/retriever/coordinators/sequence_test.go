@@ -13,7 +13,7 @@ import (
 	"go.uber.org/multierr"
 )
 
-func TestSequenceRetrievers(t *testing.T) {
+func TestSequence(t *testing.T) {
 	ctx := context.Background()
 	testCases := []struct {
 		name          string
@@ -88,12 +88,13 @@ func TestSequenceRetrievers(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(ctx, time.Second)
 			defer cancel()
-			childRetrievers := make([]types.Retriever, 0, len(testCase.results))
+			retrievalCalls := make([]types.CandidateRetrievalCall, 0, len(testCase.results))
 			for _, result := range testCase.results {
-				childRetrievers = append(childRetrievers, &stubRetriever{result})
+				retrievalCalls = append(retrievalCalls, types.CandidateRetrievalCall{
+					CandidateRetrieval: &stubRetriever{result},
+				})
 			}
-			retriever := coordinators.SequenceRetriever{Retrievers: childRetrievers}
-			stats, err := retriever.Retrieve(ctx, types.RetrievalRequest{}, func(types.RetrievalEvent) {})
+			stats, err := coordinators.Sequence(ctx, retrievalCalls)
 			require.Equal(t, testCase.expectedStats, stats)
 			require.Equal(t, testCase.expectedErr, err)
 		})
@@ -104,6 +105,6 @@ type stubRetriever struct {
 	types.RetrievalResult
 }
 
-func (s *stubRetriever) Retrieve(ctx context.Context, request types.RetrievalRequest, events func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
+func (s *stubRetriever) RetrieveFromCandidates(_ []types.RetrievalCandidate) (*types.RetrievalStats, error) {
 	return s.Stats, s.Err
 }

@@ -2,7 +2,6 @@ package combinators
 
 import (
 	"context"
-	"errors"
 
 	"github.com/filecoin-project/lassie/pkg/retriever/coordinators"
 	"github.com/filecoin-project/lassie/pkg/types"
@@ -18,28 +17,43 @@ type SplitRetriever struct {
 	CoordinationKind    types.CoordinationKind
 }
 
-func (m SplitRetriever) RetrieveFromCandidates(ctx context.Context, request types.RetrievalRequest, candidates types.CandidateStream, events func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
-	splitCandidates, err := m.CandidateSplitter.SplitCandidates(ctx, request, candidates, events)
+func (m SplitRetriever) Retrieve(ctx context.Context, request types.RetrievalRequest, events func(types.RetrievalEvent)) types.CandidateRetrieval {
+	candidateRetrievals := make([]types.CandidateRetrieval, 0, len(m.CandidateRetrievers))
+	for _, candidateRetriever := range m.CandidateRetrievers {
+		candidateRetrievals = append(candidateRetrievals, candidateRetriever.Retrieve(ctx, request, events))
+	}
+	return splitRetrieval{
+		retrievalSplitter:   m.CandidateSplitter.SplitRetrieval(ctx, request, events),
+		candidateRetrievals: candidateRetrievals,
+		coodinationKind:     m.CoordinationKind,
+		ctx:                 ctx,
+	}
+}
+
+type splitRetrieval struct {
+	retrievalSplitter   types.RetrievalSplitter
+	candidateRetrievals []types.CandidateRetrieval
+	coodinationKind     types.CoordinationKind
+	ctx                 context.Context
+}
+
+func (m splitRetrieval) RetrieveFromCandidates(candidates []types.RetrievalCandidate) (*types.RetrievalStats, error) {
+	splitCandidates, err := m.retrievalSplitter.SplitCandidates(candidates)
 	if err != nil {
 		return nil, err
 	}
-	retrievers := make([]types.Retriever, 0, len(splitCandidates))
+	retrievers := make([]types.CandidateRetrievalCall, 0, len(splitCandidates))
 	for i, candidateSet := range splitCandidates {
-		if len(candidateSet) > 0 && i < len(m.CandidateRetrievers) {
-			retrievers = append(retrievers, CandidateBoundRetriever{
+		if len(candidateSet) > 0 && i < len(m.candidateRetrievals) {
+			retrievers = append(retrievers, types.CandidateRetrievalCall{
 				Candidates:         candidateSet,
-				CandidateRetriever: m.CandidateRetrievers[i],
+				CandidateRetrieval: m.candidateRetrievals[i],
 			})
 		}
 	}
-	var childRetriever types.Retriever
-	switch m.CoordinationKind {
-	case types.RaceCoordination:
-		childRetriever = coordinators.RaceRetriever{Retrievers: retrievers}
-	case types.SequentialCoordination:
-		childRetriever = coordinators.SequenceRetriever{Retrievers: retrievers}
-	default:
-		return nil, errors.New("unrecognized retriever kind")
+	coordinator, err := coordinators.Coordinator(m.coodinationKind)
+	if err != nil {
+		return nil, err
 	}
-	return childRetriever.Retrieve(ctx, request, events)
+	return coordinator(m.ctx, retrievers)
 }

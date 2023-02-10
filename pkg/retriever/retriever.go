@@ -97,7 +97,7 @@ func NewRetriever(
 		spTracker:    newSpTracker(nil),
 	}
 	retriever.executor = combinators.RetrieverWithCandidateFinder{
-		CandidateFinder: NewRetrievalCandidateFinder(candidateFinder, retriever.isAcceptableStorageProvider),
+		CandidateFinder: NewAssignableCandidateFinder(candidateFinder, retriever.isAcceptableStorageProvider),
 		CandidateRetriever: combinators.SplitRetriever{
 			CandidateSplitter: NewProtocolSplitter([]multicodec.Code{multicodec.TransportGraphsyncFilecoinv1, multicodec.TransportBitswap}),
 			CandidateRetrievers: []types.CandidateRetriever{

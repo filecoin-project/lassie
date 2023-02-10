@@ -80,7 +80,14 @@ type retrievalResult struct {
 }
 
 // retrieval handles state on a per-retrieval (across multiple candidates) basis
-type retrieval struct {
+type graphsyncRetrieval struct {
+	*GraphSyncRetriever
+	ctx            context.Context
+	request        types.RetrievalRequest
+	eventsCallback func(types.RetrievalEvent)
+}
+
+type graphsyncCandidateRetrieval struct {
 	waitQueue          prioritywaitqueue.PriorityWaitQueue[*queryCandidate]
 	retrievalStartTime time.Time
 	resultChan         chan retrievalResult
@@ -90,12 +97,11 @@ type retrieval struct {
 // RetrieveFromCandidates performs a retrieval for a given CID by querying the indexer, then
 // attempting to query all candidates and attempting to perform a full retrieval
 // from the best and fastest storage provider as the queries are received.
-func (cfg *GraphSyncRetriever) RetrieveFromCandidates(
+func (cfg *GraphSyncRetriever) Retrieve(
 	ctx context.Context,
 	retrievalRequest types.RetrievalRequest,
-	candidates types.CandidateStream,
 	eventsCallback func(types.RetrievalEvent),
-) (*types.RetrievalStats, error) {
+) types.CandidateRetrieval {
 
 	if cfg == nil {
 		cfg = &GraphSyncRetriever{}
@@ -105,33 +111,42 @@ func (cfg *GraphSyncRetriever) RetrieveFromCandidates(
 	}
 
 	// state local to this CID's retrieval
-	retrieval := &retrieval{
+	return &graphsyncRetrieval{
+		GraphSyncRetriever: cfg,
+		ctx:                ctx,
+		request:            retrievalRequest,
+		eventsCallback:     eventsCallback,
+	}
+}
+
+func (r *graphsyncRetrieval) RetrieveFromCandidates(candidates []types.RetrievalCandidate) (*types.RetrievalStats, error) {
+
+	ctx, cancelCtx := context.WithCancel(r.ctx)
+	defer cancelCtx()
+
+	retrieval := &graphsyncCandidateRetrieval{
 		resultChan: make(chan retrievalResult),
 		finishChan: make(chan struct{}),
 		waitQueue:  prioritywaitqueue.New(queryCompare),
 	}
-
-	ctx, cancelCtx := context.WithCancel(ctx)
-	defer cancelCtx()
-
 	// start retrievals
 	queryStartTime := time.Now()
-	cfg.waitGroup.Add(len(candidates))
+	r.waitGroup.Add(len(candidates))
 	for _, candidate := range candidates {
 		candidate := candidate
 		go func() {
-			runRetrievalCandidate(ctx, cfg, retrievalRequest, cfg.Client, retrieval, queryStartTime, candidate)
-			cfg.waitGroup.Done()
+			runRetrievalCandidate(ctx, r.GraphSyncRetriever, r.request, r.Client, retrieval, queryStartTime, candidate)
+			r.waitGroup.Done()
 		}()
 	}
 
-	return collectResults(ctx, retrieval, len(candidates), eventsCallback)
+	return collectResults(ctx, retrieval, len(candidates), r.eventsCallback)
 }
 
 // collectResults is responsible for receiving query errors, retrieval errors
 // and retrieval results and aggregating into an appropriate return of either
 // a complete RetrievalStats or an bundled multi-error
-func collectResults(ctx context.Context, retrieval *retrieval, expectedCandidates int, eventsCallback func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
+func collectResults(ctx context.Context, retrieval *graphsyncCandidateRetrieval, expectedCandidates int, eventsCallback func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
 	var finishedCount int
 	var queryErrors error
 	var retrievalErrors error
@@ -179,7 +194,7 @@ func runRetrievalCandidate(
 	cfg *GraphSyncRetriever,
 	req types.RetrievalRequest,
 	client RetrievalClient,
-	retrieval *retrieval,
+	retrieval *graphsyncCandidateRetrieval,
 	queryStartTime time.Time,
 	candidate types.RetrievalCandidate,
 ) {
@@ -310,7 +325,7 @@ func runRetrievalCandidate(
 
 // canSendResult will indicate whether a result is likely to be accepted (true)
 // or whether the retrieval is already finished (likely by a success)
-func (retrieval *retrieval) canSendResult() bool {
+func (retrieval *graphsyncCandidateRetrieval) canSendResult() bool {
 	select {
 	case <-retrieval.finishChan:
 		return false
@@ -321,7 +336,7 @@ func (retrieval *retrieval) canSendResult() bool {
 
 // sendResult will only send a result to the parent goroutine if a retrieval has
 // finished (likely by a success), otherwise it will send the result
-func (retrieval *retrieval) sendResult(result retrievalResult) bool {
+func (retrieval *graphsyncCandidateRetrieval) sendResult(result retrievalResult) bool {
 	select {
 	case <-retrieval.finishChan:
 		return false
@@ -336,7 +351,7 @@ func (retrieval *retrieval) sendResult(result retrievalResult) bool {
 	return true
 }
 
-func (retrieval *retrieval) sendEvent(event types.RetrievalEvent) {
+func (retrieval *graphsyncCandidateRetrieval) sendEvent(event types.RetrievalEvent) {
 	retrieval.sendResult(retrievalResult{PeerID: event.StorageProviderId(), Event: &event})
 }
 

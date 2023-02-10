@@ -14,7 +14,7 @@ import (
 	"go.uber.org/multierr"
 )
 
-func TestRaceRetrievers(t *testing.T) {
+func TestRace(t *testing.T) {
 	ctx := context.Background()
 	testCases := []struct {
 		name           string
@@ -143,22 +143,23 @@ func TestRaceRetrievers(t *testing.T) {
 			defer cancel()
 			clock := clock.NewMock()
 			startChan := make(chan struct{})
-			childRetrievers := make([]types.Retriever, 0, len(testCase.results))
-			for _, result := range testCase.results {
-				childRetrievers = append(childRetrievers, &timeoutRetriever{result, clock, startChan})
-			}
-			retriever := coordinators.RaceRetriever{Retrievers: childRetrievers}
 			resultChan := make(chan types.RetrievalResult)
 			childCtx, childCancel := context.WithCancel(ctx)
 			defer childCancel()
 			go func() {
-				stats, err := retriever.Retrieve(childCtx, types.RetrievalRequest{}, func(types.RetrievalEvent) {})
+				retrievalCalls := make([]types.CandidateRetrievalCall, 0, len(testCase.results))
+				for _, result := range testCase.results {
+					retrievalCalls = append(retrievalCalls, types.CandidateRetrievalCall{
+						CandidateRetrieval: &timeoutRetriever{result, childCtx, clock, startChan},
+					})
+				}
+				stats, err := coordinators.Race(childCtx, retrievalCalls)
 				select {
 				case <-ctx.Done():
 				case resultChan <- types.RetrievalResult{Stats: stats, Err: err}:
 				}
 			}()
-			for range childRetrievers {
+			for range testCase.results {
 				select {
 				case <-ctx.Done():
 					require.FailNow(t, "failed to start retrievers")
@@ -188,16 +189,17 @@ type timeoutResult struct {
 
 type timeoutRetriever struct {
 	timeoutResult
+	ctx       context.Context
 	clock     clock.Clock
 	startChan chan<- struct{}
 }
 
-func (t *timeoutRetriever) Retrieve(ctx context.Context, request types.RetrievalRequest, events func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
+func (t *timeoutRetriever) RetrieveFromCandidates([]types.RetrievalCandidate) (*types.RetrievalStats, error) {
 	timer := t.clock.Timer(t.duration)
 	t.startChan <- struct{}{}
 	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
+	case <-t.ctx.Done():
+		return nil, t.ctx.Err()
 	case <-timer.C:
 		return t.stats, t.err
 	}
