@@ -19,8 +19,6 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 
-	cborutil "github.com/filecoin-project/go-cbor-util"
-
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-fil-markets/storagemarket/impl/requestvalidation"
 
@@ -41,7 +39,6 @@ import (
 	logging "github.com/ipfs/go-log/v2"
 
 	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 
 	"go.opentelemetry.io/otel"
@@ -460,58 +457,78 @@ awaitfinished:
 	}, nil
 }
 
-func (rc *RetrievalClient) RetrievalQueryToPeer(ctx context.Context, peerAddr peer.AddrInfo, payloadCid cid.Cid, onConnected func()) (*retrievalmarket.QueryResponse, error) {
+func (rc *RetrievalClient) RetrievalQueryToPeer(
+	ctx context.Context,
+	peerAddr peer.AddrInfo,
+	payloadCid cid.Cid,
+	onConnected func(),
+) (*retrievalmarket.QueryResponse, error) {
+
 	ctx, span := tracer.Start(ctx, "retrievalQueryPeer", trace.WithAttributes(
 		attribute.Stringer("peerID", peerAddr.ID),
 	))
 	defer span.End()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-	err := rc.host.Connect(ctx, peerAddr)
-	if err != nil {
+	if err := rc.host.Connect(ctx, peerAddr); err != nil {
 		return nil, err
 	}
 
-	streamToPeer, err := rc.host.NewStream(ctx, peerAddr.ID, RetrievalQueryProtocol)
+	stream, err := rc.host.NewStream(ctx, peerAddr.ID, RetrievalQueryProtocol)
 	if err != nil {
-		return nil, fmt.Errorf("failed connecting to miner: %w", err)
+		return nil, fmt.Errorf("failed connecting to storage provider: %w", err)
 	}
 
-	rc.host.ConnManager().Protect(streamToPeer.Conn().RemotePeer(), "RetrievalQueryToPeer")
+	rc.host.ConnManager().Protect(stream.Conn().RemotePeer(), "RetrievalQueryToPeer")
 	defer func() {
-		rc.host.ConnManager().Unprotect(streamToPeer.Conn().RemotePeer(), "RetrievalQueryToPeer")
-		streamToPeer.Close()
+		rc.host.ConnManager().Unprotect(stream.Conn().RemotePeer(), "RetrievalQueryToPeer")
+		stream.Close()
 	}()
 
 	if onConnected != nil {
 		onConnected()
 	}
 
-	request := &retrievalmarket.Query{
-		PayloadCID: payloadCid,
-	}
-
-	var resp retrievalmarket.QueryResponse
-	if err := doRpc(ctx, streamToPeer, request, &resp); err != nil {
-		return nil, fmt.Errorf("failed retrieval query rpc: %w", err)
-	}
-
-	return &resp, nil
-}
-
-func doRpc(ctx context.Context, stream network.Stream, req interface{}, resp interface{}) error {
-	dline, ok := ctx.Deadline()
-	if ok {
+	if dline, ok := ctx.Deadline(); ok {
 		stream.SetDeadline(dline)
 		defer stream.SetDeadline(time.Time{})
 	}
 
-	if err := cborutil.WriteCborRPC(stream, req); err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
-	}
+	// send query and read response in a goroutine so we can gracefully handle
+	// context cancellation
+	qrCh := make(chan *retrievalmarket.QueryResponse, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		// send query
+		if err := types.QueryToWriter(&retrievalmarket.Query{PayloadCID: payloadCid}, stream); err != nil {
+			select {
+			case errCh <- fmt.Errorf("failed to send query: %w", err):
+			case <-ctx.Done():
+			}
+			return
+		}
+		// read query response
+		resp, err := types.QueryResponseFromReader(stream)
+		if err != nil {
+			select {
+			case errCh <- fmt.Errorf("failed to read query response: %w", err):
+			case <-ctx.Done():
+			}
+			return
+		}
+		select {
+		case qrCh <- resp:
+		case <-ctx.Done():
+		}
+	}()
 
-	if err := cborutil.ReadCborRPC(stream, resp); err != nil {
-		return fmt.Errorf("failed to read response: %w", err)
+	select {
+	case resp := <-qrCh:
+		return resp, nil
+	case err := <-errCh:
+		return nil, err
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
-
-	return nil
 }
