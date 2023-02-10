@@ -21,7 +21,7 @@ func Race(ctx context.Context, retrievalCalls []types.CandidateRetrievalCall) (*
 			defer waitGroup.Done()
 			stats, err := retrievalCall.CandidateRetrieval.RetrieveFromCandidates(retrievalCall.Candidates)
 			select {
-			case resultChan <- types.RetrievalResult{Stats: stats, Err: err}:
+			case resultChan <- types.RetrievalResult{Value: stats, Err: err}:
 			case <-ctx.Done():
 			}
 		}()
@@ -40,8 +40,8 @@ func collectResults(ctx context.Context, resultChan <-chan types.RetrievalResult
 			if result.Err != nil {
 				totalErr = multierr.Append(totalErr, result.Err)
 			}
-			if result.Stats != nil {
-				return result.Stats, nil
+			if result.Value != nil {
+				return result.Value, nil
 			}
 			// have we got all responses but no success?
 			finishedCount++

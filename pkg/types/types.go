@@ -14,6 +14,29 @@ import (
 	"github.com/multiformats/go-multicodec"
 )
 
+type Result[T any] struct {
+	Value T
+	Err   error
+}
+
+func Value[T any](value T) Result[T] {
+	return Result[T]{Value: value}
+}
+
+func Error[T any](err error) Result[T] {
+	return Result[T]{Err: err}
+}
+
+type Stream[T any] interface {
+	Subscribe(StreamSubscriber[T])
+}
+
+type StreamSubscriber[T any] interface {
+	Next(T)
+	Error(error)
+	Complete()
+}
+
 type RetrievalCandidate struct {
 	MinerPeer peer.AddrInfo
 	RootCid   cid.Cid
@@ -59,12 +82,44 @@ type RetrievalRequest struct {
 	LinkSystem  ipld.LinkSystem
 }
 
+type CandidateStream = Stream[[]RetrievalCandidate]
+
+type AsyncRetrieval = Stream[*RetrievalStats]
+
+func GetResults(asyncRetrieval AsyncRetrieval) (*RetrievalStats, error) {
+	var returnedStats *RetrievalStats
+	var returnedError error
+	asyncRetrieval.Subscribe(&asyncRetrievalSubscriber{
+		onComplete: func(stats *RetrievalStats, err error) {
+			returnedStats = stats
+			returnedError = err
+		},
+	})
+	return returnedStats, returnedError
+}
+
+type asyncRetrievalSubscriber struct {
+	received   *RetrievalStats
+	onComplete func(*RetrievalStats, error)
+}
+
+func (ars *asyncRetrievalSubscriber) Next(stats *RetrievalStats) {
+	ars.received = stats
+}
+
+func (ars *asyncRetrievalSubscriber) Error(err error) {
+	ars.onComplete(nil, err)
+}
+func (ars *asyncRetrievalSubscriber) Complete() {
+	ars.onComplete(ars.received, nil)
+}
+
 type Retriever interface {
 	Retrieve(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) (*RetrievalStats, error)
 }
 
-type CandidateFinder interface {
-	FindCandidates(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) ([]RetrievalCandidate, error)
+type AsyncRetriever interface {
+	RetrieveAsync(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) AsyncRetrieval
 }
 
 type CandidateRetrieval interface {
@@ -75,6 +130,18 @@ type CandidateRetriever interface {
 	Retrieve(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) CandidateRetrieval
 }
 
+type AsyncCandidateRetrieval interface {
+	RetrieveFromCandidatesAsync(stream CandidateStream) AsyncRetrieval
+}
+
+type AsyncCandidateRetriever interface {
+	RetrieveAsync(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) AsyncCandidateRetrieval
+}
+
+type CandidateFinder interface {
+	FindCandidates(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) (CandidateStream, error, <-chan error)
+}
+
 type RetrievalSplitter interface {
 	SplitCandidates([]RetrievalCandidate) ([][]RetrievalCandidate, error)
 }
@@ -83,6 +150,13 @@ type CandidateSplitter interface {
 	SplitRetrieval(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) RetrievalSplitter
 }
 
+type AsyncRetrievalSplitter interface {
+	SplitCandidatesAsync(candidates CandidateStream) []CandidateStream
+}
+
+type AsyncCandidateSplitter interface {
+	SplitRetrievalAsync(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) AsyncRetrievalSplitter
+}
 type RetrievalStats struct {
 	StorageProviderId peer.ID
 	RootCid           cid.Cid
@@ -96,11 +170,8 @@ type RetrievalStats struct {
 	TimeToFirstByte   time.Duration
 }
 
-type RetrievalResult struct {
-	Stats *RetrievalStats
-	Err   error
-}
-
+type RetrievalResult = Result[*RetrievalStats]
+type FindCandidatesResult = Result[RetrievalCandidate]
 type CandidateRetrievalCall struct {
 	Candidates         []RetrievalCandidate
 	CandidateRetrieval CandidateRetrieval
@@ -181,10 +252,6 @@ func Identifier(event RetrievalEvent) string {
 // about the event beyond what is available on the RetrievalEvent interface.
 type RetrievalEventSubscriber func(event RetrievalEvent)
 
-type FindCandidatesResult struct {
-	Candidate RetrievalCandidate
-	Err       error
-}
 
 type contextKey string
 

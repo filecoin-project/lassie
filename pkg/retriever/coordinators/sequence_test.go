@@ -25,12 +25,12 @@ func TestSequence(t *testing.T) {
 			name: "two successes, returns first in sequence",
 			results: []types.RetrievalResult{
 				{
-					Stats: &types.RetrievalStats{
+					Value: &types.RetrievalStats{
 						StorageProviderId: peer.ID("apples"),
 					},
 				},
 				{
-					Stats: &types.RetrievalStats{
+					Value: &types.RetrievalStats{
 						StorageProviderId: peer.ID("oranges"),
 					},
 				},
@@ -58,7 +58,7 @@ func TestSequence(t *testing.T) {
 					Err: errors.New("something went wrong"),
 				},
 				{
-					Stats: &types.RetrievalStats{
+					Value: &types.RetrievalStats{
 						StorageProviderId: peer.ID("oranges"),
 					},
 				},
@@ -71,7 +71,7 @@ func TestSequence(t *testing.T) {
 			name: "success then error, returns success",
 			results: []types.RetrievalResult{
 				{
-					Stats: &types.RetrievalStats{
+					Value: &types.RetrievalStats{
 						StorageProviderId: peer.ID("apples"),
 					},
 				},
@@ -106,5 +106,5 @@ type stubRetriever struct {
 }
 
 func (s *stubRetriever) RetrieveFromCandidates(_ []types.RetrievalCandidate) (*types.RetrievalStats, error) {
-	return s.Stats, s.Err
+	return s.Value, s.Err
 }

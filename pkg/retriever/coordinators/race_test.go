@@ -156,7 +156,7 @@ func TestRace(t *testing.T) {
 				stats, err := coordinators.Race(childCtx, retrievalCalls)
 				select {
 				case <-ctx.Done():
-				case resultChan <- types.RetrievalResult{Stats: stats, Err: err}:
+				case resultChan <- types.RetrievalResult{Value: stats, Err: err}:
 				}
 			}()
 			for range testCase.results {
@@ -174,7 +174,7 @@ func TestRace(t *testing.T) {
 			case <-ctx.Done():
 				require.FailNow(t, "failed to receive result")
 			case result := <-resultChan:
-				require.Equal(t, testCase.expectedStats, result.Stats)
+				require.Equal(t, testCase.expectedStats, result.Value)
 				require.Equal(t, testCase.expectedErr, result.Err)
 			}
 		})

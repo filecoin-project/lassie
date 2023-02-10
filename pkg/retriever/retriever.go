@@ -69,7 +69,7 @@ func (cfg *RetrieverConfig) getMinerConfig(peer peer.ID) MinerConfig {
 type Retriever struct {
 	// Assumed immutable during operation
 	config       RetrieverConfig
-	executor     types.Retriever
+	executor     types.AsyncRetriever
 	eventManager *events.EventManager
 	spTracker    *spTracker
 }
@@ -109,10 +109,12 @@ func NewRetriever(
 	}
 	retriever.executor = combinators.RetrieverWithCandidateFinder{
 		CandidateFinder: NewAssignableCandidateFinder(candidateFinder, retriever.isAcceptableStorageProvider),
-		CandidateRetriever: combinators.SplitRetriever{
-			CandidateSplitter:   NewProtocolSplitter([]multicodec.Code{multicodec.TransportGraphsyncFilecoinv1, multicodec.TransportBitswap}),
-			CandidateRetrievers: candidateRetrievers,
-			CoordinationKind:    types.RaceCoordination,
+		CandidateRetriever: CandidateRetriever: AsyncCandidateRetriever{
+			CandidateRetriever: combinators.SplitRetriever{
+				CandidateSplitter:   NewProtocolSplitter([]multicodec.Code{multicodec.TransportGraphsyncFilecoinv1, multicodec.TransportBitswap}),
+				CandidateRetrievers: candidateRetrievers,
+				CoordinationKind:    types.RaceCoordination,
+		        },
 		},
 	}
 
@@ -223,11 +225,12 @@ func (retriever *Retriever) Retrieve(
 	// (retrievalStats!=nil) _and_ also an error return because there may be
 	// multiple failures along the way, if we got a retrieval then we'll pretend
 	// to our caller that there was no error
-	retrievalStats, err := retriever.executor.Retrieve(
+	asyncRetrieval := retriever.executor.RetrieveAsync(
 		ctx,
 		request,
 		onRetrievalEvent,
 	)
+	retrievalStats, err := types.GetResults(asyncRetrieval)
 	if err != nil && retrievalStats == nil {
 		return nil, err
 	}

@@ -24,7 +24,7 @@ func (me *MockCandidateFinder) FindCandidatesAsync(ctx context.Context, c cid.Ci
 		rch := make(chan types.FindCandidatesResult, len(rs))
 		for _, r := range rs {
 			rch <- types.FindCandidatesResult{
-				Candidate: r,
+				Value: r,
 			}
 		}
 		return rch, nil

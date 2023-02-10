@@ -178,9 +178,9 @@ func (idxf *IndexerCandidateFinder) decodeProviderResultStream(ctx context.Conte
 					}
 					// skip results without decodable metadata
 					if md, err := decodeMetadata(pr); err == nil {
-						r.Candidate.MinerPeer = pr.Provider
-						r.Candidate.RootCid = c
-						r.Candidate.Metadata = md
+						r.Value.MinerPeer = pr.Provider
+						r.Value.RootCid = c
+						r.Value.Metadata = md
 						rch <- r
 					}
 				} else if r.Err = scanner.Err(); r.Err != nil {
