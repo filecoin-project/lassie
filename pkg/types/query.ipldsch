@@ -1,0 +1,20 @@
+type QueryResponse struct {
+  Status                     Int
+  PieceCIDFound              Int   # V1 - if a PieceCID was requested, the result
+  Size                       Int   # Total size of piece in bytes
+  PaymentAddress             Bytes # address to send funds to -- may be different than miner addr
+  MinPricePerByte            Bytes
+  MaxPaymentInterval         Int
+  MaxPaymentIntervalIncrease Int
+  Message                    String
+  UnsealPrice                Bytes
+}
+
+type Query struct {
+  PayloadCID  &Any
+  QueryParams QueryParams # this really should be optional, currently not
+}
+
+type QueryParams struct {
+  PieceCID nullable &Any
+}
