@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/filecoin-project/go-state-types/abi"
+	"github.com/filecoin-project/index-provider/metadata"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
@@ -14,6 +15,7 @@ import (
 type RetrievalCandidate struct {
 	MinerPeer peer.AddrInfo
 	RootCid   cid.Cid
+	Metadata  metadata.Metadata
 }
 
 func NewRetrievalCandidate(pid peer.ID, rootCid cid.Cid) RetrievalCandidate {
@@ -53,18 +55,28 @@ type RetrievalRequest struct {
 	LinkSystem  ipld.LinkSystem
 }
 
-type Retriever func(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) (*RetrievalStats, error)
-type CandidateRetriever func(ctx context.Context, request RetrievalRequest, candidates []RetrievalCandidate, events func(RetrievalEvent)) (*RetrievalStats, error)
-type RetrievalCandidateFinder func(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) ([]RetrievalCandidate, error)
+type Retriever interface {
+	Retrieve(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) (*RetrievalStats, error)
+}
 
-func WithCandidates(retrievalCandidateFinder RetrievalCandidateFinder, childRetriever CandidateRetriever) Retriever {
-	return func(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) (*RetrievalStats, error) {
-		candidates, err := retrievalCandidateFinder(ctx, request, events)
-		if err != nil {
-			return nil, err
-		}
-		return childRetriever(ctx, request, candidates, events)
-	}
+type CandidateFinder interface {
+	FindCandidates(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) ([]RetrievalCandidate, error)
+}
+
+type CandidateRetrieval interface {
+	RetrieveFromCandidates([]RetrievalCandidate) (*RetrievalStats, error)
+}
+
+type CandidateRetriever interface {
+	Retrieve(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) CandidateRetrieval
+}
+
+type RetrievalSplitter interface {
+	SplitCandidates([]RetrievalCandidate) ([][]RetrievalCandidate, error)
+}
+
+type CandidateSplitter interface {
+	SplitRetrieval(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) RetrievalSplitter
 }
 
 type RetrievalStats struct {
@@ -81,6 +93,25 @@ type RetrievalStats struct {
 	// TODO: we should be able to get this if we hook into the graphsync event stream
 	// TimeToFirstByte time.Duration
 }
+
+type RetrievalResult struct {
+	Stats *RetrievalStats
+	Err   error
+}
+
+type CandidateRetrievalCall struct {
+	Candidates         []RetrievalCandidate
+	CandidateRetrieval CandidateRetrieval
+}
+
+type RetrievalCoordinator func(context.Context, []CandidateRetrievalCall) (*RetrievalStats, error)
+
+type CoordinationKind string
+
+const (
+	RaceCoordination       = "race"
+	SequentialCoordination = "sequential"
+)
 
 type Phase string
 

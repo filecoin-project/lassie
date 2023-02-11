@@ -105,7 +105,7 @@ func TestQueryFiltering(t *testing.T) {
 				candidates = append(candidates, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID(p)}})
 			}
 
-			cfg := &Executor{
+			cfg := &GraphSyncRetriever{
 				GetStorageProviderTimeout:   func(peer peer.ID) time.Duration { return time.Second },
 				IsAcceptableStorageProvider: func(peer peer.ID) bool { return true },
 				IsAcceptableQueryResponse: func(peer peer.ID, req types.RetrievalRequest, queryResponse *retrievalmarket.QueryResponse) bool {
@@ -119,11 +119,11 @@ func TestQueryFiltering(t *testing.T) {
 			candidateQueriesFiltered := make([]candidateQuery, 0)
 
 			// perform retrieval and test top-level results, we should only error in this test
-			stats, err := cfg.RetrieveFromCandidates(context.Background(), types.RetrievalRequest{
+			stats, err := cfg.Retrieve(context.Background(), types.RetrievalRequest{
 				Cid:         cid.Undef,
 				RetrievalID: retrievalId,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
-			}, candidates, func(event types.RetrievalEvent) {
+			}, func(event types.RetrievalEvent) {
 				qt.Assert(t, event.RetrievalId(), qt.Equals, retrievalId)
 				switch ret := event.(type) {
 				case events.RetrievalEventQueryAsked:
@@ -135,7 +135,7 @@ func TestQueryFiltering(t *testing.T) {
 						retrievingPeers = append(retrievingPeers, event.StorageProviderId())
 					}
 				}
-			})
+			}).RetrieveFromCandidates(candidates)
 			qt.Assert(t, stats, qt.IsNil)
 			qt.Assert(t, err, qt.IsNotNil)
 
@@ -317,7 +317,7 @@ func TestRetrievalRacing(t *testing.T) {
 			for p := range tc.queryReturns {
 				candidates = append(candidates, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID(p)}})
 			}
-			cfg := &Executor{
+			cfg := &GraphSyncRetriever{
 				GetStorageProviderTimeout:   func(peer peer.ID) time.Duration { return time.Second },
 				IsAcceptableStorageProvider: func(peer peer.ID) bool { return true },
 				IsAcceptableQueryResponse:   func(peer peer.ID, req types.RetrievalRequest, qr *retrievalmarket.QueryResponse) bool { return true },
@@ -329,11 +329,11 @@ func TestRetrievalRacing(t *testing.T) {
 			candidateQueriesFiltered := make([]candidateQuery, 0)
 
 			// perform retrieval and make sure we got a result
-			stats, err := cfg.RetrieveFromCandidates(context.Background(), types.RetrievalRequest{
+			stats, err := cfg.Retrieve(context.Background(), types.RetrievalRequest{
 				Cid:         cid.Undef,
 				RetrievalID: retrievalId,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
-			}, candidates, func(event types.RetrievalEvent) {
+			}, func(event types.RetrievalEvent) {
 				qt.Assert(t, event.RetrievalId(), qt.Equals, retrievalId)
 				switch ret := event.(type) {
 				case events.RetrievalEventQueryAsked:
@@ -345,7 +345,7 @@ func TestRetrievalRacing(t *testing.T) {
 						retrievingPeers = append(retrievingPeers, event.StorageProviderId())
 					}
 				}
-			})
+			}).RetrieveFromCandidates(candidates)
 			if tc.expectedRetrieval != "" {
 				qt.Assert(t, stats, qt.IsNotNil)
 				qt.Assert(t, err, qt.IsNil)
@@ -421,7 +421,7 @@ func TestMultipleRetrievals(t *testing.T) {
 		},
 	)
 
-	cfg := &Executor{
+	cfg := &GraphSyncRetriever{
 		GetStorageProviderTimeout:   func(peer peer.ID) time.Duration { return time.Second },
 		IsAcceptableStorageProvider: func(peer peer.ID) bool { return true },
 		IsAcceptableQueryResponse:   func(peer peer.ID, req types.RetrievalRequest, qr *retrievalmarket.QueryResponse) bool { return true },
@@ -455,15 +455,15 @@ func TestMultipleRetrievals(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
-		stats, err := cfg.RetrieveFromCandidates(context.Background(), types.RetrievalRequest{
+		stats, err := cfg.Retrieve(context.Background(), types.RetrievalRequest{
 			Cid:         cid1,
 			RetrievalID: retrievalId,
 			LinkSystem:  cidlink.DefaultLinkSystem(),
-		}, []types.RetrievalCandidate{
+		}, evtCb).RetrieveFromCandidates([]types.RetrievalCandidate{
 			{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}},
 			{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}},
 			{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}},
-		}, evtCb)
+		})
 		qt.Assert(t, stats, qt.IsNotNil)
 		qt.Assert(t, err, qt.IsNil)
 		// make sure we got the final retrieval we wanted
@@ -471,15 +471,15 @@ func TestMultipleRetrievals(t *testing.T) {
 		wg.Done()
 	}()
 
-	stats, err := cfg.RetrieveFromCandidates(context.Background(), types.RetrievalRequest{
+	stats, err := cfg.Retrieve(context.Background(), types.RetrievalRequest{
 		Cid:         cid2,
 		RetrievalID: retrievalId,
 		LinkSystem:  cidlink.DefaultLinkSystem(),
-	}, []types.RetrievalCandidate{
+	}, evtCb).RetrieveFromCandidates([]types.RetrievalCandidate{
 		{MinerPeer: peer.AddrInfo{ID: peer.ID("bang")}},
 		{MinerPeer: peer.AddrInfo{ID: peer.ID("boom")}},
 		{MinerPeer: peer.AddrInfo{ID: peer.ID("bing")}},
-	}, evtCb)
+	})
 	qt.Assert(t, stats, qt.IsNotNil)
 	qt.Assert(t, err, qt.IsNil)
 	// make sure we got the final retrieval we wanted
@@ -492,6 +492,112 @@ func TestMultipleRetrievals(t *testing.T) {
 	qt.Assert(t, time.Since(waitStart) < time.Millisecond*20, qt.IsTrue, qt.Commentf("wait took %s", time.Since(waitStart)))
 	wg.Wait() // make sure we're done with our own goroutine
 	qt.Assert(t, time.Since(waitStart) < time.Millisecond*20, qt.IsTrue, qt.Commentf("wg wait took %s", time.Since(waitStart)))
+
+	// make sure we handled the queries we expected
+	qt.Assert(t, len(mockClient.GetReceivedQueries()), qt.Equals, 6)
+	for _, p := range mockClient.GetReceivedQueries() {
+		pid := peer.ID(p)
+		qt.Assert(t, mockClient.GetReceivedQueries(), qt.Contains, pid)
+	}
+	// make sure we only returned the queries we expected, in this case 2 were too slow and 1 errored so we only get 4
+	qt.Assert(t, len(candidateQueries), qt.Equals, 3)
+	qt.Assert(t, len(candidateQueriesFiltered), qt.Equals, 3)
+
+	// make sure we performed the retrievals we expected
+	qt.Assert(t, len(mockClient.GetReceivedRetrievals()), qt.Equals, 3)
+	qt.Assert(t, len(retrievingPeers), qt.Equals, 3)
+	qt.Assert(t, mockClient.GetReceivedRetrievals(), qt.Contains, peer.ID("foo")) // errored
+	qt.Assert(t, mockClient.GetReceivedRetrievals(), qt.Contains, peer.ID("bar"))
+	qt.Assert(t, mockClient.GetReceivedRetrievals(), qt.Contains, peer.ID("bing"))
+}
+
+// Verify we can use a single retrieval multiple times with different candidates (so it can be used in the future with a stream)
+func TestRetrievalReuse(t *testing.T) {
+	retrievalId := types.RetrievalID(uuid.New())
+	cid1 := cid.MustParse("bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")
+	successfulQueryResponse := retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}
+
+	mockClient := testutil.NewMockClient(
+		map[string]testutil.DelayedQueryReturn{
+			"foo":  {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 20},
+			"bar":  {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 50},
+			"baz":  {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 500}, // should not finish this
+			"bang": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 500}, // should not finish this
+			"boom": {QueryResponse: nil, Err: errors.New("Nope"), Delay: time.Millisecond * 20},
+			"bing": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 50},
+		},
+		map[string]testutil.DelayedRetrievalReturn{
+			"foo":  {ResultErr: errors.New("Nope"), Delay: time.Millisecond * 20},
+			"bar":  {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}, Delay: time.Millisecond * 100},
+			"baz":  {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 3}, Delay: time.Millisecond * 100},
+			"bang": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bang"), Size: 3}, Delay: time.Millisecond * 100},
+			"boom": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("boom"), Size: 3}, Delay: time.Millisecond * 100},
+			"bing": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bing"), Size: 3}, Delay: time.Millisecond * 100},
+		},
+	)
+
+	cfg := &GraphSyncRetriever{
+		GetStorageProviderTimeout:   func(peer peer.ID) time.Duration { return time.Second },
+		IsAcceptableStorageProvider: func(peer peer.ID) bool { return true },
+		IsAcceptableQueryResponse:   func(peer peer.ID, req types.RetrievalRequest, qr *retrievalmarket.QueryResponse) bool { return true },
+		Client:                      mockClient,
+	}
+
+	candidateQueries := make([]candidateQuery, 0)
+	candidateQueriesFiltered := make([]candidateQuery, 0)
+	retrievingPeers := make([]peer.ID, 0)
+	var lk sync.Mutex
+	evtCb := func(event types.RetrievalEvent) {
+		switch ret := event.(type) {
+		case events.RetrievalEventQueryAsked:
+			lk.Lock()
+			candidateQueries = append(candidateQueries, candidateQuery{ret.StorageProviderId(), ret.QueryResponse()})
+			lk.Unlock()
+		case events.RetrievalEventQueryAskedFiltered:
+			lk.Lock()
+			candidateQueriesFiltered = append(candidateQueriesFiltered, candidateQuery{ret.StorageProviderId(), ret.QueryResponse()})
+			lk.Unlock()
+		case events.RetrievalEventStarted:
+			if ret.Phase() == types.RetrievalPhase {
+				lk.Lock()
+				retrievingPeers = append(retrievingPeers, event.StorageProviderId())
+				lk.Unlock()
+			}
+		}
+
+	}
+
+	retrieval := cfg.Retrieve(context.Background(), types.RetrievalRequest{
+		Cid:         cid1,
+		RetrievalID: retrievalId,
+		LinkSystem:  cidlink.DefaultLinkSystem(),
+	}, evtCb)
+
+	stats, err := retrieval.RetrieveFromCandidates([]types.RetrievalCandidate{
+		{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}},
+		{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}},
+		{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}},
+	})
+	qt.Assert(t, stats, qt.IsNotNil)
+	qt.Assert(t, err, qt.IsNil)
+	// make sure we got the final retrieval we wanted
+	qt.Assert(t, stats, qt.Equals, mockClient.GetRetrievalReturns()["bar"].ResultStats)
+
+	stats, err = retrieval.RetrieveFromCandidates([]types.RetrievalCandidate{
+		{MinerPeer: peer.AddrInfo{ID: peer.ID("bang")}},
+		{MinerPeer: peer.AddrInfo{ID: peer.ID("boom")}},
+		{MinerPeer: peer.AddrInfo{ID: peer.ID("bing")}},
+	})
+	qt.Assert(t, stats, qt.IsNotNil)
+	qt.Assert(t, err, qt.IsNil)
+	// make sure we got the final retrieval we wanted
+	qt.Assert(t, stats, qt.Equals, mockClient.GetRetrievalReturns()["bing"].ResultStats)
+
+	// both retrievals should be ~ 50+100ms
+
+	waitStart := time.Now()
+	cfg.wait() // internal goroutine cleanup
+	qt.Assert(t, time.Since(waitStart) < time.Millisecond*20, qt.IsTrue, qt.Commentf("wait took %s", time.Since(waitStart)))
 
 	// make sure we handled the queries we expected
 	qt.Assert(t, len(mockClient.GetReceivedQueries()), qt.Equals, 6)

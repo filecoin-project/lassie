@@ -12,9 +12,11 @@ import (
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/metrics"
+	"github.com/filecoin-project/lassie/pkg/retriever/combinators"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multicodec"
 	"go.opencensus.io/stats"
 )
 
@@ -94,14 +96,22 @@ func NewRetriever(
 		eventManager: events.NewEventManager(ctx),
 		spTracker:    newSpTracker(nil),
 	}
-	executor := &Executor{
-		GetStorageProviderTimeout:   retriever.getStorageProviderTimeout,
-		IsAcceptableStorageProvider: retriever.isAcceptableStorageProvider,
-		IsAcceptableQueryResponse:   retriever.isAcceptableQueryResponse,
-		Client:                      client,
+	retriever.executor = combinators.RetrieverWithCandidateFinder{
+		CandidateFinder: NewAssignableCandidateFinder(candidateFinder, retriever.isAcceptableStorageProvider),
+		CandidateRetriever: combinators.SplitRetriever{
+			CandidateSplitter: NewProtocolSplitter([]multicodec.Code{multicodec.TransportGraphsyncFilecoinv1, multicodec.TransportBitswap}),
+			CandidateRetrievers: []types.CandidateRetriever{
+				&GraphSyncRetriever{
+					GetStorageProviderTimeout:   retriever.getStorageProviderTimeout,
+					IsAcceptableStorageProvider: retriever.isAcceptableStorageProvider,
+					IsAcceptableQueryResponse:   retriever.isAcceptableQueryResponse,
+					Client:                      client,
+				},
+				NewBitswapRetriever(),
+			},
+			CoordinationKind: types.RaceCoordination,
+		},
 	}
-	retrievalCandidateFinder := NewRetrievalCandidateFinder(candidateFinder, retriever.isAcceptableStorageProvider)
-	retriever.executor = types.WithCandidates(retrievalCandidateFinder.FindCandidates, executor.RetrieveFromCandidates)
 
 	return retriever, nil
 }
@@ -209,7 +219,7 @@ func (retriever *Retriever) Retrieve(
 	// (retrievalStats!=nil) _and_ also an error return because there may be
 	// multiple failures along the way, if we got a retrieval then we'll pretend
 	// to our caller that there was no error
-	retrievalStats, err := retriever.executor(
+	retrievalStats, err := retriever.executor.Retrieve(
 		ctx,
 		request,
 		onRetrievalEvent,

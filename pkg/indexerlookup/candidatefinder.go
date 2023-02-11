@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -17,7 +18,6 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-log/v2"
 	"github.com/ipni/storetheindex/api/v0/finder/model"
-	"github.com/multiformats/go-multicodec"
 	"github.com/multiformats/go-multihash"
 )
 
@@ -83,11 +83,12 @@ func (idxf *IndexerCandidateFinder) FindCandidates(ctx context.Context, cid cid.
 			continue
 		}
 		for _, val := range multihashResult.ProviderResults {
-			// filter out any results that aren't filecoin graphsync
-			if hasTransportGraphsyncFilecoinv1(val) {
+			// skip results without decodable metadata
+			if md, err := decodeMetadata(val); err == nil {
 				matches = append(matches, types.RetrievalCandidate{
 					RootCid:   cid,
 					MinerPeer: val.Provider,
+					Metadata:  md,
 				})
 			}
 		}
@@ -95,9 +96,9 @@ func (idxf *IndexerCandidateFinder) FindCandidates(ctx context.Context, cid cid.
 	return matches, nil
 }
 
-func hasTransportGraphsyncFilecoinv1(pr model.ProviderResult) bool {
+func decodeMetadata(pr model.ProviderResult) (metadata.Metadata, error) {
 	if len(pr.Metadata) == 0 {
-		return false
+		return metadata.Metadata{}, errors.New("no metadata")
 	}
 	// Metadata may contain more than one protocol, sorted by ascending order of their protocol ID.
 	// Therefore, decode the metadata as metadata.Metadata, then check if it supports Graphsync.
@@ -105,9 +106,9 @@ func hasTransportGraphsyncFilecoinv1(pr model.ProviderResult) bool {
 	dtm := metadata.Default.New()
 	if err := dtm.UnmarshalBinary(pr.Metadata); err != nil {
 		logger.Debugw("Failed to unmarshal metadata", "err", err)
-		return false
+		return metadata.Metadata{}, err
 	}
-	return dtm.Get(multicodec.TransportGraphsyncFilecoinv1) != nil
+	return dtm, nil
 }
 
 func (idxf *IndexerCandidateFinder) FindCandidatesAsync(ctx context.Context, c cid.Cid) (<-chan types.FindCandidatesResult, error) {
@@ -167,9 +168,13 @@ func (idxf *IndexerCandidateFinder) decodeProviderResultStream(ctx context.Conte
 						rch <- r
 						return
 					}
-					r.Candidate.MinerPeer = pr.Provider
-					r.Candidate.RootCid = c
-					rch <- r
+					// skip results without decodable metadata
+					if md, err := decodeMetadata(pr); err == nil {
+						r.Candidate.MinerPeer = pr.Provider
+						r.Candidate.RootCid = c
+						r.Candidate.Metadata = md
+						rch <- r
+					}
 				} else if r.Err = scanner.Err(); r.Err != nil {
 					rch <- r
 					return

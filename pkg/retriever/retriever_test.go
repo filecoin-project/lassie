@@ -9,6 +9,7 @@ import (
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/go-state-types/big"
+	"github.com/filecoin-project/index-provider/metadata"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/retriever/testutil"
@@ -63,7 +64,7 @@ func TestRetriever(t *testing.T) {
 		{
 			name: "single candidate and successful retrieval",
 			candidates: []types.RetrievalCandidate{
-				{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid1},
+				{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
 			},
 			returns_queries: map[string]testutil.DelayedQueryReturn{
 				string(peerA): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 20},
@@ -98,8 +99,8 @@ func TestRetriever(t *testing.T) {
 		{
 			name: "two candidates, fast one wins",
 			candidates: []types.RetrievalCandidate{
-				{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid1},
-				{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid1},
+				{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
+				{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
 			},
 			returns_queries: map[string]testutil.DelayedQueryReturn{
 				// fastest is blacklisted, shouldn't even touch it
@@ -137,8 +138,8 @@ func TestRetriever(t *testing.T) {
 		{
 			name: "blacklisted candidate",
 			candidates: []types.RetrievalCandidate{
-				{MinerPeer: peer.AddrInfo{ID: blacklistedPeer}, RootCid: cid1},
-				{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid1},
+				{MinerPeer: peer.AddrInfo{ID: blacklistedPeer}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
+				{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
 			},
 			returns_queries: map[string]testutil.DelayedQueryReturn{
 				// fastest is blacklisted, shouldn't even touch it
@@ -175,8 +176,8 @@ func TestRetriever(t *testing.T) {
 		{
 			name: "two candidates, fast one fails query, slow wins",
 			candidates: []types.RetrievalCandidate{
-				{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid1},
-				{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid1},
+				{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
+				{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
 			},
 			returns_queries: map[string]testutil.DelayedQueryReturn{
 				// fastest is blacklisted, shouldn't even touch it
@@ -215,8 +216,8 @@ func TestRetriever(t *testing.T) {
 		{
 			name: "two candidates, fast one fails retrieval, slow wins",
 			candidates: []types.RetrievalCandidate{
-				{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid1},
-				{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid1},
+				{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
+				{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
 			},
 			returns_queries: map[string]testutil.DelayedQueryReturn{
 				// fastest is blacklisted, shouldn't even touch it
@@ -264,8 +265,8 @@ func TestRetriever(t *testing.T) {
 				rc.DefaultMinerConfig.RetrievalTimeout = time.Millisecond * 100
 			},
 			candidates: []types.RetrievalCandidate{
-				{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid1},
-				{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid1},
+				{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
+				{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
 			},
 			returns_queries: map[string]testutil.DelayedQueryReturn{
 				// fastest is blacklisted, shouldn't even touch it
@@ -334,7 +335,7 @@ func TestRetriever(t *testing.T) {
 				rc.DefaultMinerConfig.RetrievalTimeout = time.Millisecond * 100
 			},
 			candidates: []types.RetrievalCandidate{
-				{MinerPeer: peer.AddrInfo{ID: blacklistedPeer}, RootCid: cid1},
+				{MinerPeer: peer.AddrInfo{ID: blacklistedPeer}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
 			},
 			returns_queries:    map[string]testutil.DelayedQueryReturn{},
 			returns_retrievals: map[string]testutil.DelayedRetrievalReturn{},
@@ -426,8 +427,8 @@ func TestLinkSystemPerRequest(t *testing.T) {
 	peerB := peer.ID("B")
 
 	candidates := []types.RetrievalCandidate{
-		{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid1},
-		{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid1},
+		{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
+		{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
 	}
 	returnsQueries := map[string]testutil.DelayedQueryReturn{
 		string(peerA): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 5},
