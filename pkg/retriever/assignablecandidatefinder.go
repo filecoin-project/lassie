@@ -32,8 +32,8 @@ func (rcf AssignableCandidateFinder) FindCandidates(ctx context.Context, request
 	}
 
 	if len(candidates) == 0 {
-		eventsCallback(events.Failed(request.RetrievalID, phaseStarted, types.IndexerPhase, types.RetrievalCandidate{RootCid: request.Cid}, ErrNoCandidates.Error()))
-		return nil, ErrNoCandidates
+		eventsCallback(events.Failed(request.RetrievalID, phaseStarted, types.IndexerPhase, types.RetrievalCandidate{RootCid: request.Cid}, types.ErrNoCandidates.Error()))
+		return nil, types.ErrNoCandidates
 	}
 
 	eventsCallback(events.CandidatesFound(request.RetrievalID, phaseStarted, request.Cid, candidates))
@@ -46,8 +46,8 @@ func (rcf AssignableCandidateFinder) FindCandidates(ctx context.Context, request
 	}
 
 	if len(acceptableCandidates) == 0 {
-		eventsCallback(events.Failed(request.RetrievalID, phaseStarted, types.IndexerPhase, types.RetrievalCandidate{RootCid: request.Cid}, ErrNoCandidates.Error()))
-		return nil, ErrNoCandidates
+		eventsCallback(events.Failed(request.RetrievalID, phaseStarted, types.IndexerPhase, types.RetrievalCandidate{RootCid: request.Cid}, types.ErrNoCandidates.Error()))
+		return nil, types.ErrNoCandidates
 	}
 
 	eventsCallback(events.CandidatesFiltered(request.RetrievalID, phaseStarted, request.Cid, acceptableCandidates))
