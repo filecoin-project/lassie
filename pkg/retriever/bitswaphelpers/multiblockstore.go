@@ -83,6 +83,9 @@ func (mbs *MultiBlockstore) Get(ctx context.Context, c cid.Cid) (blocks.Block, e
 	}
 	r, err := lsys.StorageReadOpener(linking.LinkContext{Ctx: ctx}, cidlink.Link{Cid: c})
 	if err != nil {
+		if nf, ok := err.(interface{ NotFound() bool }); ok && nf.NotFound() {
+			return nil, format.ErrNotFound{Cid: c}
+		}
 		return nil, err
 	}
 	if br, ok := r.(byteReader); ok {
