@@ -11,8 +11,8 @@ import (
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/index-provider/metadata"
 	"github.com/filecoin-project/lassie/pkg/events"
+	"github.com/filecoin-project/lassie/pkg/internal/testutil"
 	"github.com/filecoin-project/lassie/pkg/retriever"
-	"github.com/filecoin-project/lassie/pkg/retriever/testutil"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
@@ -350,6 +350,7 @@ func TestRetriever(t *testing.T) {
 	}
 
 	for _, tc := range tc {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

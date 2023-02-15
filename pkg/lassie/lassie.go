@@ -13,6 +13,7 @@ import (
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
 	"github.com/ipld/go-ipld-prime/linking"
+	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/multiformats/go-multiaddr"
 )
 
@@ -22,8 +23,10 @@ type Lassie struct {
 }
 
 type LassieConfig struct {
-	Finder  retriever.CandidateFinder
-	Timeout time.Duration
+	Finder          retriever.CandidateFinder
+	Host            host.Host
+	ProviderTimeout time.Duration
+	GlobalTimeout   time.Duration
 }
 
 type LassieOption func(cfg *LassieConfig)
@@ -45,26 +48,29 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 		}
 	}
 
-	if cfg.Timeout == 0 {
-		cfg.Timeout = 20 * time.Second
+	if cfg.ProviderTimeout == 0 {
+		cfg.ProviderTimeout = 20 * time.Second
 	}
 
 	datastore := sync.MutexWrap(datastore.NewMapDatastore())
 
-	host, err := internal.InitHost(ctx, multiaddr.StringCast("/ip4/0.0.0.0/tcp/6746"))
+	if cfg.Host == nil {
+		var err error
+		cfg.Host, err = internal.InitHost(ctx, multiaddr.StringCast("/ip4/0.0.0.0/tcp/6746"))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	retrievalClient, err := client.NewClient(datastore, cfg.Host, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	retrievalClient, err := client.NewClient(datastore, host, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	bitswapRetriever := retriever.NewBitswapRetrieverFromHost(ctx, host)
+	bitswapRetriever := retriever.NewBitswapRetrieverFromHost(ctx, cfg.Host)
 	retrieverCfg := retriever.RetrieverConfig{
 		DefaultMinerConfig: retriever.MinerConfig{
-			RetrievalTimeout: cfg.Timeout,
+			RetrievalTimeout: cfg.ProviderTimeout,
 		},
 	}
 
@@ -88,13 +94,28 @@ func WithFinder(finder retriever.CandidateFinder) LassieOption {
 	}
 }
 
-func WithTimeout(timeout time.Duration) LassieOption {
+func WithProviderTimeout(timeout time.Duration) LassieOption {
 	return func(cfg *LassieConfig) {
-		cfg.Timeout = timeout
+		cfg.ProviderTimeout = timeout
 	}
 }
 
+func WithGlobalTimeout(timeout time.Duration) LassieOption {
+	return func(cfg *LassieConfig) {
+		cfg.GlobalTimeout = timeout
+	}
+}
+func WithHost(host host.Host) LassieOption {
+	return func(cfg *LassieConfig) {
+		cfg.Host = host
+	}
+}
 func (l *Lassie) Retrieve(ctx context.Context, request types.RetrievalRequest) (*types.RetrievalStats, error) {
+	var cancel context.CancelFunc
+	if l.cfg.GlobalTimeout != time.Duration(0) {
+		ctx, cancel = context.WithTimeout(ctx, l.cfg.GlobalTimeout)
+		defer cancel()
+	}
 	return l.retriever.Retrieve(ctx, request, func(types.RetrievalEvent) {})
 }
 

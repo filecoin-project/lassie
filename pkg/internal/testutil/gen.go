@@ -3,12 +3,14 @@ package testutil
 import (
 	"fmt"
 	"math/rand"
+	"testing"
 
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
 	"github.com/ipfs/go-libipfs/blocks"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/stretchr/testify/require"
 )
 
 var blockGenerator = blocksutil.NewBlockGenerator()
@@ -74,4 +76,14 @@ func GenerateRetrievalCandidates(n int) []types.RetrievalCandidate {
 		candidates = append(candidates, types.NewRetrievalCandidate(peer.ID(fmt.Sprint(peerSeq)), c))
 	}
 	return candidates
+}
+
+func GenerateRetrievalIDs(t *testing.T, n int) []types.RetrievalID {
+	retrievalIDs := make([]types.RetrievalID, 0, n)
+	for i := 0; i < n; i++ {
+		id, err := types.NewRetrievalID()
+		require.NoError(t, err)
+		retrievalIDs = append(retrievalIDs, id)
+	}
+	return retrievalIDs
 }

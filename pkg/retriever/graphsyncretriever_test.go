@@ -12,7 +12,7 @@ import (
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/events"
-	"github.com/filecoin-project/lassie/pkg/retriever/testutil"
+	"github.com/filecoin-project/lassie/pkg/internal/testutil"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/uuid"
@@ -93,10 +93,11 @@ func TestQueryFiltering(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			retrievalId := types.RetrievalID(uuid.New())
+			retrievalID := types.RetrievalID(uuid.New())
 			dqr := make(map[string]testutil.DelayedQueryReturn, 0)
 			for p, qr := range tc.queryResponses {
 				dqr[p] = testutil.DelayedQueryReturn{QueryResponse: qr, Err: nil, Delay: time.Millisecond * 50}
@@ -122,10 +123,10 @@ func TestQueryFiltering(t *testing.T) {
 			// perform retrieval and test top-level results, we should only error in this test
 			stats, err := cfg.Retrieve(context.Background(), types.RetrievalRequest{
 				Cid:         cid.Undef,
-				RetrievalID: retrievalId,
+				RetrievalID: retrievalID,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
 			}, func(event types.RetrievalEvent) {
-				qt.Assert(t, event.RetrievalId(), qt.Equals, retrievalId)
+				qt.Assert(t, event.RetrievalId(), qt.Equals, retrievalID)
 				switch ret := event.(type) {
 				case events.RetrievalEventQueryAsked:
 					candidateQueries = append(candidateQueries, candidateQuery{ret.StorageProviderId(), ret.QueryResponse()})
@@ -311,10 +312,11 @@ func TestRetrievalRacing(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			retrievalId := types.RetrievalID(uuid.New())
+			retrievalID := types.RetrievalID(uuid.New())
 			mockClient := testutil.NewMockClient(tc.queryReturns, tc.retrievalReturns)
 			candidates := []types.RetrievalCandidate{}
 			for p := range tc.queryReturns {
@@ -333,10 +335,10 @@ func TestRetrievalRacing(t *testing.T) {
 			// perform retrieval and make sure we got a result
 			stats, err := cfg.Retrieve(context.Background(), types.RetrievalRequest{
 				Cid:         cid.Undef,
-				RetrievalID: retrievalId,
+				RetrievalID: retrievalID,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
 			}, func(event types.RetrievalEvent) {
-				qt.Assert(t, event.RetrievalId(), qt.Equals, retrievalId)
+				qt.Assert(t, event.RetrievalId(), qt.Equals, retrievalID)
 				switch ret := event.(type) {
 				case events.RetrievalEventQueryAsked:
 					candidateQueries = append(candidateQueries, candidateQuery{ret.StorageProviderId(), ret.QueryResponse()})
@@ -399,7 +401,7 @@ func TestRetrievalRacing(t *testing.T) {
 
 // run two retrievals simultaneously on a single CidRetrieval
 func TestMultipleRetrievals(t *testing.T) {
-	retrievalId := types.RetrievalID(uuid.New())
+	retrievalID := types.RetrievalID(uuid.New())
 	cid1 := cid.MustParse("bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")
 	cid2 := cid.MustParse("bafyrgqhai26anf3i7pips7q22coa4sz2fr4gk4q4sqdtymvvjyginfzaqewveaeqdh524nsktaq43j65v22xxrybrtertmcfxufdam3da3hbk")
 	successfulQueryResponse := retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}
@@ -458,7 +460,7 @@ func TestMultipleRetrievals(t *testing.T) {
 	go func() {
 		stats, err := cfg.Retrieve(context.Background(), types.RetrievalRequest{
 			Cid:         cid1,
-			RetrievalID: retrievalId,
+			RetrievalID: retrievalID,
 			LinkSystem:  cidlink.DefaultLinkSystem(),
 		}, evtCb).RetrieveFromCandidates([]types.RetrievalCandidate{
 			{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}},
@@ -474,7 +476,7 @@ func TestMultipleRetrievals(t *testing.T) {
 
 	stats, err := cfg.Retrieve(context.Background(), types.RetrievalRequest{
 		Cid:         cid2,
-		RetrievalID: retrievalId,
+		RetrievalID: retrievalID,
 		LinkSystem:  cidlink.DefaultLinkSystem(),
 	}, evtCb).RetrieveFromCandidates([]types.RetrievalCandidate{
 		{MinerPeer: peer.AddrInfo{ID: peer.ID("bang")}},
@@ -514,7 +516,7 @@ func TestMultipleRetrievals(t *testing.T) {
 
 // Verify we can use a single retrieval multiple times with different candidates (so it can be used in the future with a stream)
 func TestRetrievalReuse(t *testing.T) {
-	retrievalId := types.RetrievalID(uuid.New())
+	retrievalID := types.RetrievalID(uuid.New())
 	cid1 := cid.MustParse("bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")
 	successfulQueryResponse := retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}
 
@@ -569,7 +571,7 @@ func TestRetrievalReuse(t *testing.T) {
 
 	retrieval := cfg.Retrieve(context.Background(), types.RetrievalRequest{
 		Cid:         cid1,
-		RetrievalID: retrievalId,
+		RetrievalID: retrievalID,
 		LinkSystem:  cidlink.DefaultLinkSystem(),
 	}, evtCb)
 

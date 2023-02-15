@@ -73,7 +73,7 @@ func Fetch(c *cli.Context) error {
 	}
 
 	timeout := c.Duration("timeout")
-	timeoutOpt := lassie.WithTimeout(timeout)
+	timeoutOpt := lassie.WithProviderTimeout(timeout)
 
 	var opts = []lassie.LassieOption{timeoutOpt}
 	if fetchProviderAddrInfo != nil {

@@ -14,6 +14,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/retriever/bitswaphelpers"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-blockservice"
+	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-libipfs/bitswap/client"
 	"github.com/ipfs/go-libipfs/bitswap/network"
 	dagpb "github.com/ipld/go-codec-dagpb"
@@ -40,6 +41,11 @@ type MultiBlockstore interface {
 	RemoveLinkSystem(id types.RetrievalID)
 }
 
+type InProgressCids interface {
+	Inc(cid.Cid, types.RetrievalID)
+	Dec(cid.Cid, types.RetrievalID)
+}
+
 // BitswapRetriever uses bitswap to retrieve data
 // BitswapRetriever retieves using a combination of a go-bitswap client specially configured per retrieval,
 // underneath a blockservice and a go-fetcher Fetcher.
@@ -47,30 +53,33 @@ type MultiBlockstore interface {
 // Note: this is a tradeoff over go-merkledag for traversal, cause selector execution is slow. But the solution
 // is to improve selector execution, not introduce unpredictable encoding.
 type BitswapRetriever struct {
-	bstore       MultiBlockstore
-	routing      IndexerRouting
-	blockService blockservice.BlockService
-	clock        clock.Clock
+	bstore         MultiBlockstore
+	inProgressCids InProgressCids
+	routing        IndexerRouting
+	blockService   blockservice.BlockService
+	clock          clock.Clock
 }
 
 // NewBitswapRetrieverFromHost constructs a new bitswap retriever for the given libp2p host
 func NewBitswapRetrieverFromHost(ctx context.Context, host host.Host) *BitswapRetriever {
 	bstore := bitswaphelpers.NewMultiblockstore()
-	routing := bitswaphelpers.NewIndexerRouting()
+	inProgressCids := bitswaphelpers.NewInProgressCids()
+	routing := bitswaphelpers.NewIndexerRouting(inProgressCids.Get)
 	bsnet := network.NewFromIpfsHost(host, routing)
 	bitswap := client.New(ctx, bsnet, bstore)
 	bsnet.Start(bitswap)
 	bsrv := blockservice.New(bstore, bitswap)
-	return NewBitswapRetrieverFromDeps(bsrv, routing, bstore, clock.New())
+	return NewBitswapRetrieverFromDeps(bsrv, routing, inProgressCids, bstore, clock.New())
 }
 
 // NewBitswapRetrieverFromDeps is primarily for testing, constructing behavior from direct dependencies
-func NewBitswapRetrieverFromDeps(bsrv blockservice.BlockService, routing IndexerRouting, bstore MultiBlockstore, clock clock.Clock) *BitswapRetriever {
+func NewBitswapRetrieverFromDeps(bsrv blockservice.BlockService, routing IndexerRouting, inProgressCids InProgressCids, bstore MultiBlockstore, clock clock.Clock) *BitswapRetriever {
 	return &BitswapRetriever{
-		bstore:       bstore,
-		routing:      routing,
-		blockService: bsrv,
-		clock:        clock,
+		bstore:         bstore,
+		inProgressCids: inProgressCids,
+		routing:        routing,
+		blockService:   bsrv,
+		clock:          clock,
 	}
 }
 
@@ -113,7 +122,7 @@ func (br *bitswapRetrieval) RetrieveFromCandidates(candidates []types.RetrievalC
 	// copy the link system
 	wrappedLsys := br.request.LinkSystem
 	// replace the opener with a blockservice wrapper (we still want any known adls + reifiers, hence the copy)
-	wrappedLsys.StorageReadOpener = loaderForSession(br.bsGetter)
+	wrappedLsys.StorageReadOpener = loaderForSession(br.request.RetrievalID, br.inProgressCids, br.bsGetter)
 	// run the retrieval
 	err := easyTraverse(br.ctx, cidlink.Link{Cid: br.request.Cid}, selectorparse.CommonSelector_ExploreAllRecursively, &wrappedLsys)
 
@@ -152,14 +161,15 @@ func (br *bitswapRetrieval) RetrieveFromCandidates(candidates []types.RetrievalC
 	}, nil
 }
 
-func loaderForSession(bs blockservice.BlockGetter) linking.BlockReadOpener {
+func loaderForSession(retrievalID types.RetrievalID, inProgressCids InProgressCids, bs blockservice.BlockGetter) linking.BlockReadOpener {
 	return func(lctx linking.LinkContext, lnk datamodel.Link) (io.Reader, error) {
 		cidLink, ok := lnk.(cidlink.Link)
 		if !ok {
 			return nil, fmt.Errorf("invalid link type for loading: %v", lnk)
 		}
-
+		inProgressCids.Inc(cidLink.Cid, retrievalID)
 		blk, err := bs.GetBlock(lctx.Ctx, cidLink.Cid)
+		inProgressCids.Dec(cidLink.Cid, retrievalID)
 		if err != nil {
 			return nil, err
 		}

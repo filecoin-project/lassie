@@ -9,9 +9,9 @@ import (
 
 	"github.com/benbjohnson/clock"
 	"github.com/filecoin-project/go-state-types/big"
+	"github.com/filecoin-project/lassie/pkg/internal/testutil"
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/retriever/bitswaphelpers"
-	"github.com/filecoin-project/lassie/pkg/retriever/testutil"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-cid"
@@ -162,6 +162,7 @@ func TestBitswapRetriever(t *testing.T) {
 		},
 	}
 	for _, testCase := range testCases {
+		testCase := testCase
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -221,7 +222,8 @@ func TestBitswapRetriever(t *testing.T) {
 			}
 			bsrv := blockservice.New(mbs, exchange)
 			mir := newMockIndexerRouting()
-			bsr := retriever.NewBitswapRetrieverFromDeps(bsrv, mir, mbs, clock)
+			mipc := &mockInProgressCids{}
+			bsr := retriever.NewBitswapRetrieverFromDeps(bsrv, mir, mipc, mbs, clock)
 			receivedEvents := make(map[cid.Cid][]types.RetrievalEvent)
 			retrievalCollector := func(evt types.RetrievalEvent) {
 				receivedEvents[evt.PayloadCid()] = append(receivedEvents[evt.PayloadCid()], evt)
@@ -279,7 +281,17 @@ func TestBitswapRetriever(t *testing.T) {
 			req.Equal(testCase.expectedEvents, receivedCodes)
 			req.Equal(expectedCandidates, mir.candidatesAdded)
 			req.Equal(map[types.RetrievalID]struct{}{rid1: {}, rid2: {}}, mir.candidatesRemoved)
-
+			if len(expectedErrors) == 0 {
+				var allCids []cid.Cid
+				for _, blk := range tbc1.AllBlocks() {
+					allCids = append(allCids, blk.Cid())
+				}
+				for _, blk := range tbc2.AllBlocks() {
+					allCids = append(allCids, blk.Cid())
+				}
+				req.ElementsMatch(allCids, mipc.incremented)
+				req.ElementsMatch(allCids, mipc.decremented)
+			}
 		})
 	}
 }
@@ -380,4 +392,17 @@ func (cms *correctedMemStore) GetStream(ctx context.Context, key string) (io.Rea
 		err = format.ErrNotFound{}
 	}
 	return rc, err
+}
+
+type mockInProgressCids struct {
+	incremented []cid.Cid
+	decremented []cid.Cid
+}
+
+func (mipc *mockInProgressCids) Inc(c cid.Cid, _ types.RetrievalID) {
+	mipc.incremented = append(mipc.incremented, c)
+}
+
+func (mipc *mockInProgressCids) Dec(c cid.Cid, _ types.RetrievalID) {
+	mipc.decremented = append(mipc.decremented, c)
 }

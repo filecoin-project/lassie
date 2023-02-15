@@ -23,12 +23,14 @@ type IndexerRouting struct {
 	routinghelpers.Null
 	providerSets   map[types.RetrievalID][]types.RetrievalCandidate
 	providerSetsLk sync.Mutex
+	toRetrievalIDs func(cid.Cid) []types.RetrievalID
 }
 
 // NewIndexerRouting makes a new indexer routing instance
-func NewIndexerRouting() *IndexerRouting {
+func NewIndexerRouting(toRetrievalID func(cid.Cid) []types.RetrievalID) *IndexerRouting {
 	return &IndexerRouting{
-		providerSets: make(map[types.RetrievalID][]types.RetrievalCandidate),
+		providerSets:   make(map[types.RetrievalID][]types.RetrievalCandidate),
+		toRetrievalIDs: toRetrievalID,
 	}
 }
 
@@ -52,22 +54,24 @@ func (ir *IndexerRouting) AddProviders(retrievalID types.RetrievalID, providers 
 // could accidentally read the wrong retrieval id if two retrievals were running at the same time. Not sure how much
 // of a risk this really is, cause when requests are deduped, both calls still receive the results. See go-bitswap
 // ProviderQueryManager for more specifics
-func (ir *IndexerRouting) FindProvidersAsync(ctx context.Context, _ cid.Cid, max int) <-chan peer.AddrInfo {
+func (ir *IndexerRouting) FindProvidersAsync(ctx context.Context, c cid.Cid, max int) <-chan peer.AddrInfo {
 	resultsChan := make(chan peer.AddrInfo)
 
 	go func() {
 		defer close(resultsChan)
-		retrievalID, err := types.RetrievalIDFromContext(ctx)
-		if err != nil {
-			return
-		}
+
+		retrievalIDs := ir.toRetrievalIDs(c)
 		ir.providerSetsLk.Lock()
-		providers := ir.providerSets[retrievalID]
-		if len(providers) > max {
-			providers, ir.providerSets[retrievalID] = providers[:max], providers[max:]
-		}
-		if len(ir.providerSets) == 0 {
-			delete(ir.providerSets, retrievalID)
+		var providers []types.RetrievalCandidate
+		for _, retrievalID := range retrievalIDs {
+			providers = append(providers, ir.providerSets[retrievalID]...)
+			if len(providers) > max {
+				providers, ir.providerSets[retrievalID] = providers[:max], providers[max:]
+				break
+			}
+			if len(ir.providerSets) == 0 {
+				delete(ir.providerSets, retrievalID)
+			}
 		}
 		ir.providerSetsLk.Unlock()
 		for _, p := range providers {
