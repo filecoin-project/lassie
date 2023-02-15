@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync/atomic"
 
 	"github.com/benbjohnson/clock"
 	"github.com/filecoin-project/go-state-types/big"
@@ -101,8 +102,8 @@ func (br *bitswapRetrieval) RetrieveFromCandidates(candidates []types.RetrievalC
 		if totalWritten == 0 {
 			br.events(events.FirstByte(br.request.RetrievalID, phaseStartTime, bitswapCandidate))
 		}
-		totalWritten += bytesWritten
-		blockCount++
+		atomic.AddUint64(&totalWritten, bytesWritten)
+		atomic.AddUint64(&blockCount, 1)
 	}
 	// setup providers for this retrieval
 	br.routing.AddProviders(br.request.RetrievalID, candidates)
