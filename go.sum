@@ -130,8 +130,8 @@ github.com/filecoin-project/go-commp-utils/nonffi v0.0.0-20220905160352-62059082
 github.com/filecoin-project/go-crypto v0.0.0-20191218222705-effae4ea9f03 h1:2pMXdBnCiXjfCYx/hLqFxccPoqsSveQFxVLvNxy9bus=
 github.com/filecoin-project/go-crypto v0.0.0-20191218222705-effae4ea9f03/go.mod h1:+viYnvGtUTgJRdy6oaeF4MTFKAfatX071MPDPBL11EQ=
 github.com/filecoin-project/go-data-transfer v1.15.2 h1:PzqsFr2Q/onMGKrGh7TtRT0dKsJcVJrioJJnjnKmxlk=
-github.com/filecoin-project/go-data-transfer/v2 v2.0.0-rc2 h1:O0SKeCU9eokmERkOFEzgW2vvFuBSQeLAywvUSao+Gh0=
-github.com/filecoin-project/go-data-transfer/v2 v2.0.0-rc2/go.mod h1:DckrS1zxrtRNtIu3YdylWUKR4ZyJYNGHnox9n1eY/O4=
+github.com/filecoin-project/go-data-transfer/v2 v2.0.0-rc2.0.20230214154556-9cac4a18a101 h1:z/keDQ6IJ2NjExxaWbKUgamjn607TYLPMOQmM/Kdhms=
+github.com/filecoin-project/go-data-transfer/v2 v2.0.0-rc2.0.20230214154556-9cac4a18a101/go.mod h1:1WDoUgWYB2KvogfPTdDmoyBTa9cb9+oGwqKCCipnJeY=
 github.com/filecoin-project/go-ds-versioning v0.1.2 h1:to4pTadv3IeV1wvgbCbN6Vqd+fu+7tveXgv/rCEZy6w=
 github.com/filecoin-project/go-ds-versioning v0.1.2/go.mod h1:C9/l9PnB1+mwPa26BBVpCjG/XQCB0yj/q5CK2J8X1I4=
 github.com/filecoin-project/go-fil-commcid v0.0.0-20200716160307-8f644712406f/go.mod h1:Eaox7Hvus1JgPrL5+M3+h7aSPHc0cVqpSxA+TxIEpZQ=
@@ -310,8 +310,8 @@ github.com/gregjones/httpcache v0.0.0-20180305231024-9cad4c3443a7/go.mod h1:Fecb
 github.com/grpc-ecosystem/grpc-gateway v1.5.0/go.mod h1:RSKVYQBd5MCa4OVpNdGskqpgL2+G+NZTnrVHpWWfpdw=
 github.com/gxed/hashland/keccakpg v0.0.1/go.mod h1:kRzw3HkwxFU1mpmPP8v1WyQzwdGfmKFJ6tItnhQ67kU=
 github.com/gxed/hashland/murmur3 v0.0.1/go.mod h1:KjXop02n4/ckmZSnY2+HKcLud/tcmvhST0bie/0lS48=
-github.com/hannahhoward/cbor-gen-for v0.0.0-20200817222906-ea96cece81f1 h1:F9k+7wv5OIk1zcq23QpdiL0hfDuXPjuOmMNaC6fgQ0Q=
-github.com/hannahhoward/cbor-gen-for v0.0.0-20200817222906-ea96cece81f1/go.mod h1:jvfsLIxk0fY/2BKSQ1xf2406AKA5dwMmKKv0ADcOfN8=
+github.com/hannahhoward/cbor-gen-for v0.0.0-20230214144701-5d17c9d5243c h1:iiD+p+U0M6n/FsO6XIZuOgobnNa48FxtyYFfWwLttUQ=
+github.com/hannahhoward/cbor-gen-for v0.0.0-20230214144701-5d17c9d5243c/go.mod h1:jvfsLIxk0fY/2BKSQ1xf2406AKA5dwMmKKv0ADcOfN8=
 github.com/hannahhoward/go-pubsub v1.0.0 h1:yONMbY9blu+FFlamGzRZVocoY6WHPJa08h3yX7nOGuA=
 github.com/hannahhoward/go-pubsub v1.0.0/go.mod h1:3lHsAt5uM7YFHauT5whoifwfgIgVwEX2fMDxPDrkpU4=
 github.com/hashicorp/errwrap v1.0.0/go.mod h1:YH+1FKiLXxHSkmPseP+kNlulaMuP3n2brvKWEqk/Jc4=
@@ -330,8 +330,8 @@ github.com/huin/goutil v0.0.0-20170803182201-1ca381bf3150/go.mod h1:PpLOETDnJ0o3
 github.com/ianlancetaylor/demangle v0.0.0-20181102032728-5e5cf60278f6/go.mod h1:aSSvb/t6k1mPoxDqO4vJh6VOCGPwU4O0C2/Eqndh1Sc=
 github.com/ipfs/bbloom v0.0.4 h1:Gi+8EGJ2y5qiD5FbsbpX/TMNcJw8gSqr7eyjHa4Fhvs=
 github.com/ipfs/bbloom v0.0.4/go.mod h1:cS9YprKXpoZ9lT0n/Mw/a6/aFV6DTjTLYHeA+gyqMG0=
-github.com/ipfs/go-bitfield v1.0.0 h1:y/XHm2GEmD9wKngheWNNCNL0pzrWXZwCdQGv1ikXknQ=
-github.com/ipfs/go-bitfield v1.0.0/go.mod h1:N/UiujQy+K+ceU1EF5EkVd1TNqevLrCQMIcAEPrdtus=
+github.com/ipfs/go-bitfield v1.1.0 h1:fh7FIo8bSwaJEh6DdTWbCeZ1eqOaOkKFI74SCnsWbGA=
+github.com/ipfs/go-bitfield v1.1.0/go.mod h1:paqf1wjq/D2BBmzfTVFlJQ9IlFOZpg422HL0HqsGWHU=
 github.com/ipfs/go-bitswap v0.11.0 h1:j1WVvhDX1yhG32NTC9xfxnqycqYIlhzEzLXG/cU1HyQ=
 github.com/ipfs/go-block-format v0.0.2/go.mod h1:AWR46JfpcObNfg3ok2JHDUfdiHRgWhJgCQF+KIgOPJY=
 github.com/ipfs/go-block-format v0.0.3/go.mod h1:4LmD4ZUw0mhO+JSKdpWwrzATiEfM7WWgQ8H5l6P8MVk=
@@ -417,9 +417,9 @@ github.com/ipfs/go-metrics-interface v0.0.1 h1:j+cpbjYvu4R8zbleSs36gvB7jR+wsL2fG
 github.com/ipfs/go-metrics-interface v0.0.1/go.mod h1:6s6euYU4zowdslK0GKHmqaIZ3j/b/tL7HTWtJ4VPgWY=
 github.com/ipfs/go-peertaskqueue v0.8.0 h1:JyNO144tfu9bx6Hpo119zvbEL9iQ760FHOiJYsUjqaU=
 github.com/ipfs/go-peertaskqueue v0.8.0/go.mod h1:cz8hEnnARq4Du5TGqiWKgMr/BOSQ5XOgMOh1K5YYKKM=
-github.com/ipfs/go-unixfs v0.4.0 h1:qSyyxfB/OiDdWHYiSbyaqKC7zfSE/TFL0QdwkRjBm20=
-github.com/ipfs/go-unixfsnode v1.5.1 h1:JcR3t5C2nM1V7PMzhJ/Qmo19NkoFIKweDSZyDx+CjkI=
-github.com/ipfs/go-unixfsnode v1.5.1/go.mod h1:ed79DaG9IEuZITJVQn4U6MZDftv6I3ygUBLPfhEbHvk=
+github.com/ipfs/go-unixfs v0.4.3 h1:EdDc1sNZNFDUlo4UrVAvvAofVI5EwTnKu8Nv8mgXkWQ=
+github.com/ipfs/go-unixfsnode v1.5.2 h1:CvsiTt58W2uR5dD8bqQv+aAY0c1qolmXmSyNbPHYiew=
+github.com/ipfs/go-unixfsnode v1.5.2/go.mod h1:NlOebRwYx8lMCNMdhAhEspYPBD3obp7TE0LvBqHY+ks=
 github.com/ipfs/go-verifcid v0.0.2 h1:XPnUv0XmdH+ZIhLGKg6U2vaPaRDXb9urMyNVCE7uvTs=
 github.com/ipfs/go-verifcid v0.0.2/go.mod h1:40cD9x1y4OWnFXbLNJYRe7MpNvWlMn3LZAG5Wb4xnPU=
 github.com/ipld/go-car v0.5.0 h1:kcCEa3CvYMs0iE5BzD5sV7O2EwMiCIp3uF8tA6APQT8=
@@ -429,8 +429,8 @@ github.com/ipld/go-codec-dagpb v1.5.0 h1:RspDRdsJpLfgCI0ONhTAnbHdySGD4t+LHSPK4X1
 github.com/ipld/go-codec-dagpb v1.5.0/go.mod h1:0yRIutEFD8o1DGVqw4RSHh+BUTlJA9XWldxaaWR/o4g=
 github.com/ipld/go-ipld-adl-hamt v0.0.0-20220616142416-9004dbd839e0 h1:QAI/Ridj0+foHD6epbxmB4ugxz9B4vmNdYSmQLGa05E=
 github.com/ipld/go-ipld-prime v0.9.1-0.20210324083106-dc342a9917db/go.mod h1:KvBLMr4PX1gWptgkzRjVZCrLmSGcZCb/jioOQwCqZN8=
-github.com/ipld/go-ipld-prime v0.19.1-0.20230210001044-7b00b1490f0b h1:YyDqJuZAGwCyGYHyBw6FEQgGT33RRGVRXcBjCDrXfHU=
-github.com/ipld/go-ipld-prime v0.19.1-0.20230210001044-7b00b1490f0b/go.mod h1:PzqZ/ZR981eKbgdr3y2DJYeD/8bgMawdGVlJDE8kK+M=
+github.com/ipld/go-ipld-prime v0.20.0 h1:Ud3VwE9ClxpO2LkCYP7vWPc0Fo+dYdYzgxUJZ3uRG4g=
+github.com/ipld/go-ipld-prime v0.20.0/go.mod h1:PzqZ/ZR981eKbgdr3y2DJYeD/8bgMawdGVlJDE8kK+M=
 github.com/ipld/go-ipld-prime/storage/bsadapter v0.0.0-20230102063945-1a409dc236dd h1:gMlw/MhNr2Wtp5RwGdsW23cs+yCuj9k2ON7i9MiJlRo=
 github.com/ipni/storetheindex v0.5.4 h1:K6kL8zy5LCf+JI8HRKrrdcxjk5xPmroYxWpQttJMC7U=
 github.com/ipni/storetheindex v0.5.4/go.mod h1:c/NS640Iu2NrCCIErnUhsUM5KVEyeXymgtNnx6eDwMU=

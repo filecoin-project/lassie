@@ -7,7 +7,7 @@ require (
 	github.com/benbjohnson/clock v1.3.0
 	github.com/dustin/go-humanize v1.0.0
 	github.com/filecoin-project/go-address v1.1.0
-	github.com/filecoin-project/go-data-transfer/v2 v2.0.0-rc2
+	github.com/filecoin-project/go-data-transfer/v2 v2.0.0-rc2.0.20230214154556-9cac4a18a101
 	github.com/filecoin-project/go-fil-markets v1.25.3-0.20230107010325-143abaddd0f3
 	github.com/filecoin-project/go-state-types v0.9.9
 	github.com/filecoin-project/index-provider v0.9.2
@@ -24,7 +24,7 @@ require (
 	github.com/ipfs/go-libipfs v0.5.0
 	github.com/ipfs/go-log/v2 v2.5.1
 	github.com/ipld/go-car/v2 v2.7.0
-	github.com/ipld/go-ipld-prime v0.19.1-0.20230210001044-7b00b1490f0b
+	github.com/ipld/go-ipld-prime v0.20.0
 	github.com/ipni/storetheindex v0.5.4
 	github.com/libp2p/go-libp2p v0.25.1
 	github.com/multiformats/go-multiaddr v0.8.0
@@ -85,11 +85,11 @@ require (
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/google/pprof v0.0.0-20221203041831-ce31453925ec // indirect
-	github.com/hannahhoward/cbor-gen-for v0.0.0-20200817222906-ea96cece81f1 // indirect
+	github.com/hannahhoward/cbor-gen-for v0.0.0-20230214144701-5d17c9d5243c // indirect
 	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/huin/goupnp v1.0.3 // indirect
 	github.com/ipfs/bbloom v0.0.4 // indirect
-	github.com/ipfs/go-bitfield v1.0.0 // indirect
+	github.com/ipfs/go-bitfield v1.1.0 // indirect
 	github.com/ipfs/go-block-format v0.1.1 // indirect
 	github.com/ipfs/go-blockservice v0.5.0
 	github.com/ipfs/go-ipfs-ds-help v1.1.0 // indirect
@@ -102,7 +102,7 @@ require (
 	github.com/ipfs/go-merkledag v0.9.0 // indirect
 	github.com/ipfs/go-metrics-interface v0.0.1 // indirect
 	github.com/ipfs/go-peertaskqueue v0.8.0 // indirect
-	github.com/ipfs/go-unixfsnode v1.5.1 // indirect
+	github.com/ipfs/go-unixfsnode v1.5.2 // indirect
 	github.com/ipfs/go-verifcid v0.0.2 // indirect
 	github.com/ipld/go-codec-dagpb v1.5.0
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
