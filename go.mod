@@ -46,7 +46,9 @@ require (
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/ipfs/go-ipfs-delay v0.0.1 // indirect
+	github.com/jbenet/go-random v0.0.0-20190219211222-123a90aedc0c // indirect
 	github.com/libp2p/go-libp2p-record v0.2.0 // indirect
+	go.opentelemetry.io/otel/sdk v1.10.0 // indirect
 )
 
 require (
@@ -91,7 +93,7 @@ require (
 	github.com/ipfs/go-block-format v0.1.1 // indirect
 	github.com/ipfs/go-blockservice v0.5.0
 	github.com/ipfs/go-ipfs-ds-help v1.1.0 // indirect
-	github.com/ipfs/go-ipfs-exchange-interface v0.2.0 // indirect
+	github.com/ipfs/go-ipfs-exchange-interface v0.2.0
 	github.com/ipfs/go-ipfs-pq v0.0.2 // indirect
 	github.com/ipfs/go-ipfs-util v0.0.2 // indirect
 	github.com/ipfs/go-ipld-cbor v0.0.6 // indirect

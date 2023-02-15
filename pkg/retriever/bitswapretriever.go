@@ -5,8 +5,8 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"time"
 
+	"github.com/benbjohnson/clock"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/index-provider/metadata"
 	"github.com/filecoin-project/lassie/pkg/events"
@@ -49,6 +49,7 @@ type BitswapRetriever struct {
 	bstore       MultiBlockstore
 	routing      IndexerRouting
 	blockService blockservice.BlockService
+	clock        clock.Clock
 }
 
 // NewBitswapRetrieverFromHost constructs a new bitswap retriever for the given libp2p host
@@ -59,15 +60,16 @@ func NewBitswapRetrieverFromHost(ctx context.Context, host host.Host) *BitswapRe
 	bitswap := client.New(ctx, bsnet, bstore)
 	bsnet.Start(bitswap)
 	bsrv := blockservice.New(bstore, bitswap)
-	return NewBitswapRetrieverFromDeps(bsrv, routing, bstore)
+	return NewBitswapRetrieverFromDeps(bsrv, routing, bstore, clock.New())
 }
 
 // NewBitswapRetrieverFromDeps is primarily for testing, constructing behavior from direct dependencies
-func NewBitswapRetrieverFromDeps(bsrv blockservice.BlockService, routing IndexerRouting, bstore MultiBlockstore) *BitswapRetriever {
+func NewBitswapRetrieverFromDeps(bsrv blockservice.BlockService, routing IndexerRouting, bstore MultiBlockstore, clock clock.Clock) *BitswapRetriever {
 	return &BitswapRetriever{
 		bstore:       bstore,
 		routing:      routing,
 		blockService: bsrv,
+		clock:        clock,
 	}
 }
 
@@ -86,7 +88,7 @@ type bitswapRetrieval struct {
 
 // RetrieveFromCandidates retrieves via go-bitswap backed with the given candidates, under the auspices of a fetcher.Fetcher
 func (br *bitswapRetrieval) RetrieveFromCandidates(candidates []types.RetrievalCandidate) (*types.RetrievalStats, error) {
-	phaseStartTime := time.Now()
+	phaseStartTime := br.clock.Now()
 	// this is a hack cause we aren't able to track bitswap fetches per peer for now, so instead we just create a single peer for all events
 	bitswapCandidate := types.NewRetrievalCandidate(peer.ID(""), br.request.Cid, metadata.Bitswap{})
 	br.events(events.Started(br.request.RetrievalID, phaseStartTime, types.RetrievalPhase, bitswapCandidate))
@@ -103,9 +105,9 @@ func (br *bitswapRetrieval) RetrieveFromCandidates(candidates []types.RetrievalC
 		blockCount++
 	}
 	// setup providers for this retrieval
-	br.BitswapRetriever.routing.AddProviders(br.request.RetrievalID, candidates)
+	br.routing.AddProviders(br.request.RetrievalID, candidates)
 	// setup providers linksystem for this retrieval
-	br.BitswapRetriever.bstore.AddLinkSystem(br.request.RetrievalID, bitswaphelpers.NewByteCountingLinkSystem(&br.request.LinkSystem, cb))
+	br.bstore.AddLinkSystem(br.request.RetrievalID, bitswaphelpers.NewByteCountingLinkSystem(&br.request.LinkSystem, cb))
 
 	// copy the link system
 	wrappedLsys := br.request.LinkSystem
@@ -115,14 +117,14 @@ func (br *bitswapRetrieval) RetrieveFromCandidates(candidates []types.RetrievalC
 	err := easyTraverse(br.ctx, cidlink.Link{br.request.Cid}, selectorparse.CommonSelector_ExploreAllRecursively, &wrappedLsys)
 
 	// unregister relevant provider records & LinkSystem
-	br.BitswapRetriever.routing.RemoveProviders(br.request.RetrievalID)
-	br.BitswapRetriever.bstore.RemoveLinkSystem(br.request.RetrievalID)
+	br.routing.RemoveProviders(br.request.RetrievalID)
+	br.bstore.RemoveLinkSystem(br.request.RetrievalID)
 	if err != nil {
 		// record failure
 		br.events(events.Failed(br.request.RetrievalID, phaseStartTime, types.RetrievalPhase, bitswapCandidate, err.Error()))
 		return nil, err
 	}
-	duration := time.Since(phaseStartTime)
+	duration := br.clock.Since(phaseStartTime)
 	speed := uint64(float64(totalWritten) / duration.Seconds())
 
 	// record success
@@ -138,6 +140,7 @@ func (br *bitswapRetrieval) RetrieveFromCandidates(candidates []types.RetrievalC
 	// return stats
 	return &types.RetrievalStats{
 		StorageProviderId: peer.ID(""),
+		RootCid:           br.request.Cid,
 		Size:              totalWritten,
 		Blocks:            blockCount,
 		Duration:          duration,

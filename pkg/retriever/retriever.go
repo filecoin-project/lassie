@@ -197,7 +197,7 @@ func (retriever *Retriever) Retrieve(
 
 	ctx = types.RegisterRetrievalIDToContext(ctx, request.RetrievalID)
 	if !retriever.eventManager.IsStarted() {
-		return nil, types.ErrRetrieverNotStarted
+		return nil, ErrRetrieverNotStarted
 	}
 	if !retriever.spTracker.RegisterRetrieval(request.RetrievalID, request.Cid) {
 		return nil, fmt.Errorf("%w: %s", ErrRetrievalAlreadyRunning, request.Cid)
