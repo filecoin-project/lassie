@@ -44,15 +44,15 @@ func TestMultiblockstore(t *testing.T) {
 	// should start off with no blocks returning anything
 	for _, c := range cids {
 		_, err := mbs.Get(ctx, c)
-		req.True(format.IsNotFound(err))
+		req.EqualError(err, types.ErrMissingContextKey.Error())
 		_, err = mbs.Get(storage1Ctx, c)
-		req.True(format.IsNotFound(err))
+		req.EqualError(err, format.ErrNotFound{Cid: c}.Error())
 		_, err = mbs.Get(storage2Ctx, c)
-		req.True(format.IsNotFound(err))
+		req.EqualError(err, format.ErrNotFound{Cid: c}.Error())
 	}
 	// put to root store is not supported
 	err = mbs.Put(ctx, blks[0])
-	req.Equal(bitswaphelpers.ErrNotSupported, err)
+	req.Equal(types.ErrMissingContextKey, err)
 	// put some blocks in each system
 	err = mbs.Put(storage1Ctx, blks[0])
 	req.NoError(err)
@@ -66,7 +66,7 @@ func TestMultiblockstore(t *testing.T) {
 	for i, c := range cids {
 		// no blocks for root context
 		_, err := mbs.Get(ctx, c)
-		req.True(format.IsNotFound(err))
+		req.EqualError(err, types.ErrMissingContextKey.Error())
 		// storage contexts only return blocks put with their key
 		blk, err := mbs.Get(storage1Ctx, c)
 		if i <= 2 {
@@ -88,10 +88,10 @@ func TestMultiblockstore(t *testing.T) {
 	for i, c := range cids {
 		// no blocks for root context
 		_, err := mbs.Get(ctx, c)
-		req.True(format.IsNotFound(err))
+		req.EqualError(err, types.ErrMissingContextKey.Error())
 		// cancelled storage contexts return no blocks
 		_, err = mbs.Get(storage1Ctx, c)
-		req.True(format.IsNotFound(err))
+		req.EqualError(err, bitswaphelpers.ErrNotRegistered.Error())
 		// storage contexts only return blocks put with their key
 		blk, err := mbs.Get(storage2Ctx, c)
 		if i >= 2 {

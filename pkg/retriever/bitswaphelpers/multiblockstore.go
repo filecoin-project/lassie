@@ -8,7 +8,6 @@ import (
 
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
-	format "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-libipfs/blocks"
 	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -79,16 +78,13 @@ type byteReader interface {
 func (mbs *MultiBlockstore) Get(ctx context.Context, c cid.Cid) (blocks.Block, error) {
 	id, err := types.RetrievalIDFromContext(ctx)
 	if err != nil {
-		if errors.Is(err, types.ErrMissingContextKey) {
-			return nil, format.ErrNotFound{Cid: c}
-		}
 		return nil, err
 	}
 	mbs.linkSystemsLk.RLock()
 	lsys, ok := mbs.linkSystems[id]
 	mbs.linkSystemsLk.RUnlock()
 	if !ok {
-		return nil, format.ErrNotFound{Cid: c}
+		return nil, ErrNotRegistered
 	}
 	r, err := lsys.StorageReadOpener(linking.LinkContext{Ctx: ctx}, cidlink.Link{Cid: c})
 	if err != nil {
@@ -112,34 +108,32 @@ func (mbs *MultiBlockstore) GetSize(ctx context.Context, c cid.Cid) (int, error)
 // Put writes a block only if the given ctx contains a retrieval ID as a value that
 // references a known linksystem. If it does, it uses that linksystem to save the block
 func (mbs *MultiBlockstore) Put(ctx context.Context, blk blocks.Block) error {
+	return mbs.PutMany(ctx, []blocks.Block{blk})
+}
+
+// PutMany puts a slice of blocks at the same time, with the same rules as Put
+func (mbs *MultiBlockstore) PutMany(ctx context.Context, blks []blocks.Block) error {
 	id, err := types.RetrievalIDFromContext(ctx)
 	if err != nil {
-		if errors.Is(err, types.ErrMissingContextKey) {
-			return ErrNotSupported
-		}
+
 		return err
 	}
 	mbs.linkSystemsLk.RLock()
 	lsys, ok := mbs.linkSystems[id]
 	mbs.linkSystemsLk.RUnlock()
 	if !ok {
-		return ErrNotSupported
+		return ErrNotRegistered
 	}
-	w, commit, err := lsys.StorageWriteOpener(linking.LinkContext{Ctx: ctx})
-	if err != nil {
-		return err
-	}
-	_, err = w.Write(blk.RawData())
-	if err != nil {
-		return err
-	}
-	return commit(cidlink.Link{Cid: blk.Cid()})
-}
-
-// PutMany puts a slice of blocks at the same time, with the same rules as Put
-func (mbs *MultiBlockstore) PutMany(ctx context.Context, blks []blocks.Block) error {
 	for _, blk := range blks {
-		err := mbs.Put(ctx, blk)
+		w, commit, err := lsys.StorageWriteOpener(linking.LinkContext{Ctx: ctx})
+		if err != nil {
+			return err
+		}
+		_, err = w.Write(blk.RawData())
+		if err != nil {
+			return err
+		}
+		err = commit(cidlink.Link{Cid: blk.Cid()})
 		if err != nil {
 			return err
 		}
