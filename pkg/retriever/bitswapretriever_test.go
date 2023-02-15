@@ -163,6 +163,8 @@ func TestBitswapRetriever(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
 			req := require.New(t)
 			ctx, cancel := context.WithTimeout(ctx, time.Second)
 			defer cancel()
