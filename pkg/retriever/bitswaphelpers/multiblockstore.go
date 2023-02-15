@@ -22,11 +22,6 @@ var ErrAlreadyRegisterd = errors.New("already registered")
 // ErrAlreadyRegistered means there is nothing registered for a retrieval id
 var ErrNotRegistered = errors.New("not registered")
 
-type linkSystemRecord struct {
-	lsys   *linking.LinkSystem
-	cancel context.CancelFunc
-}
-
 // MultiBlockstore creates a blockstore based on one or more linkystems, extracting the target linksystem for each request
 // from the retrieval id context key
 type MultiBlockstore struct {
