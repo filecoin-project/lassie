@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"sync/atomic"
+	"time"
 
 	"github.com/benbjohnson/clock"
 	"github.com/filecoin-project/go-state-types/big"
@@ -60,13 +61,15 @@ type BitswapRetriever struct {
 	clock          clock.Clock
 }
 
+const shortenedDelay = 5 * time.Millisecond
+
 // NewBitswapRetrieverFromHost constructs a new bitswap retriever for the given libp2p host
 func NewBitswapRetrieverFromHost(ctx context.Context, host host.Host) *BitswapRetriever {
 	bstore := bitswaphelpers.NewMultiblockstore()
 	inProgressCids := bitswaphelpers.NewInProgressCids()
 	routing := bitswaphelpers.NewIndexerRouting(inProgressCids.Get)
 	bsnet := network.NewFromIpfsHost(host, routing)
-	bitswap := client.New(ctx, bsnet, bstore)
+	bitswap := client.New(ctx, bsnet, bstore, client.ProviderSearchDelay(shortenedDelay))
 	bsnet.Start(bitswap)
 	bsrv := blockservice.New(bstore, bitswap)
 	return NewBitswapRetrieverFromDeps(bsrv, routing, inProgressCids, bstore, clock.New())

@@ -42,7 +42,7 @@ func TestBitswapFetchTwoPeers(t *testing.T) {
 	delimited := io.LimitReader(rand.Reader, 1<<22)
 	buf := new(bytes.Buffer)
 	delimited = io.TeeReader(delimited, buf)
-	root1, _, err := builder.BuildUnixFSFile(delimited, "size-4096", &ls)
+	root1, _, err := builder.BuildUnixFSFile(delimited, "size-256144", &ls)
 	srcData1 := buf.Bytes()
 	req.NoError(err)
 	rootCid1 := root1.(cidlink.Link).Cid
@@ -50,7 +50,7 @@ func TestBitswapFetchTwoPeers(t *testing.T) {
 	delimited = io.LimitReader(rand.Reader, 1<<22)
 	buf = new(bytes.Buffer)
 	delimited = io.TeeReader(delimited, buf)
-	root2, _, err := builder.BuildUnixFSFile(delimited, "size-4096", &ls)
+	root2, _, err := builder.BuildUnixFSFile(delimited, "size-256144", &ls)
 	srcData2 := buf.Bytes()
 	req.NoError(err)
 	rootCid2 := root2.(cidlink.Link).Cid
