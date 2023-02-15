@@ -105,7 +105,7 @@ func NewRetriever(
 		},
 	}
 	if bitswapRetriever != nil {
-		candidateRetrievers = append(candidateRetrievers, candidateRetrievers...)
+		candidateRetrievers = append(candidateRetrievers, bitswapRetriever)
 	}
 	retriever.executor = combinators.RetrieverWithCandidateFinder{
 		CandidateFinder: NewAssignableCandidateFinder(candidateFinder, retriever.isAcceptableStorageProvider),
