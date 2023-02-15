@@ -17,7 +17,7 @@ var _ routing.Routing = (*IndexerRouting)(nil)
 // provider records based on a preset set of providers read from the context key.
 // Bitswap will potentially make multiple FindProvidersAsync requests, and the cid passed will not always be the root
 // As a result, we have to rely on the retrieval id within a context key
-// Also wile there is a delegated routing client that talks to the indexer, we use this cause we run it on
+// Also while there is a delegated routing client that talks to the indexer, we use this cause we run it on
 // top of the processing we're doing at a higher level with multiprotocol filtering
 type IndexerRouting struct {
 	routinghelpers.Null
