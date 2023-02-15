@@ -1,4 +1,4 @@
-package bitswap
+package bitswaphelpers
 
 import (
 	"context"
@@ -14,20 +14,8 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 )
 
-type contextKey string
-
-const retrievalIDKey = contextKey("retrieval-id-key")
-
-func RegisterRetrievalIDToContext(parentCtx context.Context, id types.RetrievalID) context.Context {
-	ctx := context.WithValue(parentCtx, retrievalIDKey, id)
-	return ctx
-}
-
 // ErrNotSupported indicates an operation not supported by the MultiBlockstore
 var ErrNotSupported = errors.New("not supported")
-
-// ErrIncorrectContextValue indicates a value for the retrieval id context key that wasn't a retrieval id
-var ErrIncorrectContextValue = errors.New("context key does not point to a retrieval id")
 
 // ErrAlreadyRegistered means something has already been registered for a retrieval id
 var ErrAlreadyRegisterd = errors.New("already registered")
@@ -89,13 +77,12 @@ type byteReader interface {
 // Get returns a block only if the given ctx contains a retrieval ID as a value that
 // references a known linksystem. If it does, it uses that linksystem to load the block
 func (mbs *MultiBlockstore) Get(ctx context.Context, c cid.Cid) (blocks.Block, error) {
-	sk := ctx.Value(retrievalIDKey)
-	if sk == nil {
-		return nil, format.ErrNotFound{Cid: c}
-	}
-	id, ok := sk.(types.RetrievalID)
-	if !ok {
-		return nil, ErrIncorrectContextValue
+	id, err := types.RetrievalIDFromContext(ctx)
+	if err != nil {
+		if errors.Is(err, types.ErrMissingContextKey) {
+			return nil, format.ErrNotFound{Cid: c}
+		}
+		return nil, err
 	}
 	mbs.linkSystemsLk.RLock()
 	lsys, ok := mbs.linkSystems[id]
@@ -125,13 +112,12 @@ func (mbs *MultiBlockstore) GetSize(ctx context.Context, c cid.Cid) (int, error)
 // Put writes a block only if the given ctx contains a retrieval ID as a value that
 // references a known linksystem. If it does, it uses that linksystem to save the block
 func (mbs *MultiBlockstore) Put(ctx context.Context, blk blocks.Block) error {
-	sk := ctx.Value(retrievalIDKey)
-	if sk == nil {
-		return ErrNotSupported
-	}
-	id, ok := sk.(types.RetrievalID)
-	if !ok {
-		return ErrIncorrectContextValue
+	id, err := types.RetrievalIDFromContext(ctx)
+	if err != nil {
+		if errors.Is(err, types.ErrMissingContextKey) {
+			return ErrNotSupported
+		}
+		return err
 	}
 	mbs.linkSystemsLk.RLock()
 	lsys, ok := mbs.linkSystems[id]

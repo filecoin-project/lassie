@@ -1,4 +1,4 @@
-package bitswap
+package bitswaphelpers
 
 import (
 	"context"
@@ -57,12 +57,8 @@ func (ir *IndexerRouting) FindProvidersAsync(ctx context.Context, _ cid.Cid, max
 
 	go func() {
 		defer close(resultsChan)
-		sk := ctx.Value(retrievalIDKey)
-		if sk == nil {
-			return
-		}
-		retrievalID, ok := sk.(types.RetrievalID)
-		if !ok {
+		retrievalID, err := types.RetrievalIDFromContext(ctx)
+		if err != nil {
 			return
 		}
 		ir.providerSetsLk.Lock()

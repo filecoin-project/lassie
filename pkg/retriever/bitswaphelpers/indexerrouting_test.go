@@ -1,11 +1,11 @@
-package bitswap_test
+package bitswaphelpers_test
 
 import (
 	"context"
 	"testing"
 	"time"
 
-	"github.com/filecoin-project/lassie/pkg/retriever/bitswap"
+	"github.com/filecoin-project/lassie/pkg/retriever/bitswaphelpers"
 	"github.com/filecoin-project/lassie/pkg/retriever/testutil"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -17,7 +17,7 @@ func TestIndexerRouting(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
-	ir := bitswap.NewIndexerRouting()
+	ir := bitswaphelpers.NewIndexerRouting()
 	id1, err := types.NewRetrievalID()
 	req.NoError(err)
 	id2, err := types.NewRetrievalID()
@@ -25,9 +25,9 @@ func TestIndexerRouting(t *testing.T) {
 	id3, err := types.NewRetrievalID()
 	req.NoError(err)
 	c := testutil.GenerateCid()
-	requestCtx1 := bitswap.RegisterRetrievalIDToContext(ctx, id1)
-	requestCtx2 := bitswap.RegisterRetrievalIDToContext(ctx, id2)
-	requestCtx3 := bitswap.RegisterRetrievalIDToContext(ctx, id3)
+	requestCtx1 := types.RegisterRetrievalIDToContext(ctx, id1)
+	requestCtx2 := types.RegisterRetrievalIDToContext(ctx, id2)
+	requestCtx3 := types.RegisterRetrievalIDToContext(ctx, id3)
 	// no candidates should be returned initially
 	verifyCandidates(ctx, t, nil, ir.FindProvidersAsync(ctx, c, 5))
 	verifyCandidates(ctx, t, nil, ir.FindProvidersAsync(requestCtx1, c, 5))

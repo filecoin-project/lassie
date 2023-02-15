@@ -42,8 +42,10 @@ require (
 )
 
 require (
+	github.com/cskr/pubsub v1.0.2 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
+	github.com/ipfs/go-ipfs-delay v0.0.1 // indirect
 	github.com/libp2p/go-libp2p-record v0.2.0 // indirect
 )
 
@@ -87,7 +89,7 @@ require (
 	github.com/ipfs/bbloom v0.0.4 // indirect
 	github.com/ipfs/go-bitfield v1.0.0 // indirect
 	github.com/ipfs/go-block-format v0.1.1 // indirect
-	github.com/ipfs/go-blockservice v0.5.0 // indirect
+	github.com/ipfs/go-blockservice v0.5.0
 	github.com/ipfs/go-ipfs-ds-help v1.1.0 // indirect
 	github.com/ipfs/go-ipfs-exchange-interface v0.2.0 // indirect
 	github.com/ipfs/go-ipfs-pq v0.0.2 // indirect
@@ -100,7 +102,7 @@ require (
 	github.com/ipfs/go-peertaskqueue v0.8.0 // indirect
 	github.com/ipfs/go-unixfsnode v1.5.1 // indirect
 	github.com/ipfs/go-verifcid v0.0.2 // indirect
-	github.com/ipld/go-codec-dagpb v1.5.0 // indirect
+	github.com/ipld/go-codec-dagpb v1.5.0
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/jbenet/go-temp-err-catcher v0.1.0 // indirect
 	github.com/jbenet/goprocess v0.1.4 // indirect

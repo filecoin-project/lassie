@@ -10,5 +10,5 @@ import (
 )
 
 func InitHost(ctx context.Context, listenAddrs ...multiaddr.Multiaddr) (host.Host, error) {
-	return libp2p.New(libp2p.ListenAddrs(listenAddrs...), libp2p.Identity(nil), libp2p.ResourceManager(network.NullResourceManager))
+	return libp2p.New(libp2p.ListenAddrs(listenAddrs...), libp2p.Identity(nil), libp2p.ResourceManager(&network.NullResourceManager{}))
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/go-state-types/big"
+	"github.com/filecoin-project/index-provider/metadata"
 	"github.com/filecoin-project/lassie/pkg/eventrecorder"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/types"
@@ -131,6 +132,40 @@ func TestEventRecorder(t *testing.T) {
 			},
 		},
 		{
+			name: "RetrievalSuccess, bitswap",
+			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
+				er.RecordEvent(events.Success(id, ptime, types.NewRetrievalCandidate(peer.ID(""), testCid1, metadata.Bitswap{}), uint64(2020), 3030, 4*time.Second, big.Zero()))
+
+				select {
+				case <-ctx.Done():
+					t.Fatal(ctx.Err())
+				case <-receivedChan:
+				}
+
+				qt.Assert(t, req.Length(), qt.Equals, int64(1))
+				eventList := verifyListNode(t, req, "events", 1)
+				event := verifyListElement(t, eventList, 0)
+				qt.Assert(t, event.Length(), qt.Equals, int64(9))
+				verifyStringNode(t, event, "retrievalId", id.String())
+				verifyStringNode(t, event, "instanceId", "test-instance")
+				verifyStringNode(t, event, "cid", testCid1.String())
+				verifyStringNode(t, event, "storageProviderId", eventrecorder.BitswapPeerID)
+				verifyStringNode(t, event, "phase", "retrieval")
+				verifyStringNode(t, event, "phaseStartTime", ptime.Format(time.RFC3339Nano))
+				verifyStringNode(t, event, "eventName", "success")
+				atime, err := time.Parse(time.RFC3339Nano, nodeToString(t, event, "eventTime"))
+				qt.Assert(t, err, qt.IsNil)
+				qt.Assert(t, etime.Sub(atime) < 50*time.Millisecond, qt.IsTrue)
+
+				detailsNode, err := event.LookupByString("eventDetails")
+				qt.Assert(t, err, qt.IsNil)
+				qt.Assert(t, detailsNode.Length(), qt.Equals, int64(3))
+				verifyIntNode(t, detailsNode, "receivedSize", 2020)
+				verifyIntNode(t, detailsNode, "receivedCids", 3030)
+				verifyIntNode(t, detailsNode, "durationMs", 4000)
+			},
+		},
+		{
 			name: "QueryFailure",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
 				er.RecordEvent(events.Failed(id, ptime, types.QueryPhase, types.NewRetrievalCandidate(spid, testCid1), "ha ha no"))
@@ -180,6 +215,38 @@ func TestEventRecorder(t *testing.T) {
 				verifyStringNode(t, event, "instanceId", "test-instance")
 				verifyStringNode(t, event, "cid", testCid1.String())
 				verifyStringNode(t, event, "storageProviderId", spid.String())
+				verifyStringNode(t, event, "phase", "retrieval")
+				verifyStringNode(t, event, "phaseStartTime", ptime.Format(time.RFC3339Nano))
+				verifyStringNode(t, event, "eventName", "failure")
+				atime, err := time.Parse(time.RFC3339Nano, nodeToString(t, event, "eventTime"))
+				qt.Assert(t, err, qt.IsNil)
+				qt.Assert(t, etime.Sub(atime) < 50*time.Millisecond, qt.IsTrue)
+
+				detailsNode, err := event.LookupByString("eventDetails")
+				qt.Assert(t, err, qt.IsNil)
+				qt.Assert(t, detailsNode.Length(), qt.Equals, int64(1))
+				verifyStringNode(t, detailsNode, "error", "ha ha no, silly silly")
+			},
+		},
+		{
+			name: "RetrievalFailure, bitswap",
+			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
+				er.RecordEvent(events.Failed(id, ptime, types.RetrievalPhase, types.NewRetrievalCandidate(peer.ID(""), testCid1, metadata.Bitswap{}), "ha ha no, silly silly"))
+
+				select {
+				case <-ctx.Done():
+					t.Fatal(ctx.Err())
+				case <-receivedChan:
+				}
+
+				qt.Assert(t, req.Length(), qt.Equals, int64(1))
+				eventList := verifyListNode(t, req, "events", 1)
+				event := verifyListElement(t, eventList, 0)
+				qt.Assert(t, event.Length(), qt.Equals, int64(9))
+				verifyStringNode(t, event, "retrievalId", id.String())
+				verifyStringNode(t, event, "instanceId", "test-instance")
+				verifyStringNode(t, event, "cid", testCid1.String())
+				verifyStringNode(t, event, "storageProviderId", eventrecorder.BitswapPeerID)
 				verifyStringNode(t, event, "phase", "retrieval")
 				verifyStringNode(t, event, "phaseStartTime", ptime.Format(time.RFC3339Nano))
 				verifyStringNode(t, event, "eventName", "failure")

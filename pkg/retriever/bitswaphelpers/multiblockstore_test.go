@@ -1,10 +1,10 @@
-package bitswap_test
+package bitswaphelpers_test
 
 import (
 	"context"
 	"testing"
 
-	"github.com/filecoin-project/lassie/pkg/retriever/bitswap"
+	"github.com/filecoin-project/lassie/pkg/retriever/bitswaphelpers"
 	"github.com/filecoin-project/lassie/pkg/retriever/testutil"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
@@ -27,13 +27,13 @@ func TestMultiblockstore(t *testing.T) {
 	dss2 := sync.MutexWrap(ds2)
 	bs2 := blockstore.NewBlockstore(dss2)
 	lsys2 := storeutil.LinkSystemForBlockstore(bs2)
-	mbs := bitswap.NewMultiblockstore()
+	mbs := bitswaphelpers.NewMultiblockstore()
 	id1, err := types.NewRetrievalID()
 	req.NoError(err)
 	id2, err := types.NewRetrievalID()
 	req.NoError(err)
-	storage1Ctx := bitswap.RegisterRetrievalIDToContext(ctx, id1)
-	storage2Ctx := bitswap.RegisterRetrievalIDToContext(ctx, id2)
+	storage1Ctx := types.RegisterRetrievalIDToContext(ctx, id1)
+	storage2Ctx := types.RegisterRetrievalIDToContext(ctx, id2)
 	mbs.AddLinkSystem(id1, &lsys1)
 	mbs.AddLinkSystem(id2, &lsys2)
 	blks := testutil.GenerateBlocksOfSize(5, 1000)
@@ -52,7 +52,7 @@ func TestMultiblockstore(t *testing.T) {
 	}
 	// put to root store is not supported
 	err = mbs.Put(ctx, blks[0])
-	req.Equal(bitswap.ErrNotSupported, err)
+	req.Equal(bitswaphelpers.ErrNotSupported, err)
 	// put some blocks in each system
 	err = mbs.Put(storage1Ctx, blks[0])
 	req.NoError(err)
@@ -103,11 +103,11 @@ func TestMultiblockstore(t *testing.T) {
 	}
 	// unsupported operations
 	_, err = mbs.Has(storage2Ctx, cids[2])
-	req.Equal(bitswap.ErrNotSupported, err)
+	req.Equal(bitswaphelpers.ErrNotSupported, err)
 	err = mbs.DeleteBlock(storage2Ctx, cids[2])
-	req.Equal(bitswap.ErrNotSupported, err)
+	req.Equal(bitswaphelpers.ErrNotSupported, err)
 	_, err = mbs.GetSize(storage2Ctx, cids[2])
-	req.Equal(bitswap.ErrNotSupported, err)
+	req.Equal(bitswaphelpers.ErrNotSupported, err)
 	_, err = mbs.AllKeysChan(storage2Ctx)
-	req.Equal(bitswap.ErrNotSupported, err)
+	req.Equal(bitswaphelpers.ErrNotSupported, err)
 }

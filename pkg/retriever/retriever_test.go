@@ -28,7 +28,7 @@ func TestRetrieverStart(t *testing.T) {
 	config := retriever.RetrieverConfig{}
 	candidateFinder := &testutil.MockCandidateFinder{}
 	client := &testutil.MockClient{}
-	ret, err := retriever.NewRetriever(context.Background(), config, client, candidateFinder)
+	ret, err := retriever.NewRetriever(context.Background(), config, client, candidateFinder, nil)
 	require.NoError(t, err)
 
 	// --- run ---
@@ -363,7 +363,7 @@ func TestRetriever(t *testing.T) {
 			}
 
 			// --- create ---
-			ret, err := retriever.NewRetriever(context.Background(), config, client, candidateFinder)
+			ret, err := retriever.NewRetriever(context.Background(), config, client, candidateFinder, nil)
 			require.NoError(t, err)
 			ret.RegisterSubscriber(subscriber.Collect)
 
@@ -461,7 +461,7 @@ func TestLinkSystemPerRequest(t *testing.T) {
 	config := retriever.RetrieverConfig{}
 
 	// --- create ---
-	ret, err := retriever.NewRetriever(context.Background(), config, client, candidateFinder)
+	ret, err := retriever.NewRetriever(context.Background(), config, client, candidateFinder, nil)
 	require.NoError(t, err)
 	ret.RegisterSubscriber(subscriber.Collect)
 
