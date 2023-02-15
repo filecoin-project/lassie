@@ -66,7 +66,7 @@ func (ir *IndexerRouting) FindProvidersAsync(ctx context.Context, _ cid.Cid, max
 		if len(providers) > max {
 			providers, ir.providerSets[retrievalID] = providers[:max], providers[max:]
 		}
-		if len(providers) == 0 {
+		if len(ir.providerSets) == 0 {
 			delete(ir.providerSets, retrievalID)
 		}
 		ir.providerSetsLk.Unlock()
