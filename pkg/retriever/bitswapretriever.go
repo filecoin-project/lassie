@@ -115,7 +115,7 @@ func (br *bitswapRetrieval) RetrieveFromCandidates(candidates []types.RetrievalC
 	// replace the opener with a blockservice wrapper (we still want any known adls + reifiers, hence the copy)
 	wrappedLsys.StorageReadOpener = loaderForSession(br.bsGetter)
 	// run the retrieval
-	err := easyTraverse(br.ctx, cidlink.Link{br.request.Cid}, selectorparse.CommonSelector_ExploreAllRecursively, &wrappedLsys)
+	err := easyTraverse(br.ctx, cidlink.Link{Cid: br.request.Cid}, selectorparse.CommonSelector_ExploreAllRecursively, &wrappedLsys)
 
 	// unregister relevant provider records & LinkSystem
 	br.routing.RemoveProviders(br.request.RetrievalID)
