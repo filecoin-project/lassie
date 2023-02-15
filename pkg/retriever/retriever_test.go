@@ -104,7 +104,7 @@ func TestRetriever(t *testing.T) {
 			},
 			returns_queries: map[string]testutil.DelayedQueryReturn{
 				// fastest is blacklisted, shouldn't even touch it
-				string(peerA): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 50},
+				string(peerA): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 200},
 				string(peerB): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 5},
 			},
 			returns_retrievals: map[string]testutil.DelayedRetrievalReturn{
@@ -221,7 +221,7 @@ func TestRetriever(t *testing.T) {
 			},
 			returns_queries: map[string]testutil.DelayedQueryReturn{
 				// fastest is blacklisted, shouldn't even touch it
-				string(peerA): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 50},
+				string(peerA): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 200},
 				string(peerB): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 5},
 			},
 			returns_retrievals: map[string]testutil.DelayedRetrievalReturn{
@@ -351,6 +351,8 @@ func TestRetriever(t *testing.T) {
 
 	for _, tc := range tc {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			// --- setup ---
 			candidateFinder := &testutil.MockCandidateFinder{Candidates: map[cid.Cid][]types.RetrievalCandidate{cid1: tc.candidates}}
 			client := testutil.NewMockClient(tc.returns_queries, tc.returns_retrievals)
