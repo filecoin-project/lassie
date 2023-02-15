@@ -129,6 +129,7 @@ func TestBitswapFetchTwoPeers(t *testing.T) {
 	outLsys.SetReadStorage(rCar)
 	outLsys.NodeReifier = unixfsnode.Reify
 	nd, err := outLsys.Load(linking.LinkContext{Ctx: ctx}, root1, dagpb.Type.PBNode)
+	req.NoError(err)
 	destData, err := nd.AsBytes()
 	req.NoError(err)
 	req.Equal(srcData1, destData)
@@ -143,6 +144,7 @@ func TestBitswapFetchTwoPeers(t *testing.T) {
 	outLsys.SetReadStorage(rCar)
 	outLsys.NodeReifier = unixfsnode.Reify
 	nd, err = outLsys.Load(linking.LinkContext{Ctx: ctx}, root2, dagpb.Type.PBNode)
+	req.NoError(err)
 	destData, err = nd.AsBytes()
 	req.NoError(err)
 	req.Equal(srcData2, destData)
