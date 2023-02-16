@@ -11,8 +11,8 @@ import (
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/index-provider/metadata"
 	"github.com/filecoin-project/lassie/pkg/events"
+	"github.com/filecoin-project/lassie/pkg/internal/testutil"
 	"github.com/filecoin-project/lassie/pkg/retriever"
-	"github.com/filecoin-project/lassie/pkg/retriever/testutil"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
@@ -28,7 +28,7 @@ func TestRetrieverStart(t *testing.T) {
 	config := retriever.RetrieverConfig{}
 	candidateFinder := &testutil.MockCandidateFinder{}
 	client := &testutil.MockClient{}
-	ret, err := retriever.NewRetriever(context.Background(), config, client, candidateFinder)
+	ret, err := retriever.NewRetriever(context.Background(), config, client, candidateFinder, nil)
 	require.NoError(t, err)
 
 	// --- run ---
@@ -104,7 +104,7 @@ func TestRetriever(t *testing.T) {
 			},
 			returns_queries: map[string]testutil.DelayedQueryReturn{
 				// fastest is blacklisted, shouldn't even touch it
-				string(peerA): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 50},
+				string(peerA): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 200},
 				string(peerB): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 5},
 			},
 			returns_retrievals: map[string]testutil.DelayedRetrievalReturn{
@@ -221,7 +221,7 @@ func TestRetriever(t *testing.T) {
 			},
 			returns_queries: map[string]testutil.DelayedQueryReturn{
 				// fastest is blacklisted, shouldn't even touch it
-				string(peerA): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 50},
+				string(peerA): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 200},
 				string(peerB): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 5},
 			},
 			returns_retrievals: map[string]testutil.DelayedRetrievalReturn{
@@ -350,7 +350,10 @@ func TestRetriever(t *testing.T) {
 	}
 
 	for _, tc := range tc {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			// --- setup ---
 			candidateFinder := &testutil.MockCandidateFinder{Candidates: map[cid.Cid][]types.RetrievalCandidate{cid1: tc.candidates}}
 			client := testutil.NewMockClient(tc.returns_queries, tc.returns_retrievals)
@@ -363,7 +366,7 @@ func TestRetriever(t *testing.T) {
 			}
 
 			// --- create ---
-			ret, err := retriever.NewRetriever(context.Background(), config, client, candidateFinder)
+			ret, err := retriever.NewRetriever(context.Background(), config, client, candidateFinder, nil)
 			require.NoError(t, err)
 			ret.RegisterSubscriber(subscriber.Collect)
 
@@ -461,7 +464,7 @@ func TestLinkSystemPerRequest(t *testing.T) {
 	config := retriever.RetrieverConfig{}
 
 	// --- create ---
-	ret, err := retriever.NewRetriever(context.Background(), config, client, candidateFinder)
+	ret, err := retriever.NewRetriever(context.Background(), config, client, candidateFinder, nil)
 	require.NoError(t, err)
 	ret.RegisterSubscriber(subscriber.Collect)
 

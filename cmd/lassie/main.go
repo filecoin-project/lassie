@@ -60,6 +60,8 @@ func before(cctx *cli.Context) error {
 	subsystems := []string{
 		"lassie",
 		"lassie/httpserver",
+		"indexerlookup",
+		"lassie/bitswap",
 	}
 
 	level := "WARN"

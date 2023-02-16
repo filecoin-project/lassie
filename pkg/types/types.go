@@ -2,6 +2,7 @@ package types
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/filecoin-project/go-state-types/abi"
@@ -10,6 +11,7 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multicodec"
 )
 
 type RetrievalCandidate struct {
@@ -18,10 +20,12 @@ type RetrievalCandidate struct {
 	Metadata  metadata.Metadata
 }
 
-func NewRetrievalCandidate(pid peer.ID, rootCid cid.Cid) RetrievalCandidate {
+func NewRetrievalCandidate(pid peer.ID, rootCid cid.Cid, protocols ...metadata.Protocol) RetrievalCandidate {
+	md := metadata.Default.New(protocols...)
 	return RetrievalCandidate{
 		MinerPeer: peer.AddrInfo{ID: pid},
 		RootCid:   rootCid,
+		Metadata:  md,
 	}
 }
 
@@ -156,6 +160,21 @@ type RetrievalEvent interface {
 	// StorageProviderId returns the peer ID of the storage provider if this
 	// retrieval was requested via peer ID
 	StorageProviderId() peer.ID
+	// Protocol
+	Protocols() []multicodec.Code
+}
+
+const BitswapIndentifier = "Bitswap"
+
+func Identifier(event RetrievalEvent) string {
+	if event.StorageProviderId() != peer.ID("") {
+		return event.StorageProviderId().String()
+	}
+	protocols := event.Protocols()
+	if len(protocols) == 1 && protocols[0] == multicodec.TransportBitswap {
+		return BitswapIndentifier
+	}
+	return ""
 }
 
 // RetrievalEventSubscriber is a function that receives a stream of retrieval
@@ -167,4 +186,31 @@ type RetrievalEventSubscriber func(event RetrievalEvent)
 type FindCandidatesResult struct {
 	Candidate RetrievalCandidate
 	Err       error
+}
+
+type contextKey string
+
+const retrievalIDKey = contextKey("retrieval-id-key")
+
+func RegisterRetrievalIDToContext(parentCtx context.Context, id RetrievalID) context.Context {
+	ctx := context.WithValue(parentCtx, retrievalIDKey, id)
+	return ctx
+}
+
+// ErrMissingContextKey indicates no retrieval context key was present for a given context
+var ErrMissingContextKey = errors.New("context key for retrieval is missing")
+
+// ErrIncorrectContextValue indicates a value for the retrieval id context key that wasn't a retrieval id
+var ErrIncorrectContextValue = errors.New("context key does not point to a valid retrieval id")
+
+func RetrievalIDFromContext(ctx context.Context) (RetrievalID, error) {
+	sk := ctx.Value(retrievalIDKey)
+	if sk == nil {
+		return RetrievalID{}, ErrMissingContextKey
+	}
+	id, ok := sk.(RetrievalID)
+	if !ok {
+		return RetrievalID{}, ErrIncorrectContextValue
+	}
+	return id, nil
 }

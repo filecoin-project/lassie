@@ -12,7 +12,6 @@ import (
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/types"
 	logging "github.com/ipfs/go-log/v2"
-	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 var HttpTimeout = 5 * time.Second
@@ -60,7 +59,7 @@ type eventReport struct {
 	RetrievalId       types.RetrievalID `json:"retrievalId"`
 	InstanceId        string            `json:"instanceId"`
 	Cid               string            `json:"cid"`
-	StorageProviderId peer.ID           `json:"storageProviderId"`
+	StorageProviderId string            `json:"storageProviderId"`
 	Phase             types.Phase       `json:"phase"`
 	PhaseStartTime    time.Time         `json:"phaseStartTime"`
 	EventName         types.EventCode   `json:"eventName"`
@@ -89,11 +88,16 @@ func (er *EventRecorder) RecordEvent(event types.RetrievalEvent) {
 		return
 	}
 
+	// TODO: We really need to change the schema here to include protocols
+	// For now, we double up the string here, which isn't great
+	// -- there are no peer ids for SPs so you just record the word
+	// "bitswap-peer" as the SP id
+
 	evt := eventReport{
 		RetrievalId:       event.RetrievalId(),
 		InstanceId:        er.instanceId,
 		Cid:               event.PayloadCid().String(),
-		StorageProviderId: event.StorageProviderId(),
+		StorageProviderId: types.Identifier(event),
 		Phase:             event.Phase(),
 		PhaseStartTime:    event.PhaseStartTime(),
 		EventName:         event.Code(),

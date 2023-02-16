@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"time"
 
 	"github.com/filecoin-project/lassie/pkg/lassie"
 	logging "github.com/ipfs/go-log/v2"
@@ -23,7 +22,7 @@ type HttpServer struct {
 }
 
 // NewHttpServer creates a new HttpServer
-func NewHttpServer(ctx context.Context, address string, port uint) (*HttpServer, error) {
+func NewHttpServer(ctx context.Context, lassie *lassie.Lassie, address string, port uint) (*HttpServer, error) {
 	addr := fmt.Sprintf("%s:%d", address, port)
 	listener, err := net.Listen("tcp", addr) // assigns a port if port is 0
 	if err != nil {
@@ -38,13 +37,6 @@ func NewHttpServer(ctx context.Context, address string, port uint) (*HttpServer,
 		Addr:        fmt.Sprintf(":%d", port),
 		BaseContext: func(listener net.Listener) context.Context { return ctx },
 		Handler:     mux,
-	}
-
-	// create a lassie instance
-	lassie, err := lassie.NewLassie(ctx, lassie.WithTimeout(20*time.Second))
-	if err != nil {
-		cancel()
-		return nil, err
 	}
 
 	httpServer := &HttpServer{

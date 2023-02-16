@@ -58,10 +58,9 @@ var queryCompare prioritywaitqueue.ComparePriority[*queryCandidate] = func(a, b 
 }
 
 type GraphSyncRetriever struct {
-	GetStorageProviderTimeout   GetStorageProviderTimeout
-	IsAcceptableStorageProvider IsAcceptableStorageProvider
-	IsAcceptableQueryResponse   IsAcceptableQueryResponse
-	Client                      RetrievalClient
+	GetStorageProviderTimeout GetStorageProviderTimeout
+	IsAcceptableQueryResponse IsAcceptableQueryResponse
+	Client                    RetrievalClient
 
 	waitGroup sync.WaitGroup // only used internally for testing cleanup
 }

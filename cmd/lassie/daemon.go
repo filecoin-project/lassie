@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"time"
 
+	"github.com/filecoin-project/lassie/pkg/lassie"
 	httpserver "github.com/filecoin-project/lassie/pkg/server/http"
 	"github.com/urfave/cli/v2"
 )
@@ -39,7 +41,14 @@ var daemonCmd = &cli.Command{
 func daemonCommand(cctx *cli.Context) error {
 	address := cctx.String("address")
 	port := cctx.Uint("port")
-	httpServer, err := httpserver.NewHttpServer(cctx.Context, address, port)
+
+	// create a lassie instance
+	lassie, err := lassie.NewLassie(cctx.Context, lassie.WithProviderTimeout(20*time.Second))
+	if err != nil {
+		return err
+	}
+
+	httpServer, err := httpserver.NewHttpServer(cctx.Context, lassie, address, port)
 	if err != nil {
 		log.Errorw("failed to create http server", "err", err)
 		return err

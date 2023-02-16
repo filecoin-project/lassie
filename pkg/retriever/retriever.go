@@ -90,26 +90,29 @@ func NewRetriever(
 	config RetrieverConfig,
 	client RetrievalClient,
 	candidateFinder CandidateFinder,
+	bitswapRetriever types.CandidateRetriever,
 ) (*Retriever, error) {
 	retriever := &Retriever{
 		config:       config,
 		eventManager: events.NewEventManager(ctx),
 		spTracker:    newSpTracker(nil),
 	}
+	candidateRetrievers := []types.CandidateRetriever{
+		&GraphSyncRetriever{
+			GetStorageProviderTimeout: retriever.getStorageProviderTimeout,
+			IsAcceptableQueryResponse: retriever.isAcceptableQueryResponse,
+			Client:                    client,
+		},
+	}
+	if bitswapRetriever != nil {
+		candidateRetrievers = append(candidateRetrievers, bitswapRetriever)
+	}
 	retriever.executor = combinators.RetrieverWithCandidateFinder{
 		CandidateFinder: NewAssignableCandidateFinder(candidateFinder, retriever.isAcceptableStorageProvider),
 		CandidateRetriever: combinators.SplitRetriever{
-			CandidateSplitter: NewProtocolSplitter([]multicodec.Code{multicodec.TransportGraphsyncFilecoinv1, multicodec.TransportBitswap}),
-			CandidateRetrievers: []types.CandidateRetriever{
-				&GraphSyncRetriever{
-					GetStorageProviderTimeout:   retriever.getStorageProviderTimeout,
-					IsAcceptableStorageProvider: retriever.isAcceptableStorageProvider,
-					IsAcceptableQueryResponse:   retriever.isAcceptableQueryResponse,
-					Client:                      client,
-				},
-				NewBitswapRetriever(),
-			},
-			CoordinationKind: types.RaceCoordination,
+			CandidateSplitter:   NewProtocolSplitter([]multicodec.Code{multicodec.TransportGraphsyncFilecoinv1, multicodec.TransportBitswap}),
+			CandidateRetrievers: candidateRetrievers,
+			CoordinationKind:    types.RaceCoordination,
 		},
 	}
 
@@ -192,6 +195,7 @@ func (retriever *Retriever) Retrieve(
 	eventsCB func(types.RetrievalEvent),
 ) (*types.RetrievalStats, error) {
 
+	ctx = types.RegisterRetrievalIDToContext(ctx, request.RetrievalID)
 	if !retriever.eventManager.IsStarted() {
 		return nil, ErrRetrieverNotStarted
 	}
