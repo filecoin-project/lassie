@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/filecoin-project/lassie/pkg/internal/streamingstore"
 	lassie "github.com/filecoin-project/lassie/pkg/lassie"
+	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -168,9 +170,16 @@ func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request)
 		request := types.RetrievalRequest{RetrievalID: retrievalId, Cid: rootCid, LinkSystem: linkSystem}
 		stats, err := lassie.Retrieve(req.Context(), request)
 		if err != nil {
-			msg := fmt.Sprintf("Failed to fetch CID: %s", err.Error())
-			logger.logStatus(http.StatusInternalServerError, msg)
-			http.Error(res, msg, http.StatusInternalServerError)
+			if errors.Is(err, retriever.ErrNoCandidates) {
+				msg := "No candidates found"
+				logger.logStatus(http.StatusNotFound, msg)
+				http.Error(res, msg, http.StatusNotFound)
+			} else {
+				msg := fmt.Sprintf("Failed to fetch CID: %s", err.Error())
+				logger.logStatus(http.StatusInternalServerError, msg)
+				http.Error(res, msg, http.StatusInternalServerError)
+			}
+
 			return
 		}
 		log.Debugw("successfully fetched CID",
