@@ -145,6 +145,11 @@ func (idxf *IndexerCandidateFinder) newFindHttpRequest(ctx context.Context, c ci
 	if idxf.httpUserAgent != "" {
 		req.Header.Set("User-Agent", idxf.httpUserAgent)
 	}
+	if idxf.ipfsDhtCascade {
+		query := req.URL.Query()
+		query.Add("cascade", "ipfs-dht")
+		req.URL.RawQuery = query.Encode()
+	}
 	return req, nil
 }
 
@@ -194,5 +199,5 @@ func (idxf *IndexerCandidateFinder) decodeProviderResultStream(ctx context.Conte
 func (idxf *IndexerCandidateFinder) findByMultihashEndpoint(mh multihash.Multihash) string {
 	// TODO: Replace with URL.JoinPath once minimum go version in CI is updated to 1.19; like this:
 	//       return idxf.httpEndpoint.JoinPath("multihash", mh.B58String()).String()
-	return idxf.httpEndpoint.String() + path.Join("/multihash", mh.B58String()) + "?cascade=ipfs-dht"
+	return idxf.httpEndpoint.String() + path.Join("/multihash", mh.B58String())
 }

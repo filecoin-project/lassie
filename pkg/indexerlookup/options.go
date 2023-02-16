@@ -14,6 +14,7 @@ type (
 		httpClient             *http.Client
 		httpClientTimeout      time.Duration
 		httpUserAgent          string
+		ipfsDhtCascade         bool
 	}
 )
 
@@ -24,6 +25,7 @@ func newOptions(o ...Option) (*options, error) {
 		httpClient:             http.DefaultClient,
 		httpClientTimeout:      time.Minute,
 		httpUserAgent:          "lassie",
+		ipfsDhtCascade:         true,
 	}
 	for _, apply := range o {
 		if err := apply(&opts); err != nil {
@@ -86,6 +88,15 @@ func WithHttpUserAgent(a string) Option {
 func WithAsyncResultsChanBuffer(i int) Option {
 	return func(o *options) error {
 		o.asyncResultsChanBuffer = i
+		return nil
+	}
+}
+
+// WithIpfsDhtCascade sets weather to cascade lookups onto the IPFS DHT.
+// Enabled by default if unspecified.
+func WithIpfsDhtCascade(b bool) Option {
+	return func(o *options) error {
+		o.ipfsDhtCascade = b
 		return nil
 	}
 }
