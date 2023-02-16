@@ -26,6 +26,9 @@ var daemonFlags = []cli.Flag{
 		DefaultText: "random",
 		EnvVars:     []string{"LASSIE_PORT"},
 	},
+	FlagEventRecorderAuth,
+	FlagEventRecorderInstanceId,
+	FlagEventRecorderUrl,
 	FlagVerbose,
 	FlagVeryVerbose,
 }
@@ -47,6 +50,9 @@ func daemonCommand(cctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+
+	// create and subscribe an event recorder API if configured
+	setupLassieEventRecorder(cctx, lassie)
 
 	httpServer, err := httpserver.NewHttpServer(cctx.Context, lassie, address, port)
 	if err != nil {

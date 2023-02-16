@@ -7,6 +7,9 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/filecoin-project/lassie/pkg/eventrecorder"
+	"github.com/filecoin-project/lassie/pkg/lassie"
+	"github.com/google/uuid"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/urfave/cli/v2"
 )
@@ -77,4 +80,24 @@ func before(cctx *cli.Context) error {
 	}
 
 	return nil
+}
+
+// setupLassieEventRecorder creates and subscribes an EventRecorder if an event recorder URL is given
+func setupLassieEventRecorder(cctx *cli.Context, lassie *lassie.Lassie) {
+	eventRecorderUrl := cctx.String("event-recorder-url")
+	if eventRecorderUrl != "" {
+		authToken := cctx.String("event-recorder-auth")
+		instanceID := cctx.String("event-recorder-instance-id")
+		if instanceID == "" {
+			uuid, err := uuid.NewRandom()
+			if err != nil {
+				log.Warnw("failed to generate default event recorder instance ID UUID, no instance ID will be provided", "err", err)
+			}
+			instanceID = uuid.String() // returns "" if uuid is invalid
+		}
+
+		eventRecorder := eventrecorder.NewEventRecorder(cctx.Context, instanceID, eventRecorderUrl, authToken)
+		lassie.RegisterSubscriber(eventRecorder.RecordEvent)
+		log.Infow("Reporting retrieval events to event recorder API", "url", eventRecorderUrl, "instance_id", instanceID)
+	}
 }
