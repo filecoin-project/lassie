@@ -124,6 +124,17 @@ func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request)
 			return
 		}
 
+		// TODO: we should propogate this value throughout logs so
+		// that we can correlate specific requests to related logs.
+		// For now just using to log the corrolation and return the
+		// X-Trace-Id header.
+		requestId := req.Header.Get("X-Request-Id")
+		if requestId == "" {
+			requestId = retrievalId.String()
+		} else {
+			log.Debugw("Corrolating provided request ID with retrieval ID", "request_id", requestId, "retrieval_id", retrievalId)
+		}
+
 		// called once we start writing blocks into the CAR (on the first Put())
 		getWriter := func() (io.Writer, error) {
 			res.Header().Set("Content-Disposition", "attachment; filename="+filename)
@@ -135,7 +146,8 @@ func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request)
 			res.Header().Set("X-Ipfs-Path", req.URL.Path)
 			// TODO: set X-Ipfs-Roots header when we support root+path
 			// see https://github.com/ipfs/kubo/pull/8720
-			res.Header().Set("X-Trace-Id", retrievalId.String())
+
+			res.Header().Set("X-Trace-Id", requestId)
 
 			logger.logStatus(200, "OK")
 
