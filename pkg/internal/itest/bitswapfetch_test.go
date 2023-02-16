@@ -35,7 +35,7 @@ func TestBitswapFetchTwoPeers(t *testing.T) {
 	req := require.New(t)
 	mn := mocknet.New()
 	ctx := context.Background()
-	testPeerGenerator := testpeer.NewTestPeerGenerator(ctx, mn, []network.NetOpt{}, []server.Option{})
+	testPeerGenerator := testpeer.NewTestPeerGenerator(ctx, t, mn, []network.NetOpt{}, []server.Option{})
 	peers := testPeerGenerator.Peers(2)
 
 	// build two files of 4MiB random bytes, packaged into unixfs DAGs (root1 & root2)

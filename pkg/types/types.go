@@ -164,6 +164,19 @@ type RetrievalEvent interface {
 	Protocols() []multicodec.Code
 }
 
+const BitswapIndentifier = "Bitswap"
+
+func Identifier(event RetrievalEvent) string {
+	if event.StorageProviderId() != peer.ID("") {
+		return event.StorageProviderId().String()
+	}
+	protocols := event.Protocols()
+	if len(protocols) == 1 && protocols[0] == multicodec.TransportBitswap {
+		return BitswapIndentifier
+	}
+	return ""
+}
+
 // RetrievalEventSubscriber is a function that receives a stream of retrieval
 // events from all retrievals that are in progress. Various different types
 // implement the RetrievalEvent interface and may contain additional information

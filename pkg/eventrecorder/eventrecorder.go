@@ -12,16 +12,12 @@ import (
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/types"
 	logging "github.com/ipfs/go-log/v2"
-	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/multiformats/go-multicodec"
 )
 
 var HttpTimeout = 5 * time.Second
 var ParallelPosters = 5
 
 var log = logging.Logger("eventrecorder")
-
-const BitswapPeerID = "bitswap-peer"
 
 // NewEventRecorder creates a new event recorder with the ID of this instance
 // and the URL to POST to
@@ -96,20 +92,12 @@ func (er *EventRecorder) RecordEvent(event types.RetrievalEvent) {
 	// For now, we double up the string here, which isn't great
 	// -- there are no peer ids for SPs so you just record the word
 	// "bitswap-peer" as the SP id
-	var spID string
-	if event.StorageProviderId() != peer.ID("") {
-		spID = event.StorageProviderId().String()
-	} else {
-		protocols := event.Protocols()
-		if len(protocols) == 1 && protocols[0] == multicodec.TransportBitswap {
-			spID = BitswapPeerID
-		}
-	}
+
 	evt := eventReport{
 		RetrievalId:       event.RetrievalId(),
 		InstanceId:        er.instanceId,
 		Cid:               event.PayloadCid().String(),
-		StorageProviderId: spID,
+		StorageProviderId: types.Identifier(event),
 		Phase:             event.Phase(),
 		PhaseStartTime:    event.PhaseStartTime(),
 		EventName:         event.Code(),

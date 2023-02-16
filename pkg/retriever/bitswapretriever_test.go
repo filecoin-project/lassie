@@ -47,6 +47,7 @@ func TestBitswapRetriever(t *testing.T) {
 		expectedEvents     map[cid.Cid][]types.EventCode
 		expectedStats      map[cid.Cid]*types.RetrievalStats
 		expectedErrors     map[cid.Cid]struct{}
+		cfg                retriever.BitswapConfig
 	}{
 		{
 			name: "successful full remote fetch",
@@ -160,6 +161,29 @@ func TestBitswapRetriever(t *testing.T) {
 				cid2: {},
 			},
 		},
+		{
+			name: "timeout",
+			remoteLinkSystems: map[cid.Cid]*linking.LinkSystem{
+				cid1: makeLsys(tbc1.AllBlocks()),
+				cid2: makeLsys(tbc2.AllBlocks()),
+			},
+			expectedCandidates: map[cid.Cid][]types.RetrievalCandidate{
+				cid1: testutil.GenerateRetrievalCandidates(5),
+				cid2: testutil.GenerateRetrievalCandidates(7),
+			},
+			expectedEvents: map[cid.Cid][]types.EventCode{
+				cid1: {types.StartedCode, types.FirstByteCode, types.FailedCode},
+				cid2: {types.StartedCode, types.FirstByteCode, types.FailedCode},
+			},
+
+			expectedErrors: map[cid.Cid]struct{}{
+				cid1: {},
+				cid2: {},
+			},
+			cfg: retriever.BitswapConfig{
+				BlockTimeout: 10 * time.Millisecond,
+			},
+		},
 	}
 	for _, testCase := range testCases {
 		testCase := testCase
@@ -223,7 +247,7 @@ func TestBitswapRetriever(t *testing.T) {
 			bsrv := blockservice.New(mbs, exchange)
 			mir := newMockIndexerRouting()
 			mipc := &mockInProgressCids{}
-			bsr := retriever.NewBitswapRetrieverFromDeps(bsrv, mir, mipc, mbs, clock)
+			bsr := retriever.NewBitswapRetrieverFromDeps(bsrv, mir, mipc, mbs, testCase.cfg, clock)
 			receivedEvents := make(map[cid.Cid][]types.RetrievalEvent)
 			retrievalCollector := func(evt types.RetrievalEvent) {
 				receivedEvents[evt.PayloadCid()] = append(receivedEvents[evt.PayloadCid()], evt)

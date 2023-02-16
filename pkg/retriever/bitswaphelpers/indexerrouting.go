@@ -6,10 +6,13 @@ import (
 
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
+	logging "github.com/ipfs/go-log/v2"
 	routinghelpers "github.com/libp2p/go-libp2p-routing-helpers"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
 )
+
+var log = logging.Logger("lassie/bitswap")
 
 var _ routing.Routing = (*IndexerRouting)(nil)
 
@@ -43,9 +46,18 @@ func (ir *IndexerRouting) RemoveProviders(retrievalID types.RetrievalID) {
 
 // AddProviders adds provider records to the total list for a given retrieval id
 func (ir *IndexerRouting) AddProviders(retrievalID types.RetrievalID, providers []types.RetrievalCandidate) {
+	// dedup results to provide better answers
+	uniqueProvidersSet := make(map[string]struct{}, len(providers))
+	uniqueProviders := make([]types.RetrievalCandidate, 0, len(providers))
+	for _, p := range providers {
+		if _, ok := uniqueProvidersSet[p.MinerPeer.String()]; !ok {
+			uniqueProvidersSet[p.MinerPeer.String()] = struct{}{}
+			uniqueProviders = append(uniqueProviders, p)
+		}
+	}
 	ir.providerSetsLk.Lock()
 	defer ir.providerSetsLk.Unlock()
-	ir.providerSets[retrievalID] = append(ir.providerSets[retrievalID], providers...)
+	ir.providerSets[retrievalID] = append(ir.providerSets[retrievalID], uniqueProviders...)
 }
 
 // FindProvidersAsync returns providers based on the retrieval id in a context key
@@ -74,6 +86,7 @@ func (ir *IndexerRouting) FindProvidersAsync(ctx context.Context, c cid.Cid, max
 			}
 		}
 		ir.providerSetsLk.Unlock()
+		log.Debugw("provider records requested from bitswap, sending back indexer results", "providerCount", len(providers))
 		for _, p := range providers {
 			select {
 			case <-ctx.Done():
