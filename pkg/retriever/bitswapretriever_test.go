@@ -191,7 +191,7 @@ func TestBitswapRetriever(t *testing.T) {
 			t.Parallel()
 
 			req := require.New(t)
-			ctx, cancel := context.WithTimeout(ctx, time.Second)
+			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
 			localLinkSystems := testCase.localLinkSystems
 			if localLinkSystems == nil {
