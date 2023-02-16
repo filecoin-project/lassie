@@ -56,6 +56,9 @@ var fetchCmd = &cli.Command{
 				return err
 			},
 		},
+		FlagEventRecorderAuth,
+		FlagEventRecorderInstanceId,
+		FlagEventRecorderUrl,
 		FlagVerbose,
 		FlagVeryVerbose,
 	},
@@ -85,6 +88,9 @@ func Fetch(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
+
+	// create and subscribe an event recorder API if configured
+	setupLassieEventRecorder(c, lassie)
 
 	if fetchProviderAddrInfo == nil {
 		fmt.Printf("Fetching %s", rootCid)
