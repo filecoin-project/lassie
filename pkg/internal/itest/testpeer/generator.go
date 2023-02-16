@@ -2,6 +2,7 @@ package testpeer
 
 import (
 	"context"
+	"testing"
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
@@ -17,14 +18,16 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // NewTestPeerGenerator generates a new TestPeerGenerator for the given
 // mocknet
-func NewTestPeerGenerator(ctx context.Context, mn mocknet.Mocknet, netOptions []bsnet.NetOpt, bsOptions []server.Option) TestPeerGenerator {
+func NewTestPeerGenerator(ctx context.Context, t *testing.T, mn mocknet.Mocknet, netOptions []bsnet.NetOpt, bsOptions []server.Option) TestPeerGenerator {
 	ctx, cancel := context.WithCancel(ctx)
 	return TestPeerGenerator{
 		seq:        0,
+		t:          t,
 		ctx:        ctx, // TODO take ctx as param to Next, Instances
 		mn:         mn,
 		cancel:     cancel,
@@ -37,6 +40,7 @@ func NewTestPeerGenerator(ctx context.Context, mn mocknet.Mocknet, netOptions []
 // TODO: add graphsync/markets stack, make protocols choosable
 type TestPeerGenerator struct {
 	seq        int
+	t          *testing.T
 	mn         mocknet.Mocknet
 	ctx        context.Context
 	cancel     context.CancelFunc
@@ -54,10 +58,10 @@ func (g *TestPeerGenerator) Close() error {
 func (g *TestPeerGenerator) Next() TestPeer {
 	g.seq++
 	p, err := p2ptestutil.RandTestBogusIdentity()
-	if err != nil {
-		panic("FIXME") // TODO change signature
-	}
-	return NewTestPeer(g.ctx, g.mn, p, g.netOptions, g.bsOptions)
+	require.NoError(g.t, err)
+	tp, err := NewTestPeer(g.ctx, g.mn, p, g.netOptions, g.bsOptions)
+	require.NoError(g.t, err)
+	return tp
 }
 
 // Peers creates N test peers with bitswap + dependencies
@@ -108,7 +112,7 @@ func (i *TestPeer) SetBlockstoreLatency(t time.Duration) time.Duration {
 // NB: It's easy make mistakes by providing the same peer ID to two different
 // instances. To safeguard, use the InstanceGenerator to generate instances. It's
 // just a much better idea.
-func NewTestPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity, netOptions []bsnet.NetOpt, bsOptions []server.Option) TestPeer {
+func NewTestPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity, netOptions []bsnet.NetOpt, bsOptions []server.Option) (TestPeer, error) {
 	bsdelay := delay.Fixed(0)
 
 	client, err := mn.AddPeer(p.PrivateKey(), p.Address())
@@ -123,7 +127,7 @@ func NewTestPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity, netOp
 		blockstore.NewBlockstore(ds_sync.MutexWrap(dstore)),
 		blockstore.DefaultCacheOpts())
 	if err != nil {
-		panic(err.Error()) // FIXME perhaps change signature and return error.
+		return TestPeer{}, err
 	}
 
 	bs := server.New(ctx, bsNet, bstore, bsOptions...)
@@ -134,5 +138,5 @@ func NewTestPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity, netOp
 		BitswapServer:   bs,
 		blockstore:      bstore,
 		blockstoreDelay: bsdelay,
-	}
+	}, nil
 }

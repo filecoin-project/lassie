@@ -43,7 +43,9 @@ func NewCandidateFinder(o ...Option) (*IndexerCandidateFinder, error) {
 
 func (idxf *IndexerCandidateFinder) sendJsonRequest(req *http.Request) (*model.FindResponse, error) {
 	req.Header.Set("Accept", "application/json")
+	logger.Debugw("sending outgoing request", "url", req.URL, "accept", req.Header.Get("Accept"))
 	resp, err := idxf.httpClient.Do(req)
+
 	if err != nil {
 		logger.Debugw("Failed to perform json lookup", "err", err)
 		return nil, err
@@ -117,6 +119,7 @@ func (idxf *IndexerCandidateFinder) FindCandidatesAsync(ctx context.Context, c c
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/x-ndjson")
+	logger.Debugw("sending outgoing request", "url", req.URL, "accept", req.Header.Get("Accept"))
 	resp, err := idxf.httpClient.Do(req)
 	if err != nil {
 		logger.Debugw("Failed to perform streaming lookup", "err", err)
@@ -191,5 +194,5 @@ func (idxf *IndexerCandidateFinder) decodeProviderResultStream(ctx context.Conte
 func (idxf *IndexerCandidateFinder) findByMultihashEndpoint(mh multihash.Multihash) string {
 	// TODO: Replace with URL.JoinPath once minimum go version in CI is updated to 1.19; like this:
 	//       return idxf.httpEndpoint.JoinPath("multihash", mh.B58String()).String()
-	return idxf.httpEndpoint.String() + path.Join("/multihash", mh.B58String())
+	return idxf.httpEndpoint.String() + path.Join("/multihash", mh.B58String()) + "?cascade=ipfs-dht"
 }

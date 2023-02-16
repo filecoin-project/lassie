@@ -59,12 +59,18 @@ type BitswapRetriever struct {
 	routing        IndexerRouting
 	blockService   blockservice.BlockService
 	clock          clock.Clock
+	cfg            BitswapConfig
 }
 
-const shortenedDelay = 5 * time.Millisecond
+const shortenedDelay = 4 * time.Millisecond
+
+// BitswapConfig contains configurable parameters for bitswap fetching
+type BitswapConfig struct {
+	BlockTimeout time.Duration
+}
 
 // NewBitswapRetrieverFromHost constructs a new bitswap retriever for the given libp2p host
-func NewBitswapRetrieverFromHost(ctx context.Context, host host.Host) *BitswapRetriever {
+func NewBitswapRetrieverFromHost(ctx context.Context, host host.Host, cfg BitswapConfig) *BitswapRetriever {
 	bstore := bitswaphelpers.NewMultiblockstore()
 	inProgressCids := bitswaphelpers.NewInProgressCids()
 	routing := bitswaphelpers.NewIndexerRouting(inProgressCids.Get)
@@ -72,17 +78,18 @@ func NewBitswapRetrieverFromHost(ctx context.Context, host host.Host) *BitswapRe
 	bitswap := client.New(ctx, bsnet, bstore, client.ProviderSearchDelay(shortenedDelay))
 	bsnet.Start(bitswap)
 	bsrv := blockservice.New(bstore, bitswap)
-	return NewBitswapRetrieverFromDeps(bsrv, routing, inProgressCids, bstore, clock.New())
+	return NewBitswapRetrieverFromDeps(bsrv, routing, inProgressCids, bstore, cfg, clock.New())
 }
 
 // NewBitswapRetrieverFromDeps is primarily for testing, constructing behavior from direct dependencies
-func NewBitswapRetrieverFromDeps(bsrv blockservice.BlockService, routing IndexerRouting, inProgressCids InProgressCids, bstore MultiBlockstore, clock clock.Clock) *BitswapRetriever {
+func NewBitswapRetrieverFromDeps(bsrv blockservice.BlockService, routing IndexerRouting, inProgressCids InProgressCids, bstore MultiBlockstore, cfg BitswapConfig, clock clock.Clock) *BitswapRetriever {
 	return &BitswapRetriever{
 		bstore:         bstore,
 		inProgressCids: inProgressCids,
 		routing:        routing,
 		blockService:   bsrv,
 		clock:          clock,
+		cfg:            cfg,
 	}
 }
 
@@ -107,6 +114,13 @@ func (br *bitswapRetrieval) RetrieveFromCandidates(candidates []types.RetrievalC
 	br.events(events.Started(br.request.RetrievalID, phaseStartTime, types.RetrievalPhase, bitswapCandidate))
 
 	// setup the linksystem to record bytes & blocks written -- since this isn't automatic w/o go-data-transfer
+	ctx, cancel := context.WithCancel(br.ctx)
+	defer cancel()
+	var lastBytesReceivedTimer *clock.Timer
+	if br.cfg.BlockTimeout != 0 {
+		lastBytesReceivedTimer = br.clock.AfterFunc(br.cfg.BlockTimeout, cancel)
+	}
+
 	totalWritten := uint64(0)
 	blockCount := uint64(0)
 	cb := func(bytesWritten uint64) {
@@ -116,7 +130,12 @@ func (br *bitswapRetrieval) RetrieveFromCandidates(candidates []types.RetrievalC
 		}
 		atomic.AddUint64(&totalWritten, bytesWritten)
 		atomic.AddUint64(&blockCount, 1)
+		// reset the timer
+		if bytesWritten > 0 && lastBytesReceivedTimer != nil {
+			lastBytesReceivedTimer.Reset(br.cfg.BlockTimeout)
+		}
 	}
+
 	// setup providers for this retrieval
 	br.routing.AddProviders(br.request.RetrievalID, candidates)
 	// setup providers linksystem for this retrieval
@@ -127,7 +146,7 @@ func (br *bitswapRetrieval) RetrieveFromCandidates(candidates []types.RetrievalC
 	// replace the opener with a blockservice wrapper (we still want any known adls + reifiers, hence the copy)
 	wrappedLsys.StorageReadOpener = loaderForSession(br.request.RetrievalID, br.inProgressCids, br.bsGetter)
 	// run the retrieval
-	err := easyTraverse(br.ctx, cidlink.Link{Cid: br.request.Cid}, selectorparse.CommonSelector_ExploreAllRecursively, &wrappedLsys)
+	err := easyTraverse(ctx, cidlink.Link{Cid: br.request.Cid}, selectorparse.CommonSelector_ExploreAllRecursively, &wrappedLsys)
 
 	// unregister relevant provider records & LinkSystem
 	br.routing.RemoveProviders(br.request.RetrievalID)
@@ -171,6 +190,11 @@ func loaderForSession(retrievalID types.RetrievalID, inProgressCids InProgressCi
 			return nil, fmt.Errorf("invalid link type for loading: %v", lnk)
 		}
 		inProgressCids.Inc(cidLink.Cid, retrievalID)
+		select {
+		case <-lctx.Ctx.Done():
+			return nil, lctx.Ctx.Err()
+		default:
+		}
 		blk, err := bs.GetBlock(lctx.Ctx, cidLink.Cid)
 		inProgressCids.Dec(cidLink.Cid, retrievalID)
 		if err != nil {

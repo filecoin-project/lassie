@@ -172,23 +172,23 @@ func (pp *progressPrinter) subscriber(event types.RetrievalEvent) {
 		case types.IndexerPhase:
 			fmt.Printf("\rQuerying indexer for %s...\n", ret.PayloadCid())
 		case types.QueryPhase:
-			fmt.Printf("\rQuerying [%s] (%s)...\n", ret.StorageProviderId(), ret.Code())
+			fmt.Printf("\rQuerying [%s] (%s)...\n", types.Identifier(ret), ret.Code())
 		case types.RetrievalPhase:
-			fmt.Printf("\rRetrieving from [%s] (%s)...\n", ret.StorageProviderId(), ret.Code())
+			fmt.Printf("\rRetrieving from [%s] (%s)...\n", types.Identifier(ret), ret.Code())
 		}
 	case events.RetrievalEventConnected:
 		switch ret.Phase() {
 		case types.QueryPhase:
-			fmt.Printf("\rQuerying [%s] (%s)...\n", ret.StorageProviderId(), ret.Code())
+			fmt.Printf("\rQuerying [%s] (%s)...\n", types.Identifier(ret), ret.Code())
 		case types.RetrievalPhase:
-			fmt.Printf("\rRetrieving from [%s] (%s)...\n", ret.StorageProviderId(), ret.Code())
+			fmt.Printf("\rRetrieving from [%s] (%s)...\n", types.Identifier(ret), ret.Code())
 		}
 	case events.RetrievalEventProposed:
-		fmt.Printf("\rRetrieving from [%s] (%s)...\n", ret.StorageProviderId(), ret.Code())
+		fmt.Printf("\rRetrieving from [%s] (%s)...\n", types.Identifier(ret), ret.Code())
 	case events.RetrievalEventAccepted:
-		fmt.Printf("\rRetrieving from [%s] (%s)...\n", ret.StorageProviderId(), ret.Code())
+		fmt.Printf("\rRetrieving from [%s] (%s)...\n", types.Identifier(ret), ret.Code())
 	case events.RetrievalEventFirstByte:
-		fmt.Printf("\rRetrieving from [%s] (%s)...\n", ret.StorageProviderId(), ret.Code())
+		fmt.Printf("\rRetrieving from [%s] (%s)...\n", types.Identifier(ret), ret.Code())
 	case events.RetrievalEventCandidatesFound:
 		pp.candidatesFound = len(ret.Candidates())
 	case events.RetrievalEventCandidatesFiltered:
@@ -204,17 +204,17 @@ func (pp *progressPrinter) subscriber(event types.RetrievalEvent) {
 			fmt.Printf("Using the explicitly specified storage provider, querying %s:\n", num)
 		}
 		for _, candidate := range ret.Candidates() {
-			fmt.Printf("\r\t%s\n", candidate.MinerPeer.ID)
+			fmt.Printf("\r\t%s, Protocols: %v\n", candidate.MinerPeer.ID, candidate.Metadata.Protocols())
 		}
 	case events.RetrievalEventQueryAsked:
-		fmt.Printf("\rGot query response from [%s] (checking): size=%s, price-per-byte=%s, unseal-price=%s, message=%s\n", ret.StorageProviderId(), humanize.IBytes(ret.QueryResponse().Size), ret.QueryResponse().MinPricePerByte, ret.QueryResponse().UnsealPrice, ret.QueryResponse().Message)
+		fmt.Printf("\rGot query response from [%s] (checking): size=%s, price-per-byte=%s, unseal-price=%s, message=%s\n", types.Identifier(ret), humanize.IBytes(ret.QueryResponse().Size), ret.QueryResponse().MinPricePerByte, ret.QueryResponse().UnsealPrice, ret.QueryResponse().Message)
 	case events.RetrievalEventQueryAskedFiltered:
-		fmt.Printf("\rGot query response from [%s] (filtered): size=%s, price-per-byte=%s, unseal-price=%s, message=%s\n", ret.StorageProviderId(), humanize.IBytes(ret.QueryResponse().Size), ret.QueryResponse().MinPricePerByte, ret.QueryResponse().UnsealPrice, ret.QueryResponse().Message)
+		fmt.Printf("\rGot query response from [%s] (filtered): size=%s, price-per-byte=%s, unseal-price=%s, message=%s\n", types.Identifier(ret), humanize.IBytes(ret.QueryResponse().Size), ret.QueryResponse().MinPricePerByte, ret.QueryResponse().UnsealPrice, ret.QueryResponse().Message)
 	case events.RetrievalEventFailed:
 		if ret.Phase() == types.IndexerPhase {
 			fmt.Printf("\rRetrieval failure from indexer: %s\n", ret.ErrorMessage())
 		} else {
-			fmt.Printf("\rRetrieval failure for [%s]: %s\n", ret.StorageProviderId(), ret.ErrorMessage())
+			fmt.Printf("\rRetrieval failure for [%s]: %s\n", types.Identifier(ret), ret.ErrorMessage())
 		}
 	case events.RetrievalEventSuccess:
 		// noop, handled at return from Retrieve()

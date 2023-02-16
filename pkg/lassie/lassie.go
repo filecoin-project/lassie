@@ -67,7 +67,9 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 		return nil, err
 	}
 
-	bitswapRetriever := retriever.NewBitswapRetrieverFromHost(ctx, cfg.Host)
+	bitswapRetriever := retriever.NewBitswapRetrieverFromHost(ctx, cfg.Host, retriever.BitswapConfig{
+		BlockTimeout: cfg.ProviderTimeout,
+	})
 	retrieverCfg := retriever.RetrieverConfig{
 		DefaultMinerConfig: retriever.MinerConfig{
 			RetrievalTimeout: cfg.ProviderTimeout,
