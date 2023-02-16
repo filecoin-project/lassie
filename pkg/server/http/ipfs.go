@@ -135,6 +135,7 @@ func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request)
 			log.Debugw("Corrolating provided request ID with retrieval ID", "request_id", requestId, "retrieval_id", retrievalId)
 		}
 
+		bytesWritten := make(chan struct{}, 1)
 		// called once we start writing blocks into the CAR (on the first Put())
 		getWriter := func() (io.Writer, error) {
 			res.Header().Set("Content-Disposition", "attachment; filename="+filename)
@@ -150,7 +151,7 @@ func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request)
 			res.Header().Set("X-Trace-Id", requestId)
 
 			logger.logStatus(200, "OK")
-
+			bytesWritten <- struct{}{}
 			return res, nil
 		}
 
@@ -182,6 +183,11 @@ func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request)
 		request := types.RetrievalRequest{RetrievalID: retrievalId, Cid: rootCid, LinkSystem: linkSystem}
 		stats, err := lassie.Retrieve(req.Context(), request)
 		if err != nil {
+			select {
+			case <-bytesWritten:
+				return
+			default:
+			}
 			if errors.Is(err, retriever.ErrNoCandidates) {
 				msg := "No candidates found"
 				logger.logStatus(http.StatusNotFound, msg)
