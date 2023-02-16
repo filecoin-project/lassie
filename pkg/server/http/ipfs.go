@@ -188,8 +188,8 @@ func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request)
 				http.Error(res, msg, http.StatusNotFound)
 			} else {
 				msg := fmt.Sprintf("Failed to fetch CID: %s", err.Error())
-				logger.logStatus(http.StatusInternalServerError, msg)
-				http.Error(res, msg, http.StatusInternalServerError)
+				logger.logStatus(http.StatusGatewayTimeout, msg)
+				http.Error(res, msg, http.StatusGatewayTimeout)
 			}
 
 			return
