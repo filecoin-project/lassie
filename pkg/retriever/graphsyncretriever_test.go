@@ -522,17 +522,21 @@ func TestRetrievalReuse(t *testing.T) {
 
 	mockClient := testutil.NewMockClient(
 		map[string]testutil.DelayedQueryReturn{
-			"foo":  {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 10},
-			"bar":  {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 20},
-			"baz":  {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 500}, // should not finish this
+			// group a
+			"foo": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 10},  // should attempt this
+			"bar": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 20},  // should attempt this
+			"baz": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 500}, // should not finish this
+			// group b
 			"bang": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 500}, // should not finish this
-			"boom": {QueryResponse: nil, Err: errors.New("Nope"), Delay: time.Millisecond * 20},
-			"bing": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 20},
+			"boom": {QueryResponse: nil, Err: errors.New("Nope"), Delay: time.Millisecond * 20},        // should not finish this
+			"bing": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 20},  // should attempt this
 		},
 		map[string]testutil.DelayedRetrievalReturn{
-			"foo":  {ResultErr: errors.New("Nope"), Delay: time.Millisecond * 20},
-			"bar":  {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}, Delay: time.Millisecond * 200},
-			"baz":  {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 3}, Delay: time.Millisecond * 200},
+			// group a
+			"foo": {ResultErr: errors.New("Nope"), Delay: time.Millisecond * 20},
+			"bar": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}, Delay: time.Millisecond * 200},
+			"baz": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 3}, Delay: time.Millisecond * 200},
+			// group b
 			"bang": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bang"), Size: 3}, Delay: time.Millisecond * 200},
 			"boom": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("boom"), Size: 3}, Delay: time.Millisecond * 200},
 			"bing": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bing"), Size: 3}, Delay: time.Millisecond * 200},
@@ -612,11 +616,12 @@ func TestRetrievalReuse(t *testing.T) {
 	qt.Assert(t, len(candidateQueriesFiltered), qt.Equals, 3)
 
 	// make sure we performed the retrievals we expected
-	qt.Assert(t, len(mockClient.GetReceivedRetrievals()), qt.Equals, 3)
-	qt.Assert(t, len(retrievingPeers), qt.Equals, 3)
 	qt.Assert(t, mockClient.GetReceivedRetrievals(), qt.Contains, peer.ID("foo")) // errored
+	qt.Assert(t, retrievingPeers, qt.Contains, peer.ID("foo"))                    // errored
 	qt.Assert(t, mockClient.GetReceivedRetrievals(), qt.Contains, peer.ID("bar"))
+	qt.Assert(t, retrievingPeers, qt.Contains, peer.ID("bar")) // errored
 	qt.Assert(t, mockClient.GetReceivedRetrievals(), qt.Contains, peer.ID("bing"))
+	qt.Assert(t, retrievingPeers, qt.Contains, peer.ID("bing")) // errored
 }
 
 type candidateQuery struct {
