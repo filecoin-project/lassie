@@ -96,7 +96,7 @@ func setupLassieEventRecorder(cctx *cli.Context, lassie *lassie.Lassie) {
 			instanceID = uuid.String() // returns "" if uuid is invalid
 		}
 
-		eventRecorder := eventrecorder.NewEventRecorder(cctx.Context, instanceID, eventRecorderUrl, authToken)
+		eventRecorder := eventrecorder.NewEventRecorder(cctx.Context, instanceID, eventRecorderUrl, authToken, eventrecorder.EventRecorderConfig{})
 		lassie.RegisterSubscriber(eventRecorder.RecordEvent)
 		log.Infow("Reporting retrieval events to event recorder API", "url", eventRecorderUrl, "instance_id", instanceID)
 	}

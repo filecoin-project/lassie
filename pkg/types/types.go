@@ -171,7 +171,7 @@ func Identifier(event RetrievalEvent) string {
 		return event.StorageProviderId().String()
 	}
 	protocols := event.Protocols()
-	if len(protocols) == 1 && protocols[0] == multicodec.TransportBitswap {
+	if len(protocols) == 1 && protocols[0] == multicodec.TransportBitswap && event.Phase() != IndexerPhase {
 		return BitswapIndentifier
 	}
 	return ""

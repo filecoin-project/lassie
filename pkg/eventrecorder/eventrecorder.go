@@ -12,6 +12,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/types"
 	logging "github.com/ipfs/go-log/v2"
+	"github.com/multiformats/go-multicodec"
 )
 
 var HttpTimeout = 5 * time.Second
@@ -19,9 +20,13 @@ var ParallelPosters = 5
 
 var log = logging.Logger("eventrecorder")
 
+type EventRecorderConfig struct {
+	DisableIndexerEvents bool
+}
+
 // NewEventRecorder creates a new event recorder with the ID of this instance
 // and the URL to POST to
-func NewEventRecorder(ctx context.Context, instanceId string, endpointURL string, endpointAuthorization string) *EventRecorder {
+func NewEventRecorder(ctx context.Context, instanceId string, endpointURL string, endpointAuthorization string, cfg EventRecorderConfig) *EventRecorder {
 	er := &EventRecorder{
 		ctx,
 		instanceId,
@@ -29,6 +34,7 @@ func NewEventRecorder(ctx context.Context, instanceId string, endpointURL string
 		endpointAuthorization,
 		make(chan report),
 		make(chan []report),
+		cfg,
 	}
 
 	go er.ingestReports()
@@ -53,6 +59,7 @@ type EventRecorder struct {
 	endpointAuthorization string
 	incomingReportChan    chan report
 	reportChan            chan []report
+	cfg                   EventRecorderConfig
 }
 
 type eventReport struct {
@@ -81,8 +88,21 @@ type EventDetailsError struct {
 	Error string `json:"error"`
 }
 
+type EventDetailsIndexer struct {
+	CandidateCount uint64   `json:"candidateCount"`
+	Protocols      []string `json:"protocols"`
+}
+
+func toStrings(protocols []multicodec.Code) []string {
+	protocolStrings := make([]string, 0, len(protocols))
+	for _, protocol := range protocols {
+		protocolStrings = append(protocolStrings, protocol.String())
+	}
+	return protocolStrings
+}
+
 func (er *EventRecorder) RecordEvent(event types.RetrievalEvent) {
-	if event.Phase() == types.IndexerPhase {
+	if er.cfg.DisableIndexerEvents && event.Phase() == types.IndexerPhase {
 		// ignore indexer events for now, it can get very chatty in the autoretrieve
 		// case where every request results in an indexer lookup
 		return
@@ -106,6 +126,10 @@ func (er *EventRecorder) RecordEvent(event types.RetrievalEvent) {
 
 	switch ret := event.(type) {
 	case events.EventWithCandidates: // events.RetrievalEventCandidatesFound, events.RetrievalEventCandidatesFiltered:
+		evt.EventDetails = &EventDetailsIndexer{
+			CandidateCount: uint64(len(ret.Candidates())),
+			Protocols:      toStrings(ret.Protocols()),
+		}
 	case events.RetrievalEventConnected:
 	case events.EventWithQueryResponse: // events.RetrievalEventQueryAsked, events.RetrievalEventQueryAskedFiltered:
 		qr := ret.QueryResponse()
