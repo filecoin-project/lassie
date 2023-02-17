@@ -252,8 +252,8 @@ func (rc *RetrievalClient) RetrieveFromPeer(
 		if eventsCallback != nil {
 			defer eventsCallback(event, state)
 		}
-		receivedFirstByte := false
-		eventCodeNotHandled := false
+		var receivedFirstByte bool
+		var eventCodeNotHandled bool
 
 		switch event.Code {
 		case datatransfer.Open:

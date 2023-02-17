@@ -35,6 +35,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/stretchr/testify/require"
+
+	dttestutil "github.com/filecoin-project/go-data-transfer/v2/testutil"
 )
 
 func TestRetrieval(t *testing.T) {
@@ -45,14 +47,10 @@ func TestRetrieval(t *testing.T) {
 
 	// Setup mocknet and remove
 	mrn := newMockRetrievalNet()
-	req.NoError(mrn.setup(ctx))
-	defer func() {
-		req.NoError(mrn.teardown())
-	}()
+	mrn.setup(ctx, t)
 
 	// Populate remote with a DAG, and get its root
-	rootCid, srcBytes, err := mrn.generateRemoteUnixFSFile()
-	req.NoError(err)
+	rootCid, srcBytes := mrn.generateRemoteUnixFSFile(t)
 
 	// Setup local datastore and blockstore
 	dsLocal := dss.MutexWrap(datastore.NewMapDatastore())
@@ -67,8 +65,8 @@ func TestRetrieval(t *testing.T) {
 
 	// Collect events & stats
 	gotEvents := make([]datatransfer.Event, 0)
-	lastReceivedBytes := uint64(0)
-	lastReceivedBlocks := uint64(0)
+	var lastReceivedBytes uint64
+	var lastReceivedBlocks uint64
 	finishedChan := make(chan struct{}, 1)
 	subscriberLocal := func(event datatransfer.Event, channelState datatransfer.ChannelState) {
 		gotEvents = append(gotEvents, event)
@@ -102,8 +100,8 @@ func TestRetrieval(t *testing.T) {
 	req.NotNil(stats)
 
 	// Ensure we are properly cleaned up
-	req.NoError(waitForChan(ctx, finishedChan))
-	req.NoError(mrn.waitForFinish(ctx))
+	req.Eventually(chanCheck(ctx, t, finishedChan), 1*time.Second, 100*time.Millisecond)
+	mrn.waitForFinish(ctx, t)
 
 	// Check retrieved data by loading it from the blockstore via UnixFS so we
 	// reify the original single file data from the DAG
@@ -158,14 +156,17 @@ func eventSliceFilter(events []datatransfer.Event, code datatransfer.EventCode) 
 	return filtered
 }
 
-func waitForChan(ctx context.Context, ch <-chan struct{}) error {
-	select {
-	case <-ch:
-		return nil
-	case <-time.After(1 * time.Second):
-		return errors.New("timed out waiting for finish")
-	case <-ctx.Done():
-		return ctx.Err()
+func chanCheck(ctx context.Context, t *testing.T, ch <-chan struct{}) func() bool {
+	return func() bool {
+		select {
+		case <-ch:
+			return true
+		case <-ctx.Done():
+			require.Fail(t, ctx.Err().Error())
+			return false
+		default:
+			return false
+		}
 	}
 }
 
@@ -187,7 +188,11 @@ func newMockRetrievalNet() *mockRetrievalNet {
 	return mqn
 }
 
-func (mrn *mockRetrievalNet) setup(ctx context.Context) error {
+func (mrn *mockRetrievalNet) setup(ctx context.Context, t *testing.T) {
+	t.Cleanup(func() {
+		require.NoError(t, mrn.teardown())
+	})
+
 	// Setup remote datastore and blockstore
 	dsRemote := dss.MutexWrap(datastore.NewMapDatastore())
 	dtDsRemote := namespace.Wrap(dsRemote, datastore.NewKey("datatransfer"))
@@ -198,16 +203,10 @@ func (mrn *mockRetrievalNet) setup(ctx context.Context) error {
 	mrn.mn = mocknet.New()
 	var err error
 	mrn.hostRemote, err = mrn.mn.GenPeer()
-	if err != nil {
-		return err
-	}
+	require.NoError(t, err)
 	mrn.hostLocal, err = mrn.mn.GenPeer()
-	if err != nil {
-		return err
-	}
-	if err := mrn.mn.LinkAll(); err != nil {
-		return err
-	}
+	require.NoError(t, err)
+	require.NoError(t, mrn.mn.LinkAll())
 
 	// Setup remote data transfer
 	gsNetRemote := gsnet.NewFromLibp2pHost(mrn.hostRemote)
@@ -215,31 +214,14 @@ func (mrn *mockRetrievalNet) setup(ctx context.Context) error {
 	gsRemote := gsimpl.New(ctx, gsNetRemote, mrn.linkSystemRemote)
 	gstpRemote := gstransport.NewTransport(mrn.hostRemote.ID(), gsRemote)
 	dtRemote, err := dtimpl.NewDataTransfer(dtDsRemote, dtNetRemote, gstpRemote)
-	if err != nil {
-		return err
-	}
+	require.NoError(t, err)
 
 	// Wait for remote data transfer to be ready
-	ready := make(chan error, 1)
-	dtRemote.OnReady(func(err error) {
-		ready <- err
-	})
-	if err := dtRemote.Start(ctx); err != nil {
-		return err
-	}
-	select {
-	case <-ctx.Done():
-	case err := <-ready:
-		if err != nil {
-			return err
-		}
-	}
+	dttestutil.StartAndWaitForReady(ctx, t, dtRemote)
 
 	// Register DealProposal voucher type with automatic Pull acceptance
 	remoteDealValidator := &mockDealValidator{acceptPull: true}
-	if err := dtRemote.RegisterVoucherType(retrievalmarket.DealProposalType, remoteDealValidator); err != nil {
-		return err
-	}
+	require.NoError(t, dtRemote.RegisterVoucherType(retrievalmarket.DealProposalType, remoteDealValidator))
 
 	// Record remote events
 	subscriberRemote := func(event datatransfer.Event, channelState datatransfer.ChannelState) {
@@ -249,33 +231,30 @@ func (mrn *mockRetrievalNet) setup(ctx context.Context) error {
 		}
 	}
 	dtRemote.SubscribeToEvents(subscriberRemote)
-
-	return nil
 }
 
-func (mrn *mockRetrievalNet) waitForFinish(ctx context.Context) error {
-	return waitForChan(ctx, mrn.finishedChan)
+func (mrn *mockRetrievalNet) waitForFinish(ctx context.Context, t *testing.T) {
+	require.Eventually(t, chanCheck(ctx, t, mrn.finishedChan), 1*time.Second, 100*time.Millisecond)
 }
 
 func (mrn *mockRetrievalNet) teardown() error {
 	return mrn.mn.Close()
 }
 
-func (mrn *mockRetrievalNet) generateRemoteUnixFSFile() (cid.Cid, []byte, error) {
+func (mrn *mockRetrievalNet) generateRemoteUnixFSFile(t *testing.T) (cid.Cid, []byte) {
 	// a file of 4MiB random bytes, packaged into unixfs DAGs, stored in the remote blockstore
-	delimited := io.LimitReader(rand.Reader, 1<<22)
-	buf := new(bytes.Buffer)
-	delimited = io.TeeReader(delimited, buf)
+	delimited := io.LimitReader(rand.Reader, 4<<20)
+	var buf bytes.Buffer
+	buf.Grow(4 << 20)
+	delimited = io.TeeReader(delimited, &buf)
 	root, _, err := builder.BuildUnixFSFile(delimited, "size-256144", &mrn.linkSystemRemote)
-	if err != nil {
-		return cid.Undef, nil, err
-	}
+	require.NoError(t, err)
 	srcData := buf.Bytes()
 	rootCid := root.(cidlink.Link).Cid
-	return rootCid, srcData, nil
+	return rootCid, srcData
 }
 
-var _ datatransfer.RequestValidator = &mockDealValidator{}
+var _ datatransfer.RequestValidator = (*mockDealValidator)(nil)
 
 type mockDealValidator struct {
 	acceptPull bool
