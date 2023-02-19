@@ -1,9 +1,7 @@
 package itest
 
 import (
-	"bytes"
 	"context"
-	"crypto/rand"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +10,7 @@ import (
 
 	"github.com/filecoin-project/index-provider/metadata"
 	"github.com/filecoin-project/lassie/pkg/internal/itest/testpeer"
+	"github.com/filecoin-project/lassie/pkg/internal/itest/unixfs"
 	"github.com/filecoin-project/lassie/pkg/internal/testutil"
 	"github.com/filecoin-project/lassie/pkg/lassie"
 	httpserver "github.com/filecoin-project/lassie/pkg/server/http"
@@ -21,7 +20,6 @@ import (
 	"github.com/ipfs/go-libipfs/bitswap/network"
 	"github.com/ipfs/go-libipfs/bitswap/server"
 	"github.com/ipfs/go-unixfsnode"
-	"github.com/ipfs/go-unixfsnode/data/builder"
 	"github.com/ipld/go-car/v2/storage"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime/linking"
@@ -38,24 +36,13 @@ func TestBitswapFetchTwoPeers(t *testing.T) {
 	testPeerGenerator := testpeer.NewTestPeerGenerator(ctx, t, mn, []network.NetOpt{}, []server.Option{})
 	peers := testPeerGenerator.Peers(2)
 
-	// build two files of 4MiB random bytes, packaged into unixfs DAGs (root1 & root2)
-	// and the original source data retained (srcData1, srcData2)
+	// build two files of 4MiB random bytes, packaged into unixfs DAGs
+	// (rootCid1 & rootCid2) and the original source data retained
+	// (srcData1, srcData2)
 	ls := storeutil.LinkSystemForBlockstore(peers[0].Blockstore())
-	delimited := io.LimitReader(rand.Reader, 1<<22)
-	buf := new(bytes.Buffer)
-	delimited = io.TeeReader(delimited, buf)
-	root1, _, err := builder.BuildUnixFSFile(delimited, "size-256144", &ls)
-	srcData1 := buf.Bytes()
-	req.NoError(err)
-	rootCid1 := root1.(cidlink.Link).Cid
+	rootCid1, srcData1 := unixfs.GenerateFile(t, &ls, 4<<20)
 	ls = storeutil.LinkSystemForBlockstore(peers[1].Blockstore())
-	delimited = io.LimitReader(rand.Reader, 1<<22)
-	buf = new(bytes.Buffer)
-	delimited = io.TeeReader(delimited, buf)
-	root2, _, err := builder.BuildUnixFSFile(delimited, "size-256144", &ls)
-	srcData2 := buf.Bytes()
-	req.NoError(err)
-	rootCid2 := root2.(cidlink.Link).Cid
+	rootCid2, srcData2 := unixfs.GenerateFile(t, &ls, 4<<20)
 
 	finder := &testutil.MockCandidateFinder{
 		Candidates: map[cid.Cid][]types.RetrievalCandidate{
@@ -130,7 +117,7 @@ func TestBitswapFetchTwoPeers(t *testing.T) {
 	outLsys := cidlink.DefaultLinkSystem()
 	outLsys.SetReadStorage(rCar)
 	outLsys.NodeReifier = unixfsnode.Reify
-	nd, err := outLsys.Load(linking.LinkContext{Ctx: ctx}, root1, dagpb.Type.PBNode)
+	nd, err := outLsys.Load(linking.LinkContext{Ctx: ctx}, cidlink.Link{Cid: rootCid1}, dagpb.Type.PBNode)
 	req.NoError(err)
 	destData, err := nd.AsBytes()
 	req.NoError(err)
@@ -145,7 +132,7 @@ func TestBitswapFetchTwoPeers(t *testing.T) {
 	outLsys = cidlink.DefaultLinkSystem()
 	outLsys.SetReadStorage(rCar)
 	outLsys.NodeReifier = unixfsnode.Reify
-	nd, err = outLsys.Load(linking.LinkContext{Ctx: ctx}, root2, dagpb.Type.PBNode)
+	nd, err = outLsys.Load(linking.LinkContext{Ctx: ctx}, cidlink.Link{Cid: rootCid2}, dagpb.Type.PBNode)
 	req.NoError(err)
 	destData, err = nd.AsBytes()
 	req.NoError(err)
