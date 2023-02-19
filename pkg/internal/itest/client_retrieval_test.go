@@ -1,11 +1,8 @@
 package itest
 
 import (
-	"bytes"
 	"context"
-	"crypto/rand"
 	"errors"
-	"io"
 	"testing"
 	"time"
 
@@ -17,6 +14,7 @@ import (
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/client"
+	"github.com/filecoin-project/lassie/pkg/internal/itest/unixfs"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/namespace"
@@ -26,7 +24,6 @@ import (
 	"github.com/ipfs/go-graphsync/storeutil"
 	bstore "github.com/ipfs/go-ipfs-blockstore"
 	"github.com/ipfs/go-unixfsnode"
-	"github.com/ipfs/go-unixfsnode/data/builder"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/linking"
@@ -49,8 +46,10 @@ func TestRetrieval(t *testing.T) {
 	mrn := newMockRetrievalNet()
 	mrn.setup(ctx, t)
 
-	// Populate remote with a DAG, and get its root
-	rootCid, srcBytes := mrn.generateRemoteUnixFSFile(t)
+	// Populate remote with a DAG representing a 4MiB file of random bytes,
+	// and get its root and the original file so we can compare the reconstructed
+	// form
+	rootCid, srcBytes := unixfs.GenerateFile(t, &mrn.linkSystemRemote, 4<<20)
 
 	// Setup local datastore and blockstore
 	dsLocal := dss.MutexWrap(datastore.NewMapDatastore())
@@ -239,19 +238,6 @@ func (mrn *mockRetrievalNet) waitForFinish(ctx context.Context, t *testing.T) {
 
 func (mrn *mockRetrievalNet) teardown() error {
 	return mrn.mn.Close()
-}
-
-func (mrn *mockRetrievalNet) generateRemoteUnixFSFile(t *testing.T) (cid.Cid, []byte) {
-	// a file of 4MiB random bytes, packaged into unixfs DAGs, stored in the remote blockstore
-	delimited := io.LimitReader(rand.Reader, 4<<20)
-	var buf bytes.Buffer
-	buf.Grow(4 << 20)
-	delimited = io.TeeReader(delimited, &buf)
-	root, _, err := builder.BuildUnixFSFile(delimited, "size-256144", &mrn.linkSystemRemote)
-	require.NoError(t, err)
-	srcData := buf.Bytes()
-	rootCid := root.(cidlink.Link).Cid
-	return rootCid, srcData
 }
 
 var _ datatransfer.RequestValidator = (*mockDealValidator)(nil)
