@@ -55,19 +55,33 @@ func TestRetrieval(t *testing.T) {
 		{
 			name: "UnixFSDirectoryDAG",
 			generate: func(t *testing.T, linkSystem linking.LinkSystem) (cid.Cid, []unixfs.DirEntry) {
-				return unixfs.GenerateDirectory(t, &linkSystem, rndReader, 16<<20)
+				return unixfs.GenerateDirectory(t, &linkSystem, rndReader, 16<<20, false)
+			},
+		},
+		{
+			name: "UnixFSShardedDirectoryDAG",
+			generate: func(t *testing.T, linkSystem linking.LinkSystem) (cid.Cid, []unixfs.DirEntry) {
+				return unixfs.GenerateDirectory(t, &linkSystem, rndReader, 16<<20, true)
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
 			// Setup mocknet and remove
 			mrn := newMockRetrievalNet()
 			mrn.setup(ctx, t)
+
+			var ls linking.LinkSystem
+			var count int
+			ls.StorageReadOpener = mrn.linkSystemRemote.StorageReadOpener
+			ls.StorageWriteOpener = func(lc linking.LinkContext) (io.Writer, linking.BlockWriteCommitter, error) {
+				count++
+				return mrn.linkSystemRemote.StorageWriteOpener(lc)
+			}
 
 			// Generate source data on the remote
 			rootCid, srcData := tt.generate(t, mrn.linkSystemRemote)
