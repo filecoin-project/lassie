@@ -327,10 +327,10 @@ func TestEventRecorder(t *testing.T) {
 				case <-receivedChan:
 				}
 
-				qt.Assert(t, req.Length(), qt.Equals, int64(1))
+				require.Equal(t, req.Length(), int64(1))
 				eventList := verifyListNode(t, req, "events", 1)
 				event := verifyListElement(t, eventList, 0)
-				qt.Assert(t, event.Length(), qt.Equals, int64(9))
+				require.Equal(t, event.Length(), int64(9))
 				verifyStringNode(t, event, "retrievalId", id.String())
 				verifyStringNode(t, event, "instanceId", "test-instance")
 				verifyStringNode(t, event, "cid", testCid1.String())
@@ -339,20 +339,20 @@ func TestEventRecorder(t *testing.T) {
 				verifyStringNode(t, event, "phaseStartTime", ptime.Format(time.RFC3339Nano))
 				verifyStringNode(t, event, "eventName", "candidates-found")
 				atime, err := time.Parse(time.RFC3339Nano, nodeToString(t, event, "eventTime"))
-				qt.Assert(t, err, qt.IsNil)
-				qt.Assert(t, etime.Sub(atime) < 50*time.Millisecond, qt.IsTrue)
+				require.NoError(t, err)
+				require.Less(t, etime.Sub(atime), 50*time.Millisecond)
 
 				detailsNode, err := event.LookupByString("eventDetails")
-				qt.Assert(t, err, qt.IsNil)
-				qt.Assert(t, detailsNode.Length(), qt.Equals, int64(2))
+				require.NoError(t, err)
+				require.Equal(t, detailsNode.Length(), int64(2))
 				verifyIntNode(t, detailsNode, "candidateCount", 1)
 				protocolsNode, err := detailsNode.LookupByString("protocols")
-				qt.Assert(t, err, qt.IsNil)
-				qt.Assert(t, protocolsNode.Length(), qt.Equals, int64(1))
+				require.NoError(t, err)
+				require.Equal(t, protocolsNode.Length(), int64(1))
 				protocolNode := verifyListElement(t, protocolsNode, 0)
 				s, err := protocolNode.AsString()
-				qt.Assert(t, err, qt.IsNil)
-				qt.Assert(t, s, qt.Equals, "transport-bitswap")
+				require.NoError(t, err)
+				require.Equal(t, "transport-bitswap", s)
 			},
 		},
 		{
@@ -368,10 +368,10 @@ func TestEventRecorder(t *testing.T) {
 				case <-receivedChan:
 				}
 
-				qt.Assert(t, req.Length(), qt.Equals, int64(1))
+				require.Equal(t, req.Length(), int64(1))
 				eventList := verifyListNode(t, req, "events", 1)
 				event := verifyListElement(t, eventList, 0)
-				qt.Assert(t, event.Length(), qt.Equals, int64(9))
+				require.Equal(t, event.Length(), int64(9))
 				verifyStringNode(t, event, "retrievalId", id.String())
 				verifyStringNode(t, event, "instanceId", "test-instance")
 				verifyStringNode(t, event, "cid", testCid1.String())
@@ -380,20 +380,20 @@ func TestEventRecorder(t *testing.T) {
 				verifyStringNode(t, event, "phaseStartTime", ptime.Format(time.RFC3339Nano))
 				verifyStringNode(t, event, "eventName", "candidates-filtered")
 				atime, err := time.Parse(time.RFC3339Nano, nodeToString(t, event, "eventTime"))
-				qt.Assert(t, err, qt.IsNil)
-				qt.Assert(t, etime.Sub(atime) < 50*time.Millisecond, qt.IsTrue)
+				require.NoError(t, err)
+				require.Less(t, etime.Sub(atime), 50*time.Millisecond)
 
 				detailsNode, err := event.LookupByString("eventDetails")
-				qt.Assert(t, err, qt.IsNil)
-				qt.Assert(t, detailsNode.Length(), qt.Equals, int64(2))
+				require.NoError(t, err)
+				require.Equal(t, detailsNode.Length(), int64(2))
 				verifyIntNode(t, detailsNode, "candidateCount", 1)
 				protocolsNode, err := detailsNode.LookupByString("protocols")
-				qt.Assert(t, err, qt.IsNil)
-				qt.Assert(t, protocolsNode.Length(), qt.Equals, int64(1))
+				require.NoError(t, err)
+				require.Equal(t, protocolsNode.Length(), int64(1))
 				protocolNode := verifyListElement(t, protocolsNode, 0)
 				s, err := protocolNode.AsString()
-				qt.Assert(t, err, qt.IsNil)
-				qt.Assert(t, s, qt.Equals, "transport-bitswap")
+				require.NoError(t, err)
+				require.Equal(t, "transport-bitswap", s)
 			},
 		},
 	}
