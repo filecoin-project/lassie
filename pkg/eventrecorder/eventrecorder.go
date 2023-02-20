@@ -12,6 +12,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/types"
 	logging "github.com/ipfs/go-log/v2"
+	"github.com/multiformats/go-multicodec"
 )
 
 var HttpTimeout = 5 * time.Second
@@ -19,16 +20,21 @@ var ParallelPosters = 5
 
 var log = logging.Logger("eventrecorder")
 
+type EventRecorderConfig struct {
+	DisableIndexerEvents  bool
+	InstanceID            string
+	EndpointURL           string
+	EndpointAuthorization string
+}
+
 // NewEventRecorder creates a new event recorder with the ID of this instance
 // and the URL to POST to
-func NewEventRecorder(ctx context.Context, instanceId string, endpointURL string, endpointAuthorization string) *EventRecorder {
+func NewEventRecorder(ctx context.Context, cfg EventRecorderConfig) *EventRecorder {
 	er := &EventRecorder{
 		ctx,
-		instanceId,
-		endpointURL,
-		endpointAuthorization,
 		make(chan report),
 		make(chan []report),
+		cfg,
 	}
 
 	go er.ingestReports()
@@ -47,12 +53,10 @@ type report struct {
 // EventRecorder receives events from the retrieval manager and posts event data
 // to a given endpoint as POSTs with JSON bodies
 type EventRecorder struct {
-	ctx                   context.Context
-	instanceId            string
-	endpointURL           string
-	endpointAuthorization string
-	incomingReportChan    chan report
-	reportChan            chan []report
+	ctx                context.Context
+	incomingReportChan chan report
+	reportChan         chan []report
+	cfg                EventRecorderConfig
 }
 
 type eventReport struct {
@@ -81,8 +85,21 @@ type EventDetailsError struct {
 	Error string `json:"error"`
 }
 
+type EventDetailsIndexer struct {
+	CandidateCount uint64   `json:"candidateCount"`
+	Protocols      []string `json:"protocols"`
+}
+
+func toStrings(protocols []multicodec.Code) []string {
+	protocolStrings := make([]string, 0, len(protocols))
+	for _, protocol := range protocols {
+		protocolStrings = append(protocolStrings, protocol.String())
+	}
+	return protocolStrings
+}
+
 func (er *EventRecorder) RecordEvent(event types.RetrievalEvent) {
-	if event.Phase() == types.IndexerPhase {
+	if er.cfg.DisableIndexerEvents && event.Phase() == types.IndexerPhase {
 		// ignore indexer events for now, it can get very chatty in the autoretrieve
 		// case where every request results in an indexer lookup
 		return
@@ -95,7 +112,7 @@ func (er *EventRecorder) RecordEvent(event types.RetrievalEvent) {
 
 	evt := eventReport{
 		RetrievalId:       event.RetrievalId(),
-		InstanceId:        er.instanceId,
+		InstanceId:        er.cfg.InstanceID,
 		Cid:               event.PayloadCid().String(),
 		StorageProviderId: types.Identifier(event),
 		Phase:             event.Phase(),
@@ -106,6 +123,10 @@ func (er *EventRecorder) RecordEvent(event types.RetrievalEvent) {
 
 	switch ret := event.(type) {
 	case events.EventWithCandidates: // events.RetrievalEventCandidatesFound, events.RetrievalEventCandidatesFiltered:
+		evt.EventDetails = &EventDetailsIndexer{
+			CandidateCount: uint64(len(ret.Candidates())),
+			Protocols:      toStrings(ret.Protocols()),
+		}
 	case events.RetrievalEventConnected:
 	case events.EventWithQueryResponse: // events.RetrievalEventQueryAsked, events.RetrievalEventQueryAskedFiltered:
 		qr := ret.QueryResponse()
@@ -190,22 +211,22 @@ func (er *EventRecorder) handleReports(client http.Client, reports []report) {
 		return
 	}
 
-	req, err := http.NewRequest("POST", er.endpointURL, bytes.NewBufferString(string(byts)))
+	req, err := http.NewRequest("POST", er.cfg.EndpointURL, bytes.NewBufferString(string(byts)))
 	if err != nil {
-		log.Errorf("Failed to create POST request [%s] for recorder [%s]: %w", sources, er.endpointURL, err.Error())
+		log.Errorf("Failed to create POST request [%s] for recorder [%s]: %w", sources, er.cfg.EndpointURL, err.Error())
 		return
 	}
 
 	req.Header.Set("Content-Type", "application/json")
 
 	// set authorization header if configured
-	if er.endpointAuthorization != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Basic %s", er.endpointAuthorization))
+	if er.cfg.EndpointAuthorization != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Basic %s", er.cfg.EndpointAuthorization))
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Errorf("Failed to POST event [%s] to recorder [%s]: %w", sources, er.endpointURL, err.Error())
+		log.Errorf("Failed to POST event [%s] to recorder [%s]: %w", sources, er.cfg.EndpointURL, err.Error())
 		return
 	}
 

@@ -314,13 +314,99 @@ func TestEventRecorder(t *testing.T) {
 				require.Less(t, etime.Sub(atime), 50*time.Millisecond)
 			},
 		},
+		{
+			name: "CandidatesFound",
+			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
+				er.RecordEvent(events.CandidatesFound(id, ptime, testCid1, []types.RetrievalCandidate{
+					types.NewRetrievalCandidate(spid, testCid1, metadata.Bitswap{}),
+				}))
+
+				select {
+				case <-ctx.Done():
+					t.Fatal(ctx.Err())
+				case <-receivedChan:
+				}
+
+				qt.Assert(t, req.Length(), qt.Equals, int64(1))
+				eventList := verifyListNode(t, req, "events", 1)
+				event := verifyListElement(t, eventList, 0)
+				qt.Assert(t, event.Length(), qt.Equals, int64(9))
+				verifyStringNode(t, event, "retrievalId", id.String())
+				verifyStringNode(t, event, "instanceId", "test-instance")
+				verifyStringNode(t, event, "cid", testCid1.String())
+				verifyStringNode(t, event, "storageProviderId", "")
+				verifyStringNode(t, event, "phase", "indexer")
+				verifyStringNode(t, event, "phaseStartTime", ptime.Format(time.RFC3339Nano))
+				verifyStringNode(t, event, "eventName", "candidates-found")
+				atime, err := time.Parse(time.RFC3339Nano, nodeToString(t, event, "eventTime"))
+				qt.Assert(t, err, qt.IsNil)
+				qt.Assert(t, etime.Sub(atime) < 50*time.Millisecond, qt.IsTrue)
+
+				detailsNode, err := event.LookupByString("eventDetails")
+				qt.Assert(t, err, qt.IsNil)
+				qt.Assert(t, detailsNode.Length(), qt.Equals, int64(2))
+				verifyIntNode(t, detailsNode, "candidateCount", 1)
+				protocolsNode, err := detailsNode.LookupByString("protocols")
+				qt.Assert(t, err, qt.IsNil)
+				qt.Assert(t, protocolsNode.Length(), qt.Equals, int64(1))
+				protocolNode := verifyListElement(t, protocolsNode, 0)
+				s, err := protocolNode.AsString()
+				qt.Assert(t, err, qt.IsNil)
+				qt.Assert(t, s, qt.Equals, "transport-bitswap")
+			},
+		},
+		{
+			name: "CandidatesFiltered",
+			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
+				er.RecordEvent(events.CandidatesFiltered(id, ptime, testCid1, []types.RetrievalCandidate{
+					types.NewRetrievalCandidate(spid, testCid1, metadata.Bitswap{}),
+				}))
+
+				select {
+				case <-ctx.Done():
+					t.Fatal(ctx.Err())
+				case <-receivedChan:
+				}
+
+				qt.Assert(t, req.Length(), qt.Equals, int64(1))
+				eventList := verifyListNode(t, req, "events", 1)
+				event := verifyListElement(t, eventList, 0)
+				qt.Assert(t, event.Length(), qt.Equals, int64(9))
+				verifyStringNode(t, event, "retrievalId", id.String())
+				verifyStringNode(t, event, "instanceId", "test-instance")
+				verifyStringNode(t, event, "cid", testCid1.String())
+				verifyStringNode(t, event, "storageProviderId", "")
+				verifyStringNode(t, event, "phase", "indexer")
+				verifyStringNode(t, event, "phaseStartTime", ptime.Format(time.RFC3339Nano))
+				verifyStringNode(t, event, "eventName", "candidates-filtered")
+				atime, err := time.Parse(time.RFC3339Nano, nodeToString(t, event, "eventTime"))
+				qt.Assert(t, err, qt.IsNil)
+				qt.Assert(t, etime.Sub(atime) < 50*time.Millisecond, qt.IsTrue)
+
+				detailsNode, err := event.LookupByString("eventDetails")
+				qt.Assert(t, err, qt.IsNil)
+				qt.Assert(t, detailsNode.Length(), qt.Equals, int64(2))
+				verifyIntNode(t, detailsNode, "candidateCount", 1)
+				protocolsNode, err := detailsNode.LookupByString("protocols")
+				qt.Assert(t, err, qt.IsNil)
+				qt.Assert(t, protocolsNode.Length(), qt.Equals, int64(1))
+				protocolNode := verifyListElement(t, protocolsNode, 0)
+				s, err := protocolNode.AsString()
+				qt.Assert(t, err, qt.IsNil)
+				qt.Assert(t, s, qt.Equals, "transport-bitswap")
+			},
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
-			er := eventrecorder.NewEventRecorder(ctx, "test-instance", fmt.Sprintf("%s/test-path/here", ts.URL), authHeaderValue)
+			er := eventrecorder.NewEventRecorder(ctx, eventrecorder.EventRecorderConfig{
+				InstanceID:            "test-instance",
+				EndpointURL:           fmt.Sprintf("%s/test-path/here", ts.URL),
+				EndpointAuthorization: authHeaderValue,
+			})
 			id, err := types.NewRetrievalID()
 			require.NoError(t, err)
 			etime := time.Now()
@@ -405,7 +491,11 @@ func TestEventRecorderSlowPost(t *testing.T) {
 	numParallel := 500
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
-	er := eventrecorder.NewEventRecorder(ctx, "test-instance", fmt.Sprintf("%s/test-path/here", ts.URL), authHeaderValue)
+	er := eventrecorder.NewEventRecorder(ctx, eventrecorder.EventRecorderConfig{
+		InstanceID:            "test-instance",
+		EndpointURL:           fmt.Sprintf("%s/test-path/here", ts.URL),
+		EndpointAuthorization: authHeaderValue,
+	})
 	id, err := types.NewRetrievalID()
 	require.NoError(t, err)
 	ptime := time.Now().Add(time.Hour * -1)

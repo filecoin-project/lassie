@@ -26,10 +26,12 @@ var (
 )
 
 type EventWithCandidates interface {
+	types.RetrievalEvent
 	Candidates() []types.RetrievalCandidate
 }
 
 type EventWithQueryResponse interface {
+	types.RetrievalEvent
 	QueryResponse() retrievalmarket.QueryResponse
 }
 
