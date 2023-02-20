@@ -19,8 +19,7 @@ import (
 	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p/core/peer"
-
-	qt "github.com/frankban/quicktest"
+	"github.com/stretchr/testify/require"
 )
 
 func TestQueryFiltering(t *testing.T) {
@@ -126,7 +125,7 @@ func TestQueryFiltering(t *testing.T) {
 				RetrievalID: retrievalID,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
 			}, func(event types.RetrievalEvent) {
-				qt.Assert(t, event.RetrievalId(), qt.Equals, retrievalID)
+				require.Equal(t, retrievalID, event.RetrievalId())
 				switch ret := event.(type) {
 				case events.RetrievalEventQueryAsked:
 					candidateQueries = append(candidateQueries, candidateQuery{ret.StorageProviderId(), ret.QueryResponse()})
@@ -138,42 +137,42 @@ func TestQueryFiltering(t *testing.T) {
 					}
 				}
 			}).RetrieveFromCandidates(candidates)
-			qt.Assert(t, stats, qt.IsNil)
-			qt.Assert(t, err, qt.IsNotNil)
+			require.Nil(t, stats)
+			require.Error(t, err)
 
 			// expected all queries
-			qt.Assert(t, len(mockClient.GetReceivedQueries()), qt.Equals, len(tc.queryResponses))
-			qt.Assert(t, len(candidateQueries), qt.Equals, len(tc.queryResponses))
+			require.Len(t, mockClient.GetReceivedQueries(), len(tc.queryResponses))
+			require.Len(t, candidateQueries, len(tc.queryResponses))
 			for p, qr := range tc.queryResponses {
 				pid := peer.ID(p)
-				qt.Assert(t, mockClient.GetReceivedQueries(), qt.Contains, pid)
+				require.Contains(t, mockClient.GetReceivedQueries(), pid)
 				found := false
 				for _, rqfc := range candidateQueries {
 					if rqfc.peer == pid {
 						found = true
-						qt.Assert(t, rqfc.queryResponse, qt.CmpEquals(cmp.AllowUnexported(address.Address{}, mbig.Int{})), *qr)
+						require.True(t, cmp.Equal(rqfc.queryResponse, *qr, cmp.AllowUnexported(address.Address{}, mbig.Int{})))
 					}
 				}
-				qt.Assert(t, found, qt.IsTrue)
+				require.True(t, found)
 			}
 
 			// verify that the list of retrievals matches the expected filtered list
-			qt.Assert(t, len(mockClient.GetReceivedRetrievals()), qt.Equals, len(tc.expectedPeers))
-			qt.Assert(t, len(candidateQueriesFiltered), qt.Equals, len(tc.expectedPeers))
-			qt.Assert(t, len(retrievingPeers), qt.Equals, len(tc.expectedPeers))
+			require.Len(t, mockClient.GetReceivedRetrievals(), len(tc.expectedPeers))
+			require.Len(t, candidateQueriesFiltered, len(tc.expectedPeers))
+			require.Len(t, retrievingPeers, len(tc.expectedPeers))
 			for _, p := range tc.expectedPeers {
 				pid := peer.ID(p)
-				qt.Assert(t, mockClient.GetReceivedRetrievals(), qt.Contains, pid)
-				qt.Assert(t, retrievingPeers, qt.Contains, pid)
+				require.Contains(t, mockClient.GetReceivedRetrievals(), pid)
+				require.Contains(t, retrievingPeers, pid)
 				found := false
 				for _, rqfc := range candidateQueriesFiltered {
 					if rqfc.peer == pid {
 						found = true
 						qr := tc.queryResponses[p]
-						qt.Assert(t, rqfc.queryResponse, qt.CmpEquals(cmp.AllowUnexported(address.Address{}, mbig.Int{})), *qr)
+						require.True(t, cmp.Equal(rqfc.queryResponse, *qr, cmp.AllowUnexported(address.Address{}, mbig.Int{})))
 					}
 				}
-				qt.Assert(t, found, qt.IsTrue)
+				require.True(t, found)
 			}
 		})
 	}
@@ -273,14 +272,14 @@ func TestRetrievalRacing(t *testing.T) {
 		{
 			name: "racing chooses best",
 			queryReturns: map[string]testutil.DelayedQueryReturn{
-				"foo":  {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 20},
-				"bar":  {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 40},
-				"baz":  {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 40},
-				"bang": {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 4, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 40},
+				"foo":  {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond},
+				"bar":  {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 100},
+				"baz":  {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 100},
+				"bang": {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 4, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 100},
 			},
 			expectedQueryReturns: []string{"foo", "bar", "baz", "bang"},
 			retrievalReturns: map[string]testutil.DelayedRetrievalReturn{
-				"foo":  {ResultErr: errors.New("Nope"), Delay: time.Millisecond * 100},
+				"foo":  {ResultErr: errors.New("Nope"), Delay: time.Millisecond * 200},
 				"bar":  {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 3}, Delay: time.Millisecond * 20},
 				"baz":  {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 2}, Delay: time.Millisecond * 20},
 				"bang": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bang"), Size: 4}, Delay: time.Millisecond * 20},
@@ -294,10 +293,10 @@ func TestRetrievalRacing(t *testing.T) {
 		{
 			name: "racing chooses fastest query",
 			queryReturns: map[string]testutil.DelayedQueryReturn{
-				"foo":  {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 10},
+				"foo":  {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 0},
 				"bar":  {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 220},
 				"baz":  {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 200},
-				"bang": {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 50},
+				"bang": {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 100},
 			},
 			expectedQueryReturns: []string{"foo", "bar", "baz", "bang"},
 			retrievalReturns: map[string]testutil.DelayedRetrievalReturn{
@@ -338,7 +337,7 @@ func TestRetrievalRacing(t *testing.T) {
 				RetrievalID: retrievalID,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
 			}, func(event types.RetrievalEvent) {
-				qt.Assert(t, event.RetrievalId(), qt.Equals, retrievalID)
+				require.Equal(t, retrievalID, event.RetrievalId())
 				switch ret := event.(type) {
 				case events.RetrievalEventQueryAsked:
 					candidateQueries = append(candidateQueries, candidateQuery{ret.StorageProviderId(), ret.QueryResponse()})
@@ -351,20 +350,20 @@ func TestRetrievalRacing(t *testing.T) {
 				}
 			}).RetrieveFromCandidates(candidates)
 			if tc.expectedRetrieval != "" {
-				qt.Assert(t, stats, qt.IsNotNil)
-				qt.Assert(t, err, qt.IsNil)
+				require.NotNil(t, stats)
+				require.NoError(t, err)
 				// make sure we got the final retrieval we wanted
-				qt.Assert(t, stats, qt.Equals, tc.retrievalReturns[tc.expectedRetrieval].ResultStats)
+				require.Equal(t, tc.retrievalReturns[tc.expectedRetrieval].ResultStats, stats)
 			} else {
-				qt.Assert(t, stats, qt.IsNil)
-				qt.Assert(t, err, qt.IsNotNil)
+				require.Nil(t, stats)
+				require.Error(t, err)
 			}
 			waitStart := time.Now()
 			cfg.wait()
 			waited := time.Since(waitStart)
 			// make sure we didn't have to wait long to have the goroutines cleaned up, they should
 			// return very quickly from the mockClient#RetrievalQueryToPeer after a context cancel
-			qt.Assert(t, waited < 5*time.Millisecond, qt.IsTrue, qt.Commentf("wait took %s", waited))
+			require.Less(t, waited, 5*time.Millisecond, "wait took %s", waited)
 
 			// make sure we handled the queries we expected
 			var expectedQueryFailures int
@@ -373,14 +372,14 @@ func TestRetrievalRacing(t *testing.T) {
 					expectedQueryFailures++
 				}
 			}
-			qt.Assert(t, len(mockClient.GetReceivedQueries()), qt.Equals, len(tc.queryReturns))
+			require.Len(t, mockClient.GetReceivedQueries(), len(tc.queryReturns))
 			for _, p := range tc.expectedQueryReturns {
 				pid := peer.ID(p)
-				qt.Assert(t, mockClient.GetReceivedQueries(), qt.Contains, pid)
+				require.Contains(t, mockClient.GetReceivedQueries(), pid)
 			}
 			// make sure we only returned the queries we expected (may be a subset of the above if a retrieval was fast enough)
-			qt.Assert(t, len(candidateQueries), qt.Equals, len(tc.expectedQueryReturns))
-			qt.Assert(t, len(candidateQueriesFiltered), qt.Equals, len(tc.expectedQueryReturns))
+			require.Len(t, candidateQueries, len(tc.expectedQueryReturns))
+			require.Len(t, candidateQueriesFiltered, len(tc.expectedQueryReturns))
 
 			// make sure we performed the retrievals we expected
 			var expectedRetrievalFailures int
@@ -389,11 +388,11 @@ func TestRetrievalRacing(t *testing.T) {
 					expectedRetrievalFailures++
 				}
 			}
-			qt.Assert(t, len(mockClient.GetReceivedRetrievals()), qt.Equals, len(tc.expectedRetrievalAttempts))
-			qt.Assert(t, len(retrievingPeers), qt.Equals, len(tc.expectedRetrievalAttempts))
+			require.Len(t, mockClient.GetReceivedRetrievals(), len(tc.expectedRetrievalAttempts))
+			require.Len(t, retrievingPeers, len(tc.expectedRetrievalAttempts))
 			for _, p := range tc.expectedRetrievalAttempts {
 				pid := peer.ID(p)
-				qt.Assert(t, mockClient.GetReceivedRetrievals(), qt.Contains, pid)
+				require.Contains(t, mockClient.GetReceivedRetrievals(), pid)
 			}
 		})
 	}
@@ -408,17 +407,21 @@ func TestMultipleRetrievals(t *testing.T) {
 
 	mockClient := testutil.NewMockClient(
 		map[string]testutil.DelayedQueryReturn{
-			"foo":  {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 20},
-			"bar":  {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 50},
-			"baz":  {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 500}, // should not finish this
+			// group a
+			"foo": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond},
+			"bar": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 100},
+			"baz": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 500}, // should not finish this
+			// group b
 			"bang": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 500}, // should not finish this
-			"boom": {QueryResponse: nil, Err: errors.New("Nope"), Delay: time.Millisecond * 20},
-			"bing": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 50},
+			"boom": {QueryResponse: nil, Err: errors.New("Nope"), Delay: time.Millisecond},
+			"bing": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 100},
 		},
 		map[string]testutil.DelayedRetrievalReturn{
-			"foo":  {ResultErr: errors.New("Nope"), Delay: time.Millisecond * 20},
-			"bar":  {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}, Delay: time.Millisecond * 200},
-			"baz":  {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 3}, Delay: time.Millisecond * 200},
+			// group a
+			"foo": {ResultErr: errors.New("Nope"), Delay: time.Millisecond},
+			"bar": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}, Delay: time.Millisecond * 200},
+			"baz": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 3}, Delay: time.Millisecond * 200},
+			// group b
 			"bang": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bang"), Size: 3}, Delay: time.Millisecond * 200},
 			"boom": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("boom"), Size: 3}, Delay: time.Millisecond * 200},
 			"bing": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bing"), Size: 3}, Delay: time.Millisecond * 200},
@@ -467,10 +470,10 @@ func TestMultipleRetrievals(t *testing.T) {
 			{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}},
 			{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}},
 		})
-		qt.Assert(t, stats, qt.IsNotNil)
-		qt.Assert(t, err, qt.IsNil)
+		require.NoError(t, err)
+		require.NotNil(t, stats)
 		// make sure we got the final retrieval we wanted
-		qt.Assert(t, stats, qt.Equals, mockClient.GetRetrievalReturns()["bar"].ResultStats)
+		require.Equal(t, mockClient.GetRetrievalReturns()["bar"].ResultStats, stats)
 		wg.Done()
 	}()
 
@@ -483,35 +486,38 @@ func TestMultipleRetrievals(t *testing.T) {
 		{MinerPeer: peer.AddrInfo{ID: peer.ID("boom")}},
 		{MinerPeer: peer.AddrInfo{ID: peer.ID("bing")}},
 	})
-	qt.Assert(t, stats, qt.IsNotNil)
-	qt.Assert(t, err, qt.IsNil)
+	require.NoError(t, err)
+	require.NotNil(t, stats)
 	// make sure we got the final retrieval we wanted
-	qt.Assert(t, stats, qt.Equals, mockClient.GetRetrievalReturns()["bing"].ResultStats)
+	require.Equal(t, mockClient.GetRetrievalReturns()["bing"].ResultStats, stats)
 
-	// both retrievals should be ~ 20+200ms
+	// both retrievals should be ~ 100+200ms
 
 	waitStart := time.Now()
 	cfg.wait() // internal goroutine cleanup
-	qt.Assert(t, time.Since(waitStart) < time.Millisecond*50, qt.IsTrue, qt.Commentf("wait took %s", time.Since(waitStart)))
+	require.Less(t, time.Since(waitStart), time.Millisecond*100, "wait took %s", time.Since(waitStart))
 	wg.Wait() // make sure we're done with our own goroutine
-	qt.Assert(t, time.Since(waitStart) < time.Millisecond*50, qt.IsTrue, qt.Commentf("wg wait took %s", time.Since(waitStart)))
+	require.Less(t, time.Since(waitStart), time.Millisecond*100, "wg wait took %s", time.Since(waitStart))
 
 	// make sure we handled the queries we expected
-	qt.Assert(t, len(mockClient.GetReceivedQueries()), qt.Equals, 6)
+	require.Len(t, mockClient.GetReceivedQueries(), 6)
 	for _, p := range mockClient.GetReceivedQueries() {
 		pid := peer.ID(p)
-		qt.Assert(t, mockClient.GetReceivedQueries(), qt.Contains, pid)
+		require.Contains(t, mockClient.GetReceivedQueries(), pid)
 	}
 	// make sure we only returned the queries we expected, in this case 2 were too slow and 1 errored so we only get 4
-	qt.Assert(t, len(candidateQueries), qt.Equals, 3)
-	qt.Assert(t, len(candidateQueriesFiltered), qt.Equals, 3)
+	require.Len(t, candidateQueries, 3)
+	require.Len(t, candidateQueriesFiltered, 3)
 
 	// make sure we performed the retrievals we expected
-	qt.Assert(t, len(mockClient.GetReceivedRetrievals()), qt.Equals, 3)
-	qt.Assert(t, len(retrievingPeers), qt.Equals, 3)
-	qt.Assert(t, mockClient.GetReceivedRetrievals(), qt.Contains, peer.ID("foo")) // errored
-	qt.Assert(t, mockClient.GetReceivedRetrievals(), qt.Contains, peer.ID("bar"))
-	qt.Assert(t, mockClient.GetReceivedRetrievals(), qt.Contains, peer.ID("bing"))
+	require.Contains(t, mockClient.GetReceivedRetrievals(), peer.ID("foo")) // errored
+	require.Contains(t, mockClient.GetReceivedRetrievals(), peer.ID("bar"))
+	require.Contains(t, mockClient.GetReceivedRetrievals(), peer.ID("bing"))
+	require.Contains(t, retrievingPeers, peer.ID("foo")) // errored
+	require.Contains(t, retrievingPeers, peer.ID("bar"))
+	require.Contains(t, retrievingPeers, peer.ID("bing"))
+	require.Len(t, mockClient.GetReceivedRetrievals(), 3)
+	require.Len(t, retrievingPeers, 3)
 }
 
 // Verify we can use a single retrieval multiple times with different candidates (so it can be used in the future with a stream)
@@ -523,17 +529,17 @@ func TestRetrievalReuse(t *testing.T) {
 	mockClient := testutil.NewMockClient(
 		map[string]testutil.DelayedQueryReturn{
 			// group a
-			"foo": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 10},  // should attempt this
-			"bar": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 20},  // should attempt this
+			"foo": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond},       // should attempt this
+			"bar": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 100}, // should attempt this
 			"baz": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 500}, // should not finish this
 			// group b
 			"bang": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 500}, // should not finish this
-			"boom": {QueryResponse: nil, Err: errors.New("Nope"), Delay: time.Millisecond * 20},        // should not finish this
-			"bing": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 20},  // should attempt this
+			"boom": {QueryResponse: nil, Err: errors.New("Nope"), Delay: time.Millisecond * 100},       // should not finish this
+			"bing": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 100}, // should attempt this
 		},
 		map[string]testutil.DelayedRetrievalReturn{
 			// group a
-			"foo": {ResultErr: errors.New("Nope"), Delay: time.Millisecond * 20},
+			"foo": {ResultErr: errors.New("Nope"), Delay: time.Millisecond},
 			"bar": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}, Delay: time.Millisecond * 200},
 			"baz": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 3}, Delay: time.Millisecond * 200},
 			// group b
@@ -584,44 +590,46 @@ func TestRetrievalReuse(t *testing.T) {
 		{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}},
 		{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}},
 	})
-	qt.Assert(t, stats, qt.IsNotNil)
-	qt.Assert(t, err, qt.IsNil)
+	require.NoError(t, err)
+	require.NotNil(t, stats)
 	// make sure we got the final retrieval we wanted
-	qt.Assert(t, stats, qt.Equals, mockClient.GetRetrievalReturns()["bar"].ResultStats)
+	require.Equal(t, mockClient.GetRetrievalReturns()["bar"].ResultStats, stats)
 
 	stats, err = retrieval.RetrieveFromCandidates([]types.RetrievalCandidate{
 		{MinerPeer: peer.AddrInfo{ID: peer.ID("bang")}},
 		{MinerPeer: peer.AddrInfo{ID: peer.ID("boom")}},
 		{MinerPeer: peer.AddrInfo{ID: peer.ID("bing")}},
 	})
-	qt.Assert(t, stats, qt.IsNotNil)
-	qt.Assert(t, err, qt.IsNil)
+	require.NoError(t, err)
+	require.NotNil(t, stats)
 	// make sure we got the final retrieval we wanted
-	qt.Assert(t, stats, qt.Equals, mockClient.GetRetrievalReturns()["bing"].ResultStats)
+	require.Equal(t, mockClient.GetRetrievalReturns()["bing"].ResultStats, stats)
 
-	// both retrievals should be ~ 50+100ms
+	// both retrievals should be ~ 100+200ms
 
 	waitStart := time.Now()
 	cfg.wait() // internal goroutine cleanup
-	qt.Assert(t, time.Since(waitStart) < time.Millisecond*50, qt.IsTrue, qt.Commentf("wait took %s", time.Since(waitStart)))
+	require.Less(t, time.Since(waitStart), time.Millisecond*100, "wait took %s", time.Since(waitStart))
 
 	// make sure we handled the queries we expected
-	qt.Assert(t, len(mockClient.GetReceivedQueries()), qt.Equals, 6)
+	require.Len(t, mockClient.GetReceivedQueries(), 6)
 	for _, p := range mockClient.GetReceivedQueries() {
 		pid := peer.ID(p)
-		qt.Assert(t, mockClient.GetReceivedQueries(), qt.Contains, pid)
+		require.Contains(t, mockClient.GetReceivedQueries(), pid)
 	}
 	// make sure we only returned the queries we expected, in this case 2 were too slow and 1 errored so we only get 4
-	qt.Assert(t, len(candidateQueries), qt.Equals, 3)
-	qt.Assert(t, len(candidateQueriesFiltered), qt.Equals, 3)
+	require.Len(t, candidateQueries, 3)
+	require.Len(t, candidateQueriesFiltered, 3)
 
 	// make sure we performed the retrievals we expected
-	qt.Assert(t, mockClient.GetReceivedRetrievals(), qt.Contains, peer.ID("foo")) // errored
-	qt.Assert(t, retrievingPeers, qt.Contains, peer.ID("foo"))                    // errored
-	qt.Assert(t, mockClient.GetReceivedRetrievals(), qt.Contains, peer.ID("bar"))
-	qt.Assert(t, retrievingPeers, qt.Contains, peer.ID("bar")) // errored
-	qt.Assert(t, mockClient.GetReceivedRetrievals(), qt.Contains, peer.ID("bing"))
-	qt.Assert(t, retrievingPeers, qt.Contains, peer.ID("bing")) // errored
+	require.Contains(t, mockClient.GetReceivedRetrievals(), peer.ID("foo")) // errored
+	require.Contains(t, retrievingPeers, peer.ID("foo"))                    // errored
+	require.Contains(t, mockClient.GetReceivedRetrievals(), peer.ID("bar"))
+	require.Contains(t, retrievingPeers, peer.ID("bar")) // errored
+	require.Contains(t, mockClient.GetReceivedRetrievals(), peer.ID("bing"))
+	require.Contains(t, retrievingPeers, peer.ID("bing")) // errored
+	require.Len(t, mockClient.GetReceivedRetrievals(), 3)
+	require.Len(t, retrievingPeers, 3)
 }
 
 type candidateQuery struct {

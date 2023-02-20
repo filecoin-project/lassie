@@ -16,12 +16,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
-var ch1 = datatransfer.ChannelID{
-	Initiator: "initiator",
-	Responder: "responder",
-	ID:        1,
-}
-
 type DelayedQueryReturn struct {
 	QueryResponse *retrievalmarket.QueryResponse
 	Err           error
