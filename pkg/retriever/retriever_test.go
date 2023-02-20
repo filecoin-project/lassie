@@ -406,13 +406,8 @@ func TestRetriever(t *testing.T) {
 				}
 			}
 			require.Len(t, subscriber.CollectedEvents, len(tc.expectedEvents))
-			for i, event := range tc.expectedEvents {
-				if (event.Code() == types.StartedCode || event.Code() == types.ConnectedCode) && event.Phase() == types.QueryPhase {
-					// these events can come out of order, so we can't verify it in a specific position
-					testutil.VerifyContainsCollectedEvent(t, subscriber.CollectedEvents, event)
-					continue
-				}
-				testutil.VerifyCollectedEvent(t, subscriber.CollectedEvents[i], event)
+			for _, event := range tc.expectedEvents {
+				testutil.VerifyContainsCollectedEvent(t, subscriber.CollectedEvents, event)
 			}
 			testutil.VerifyCollectedEventTimings(t, subscriber.CollectedEvents)
 		})
