@@ -272,14 +272,14 @@ func TestRetrievalRacing(t *testing.T) {
 		{
 			name: "racing chooses best",
 			queryReturns: map[string]testutil.DelayedQueryReturn{
-				"foo":  {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 20},
-				"bar":  {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 40},
-				"baz":  {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 40},
-				"bang": {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 4, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 40},
+				"foo":  {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond},
+				"bar":  {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 100},
+				"baz":  {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 100},
+				"bang": {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 4, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 100},
 			},
 			expectedQueryReturns: []string{"foo", "bar", "baz", "bang"},
 			retrievalReturns: map[string]testutil.DelayedRetrievalReturn{
-				"foo":  {ResultErr: errors.New("Nope"), Delay: time.Millisecond * 100},
+				"foo":  {ResultErr: errors.New("Nope"), Delay: time.Millisecond * 200},
 				"bar":  {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 3}, Delay: time.Millisecond * 20},
 				"baz":  {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 2}, Delay: time.Millisecond * 20},
 				"bang": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bang"), Size: 4}, Delay: time.Millisecond * 20},
@@ -293,10 +293,10 @@ func TestRetrievalRacing(t *testing.T) {
 		{
 			name: "racing chooses fastest query",
 			queryReturns: map[string]testutil.DelayedQueryReturn{
-				"foo":  {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 10},
+				"foo":  {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 0},
 				"bar":  {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 220},
 				"baz":  {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 200},
-				"bang": {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 50},
+				"bang": {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 100},
 			},
 			expectedQueryReturns: []string{"foo", "bar", "baz", "bang"},
 			retrievalReturns: map[string]testutil.DelayedRetrievalReturn{
@@ -408,17 +408,17 @@ func TestMultipleRetrievals(t *testing.T) {
 	mockClient := testutil.NewMockClient(
 		map[string]testutil.DelayedQueryReturn{
 			// group a
-			"foo": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 20},
-			"bar": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 50},
+			"foo": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond},
+			"bar": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 100},
 			"baz": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 500}, // should not finish this
 			// group b
 			"bang": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 500}, // should not finish this
-			"boom": {QueryResponse: nil, Err: errors.New("Nope"), Delay: time.Millisecond * 20},
-			"bing": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 50},
+			"boom": {QueryResponse: nil, Err: errors.New("Nope"), Delay: time.Millisecond},
+			"bing": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 100},
 		},
 		map[string]testutil.DelayedRetrievalReturn{
 			// group a
-			"foo": {ResultErr: errors.New("Nope"), Delay: time.Millisecond * 20},
+			"foo": {ResultErr: errors.New("Nope"), Delay: time.Millisecond},
 			"bar": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}, Delay: time.Millisecond * 200},
 			"baz": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 3}, Delay: time.Millisecond * 200},
 			// group b
@@ -491,13 +491,13 @@ func TestMultipleRetrievals(t *testing.T) {
 	// make sure we got the final retrieval we wanted
 	require.Equal(t, mockClient.GetRetrievalReturns()["bing"].ResultStats, stats)
 
-	// both retrievals should be ~ 20+200ms
+	// both retrievals should be ~ 100+200ms
 
 	waitStart := time.Now()
 	cfg.wait() // internal goroutine cleanup
-	require.Less(t, time.Since(waitStart), time.Millisecond*50, "wait took %s", time.Since(waitStart))
+	require.Less(t, time.Since(waitStart), time.Millisecond*100, "wait took %s", time.Since(waitStart))
 	wg.Wait() // make sure we're done with our own goroutine
-	require.Less(t, time.Since(waitStart), time.Millisecond*50, "wg wait took %s", time.Since(waitStart))
+	require.Less(t, time.Since(waitStart), time.Millisecond*100, "wg wait took %s", time.Since(waitStart))
 
 	// make sure we handled the queries we expected
 	require.Len(t, mockClient.GetReceivedQueries(), 6)
@@ -529,17 +529,17 @@ func TestRetrievalReuse(t *testing.T) {
 	mockClient := testutil.NewMockClient(
 		map[string]testutil.DelayedQueryReturn{
 			// group a
-			"foo": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 10},  // should attempt this
-			"bar": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 20},  // should attempt this
+			"foo": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond},       // should attempt this
+			"bar": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 100}, // should attempt this
 			"baz": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 500}, // should not finish this
 			// group b
 			"bang": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 500}, // should not finish this
-			"boom": {QueryResponse: nil, Err: errors.New("Nope"), Delay: time.Millisecond * 20},        // should not finish this
-			"bing": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 20},  // should attempt this
+			"boom": {QueryResponse: nil, Err: errors.New("Nope"), Delay: time.Millisecond * 100},       // should not finish this
+			"bing": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 100}, // should attempt this
 		},
 		map[string]testutil.DelayedRetrievalReturn{
 			// group a
-			"foo": {ResultErr: errors.New("Nope"), Delay: time.Millisecond * 20},
+			"foo": {ResultErr: errors.New("Nope"), Delay: time.Millisecond},
 			"bar": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}, Delay: time.Millisecond * 200},
 			"baz": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 3}, Delay: time.Millisecond * 200},
 			// group b
@@ -605,11 +605,11 @@ func TestRetrievalReuse(t *testing.T) {
 	// make sure we got the final retrieval we wanted
 	require.Equal(t, mockClient.GetRetrievalReturns()["bing"].ResultStats, stats)
 
-	// both retrievals should be ~ 50+100ms
+	// both retrievals should be ~ 100+200ms
 
 	waitStart := time.Now()
 	cfg.wait() // internal goroutine cleanup
-	require.Less(t, time.Since(waitStart), time.Millisecond*50, "wait took %s", time.Since(waitStart))
+	require.Less(t, time.Since(waitStart), time.Millisecond*100, "wait took %s", time.Since(waitStart))
 
 	// make sure we handled the queries we expected
 	require.Len(t, mockClient.GetReceivedQueries(), 6)
