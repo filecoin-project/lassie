@@ -68,7 +68,7 @@ func TestStreamingStoreWritesCARv1(t *testing.T) {
 				return &buf, nil
 			}
 
-			ss := streamingstore.NewStreamingStore(context.TODO(), []cid.Cid{testCid1}, getWriter, errorCb)
+			ss := streamingstore.NewStreamingStore(context.TODO(), []cid.Cid{testCid1}, "", getWriter, errorCb)
 			t.Cleanup(func() { ss.Close() })
 
 			if tt.readBeforeWrite {

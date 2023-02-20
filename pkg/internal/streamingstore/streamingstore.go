@@ -42,14 +42,16 @@ type StreamingStore struct {
 	f         *os.File
 	readWrite *carstore.StorageCar
 	write     storage.WritableStorage
+	tempDir   string
 }
 
-func NewStreamingStore(ctx context.Context, roots []cid.Cid, getWriter func() (io.Writer, error), errorCb func(error)) *StreamingStore {
+func NewStreamingStore(ctx context.Context, roots []cid.Cid, tempDir string, getWriter func() (io.Writer, error), errorCb func(error)) *StreamingStore {
 	return &StreamingStore{
 		ctx:       ctx,
 		roots:     roots,
 		getWriter: getWriter,
 		errorCb:   errorCb,
+		tempDir:   tempDir,
 	}
 }
 
@@ -137,7 +139,7 @@ func (ss *StreamingStore) lazyReadWrite() (*carstore.StorageCar, error) {
 // lazy*() methods.
 func (ss *StreamingStore) setupReadWrite() error {
 	var err error
-	ss.f, err = os.CreateTemp("", "lassie_carstore")
+	ss.f, err = os.CreateTemp(ss.tempDir, "lassie_carstore")
 	if err != nil {
 		return err
 	}

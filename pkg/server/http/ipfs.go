@@ -17,7 +17,7 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 )
 
-func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request) {
+func ipfsHandler(lassie *lassie.Lassie, tempDir string) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
 		logger := newRequestLogger(req.Method, req.URL.Path)
 		logger.logPath()
@@ -168,7 +168,7 @@ func ipfsHandler(lassie *lassie.Lassie) func(http.ResponseWriter, *http.Request)
 			}
 		}
 
-		store := streamingstore.NewStreamingStore(req.Context(), []cid.Cid{rootCid}, getWriter, errorCb)
+		store := streamingstore.NewStreamingStore(req.Context(), []cid.Cid{rootCid}, tempDir, getWriter, errorCb)
 		defer func() {
 			if err := store.Close(); err != nil {
 				log.Errorw("failed to close streaming store after retrieval", "retrievalId", retrievalId, "err", err)
