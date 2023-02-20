@@ -88,7 +88,7 @@ func TestBitswapFetchTwoPeers(t *testing.T) {
 	lassie, err := lassie.NewLassie(ctx, lassie.WithFinder(finder), lassie.WithHost(self), lassie.WithGlobalTimeout(5*time.Second))
 	req.NoError(err)
 
-	httpServer, err := httpserver.NewHttpServer(ctx, lassie, "127.0.0.1", 8888)
+	httpServer, err := httpserver.NewHttpServer(ctx, lassie, "127.0.0.1", 8888, "")
 	req.NoError(err)
 	baseURL := httpServer.Addr()
 	serverError := make(chan error, 1)

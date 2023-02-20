@@ -16,13 +16,12 @@ var log = logging.Logger("lassie/httpserver")
 type HttpServer struct {
 	cancel   context.CancelFunc
 	ctx      context.Context
-	lassie   *lassie.Lassie
 	listener net.Listener
 	server   *http.Server
 }
 
 // NewHttpServer creates a new HttpServer
-func NewHttpServer(ctx context.Context, lassie *lassie.Lassie, address string, port uint) (*HttpServer, error) {
+func NewHttpServer(ctx context.Context, lassie *lassie.Lassie, address string, port uint, tempDir string) (*HttpServer, error) {
 	addr := fmt.Sprintf("%s:%d", address, port)
 	listener, err := net.Listen("tcp", addr) // assigns a port if port is 0
 	if err != nil {
@@ -42,13 +41,12 @@ func NewHttpServer(ctx context.Context, lassie *lassie.Lassie, address string, p
 	httpServer := &HttpServer{
 		cancel:   cancel,
 		ctx:      ctx,
-		lassie:   lassie,
 		listener: listener,
 		server:   server,
 	}
 
 	// Routes
-	mux.HandleFunc("/ipfs/", ipfsHandler(lassie))
+	mux.HandleFunc("/ipfs/", ipfsHandler(lassie, tempDir))
 
 	return httpServer, nil
 }

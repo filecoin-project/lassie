@@ -26,6 +26,14 @@ var daemonFlags = []cli.Flag{
 		DefaultText: "random",
 		EnvVars:     []string{"LASSIE_PORT"},
 	},
+	&cli.StringFlag{
+		Name:        "tempdir",
+		Aliases:     []string{"td"},
+		Usage:       "directory to store temporary files while downloading",
+		Value:       "",
+		DefaultText: "os temp directory",
+		EnvVars:     []string{"LASSIE_TEMP_DIRECTORY"},
+	},
 	FlagEventRecorderAuth,
 	FlagEventRecorderInstanceId,
 	FlagEventRecorderUrl,
@@ -44,6 +52,7 @@ var daemonCmd = &cli.Command{
 func daemonCommand(cctx *cli.Context) error {
 	address := cctx.String("address")
 	port := cctx.Uint("port")
+	tempDir := cctx.String("tempdir")
 
 	// create a lassie instance
 	lassie, err := lassie.NewLassie(cctx.Context, lassie.WithProviderTimeout(20*time.Second))
@@ -54,7 +63,7 @@ func daemonCommand(cctx *cli.Context) error {
 	// create and subscribe an event recorder API if configured
 	setupLassieEventRecorder(cctx, lassie)
 
-	httpServer, err := httpserver.NewHttpServer(cctx.Context, lassie, address, port)
+	httpServer, err := httpserver.NewHttpServer(cctx.Context, lassie, address, port, tempDir)
 	if err != nil {
 		log.Errorw("failed to create http server", "err", err)
 		return err
