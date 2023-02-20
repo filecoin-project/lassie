@@ -402,7 +402,11 @@ func TestEventRecorder(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
-			er := eventrecorder.NewEventRecorder(ctx, "test-instance", fmt.Sprintf("%s/test-path/here", ts.URL), authHeaderValue, eventrecorder.EventRecorderConfig{})
+			er := eventrecorder.NewEventRecorder(ctx, eventrecorder.EventRecorderConfig{
+				InstanceID:            "test-instance",
+				EndpointURL:           fmt.Sprintf("%s/test-path/here", ts.URL),
+				EndpointAuthorization: authHeaderValue,
+			})
 			id, err := types.NewRetrievalID()
 			qt.Assert(t, err, qt.IsNil)
 			etime := time.Now()
@@ -487,7 +491,11 @@ func TestEventRecorderSlowPost(t *testing.T) {
 	numParallel := 500
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
-	er := eventrecorder.NewEventRecorder(ctx, "test-instance", fmt.Sprintf("%s/test-path/here", ts.URL), authHeaderValue, eventrecorder.EventRecorderConfig{})
+	er := eventrecorder.NewEventRecorder(ctx, eventrecorder.EventRecorderConfig{
+		InstanceID:            "test-instance",
+		EndpointURL:           fmt.Sprintf("%s/test-path/here", ts.URL),
+		EndpointAuthorization: authHeaderValue,
+	})
 	id, err := types.NewRetrievalID()
 	qt.Assert(t, err, qt.IsNil)
 	ptime := time.Now().Add(time.Hour * -1)
