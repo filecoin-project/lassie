@@ -2,6 +2,7 @@ package itest
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"io"
 	"net/http"
@@ -40,9 +41,9 @@ func TestBitswapFetchTwoPeers(t *testing.T) {
 	// (rootCid1 & rootCid2) and the original source data retained
 	// (srcData1, srcData2)
 	ls := storeutil.LinkSystemForBlockstore(peers[0].Blockstore())
-	rootCid1, srcData1 := unixfs.GenerateFile(t, &ls, 4<<20)
+	rootCid1, srcData1 := unixfs.GenerateFile(t, &ls, rand.Reader, 4<<20)
 	ls = storeutil.LinkSystemForBlockstore(peers[1].Blockstore())
-	rootCid2, srcData2 := unixfs.GenerateFile(t, &ls, 4<<20)
+	rootCid2, srcData2 := unixfs.GenerateFile(t, &ls, rand.Reader, 4<<20)
 
 	finder := &testutil.MockCandidateFinder{
 		Candidates: map[cid.Cid][]types.RetrievalCandidate{
