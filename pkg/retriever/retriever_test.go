@@ -103,7 +103,6 @@ func TestRetriever(t *testing.T) {
 				{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
 			},
 			returns_queries: map[string]testutil.DelayedQueryReturn{
-				// fastest is blacklisted, shouldn't even touch it
 				string(peerA): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 200},
 				string(peerB): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 5},
 			},
@@ -180,7 +179,6 @@ func TestRetriever(t *testing.T) {
 				{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
 			},
 			returns_queries: map[string]testutil.DelayedQueryReturn{
-				// fastest is blacklisted, shouldn't even touch it
 				string(peerA): {Err: errors.New("blip"), Delay: time.Millisecond * 5},
 				string(peerB): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 50},
 			},
@@ -220,7 +218,6 @@ func TestRetriever(t *testing.T) {
 				{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
 			},
 			returns_queries: map[string]testutil.DelayedQueryReturn{
-				// fastest is blacklisted, shouldn't even touch it
 				string(peerA): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 200},
 				string(peerB): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 5},
 			},
@@ -262,16 +259,15 @@ func TestRetriever(t *testing.T) {
 		{
 			name: "two candidates, first times out retrieval",
 			setup: func(rc *retriever.RetrieverConfig) {
-				rc.DefaultMinerConfig.RetrievalTimeout = time.Millisecond * 100
+				rc.DefaultMinerConfig.RetrievalTimeout = time.Millisecond * 200
 			},
 			candidates: []types.RetrievalCandidate{
 				{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
 				{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
 			},
 			returns_queries: map[string]testutil.DelayedQueryReturn{
-				// fastest is blacklisted, shouldn't even touch it
-				string(peerA): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 5},
-				string(peerB): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 50},
+				string(peerA): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond},
+				string(peerB): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 100},
 			},
 			returns_retrievals: map[string]testutil.DelayedRetrievalReturn{
 				string(peerA): {ResultStats: &types.RetrievalStats{
@@ -289,7 +285,7 @@ func TestRetriever(t *testing.T) {
 					TotalPayment:      big.Zero(),
 					RootCid:           cid1,
 					AskPrice:          abi.NewTokenAmount(0),
-				}, Delay: time.Millisecond * 5},
+				}, Delay: 0},
 			},
 			successfulPeer: peerB,
 			expectedEvents: []types.RetrievalEvent{
@@ -306,7 +302,7 @@ func TestRetriever(t *testing.T) {
 				events.QueryAsked(rid, qst, types.NewRetrievalCandidate(peerB, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
 				events.QueryAskedFiltered(rid, qst, types.NewRetrievalCandidate(peerB, cid1), retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}),
 				// delay of 200ms for peerA retrieval happens here, no datatransfer.Open from DT so no ProposedCode event for peerA
-				events.Failed(rid, rst, types.RetrievalPhase, types.NewRetrievalCandidate(peerA, cid1), "timeout after 100ms"),
+				events.Failed(rid, rst, types.RetrievalPhase, types.NewRetrievalCandidate(peerA, cid1), "timeout after 200ms"),
 				events.Started(rid, rst, types.RetrievalPhase, types.NewRetrievalCandidate(peerB, cid1)),
 				events.Proposed(rid, rst, types.NewRetrievalCandidate(peerB, cid1)),
 				events.Accepted(rid, rst, types.NewRetrievalCandidate(peerB, cid1)),
@@ -410,13 +406,8 @@ func TestRetriever(t *testing.T) {
 				}
 			}
 			require.Len(t, subscriber.CollectedEvents, len(tc.expectedEvents))
-			for i, event := range tc.expectedEvents {
-				if (event.Code() == types.StartedCode || event.Code() == types.ConnectedCode) && event.Phase() == types.QueryPhase {
-					// these events can come out of order, so we can't verify it in a specific position
-					testutil.VerifyContainsCollectedEvent(t, subscriber.CollectedEvents, event)
-					continue
-				}
-				testutil.VerifyCollectedEvent(t, subscriber.CollectedEvents[i], event)
+			for _, event := range tc.expectedEvents {
+				testutil.VerifyContainsCollectedEvent(t, subscriber.CollectedEvents, event)
 			}
 			testutil.VerifyCollectedEventTimings(t, subscriber.CollectedEvents)
 		})

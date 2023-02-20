@@ -208,6 +208,7 @@ func (rc *RetrievalClient) RetrieveFromPeer(
 
 	// Stats
 	startTime := time.Now()
+	var timeToFirstByte time.Duration
 	totalPayment := abi.NewTokenAmount(0)
 
 	rootCid := proposal.PayloadCID
@@ -251,15 +252,15 @@ func (rc *RetrievalClient) RetrieveFromPeer(
 		if eventsCallback != nil {
 			defer eventsCallback(event, state)
 		}
-		silenceEventCode := false
-		eventCodeNotHandled := false
+		var receivedFirstByte bool
+		var eventCodeNotHandled bool
 
 		switch event.Code {
 		case datatransfer.Open:
 		case datatransfer.Accept:
 		case datatransfer.Restart:
 		case datatransfer.DataReceived:
-			silenceEventCode = true
+			receivedFirstByte = true
 		case datatransfer.DataSent:
 		case datatransfer.Cancel:
 		case datatransfer.Error:
@@ -364,7 +365,8 @@ func (rc *RetrievalClient) RetrieveFromPeer(
 		case datatransfer.DataSentProgress:
 		case datatransfer.DataReceivedProgress:
 			// First byte has been received
-			silenceEventCode = true
+			timeToFirstByte = time.Since(startTime)
+			receivedFirstByte = true
 		case datatransfer.RequestTimedOut:
 		case datatransfer.SendDataError:
 		case datatransfer.ReceiveDataError:
@@ -383,7 +385,7 @@ func (rc *RetrievalClient) RetrieveFromPeer(
 		if eventCodeNotHandled {
 			log.Warnw("unhandled retrieval event", "dealID", dealID, "rootCid", rootCid, "peerID", peerID, "name", name, "code", code, "message", msg, "blocksIndex", blocksIndex, "totalReceived", totalReceived)
 		} else {
-			if !silenceEventCode { // || rc.logRetrievalProgressEvents {
+			if !receivedFirstByte { // || rc.logRetrievalProgressEvents {
 				log.Debugw("retrieval event", "dealID", dealID, "rootCid", rootCid, "peerID", peerID, "name", name, "code", code, "message", msg, "blocksIndex", blocksIndex, "totalReceived", totalReceived)
 			}
 		}
@@ -446,6 +448,7 @@ awaitfinished:
 	speed := uint64(float64(state.Received()) / duration.Seconds())
 
 	return &types.RetrievalStats{
+		RootCid:           rootCid,
 		StorageProviderId: state.OtherPeer(),
 		Size:              state.Received(),
 		Blocks:            uint64(state.ReceivedCidsTotal()),
@@ -454,6 +457,7 @@ awaitfinished:
 		TotalPayment:      totalPayment,
 		NumPayments:       int(nonce),
 		AskPrice:          proposal.PricePerByte,
+		TimeToFirstByte:   timeToFirstByte,
 	}, nil
 }
 
