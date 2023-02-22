@@ -120,11 +120,6 @@ func WithLibp2pOpts(libp2pOptions ...libp2p.Option) LassieOption {
 	}
 }
 
-func WithMaximumBlocksPerRequest(maximumBlocksPerRequest uint64) LassieOption {
-	return func(cfg *LassieConfig) {
-	}
-}
-
 func (l *Lassie) Retrieve(ctx context.Context, request types.RetrievalRequest) (*types.RetrievalStats, error) {
 	var cancel context.CancelFunc
 	if l.cfg.GlobalTimeout != time.Duration(0) {
