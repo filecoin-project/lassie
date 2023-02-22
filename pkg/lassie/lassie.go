@@ -13,8 +13,8 @@ import (
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
 	"github.com/ipld/go-ipld-prime/linking"
+	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/multiformats/go-multiaddr"
 )
 
 type Lassie struct {
@@ -27,6 +27,7 @@ type LassieConfig struct {
 	Host            host.Host
 	ProviderTimeout time.Duration
 	GlobalTimeout   time.Duration
+	Libp2pOptions   []libp2p.Option
 }
 
 type LassieOption func(cfg *LassieConfig)
@@ -56,7 +57,7 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 
 	if cfg.Host == nil {
 		var err error
-		cfg.Host, err = internal.InitHost(ctx, multiaddr.StringCast("/ip4/0.0.0.0/tcp/6746"))
+		cfg.Host, err = internal.InitHost(ctx, cfg.Libp2pOptions)
 		if err != nil {
 			return nil, err
 		}
@@ -112,6 +113,13 @@ func WithHost(host host.Host) LassieOption {
 		cfg.Host = host
 	}
 }
+
+func WithLibp2pOpts(libp2pOptions ...libp2p.Option) LassieOption {
+	return func(cfg *LassieConfig) {
+		cfg.Libp2pOptions = libp2pOptions
+	}
+}
+
 func (l *Lassie) Retrieve(ctx context.Context, request types.RetrievalRequest) (*types.RetrievalStats, error) {
 	var cancel context.CancelFunc
 	if l.cfg.GlobalTimeout != time.Duration(0) {

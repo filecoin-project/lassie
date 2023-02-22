@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/filecoin-project/lassie/pkg/internal/limitstore"
 	"github.com/filecoin-project/lassie/pkg/internal/streamingstore"
 	lassie "github.com/filecoin-project/lassie/pkg/lassie"
 	"github.com/filecoin-project/lassie/pkg/retriever"
@@ -17,7 +18,7 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 )
 
-func ipfsHandler(lassie *lassie.Lassie, tempDir string) func(http.ResponseWriter, *http.Request) {
+func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
 		logger := newRequestLogger(req.Method, req.URL.Path)
 		logger.logPath()
@@ -168,12 +169,16 @@ func ipfsHandler(lassie *lassie.Lassie, tempDir string) func(http.ResponseWriter
 			}
 		}
 
-		store := streamingstore.NewStreamingStore(req.Context(), []cid.Cid{rootCid}, tempDir, getWriter, errorCb)
+		streamingStore := streamingstore.NewStreamingStore(req.Context(), []cid.Cid{rootCid}, cfg.TempDir, getWriter, errorCb)
 		defer func() {
-			if err := store.Close(); err != nil {
+			if err := streamingStore.Close(); err != nil {
 				log.Errorw("failed to close streaming store after retrieval", "retrievalId", retrievalId, "err", err)
 			}
 		}()
+		var store limitstore.Storage = streamingStore
+		if cfg.MaxBlocksPerRequest > 0 {
+			store = limitstore.NewLimitStore(store, cfg.MaxBlocksPerRequest)
+		}
 		linkSystem := cidlink.DefaultLinkSystem()
 		linkSystem.SetReadStorage(store)
 		linkSystem.SetWriteStorage(store)
