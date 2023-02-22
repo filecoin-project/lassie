@@ -6,6 +6,8 @@ import (
 
 	"github.com/filecoin-project/lassie/pkg/lassie"
 	httpserver "github.com/filecoin-project/lassie/pkg/server/http"
+	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
 	"github.com/urfave/cli/v2"
 )
 
@@ -34,6 +36,38 @@ var daemonFlags = []cli.Flag{
 		DefaultText: "os temp directory",
 		EnvVars:     []string{"LASSIE_TEMP_DIRECTORY"},
 	},
+	&cli.Uint64Flag{
+		Name:        "maxblocks",
+		Aliases:     []string{"mb"},
+		Usage:       "maximum number of blocks sent before closing connection",
+		Value:       0,
+		DefaultText: "no limit",
+		EnvVars:     []string{"LASSIE_MAX_BLOCKS_PER_REQUEST"},
+	},
+	&cli.Uint64Flag{
+		Name:        "maxblocks",
+		Aliases:     []string{"mb"},
+		Usage:       "maximum number of blocks sent before closing connection",
+		Value:       0,
+		DefaultText: "no limit",
+		EnvVars:     []string{"LASSIE_MAX_BLOCKS_PER_REQUEST"},
+	},
+	&cli.IntFlag{
+		Name:        "libp2p-conns-lowwater",
+		Aliases:     []string{"lw"},
+		Usage:       "lower limit of libp2p connections",
+		Value:       0,
+		DefaultText: "libp2p default",
+		EnvVars:     []string{"LASSIE_LIBP2P_CONNECTIONS_LOWWATER"},
+	},
+	&cli.IntFlag{
+		Name:        "libp2p-conns-highwater",
+		Aliases:     []string{"hw"},
+		Usage:       "upper limit of libp2p connections",
+		Value:       0,
+		DefaultText: "libp2p default",
+		EnvVars:     []string{"LASSIE_LIBP2P_CONNECTIONS_HIGHWATER"},
+	},
 	FlagEventRecorderAuth,
 	FlagEventRecorderInstanceId,
 	FlagEventRecorderUrl,
@@ -53,9 +87,20 @@ func daemonCommand(cctx *cli.Context) error {
 	address := cctx.String("address")
 	port := cctx.Uint("port")
 	tempDir := cctx.String("tempdir")
+	maxBlocks := cctx.Uint64("maxblocks")
+	libp2pLowWater := cctx.Int("libp2p-conns-lowwater")
+	libp2pHighWater := cctx.Int("libp2p-conns-highwater")
 
+	lassieOpts := []lassie.LassieOption{lassie.WithProviderTimeout(20 * time.Second)}
+	if libp2pHighWater != 0 || libp2pLowWater != 0 {
+		connManager, err := connmgr.NewConnManager(libp2pLowWater, libp2pHighWater)
+		if err != nil {
+			return err
+		}
+		lassieOpts = append(lassieOpts, lassie.WithLibp2pOpts(libp2p.ConnectionManager(connManager)))
+	}
 	// create a lassie instance
-	lassie, err := lassie.NewLassie(cctx.Context, lassie.WithProviderTimeout(20*time.Second))
+	lassie, err := lassie.NewLassie(cctx.Context, lassieOpts...)
 	if err != nil {
 		return err
 	}
@@ -63,7 +108,13 @@ func daemonCommand(cctx *cli.Context) error {
 	// create and subscribe an event recorder API if configured
 	setupLassieEventRecorder(cctx, lassie)
 
-	httpServer, err := httpserver.NewHttpServer(cctx.Context, lassie, address, port, tempDir)
+	httpServer, err := httpserver.NewHttpServer(cctx.Context, lassie, httpserver.HttpServerConfig{
+		Address:             address,
+		Port:                port,
+		TempDir:             tempDir,
+		MaxBlocksPerRequest: maxBlocks,
+	})
+
 	if err != nil {
 		log.Errorw("failed to create http server", "err", err)
 		return err

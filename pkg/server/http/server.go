@@ -20,9 +20,16 @@ type HttpServer struct {
 	server   *http.Server
 }
 
+type HttpServerConfig struct {
+	Address             string
+	Port                uint
+	TempDir             string
+	MaxBlocksPerRequest uint64
+}
+
 // NewHttpServer creates a new HttpServer
-func NewHttpServer(ctx context.Context, lassie *lassie.Lassie, address string, port uint, tempDir string) (*HttpServer, error) {
-	addr := fmt.Sprintf("%s:%d", address, port)
+func NewHttpServer(ctx context.Context, lassie *lassie.Lassie, cfg HttpServerConfig) (*HttpServer, error) {
+	addr := fmt.Sprintf("%s:%d", cfg.Address, cfg.Port)
 	listener, err := net.Listen("tcp", addr) // assigns a port if port is 0
 	if err != nil {
 		return nil, err
@@ -33,7 +40,7 @@ func NewHttpServer(ctx context.Context, lassie *lassie.Lassie, address string, p
 	// create server
 	mux := http.NewServeMux()
 	server := &http.Server{
-		Addr:        fmt.Sprintf(":%d", port),
+		Addr:        fmt.Sprintf(":%d", cfg.Port),
 		BaseContext: func(listener net.Listener) context.Context { return ctx },
 		Handler:     mux,
 	}
@@ -46,7 +53,7 @@ func NewHttpServer(ctx context.Context, lassie *lassie.Lassie, address string, p
 	}
 
 	// Routes
-	mux.HandleFunc("/ipfs/", ipfsHandler(lassie, tempDir))
+	mux.HandleFunc("/ipfs/", ipfsHandler(lassie, cfg))
 
 	return httpServer, nil
 }

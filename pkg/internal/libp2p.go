@@ -9,6 +9,10 @@ import (
 	"github.com/multiformats/go-multiaddr"
 )
 
-func InitHost(ctx context.Context, listenAddrs ...multiaddr.Multiaddr) (host.Host, error) {
-	return libp2p.New(libp2p.ListenAddrs(listenAddrs...), libp2p.Identity(nil), libp2p.ResourceManager(&network.NullResourceManager{}))
+func InitHost(ctx context.Context, opts []libp2p.Option, listenAddrs ...multiaddr.Multiaddr) (host.Host, error) {
+	opts = append([]libp2p.Option{libp2p.Identity(nil), libp2p.ResourceManager(&network.NullResourceManager{})}, opts...)
+	if len(listenAddrs) > 0 {
+		opts = append([]libp2p.Option{libp2p.ListenAddrs(listenAddrs...)}, opts...)
+	}
+	return libp2p.New(opts...)
 }

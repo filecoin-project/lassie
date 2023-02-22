@@ -50,7 +50,11 @@ func TestHttpRetrieval(t *testing.T) {
 	req.NoError(err)
 
 	// Start an HTTP server
-	httpServer, err := httpserver.NewHttpServer(ctx, lassie, "127.0.0.1", 0, t.TempDir())
+	httpServer, err := httpserver.NewHttpServer(ctx, lassie, httpserver.HttpServerConfig{
+		Address: "127.0.0.1",
+		Port:    0,
+		TempDir: t.TempDir(),
+	})
 	req.NoError(err)
 	go func() {
 		err := httpServer.Start()
