@@ -1,0 +1,104 @@
+# Lassie: HTTP Specification
+
+![wip](https://img.shields.io/badge/status-wip-orange.svg?style=flat-square)
+
+**Author(s)**:
+
+- [Hannah Howard](https://github.com/hannahhoward)
+- [Kyle Huntsman](https://github.com/kylehuntsman)
+- [Rod Vagg](https://github.com/rvagg)
+
+**Maintainer(s)**:
+
+- [Hannah Howard](https://github.com/hannahhoward)
+- [Kyle Huntsman](https://github.com/kylehuntsman)
+- [Rod Vagg](https://github.com/rvagg)
+
+* * *
+
+## Table of Contents
+
+- [Introduction](#introduction)
+- [Specification](#specification)
+    - [`GET /ipfs/{cid}[?params]`](#get-ipfscidparams)
+
+
+## Introduction
+
+The Lassie HTTP Daemon is an HTTP interface for retrieving CAR files from the Filecoin network. It fetches content via CIDs over a number of possible protocols, choosing the best protocol for the job.
+
+## Specification
+
+### `GET /ipfs/{cid}[?params]`
+
+Retrieves from peers that have the given CID content, downloading as a CAR file.
+
+#### Request
+
+##### Headers
+
+- `Accept` - _Optional_. Used to specify the response content type. Optional only if a `format` query parameter is provided, otherwise required.
+
+    If provided, the value must explicitly or implicitly include `application/vnd.ipld.car`.
+
+- `X-Request-Id` - _Optional_. Used to provide a unique request value that can be correlated with a unique retrieval ID in the logs.
+
+##### Path Parameters
+
+- `cid` - _Required_. The default string representation of the CID.
+
+##### Query Parameters
+
+- `filename` - _Optional_. Used to override the name of the downloaded CAR file.
+
+    The filename extension cannot be missing and must be `.car`.
+
+- `format` - _Optional_. `format=<format>` can be used to specify the response content type. This is a URL-friendly alternative to providing an `Accept` header. Optional only if an `Accept` header value is provided, otherwise required.
+
+    If provided, the format value must be `car`. Example: `format=car`.
+
+    `format=car` &rarr; `Accept: application/vnd.ipld.car`
+
+#### Response
+
+#### Status Codes
+
+- `200` - OK
+
+- `400` - Bad Request
+    - No acceptable content type provided in the `Accept` header
+    - Requested a non-supported format via the `format` query parameter
+    - Neither providing a valid `Accept` header or `format` query parameter
+    - No extension given in `filename` query parameter
+    - Used a non-supported extension in the `filename` query parameter
+
+- `404` - No candidates for the given CID were found
+
+- `500` - Internal Server Error
+    - The given CID path parameter could not be parsed
+    - An internal retrieval ID failed to generate
+    - The CAR file failed to write
+
+- `504` - Timeout occured while retrieving the given CID
+
+##### Headers
+
+- `Accept-Ranges` - Returns with `none` if the block order in the CAR stream is not deterministic
+
+- `Cache-Control` - Returns with `public, max-age=29030400, immutable`
+
+- `Content-Disposition` - Returns as an attachment, using the given `filename` query parameter if provided.
+
+- `Content-Type` - Returns with `application/vnd.ipld.car; version=1`
+
+- `Etag` - Returns with the given CID with the format as a suffix.
+
+    Example: `bafy...foo.car`
+
+- `X-Content-Type-Options` - Returns with `nosniff` to indicate that the `Content-Type` should be followed and not to be changed. This is a security feature, ensures that non-executable binary response types are not used in `<script>` and `<style>` HTML tags.
+
+- `X-Ipfs-Path` - Returns the original, requested content path before any path resolution and traversal is performed.
+
+    Example:  `/ipfs/bafy...foo`
+
+- `X-Trace-ID` - Returns the given `X-Request-Id` header value if provided, otherwise returns an ID that uniquely identifies the retrieval request.
