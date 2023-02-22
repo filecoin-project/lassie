@@ -44,14 +44,6 @@ var daemonFlags = []cli.Flag{
 		DefaultText: "no limit",
 		EnvVars:     []string{"LASSIE_MAX_BLOCKS_PER_REQUEST"},
 	},
-	&cli.Uint64Flag{
-		Name:        "maxblocks",
-		Aliases:     []string{"mb"},
-		Usage:       "maximum number of blocks sent before closing connection",
-		Value:       0,
-		DefaultText: "no limit",
-		EnvVars:     []string{"LASSIE_MAX_BLOCKS_PER_REQUEST"},
-	},
 	&cli.IntFlag{
 		Name:        "libp2p-conns-lowwater",
 		Aliases:     []string{"lw"},
