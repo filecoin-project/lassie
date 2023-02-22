@@ -41,8 +41,9 @@ import (
 var QueryErrorTriggerCid = cid.MustParse("bafkqaalb")
 
 type MockRetrievalNet struct {
-	RemoteEvents []datatransfer.Event
+	RemoteDatastore datastore.Datastore // can be provided to customise data interactions
 
+	RemoteEvents     []datatransfer.Event
 	FinishedChan     chan struct{}
 	MN               lpmock.Mocknet
 	HostLocal        host.Host
@@ -159,7 +160,10 @@ func (mrn *MockRetrievalNet) SetupQuery(ctx context.Context, t *testing.T, expec
 
 func (mrn *MockRetrievalNet) SetupRetrieval(ctx context.Context, t *testing.T) {
 	// Setup remote datastore and blockstore
-	dsRemote := dss.MutexWrap(datastore.NewMapDatastore())
+	if mrn.RemoteDatastore == nil {
+		mrn.RemoteDatastore = datastore.NewMapDatastore()
+	}
+	dsRemote := dss.MutexWrap(mrn.RemoteDatastore)
 	dtDsRemote := namespace.Wrap(dsRemote, datastore.NewKey("datatransfer"))
 	bsRemote := bstore.NewBlockstore(namespace.Wrap(dsRemote, datastore.NewKey("blockstore")))
 	mrn.LinkSystemRemote = storeutil.LinkSystemForBlockstore(bsRemote)
