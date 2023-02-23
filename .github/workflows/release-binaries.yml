@@ -7,7 +7,7 @@ on:
 jobs:
   releases-matrix:
     name: Release Go Binary
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event.workflow_dispatch || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     env:
       APP_VERSION: ""
@@ -32,6 +32,7 @@ jobs:
         goarch: ${{ matrix.goarch }}
         goversion: "https://go.dev/dl/go1.19.5.linux-amd64.tar.gz"
         project_path: "./cmd/lassie"
+        release_tag:  ${{ env.APP_VERSION }}
         binary_name: "lassie"
         ldflags: "-X main.version=${{ env.APP_VERSION }}"
         extra_files: LICENSE-APACHE LICENSE-MIT README.md
