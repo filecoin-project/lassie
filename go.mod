@@ -5,7 +5,6 @@ go 1.19
 require (
 	contrib.go.opencensus.io/exporter/prometheus v0.4.2
 	github.com/benbjohnson/clock v1.3.0
-	github.com/btcsuite/btcd v0.22.1
 	github.com/dustin/go-humanize v1.0.0
 	github.com/filecoin-project/go-address v1.1.0
 	github.com/filecoin-project/go-data-transfer/v2 v2.0.0-rc2.0.20230214154556-9cac4a18a101
@@ -26,10 +25,9 @@ require (
 	github.com/ipfs/go-log/v2 v2.5.1
 	github.com/ipld/go-car/v2 v2.7.0
 	github.com/ipld/go-ipld-prime v0.20.0
+	github.com/ipld/go-ipld-selector-text-lite v0.0.1
 	github.com/ipni/storetheindex v0.5.4
 	github.com/libp2p/go-libp2p v0.25.1
-	github.com/libp2p/go-libp2p-core v0.20.1
-	github.com/libp2p/go-libp2p-peerstore v0.8.0
 	github.com/libp2p/go-libp2p-testing v0.12.0
 	github.com/multiformats/go-multiaddr v0.8.0
 	github.com/multiformats/go-multicodec v0.8.0
@@ -46,8 +44,6 @@ require (
 )
 
 require (
-	github.com/btcsuite/btcd/chaincfg/chainhash v1.0.1 // indirect
-	github.com/btcsuite/btclog v0.0.0-20170628155309-84c8d2346e9f // indirect
 	github.com/ipfs/go-ipfs-chunker v0.0.5 // indirect
 	github.com/whyrusleeping/chunker v0.0.0-20181014151217-fe64bd25879f // indirect
 )
