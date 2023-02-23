@@ -427,8 +427,11 @@ func logEvent(event types.RetrievalEvent) {
 			"queryResponse:UnsealPrice", tevent.QueryResponse().UnsealPrice)
 	case events.EventWithCandidates:
 		var cands = strings.Builder{}
-		for _, c := range tevent.Candidates() {
+		for i, c := range tevent.Candidates() {
 			cands.WriteString(c.MinerPeer.ID.String())
+			if i < len(tevent.Candidates())-1 {
+				cands.WriteString(", ")
+			}
 		}
 		logadd("candidates", cands.String())
 	case events.RetrievalEventFailed:

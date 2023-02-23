@@ -80,17 +80,17 @@ func (d *DirectCandidateFinder) FindCandidatesAsync(ctx context.Context, c cid.C
 				return
 			}
 			// check for support for Boost libp2p transports protocol
-			supportedTransportsProtocol, err := d.h.Peerstore().FirstSupportedProtocol(provider.ID, lp2ptransports.TransportsProtocolID)
-			if err != nil {
-				return
-			}
-			if supportedTransportsProtocol == lp2ptransports.TransportsProtocolID {
+			transportsClient := lp2ptransports.NewTransportsClient(d.h)
+			qr, err := transportsClient.SendQuery(ctx, provider.ID)
+			if err == nil {
+				log.Debugw("retrieving metadata from transports protocol", "peer", provider.ID)
 				// if present, construct metadata from Boost libp2p transports response
-				d.retrievalCandidatesFromTransportsProtocol(ctx, provider, cs)
+				d.retrievalCandidatesFromTransportsProtocol(ctx, qr, provider, cs)
 			} else {
+				log.Debugw("retrieving metadata from libp2p protocol list", "peer", provider.ID)
 				// if not present, just make guesses based on list of supported libp2p
 				// protocols catalogued via identify protocol
-				d.retrievalCandidatesFromProtocolList(ctx, provider, cs)
+				d.retrievalCandidatesFromProtocolProbing(ctx, provider, cs)
 			}
 		}()
 	}
@@ -101,43 +101,34 @@ func (d *DirectCandidateFinder) FindCandidatesAsync(ctx context.Context, c cid.C
 	return candidateResults, nil
 }
 
-func (d *DirectCandidateFinder) retrievalCandidatesFromProtocolList(ctx context.Context, provider peer.AddrInfo, cs candidateSender) {
+func (d *DirectCandidateFinder) retrievalCandidatesFromProtocolProbing(ctx context.Context, provider peer.AddrInfo, cs candidateSender) {
 	var protocols []metadata.Protocol
-	bitswapProtocols, err := d.h.Peerstore().SupportsProtocols(provider.ID,
+	s, err := d.h.NewStream(ctx, provider.ID,
 		bsnet.ProtocolBitswap,
 		bsnet.ProtocolBitswapOneOne,
 		bsnet.ProtocolBitswapOneZero,
 		bsnet.ProtocolBitswapNoVers,
 	)
-	if err != nil {
-		_ = cs.sendError(err)
-		return
-	}
-	if len(bitswapProtocols) > 0 {
+	if err == nil {
+		s.Close()
 		protocols = append(protocols, &metadata.Bitswap{})
 	}
-	graphsyncProtocols, err := d.h.Peerstore().SupportsProtocols(provider.ID,
-		gsnet.ProtocolGraphsync_2_0_0,
-		datatransfer.ProtocolDataTransfer1_2,
-	)
-	if err != nil {
-		_ = cs.sendError(err)
-		return
-	}
 	// must support both graphsync & data transfer to do graphsync filecoin v1 retrieval
-	if len(graphsyncProtocols) > 1 {
-		protocols = append(protocols, &metadata.GraphsyncFilecoinV1{})
+	s, err = d.h.NewStream(ctx, provider.ID,
+		gsnet.ProtocolGraphsync_2_0_0)
+	if err == nil {
+		s.Close()
+		s, err = d.h.NewStream(ctx, provider.ID, datatransfer.ProtocolDataTransfer1_2)
+		if err == nil {
+			s.Close()
+			protocols = append(protocols, &metadata.GraphsyncFilecoinV1{})
+
+		}
 	}
 	_ = cs.sendCandidate(provider, protocols...)
 }
 
-func (d *DirectCandidateFinder) retrievalCandidatesFromTransportsProtocol(ctx context.Context, provider peer.AddrInfo, cs candidateSender) {
-	transportsClient := lp2ptransports.NewTransportsClient(d.h)
-	qr, err := transportsClient.SendQuery(ctx, provider.ID)
-	if err != nil {
-		_ = cs.sendError(err)
-		return
-	}
+func (d *DirectCandidateFinder) retrievalCandidatesFromTransportsProtocol(ctx context.Context, qr *lp2ptransports.QueryResponse, provider peer.AddrInfo, cs candidateSender) {
 	for _, protocol := range qr.Protocols {
 		// try to parse addr infos directly
 		addrs, err := peer.AddrInfosFromP2pAddrs(protocol.Addresses...)
