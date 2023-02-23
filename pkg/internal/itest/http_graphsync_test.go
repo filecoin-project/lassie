@@ -44,22 +44,24 @@ func TestHttpRetrieval(t *testing.T) {
 			t.Logf("random seed: %d", rndSeed)
 			var rndReader io.Reader = rand.New(rand.NewSource(rndSeed))
 
-			// Setup remote, with data, and prepare it for query and retrieval
-			mrn := mocknet.NewMockRetrievalNet()
-			mrn.SetupNet(ctx, t)
-			mrn.SetupRetrieval(ctx, t)
-			rootCid, srcBytes := unixfs.GenerateFile(t, &mrn.LinkSystemRemote, rndReader, 4<<20)
+			mrn := mocknet.NewMockRetrievalNet(ctx, t)
+			mrn.AddGraphsyncPeers(1)
+			finishedChan := mocknet.SetupRetrieval(t, mrn.Remotes[0])
+			mrn.MN.LinkAll()
+
+			rootCid, srcBytes := unixfs.GenerateFile(t, &mrn.Remotes[0].LinkSystem, rndReader, 4<<20)
+			mrn.Remotes[0].RootCid = rootCid // for the CandidateFinder
 			srcData := []unixfs.DirEntry{{Path: "", Cid: rootCid, Content: srcBytes}}
 			qr := testQueryResponse
 			qr.MinPricePerByte = abi.NewTokenAmount(0) // make it free so it's not filtered
-			mrn.SetupQuery(ctx, t, rootCid, qr)
+			mocknet.SetupQuery(t, mrn.Remotes[0], rootCid, qr)
 
 			// Setup a new lassie
 			req := require.New(t)
 			lassie, err := lassie.NewLassie(
 				ctx,
 				lassie.WithProviderTimeout(20*time.Second),
-				lassie.WithHost(mrn.HostLocal),
+				lassie.WithHost(mrn.Self),
 				lassie.WithFinder(mrn.Finder),
 			)
 			req.NoError(err)
@@ -93,6 +95,8 @@ func TestHttpRetrieval(t *testing.T) {
 			req.NoError(err)
 			resp.Body.Close()
 			req.NoError(err)
+
+			mocknet.WaitForFinish(ctx, t, finishedChan, 1*time.Second)
 
 			if testCase.limit == 0 {
 				// Open the CAR bytes as read-only storage

@@ -7,26 +7,18 @@ import (
 	"time"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer/v2"
-	dtimpl "github.com/filecoin-project/go-data-transfer/v2/impl"
-	dtnet "github.com/filecoin-project/go-data-transfer/v2/network"
-	gstransport "github.com/filecoin-project/go-data-transfer/v2/transport/graphsync"
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/index-provider/metadata"
+	"github.com/filecoin-project/lassie/pkg/internal/itest/testpeer"
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-datastore"
-	"github.com/ipfs/go-datastore/namespace"
-	dss "github.com/ipfs/go-datastore/sync"
-	gsimpl "github.com/ipfs/go-graphsync/impl"
-	gsnet "github.com/ipfs/go-graphsync/network"
-	"github.com/ipfs/go-graphsync/storeutil"
-	bstore "github.com/ipfs/go-ipfs-blockstore"
+	bsnet "github.com/ipfs/go-libipfs/bitswap/network"
+	bssrv "github.com/ipfs/go-libipfs/bitswap/server"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/fluent/qp"
-	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -34,73 +26,64 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	lpmock "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/stretchr/testify/require"
-
-	dttestutil "github.com/filecoin-project/go-data-transfer/v2/testutil"
 )
 
 var QueryErrorTriggerCid = cid.MustParse("bafkqaalb")
 
 type MockRetrievalNet struct {
-	RemoteEvents []datatransfer.Event
+	ctx               context.Context
+	t                 *testing.T
+	testPeerGenerator testpeer.TestPeerGenerator
 
-	FinishedChan     chan struct{}
-	MN               lpmock.Mocknet
-	HostLocal        host.Host
-	HostRemote       host.Host
-	LinkSystemRemote linking.LinkSystem
-	Finder           retriever.CandidateFinder
+	RemoteEvents [][]datatransfer.Event
+	FinishedChan []chan struct{}
+	MN           lpmock.Mocknet
+	Self         host.Host
+	Remotes      []testpeer.TestPeer
+	Finder       retriever.CandidateFinder
 }
 
-func NewMockRetrievalNet() *MockRetrievalNet {
+func NewMockRetrievalNet(ctx context.Context, t *testing.T) *MockRetrievalNet {
 	mrn := &MockRetrievalNet{
-		RemoteEvents: make([]datatransfer.Event, 0),
-		FinishedChan: make(chan struct{}, 1),
+		ctx:          ctx,
+		t:            t,
+		Remotes:      make([]testpeer.TestPeer, 0),
+		RemoteEvents: make([][]datatransfer.Event, 0),
+		FinishedChan: make([]chan struct{}, 0),
 	}
 	mrn.Finder = &mockCandidateFinder{mrn}
+	mrn.t.Cleanup(func() {
+		require.NoError(mrn.t, mrn.TearDown())
+	})
+	// Setup network
+	mrn.MN = lpmock.New()
+	mrn.testPeerGenerator = testpeer.NewTestPeerGenerator(mrn.ctx, mrn.t, mrn.MN, []bsnet.NetOpt{}, []bssrv.Option{})
+	h, err := mrn.MN.GenPeer()
+	mrn.Self = h
+	require.NoError(mrn.t, err)
 	return mrn
 }
 
-type mockCandidateFinder struct {
-	mrn *MockRetrievalNet
+func (mrn *MockRetrievalNet) AddBitswapPeers(n int) {
+	peers := mrn.testPeerGenerator.BitswapPeers(n)
+	for i := 0; i < n; i++ {
+		mrn.Remotes = append(mrn.Remotes, peers[i])
+		mrn.RemoteEvents = append(mrn.RemoteEvents, make([]datatransfer.Event, 0)) // not used for bitswap
+		mrn.FinishedChan = append(mrn.FinishedChan, make(chan struct{}, 1))        // not used for bitswap
+	}
 }
 
-func (mcf *mockCandidateFinder) FindCandidates(ctx context.Context, cid cid.Cid) ([]types.RetrievalCandidate, error) {
-	return []types.RetrievalCandidate{
-		{
-			MinerPeer: peer.AddrInfo{ID: mcf.mrn.HostRemote.ID()},
-			RootCid:   cid,
-			Metadata:  metadata.Default.New(&metadata.GraphsyncFilecoinV1{PieceCID: cid}),
-		},
-	}, nil
+func (mrn *MockRetrievalNet) AddGraphsyncPeers(n int) {
+	peers := mrn.testPeerGenerator.GraphsyncPeers(n)
+	for i := 0; i < n; i++ {
+		mrn.Remotes = append(mrn.Remotes, peers[i])
+		mrn.RemoteEvents = append(mrn.RemoteEvents, make([]datatransfer.Event, 0))
+		mrn.FinishedChan = append(mrn.FinishedChan, make(chan struct{}, 1))
+	}
 }
 
-func (mcf *mockCandidateFinder) FindCandidatesAsync(ctx context.Context, cid cid.Cid) (<-chan types.FindCandidatesResult, error) {
-	ch := make(chan types.FindCandidatesResult)
-	go func() {
-		cand, err := mcf.FindCandidates(ctx, cid)
-		ch <- types.FindCandidatesResult{Candidate: cand[0], Err: err}
-		close(ch)
-	}()
-	return ch, nil
-}
-
-func (mrn *MockRetrievalNet) SetupNet(ctx context.Context, t *testing.T) {
-	t.Cleanup(func() {
-		require.NoError(t, mrn.TearDown())
-	})
-
-	// Setup network
-	mrn.MN = lpmock.New()
-	var err error
-	mrn.HostRemote, err = mrn.MN.GenPeer()
-	require.NoError(t, err)
-	mrn.HostLocal, err = mrn.MN.GenPeer()
-	require.NoError(t, err)
-	require.NoError(t, mrn.MN.LinkAll())
-}
-
-func (mrn *MockRetrievalNet) SetupQuery(ctx context.Context, t *testing.T, expectCid cid.Cid, qr retrievalmarket.QueryResponse) {
-	mrn.HostRemote.SetStreamHandler(retrievalmarket.QueryProtocolID, func(s network.Stream) {
+func SetupQuery(t *testing.T, remote testpeer.TestPeer, expectCid cid.Cid, qr retrievalmarket.QueryResponse) {
+	remote.Host.SetStreamHandler(retrievalmarket.QueryProtocolID, func(s network.Stream) {
 		// we're doing some manual IPLD work here to exercise other parts of the
 		// messaging stack to make sure we're communicating according to spec
 
@@ -157,44 +140,76 @@ func (mrn *MockRetrievalNet) SetupQuery(ctx context.Context, t *testing.T, expec
 	})
 }
 
-func (mrn *MockRetrievalNet) SetupRetrieval(ctx context.Context, t *testing.T) {
-	// Setup remote datastore and blockstore
-	dsRemote := dss.MutexWrap(datastore.NewMapDatastore())
-	dtDsRemote := namespace.Wrap(dsRemote, datastore.NewKey("datatransfer"))
-	bsRemote := bstore.NewBlockstore(namespace.Wrap(dsRemote, datastore.NewKey("blockstore")))
-	mrn.LinkSystemRemote = storeutil.LinkSystemForBlockstore(bsRemote)
-
-	// Setup remote data transfer
-	gsNetRemote := gsnet.NewFromLibp2pHost(mrn.HostRemote)
-	dtNetRemote := dtnet.NewFromLibp2pHost(mrn.HostRemote, dtnet.RetryParameters(0, 0, 0, 0))
-	gsRemote := gsimpl.New(ctx, gsNetRemote, mrn.LinkSystemRemote)
-	gstpRemote := gstransport.NewTransport(mrn.HostRemote.ID(), gsRemote)
-	dtRemote, err := dtimpl.NewDataTransfer(dtDsRemote, dtNetRemote, gstpRemote)
-	require.NoError(t, err)
-
-	// Wait for remote data transfer to be ready
-	dttestutil.StartAndWaitForReady(ctx, t, dtRemote)
-
+func SetupRetrieval(t *testing.T, remote testpeer.TestPeer) chan []datatransfer.Event {
 	// Register DealProposal voucher type with automatic Pull acceptance
 	remoteDealValidator := &mockDealValidator{acceptPull: true}
-	require.NoError(t, dtRemote.RegisterVoucherType(retrievalmarket.DealProposalType, remoteDealValidator))
+	require.NoError(t, remote.DatatransferServer.RegisterVoucherType(retrievalmarket.DealProposalType, remoteDealValidator))
+
+	remoteEvents := make([]datatransfer.Event, 0)
+	finishedChan := make(chan []datatransfer.Event, 1)
 
 	// Record remote events
 	subscriberRemote := func(event datatransfer.Event, channelState datatransfer.ChannelState) {
-		mrn.RemoteEvents = append(mrn.RemoteEvents, event)
+		remoteEvents = append(remoteEvents, event)
 		if event.Code == datatransfer.CleanupComplete {
-			mrn.FinishedChan <- struct{}{}
+			finishedChan <- remoteEvents
 		}
 	}
-	dtRemote.SubscribeToEvents(subscriberRemote)
+	remote.DatatransferServer.SubscribeToEvents(subscriberRemote)
+
+	return finishedChan
 }
 
-func (mrn *MockRetrievalNet) WaitForFinish(ctx context.Context, t *testing.T) {
-	require.Eventually(t, ChanCheck(ctx, t, mrn.FinishedChan), 1*time.Second, 100*time.Millisecond)
+func WaitForFinish(ctx context.Context, t *testing.T, finishChan chan []datatransfer.Event, timeout time.Duration) []datatransfer.Event {
+	var events []datatransfer.Event
+	require.Eventually(t, func() bool {
+		select {
+		case events = <-finishChan:
+			return true
+		case <-ctx.Done():
+			require.Fail(t, ctx.Err().Error())
+			return false
+		default:
+			return false
+		}
+	}, timeout, 100*time.Millisecond)
+	return events
 }
 
 func (mrn *MockRetrievalNet) TearDown() error {
 	return mrn.MN.Close()
+}
+
+type mockCandidateFinder struct {
+	mrn *MockRetrievalNet
+}
+
+func (mcf *mockCandidateFinder) FindCandidates(ctx context.Context, cid cid.Cid) ([]types.RetrievalCandidate, error) {
+	candidates := make([]types.RetrievalCandidate, 0)
+	for _, h := range mcf.mrn.Remotes {
+		if h.RootCid.Equals(cid) {
+			var md metadata.Metadata
+			if h.BitswapServer != nil {
+				md = metadata.Default.New(metadata.Bitswap{})
+			} else {
+				md = metadata.Default.New(&metadata.GraphsyncFilecoinV1{PieceCID: cid})
+			}
+			candidates = append(candidates, types.RetrievalCandidate{MinerPeer: h.AddrInfo(), RootCid: cid, Metadata: md})
+		}
+	}
+	return candidates, nil
+}
+
+func (mcf *mockCandidateFinder) FindCandidatesAsync(ctx context.Context, cid cid.Cid) (<-chan types.FindCandidatesResult, error) {
+	ch := make(chan types.FindCandidatesResult)
+	go func() {
+		cand, _ := mcf.FindCandidates(ctx, cid)
+		for _, c := range cand {
+			ch <- types.FindCandidatesResult{Candidate: c, Err: nil}
+		}
+		close(ch)
+	}()
+	return ch, nil
 }
 
 var _ datatransfer.RequestValidator = (*mockDealValidator)(nil)
@@ -228,18 +243,4 @@ func (mdv *mockDealValidator) ValidateRestart(
 	channel datatransfer.ChannelState,
 ) (datatransfer.ValidationResult, error) {
 	return datatransfer.ValidationResult{Accepted: false}, errors.New("not supported")
-}
-
-func ChanCheck(ctx context.Context, t *testing.T, ch <-chan struct{}) func() bool {
-	return func() bool {
-		select {
-		case <-ch:
-			return true
-		case <-ctx.Done():
-			require.Fail(t, ctx.Err().Error())
-			return false
-		default:
-			return false
-		}
-	}
 }

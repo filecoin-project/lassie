@@ -5,13 +5,22 @@ import (
 	"testing"
 	"time"
 
+	datatransfer "github.com/filecoin-project/go-data-transfer/v2"
+	dtimpl "github.com/filecoin-project/go-data-transfer/v2/impl"
+	dtnet "github.com/filecoin-project/go-data-transfer/v2/network"
+	gstransport "github.com/filecoin-project/go-data-transfer/v2/transport/graphsync"
+	"github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	delayed "github.com/ipfs/go-datastore/delayed"
 	ds_sync "github.com/ipfs/go-datastore/sync"
+	gsimpl "github.com/ipfs/go-graphsync/impl"
+	gsnet "github.com/ipfs/go-graphsync/network"
+	"github.com/ipfs/go-graphsync/storeutil"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	delay "github.com/ipfs/go-ipfs-delay"
 	bsnet "github.com/ipfs/go-libipfs/bitswap/network"
 	"github.com/ipfs/go-libipfs/bitswap/server"
+	"github.com/ipld/go-ipld-prime/linking"
 	routinghelpers "github.com/libp2p/go-libp2p-routing-helpers"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	p2ptestutil "github.com/libp2p/go-libp2p-testing/netutil"
@@ -55,20 +64,40 @@ func (g *TestPeerGenerator) Close() error {
 }
 
 // Next generates a new test peer with bitswap + dependencies
-func (g *TestPeerGenerator) Next() TestPeer {
+func (g *TestPeerGenerator) NextBitswap() TestPeer {
 	g.seq++
 	p, err := p2ptestutil.RandTestBogusIdentity()
 	require.NoError(g.t, err)
-	tp, err := NewTestPeer(g.ctx, g.mn, p, g.netOptions, g.bsOptions)
+	tp, err := NewTestBitswapPeer(g.ctx, g.mn, p, g.netOptions, g.bsOptions)
+	require.NoError(g.t, err)
+	return tp
+}
+
+// Next generates a new test peer with graphsync + dependencies
+func (g *TestPeerGenerator) NextGraphsync() TestPeer {
+	g.seq++
+	p, err := p2ptestutil.RandTestBogusIdentity()
+	require.NoError(g.t, err)
+	tp, err := NewTestGraphsyncPeer(g.ctx, g.mn, p)
 	require.NoError(g.t, err)
 	return tp
 }
 
 // Peers creates N test peers with bitswap + dependencies
-func (g *TestPeerGenerator) Peers(n int) []TestPeer {
+func (g *TestPeerGenerator) BitswapPeers(n int) []TestPeer {
 	var instances []TestPeer
 	for j := 0; j < n; j++ {
-		inst := g.Next()
+		inst := g.NextBitswap()
+		instances = append(instances, inst)
+	}
+	return instances
+}
+
+// Peers creates N test peers with bitswap + dependencies
+func (g *TestPeerGenerator) GraphsyncPeers(n int) []TestPeer {
+	var instances []TestPeer
+	for j := 0; j < n; j++ {
+		inst := g.NextGraphsync()
 		instances = append(instances, inst)
 	}
 	return instances
@@ -89,11 +118,14 @@ func ConnectPeers(instances []TestPeer) {
 
 // TestPeer is a test instance of bitswap + dependencies for integration testing
 type TestPeer struct {
-	ID              peer.ID
-	BitswapServer   *server.Server
-	blockstore      blockstore.Blockstore
-	Host            host.Host
-	blockstoreDelay delay.D
+	ID                 peer.ID
+	BitswapServer      *server.Server
+	DatatransferServer datatransfer.Manager
+	blockstore         blockstore.Blockstore
+	Host               host.Host
+	blockstoreDelay    delay.D
+	LinkSystem         linking.LinkSystem
+	RootCid            cid.Cid
 }
 
 // Blockstore returns the block store for this test instance
@@ -107,36 +139,93 @@ func (i *TestPeer) SetBlockstoreLatency(t time.Duration) time.Duration {
 	return i.blockstoreDelay.Set(t)
 }
 
+func (i TestPeer) AddrInfo() peer.AddrInfo {
+	return peer.AddrInfo{
+		ID:    i.ID,
+		Addrs: i.Host.Addrs(),
+	}
+}
+
 // NewTestPeer creates a test peer instance.
 //
 // NB: It's easy make mistakes by providing the same peer ID to two different
 // instances. To safeguard, use the InstanceGenerator to generate instances. It's
 // just a much better idea.
-func NewTestPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity, netOptions []bsnet.NetOpt, bsOptions []server.Option) (TestPeer, error) {
+func NewTestBitswapPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity, netOptions []bsnet.NetOpt, bsOptions []server.Option) (TestPeer, error) {
+	peer, _, err := newTestPeer(ctx, mn, p)
+	if err != nil {
+		return TestPeer{}, err
+	}
+	bsNet := bsnet.NewFromIpfsHost(peer.Host, routinghelpers.Null{}, netOptions...)
+	bs := server.New(ctx, bsNet, peer.blockstore, bsOptions...)
+	bsNet.Start(bs)
+	peer.BitswapServer = bs
+	return peer, nil
+}
+
+func NewTestGraphsyncPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity) (TestPeer, error) {
+	peer, dstore, err := newTestPeer(ctx, mn, p)
+	if err != nil {
+		return TestPeer{}, err
+	}
+
+	// Setup remote data transfer
+	gsNetRemote := gsnet.NewFromLibp2pHost(peer.Host)
+	dtNetRemote := dtnet.NewFromLibp2pHost(peer.Host, dtnet.RetryParameters(0, 0, 0, 0))
+	gsRemote := gsimpl.New(ctx, gsNetRemote, peer.LinkSystem)
+	gstpRemote := gstransport.NewTransport(peer.Host.ID(), gsRemote)
+	dtRemote, err := dtimpl.NewDataTransfer(dstore, dtNetRemote, gstpRemote)
+	if err != nil {
+		return TestPeer{}, err
+	}
+
+	// Wait for remote data transfer to be ready
+	if err := StartAndWaitForReady(ctx, dtRemote); err != nil {
+		return TestPeer{}, err
+	}
+
+	peer.DatatransferServer = dtRemote
+	return peer, nil
+}
+
+func newTestPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity) (TestPeer, ds.Batching, error) {
 	bsdelay := delay.Fixed(0)
 
 	client, err := mn.AddPeer(p.PrivateKey(), p.Address())
 	if err != nil {
 		panic(err.Error())
 	}
-	bsNet := bsnet.NewFromIpfsHost(client, routinghelpers.Null{}, netOptions...)
 
-	dstore := ds_sync.MutexWrap(delayed.New(ds.NewMapDatastore(), bsdelay))
+	dstore := ds_sync.MutexWrap(ds.NewMapDatastore())
+	dstoreDelayed := delayed.New(dstore, bsdelay)
 
 	bstore, err := blockstore.CachedBlockstore(ctx,
-		blockstore.NewBlockstore(ds_sync.MutexWrap(dstore)),
+		blockstore.NewBlockstore(dstoreDelayed),
 		blockstore.DefaultCacheOpts())
 	if err != nil {
-		return TestPeer{}, err
+		return TestPeer{}, nil, err
 	}
-
-	bs := server.New(ctx, bsNet, bstore, bsOptions...)
-	bsNet.Start(bs)
 	return TestPeer{
 		Host:            client,
 		ID:              p.ID(),
-		BitswapServer:   bs,
 		blockstore:      bstore,
 		blockstoreDelay: bsdelay,
-	}, nil
+		LinkSystem:      storeutil.LinkSystemForBlockstore(bstore),
+	}, dstore, nil
+}
+
+func StartAndWaitForReady(ctx context.Context, manager datatransfer.Manager) error {
+	ready := make(chan error, 1)
+	manager.OnReady(func(err error) {
+		ready <- err
+	})
+	if err := manager.Start(ctx); err != nil {
+		return err
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-ready:
+		return err
+	}
 }
