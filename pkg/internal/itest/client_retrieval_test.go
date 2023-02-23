@@ -22,6 +22,7 @@ import (
 	bstore "github.com/ipfs/go-ipfs-blockstore"
 	"github.com/ipfs/go-unixfsnode"
 	"github.com/ipld/go-ipld-prime/linking"
+	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/stretchr/testify/require"
 )
 
@@ -129,6 +130,7 @@ func runRetrieval(t *testing.T, ctx context.Context, mrn *mocknet.MockRetrievalN
 		mrn.Remotes[0].Host.ID(),
 		paymentAddress,
 		proposal,
+		selectorparse.CommonSelector_ExploreAllRecursively,
 		subscriberLocal,
 		shutdown,
 	)

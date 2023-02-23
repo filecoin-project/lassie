@@ -57,6 +57,7 @@ type RetrievalRequest struct {
 	RetrievalID RetrievalID
 	Cid         cid.Cid
 	LinkSystem  ipld.LinkSystem
+	Selector    ipld.Node
 }
 
 type Retriever interface {
@@ -94,6 +95,7 @@ type RetrievalStats struct {
 	NumPayments       int
 	AskPrice          abi.TokenAmount
 	TimeToFirstByte   time.Duration
+	Selector          string
 }
 
 type RetrievalResult struct {

@@ -28,10 +28,16 @@ type DelayedRetrievalReturn struct {
 	Delay       time.Duration
 }
 
+type RetrievalRequest struct {
+	Peer     peer.ID
+	Proposal *retrievalmarket.DealProposal
+	Selector ipld.Node
+}
+
 type MockClient struct {
 	lk                            sync.Mutex
 	received_queriedPeers         []peer.ID
-	received_retrievedPeers       []peer.ID
+	received_retrievals           []RetrievalRequest
 	received_retrievedLinkSystems []ipld.LinkSystem
 
 	returns_queries    map[string]DelayedQueryReturn
@@ -51,10 +57,21 @@ func (mc *MockClient) GetReceivedQueries() []peer.ID {
 	return append([]peer.ID{}, mc.received_queriedPeers...)
 }
 
-func (mc *MockClient) GetReceivedRetrievals() []peer.ID {
+func (mc *MockClient) GetReceivedRetrievalFrom(peer peer.ID) *RetrievalRequest {
 	mc.lk.Lock()
 	defer mc.lk.Unlock()
-	return append([]peer.ID{}, mc.received_retrievedPeers...)
+	for _, r := range mc.received_retrievals {
+		if r.Peer == peer {
+			return &r
+		}
+	}
+	return nil
+}
+
+func (mc *MockClient) GetReceivedRetrievals() []RetrievalRequest {
+	mc.lk.Lock()
+	defer mc.lk.Unlock()
+	return append([]RetrievalRequest{}, mc.received_retrievals...)
 }
 
 func (mc *MockClient) GetReceivedLinkSystems() []ipld.LinkSystem {
@@ -127,11 +144,16 @@ func (mc *MockClient) RetrieveFromPeer(
 	peerID peer.ID,
 	minerWallet address.Address,
 	proposal *retrievalmarket.DealProposal,
+	selector ipld.Node,
 	eventsCallback datatransfer.Subscriber,
 	gracefulShutdownRequested <-chan struct{},
 ) (*types.RetrievalStats, error) {
 	mc.lk.Lock()
-	mc.received_retrievedPeers = append(mc.received_retrievedPeers, peerID)
+	mc.received_retrievals = append(mc.received_retrievals, RetrievalRequest{
+		Peer:     peerID,
+		Proposal: proposal,
+		Selector: selector,
+	})
 	mc.received_retrievedLinkSystems = append(mc.received_retrievedLinkSystems, linkSystem)
 	drr, has := mc.returns_retrievals[string(peerID)]
 	mc.lk.Unlock()

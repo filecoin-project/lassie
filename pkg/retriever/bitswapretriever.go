@@ -108,6 +108,12 @@ type bitswapRetrieval struct {
 
 // RetrieveFromCandidates retrieves via go-bitswap backed with the given candidates, under the auspices of a fetcher.Fetcher
 func (br *bitswapRetrieval) RetrieveFromCandidates(candidates []types.RetrievalCandidate) (*types.RetrievalStats, error) {
+	selector := br.request.Selector
+	if selector == nil {
+		// use explore-all if no selector is specified
+		selector = selectorparse.CommonSelector_ExploreAllRecursively
+	}
+
 	phaseStartTime := br.clock.Now()
 	// this is a hack cause we aren't able to track bitswap fetches per peer for now, so instead we just create a single peer for all events
 	bitswapCandidate := types.NewRetrievalCandidate(peer.ID(""), br.request.Cid, metadata.Bitswap{})
@@ -146,7 +152,7 @@ func (br *bitswapRetrieval) RetrieveFromCandidates(candidates []types.RetrievalC
 	// replace the opener with a blockservice wrapper (we still want any known adls + reifiers, hence the copy)
 	wrappedLsys.StorageReadOpener = loaderForSession(br.request.RetrievalID, br.inProgressCids, br.bsGetter)
 	// run the retrieval
-	err := easyTraverse(ctx, cidlink.Link{Cid: br.request.Cid}, selectorparse.CommonSelector_ExploreAllRecursively, &wrappedLsys)
+	err := easyTraverse(ctx, cidlink.Link{Cid: br.request.Cid}, selector, &wrappedLsys)
 
 	// unregister relevant provider records & LinkSystem
 	br.routing.RemoveProviders(br.request.RetrievalID)
@@ -206,7 +212,6 @@ func loaderForSession(retrievalID types.RetrievalID, inProgressCids InProgressCi
 }
 
 func easyTraverse(ctx context.Context, root datamodel.Link, traverseSelector datamodel.Node, lsys *linking.LinkSystem) error {
-
 	protoChooser := dagpb.AddSupportToChooser(basicnode.Chooser)
 
 	// retrieve first node

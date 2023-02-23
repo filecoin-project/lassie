@@ -19,9 +19,13 @@ import (
 	exchange "github.com/ipfs/go-ipfs-exchange-interface"
 	format "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-libipfs/blocks"
+	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/storage/memstore"
+	"github.com/ipld/go-ipld-prime/traversal/selector"
+	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/stretchr/testify/require"
 )
 
@@ -36,17 +40,31 @@ func TestBitswapRetriever(t *testing.T) {
 	lsys.SetWriteStorage(store)
 	tbc1 := gstestutil.SetupBlockChain(ctx, t, lsys, 1000, 100)
 	tbc2 := gstestutil.SetupBlockChain(ctx, t, lsys, 1000, 100)
+	var tbc1Cids []cid.Cid
+	for _, blk := range tbc1.AllBlocks() {
+		tbc1Cids = append(tbc1Cids, blk.Cid())
+	}
+	var tbc2Cids []cid.Cid
+	for _, blk := range tbc2.AllBlocks() {
+		tbc2Cids = append(tbc2Cids, blk.Cid())
+	}
+	allCids := append(tbc1Cids, tbc2Cids...)
 	cid1 := tbc1.TipLink.(cidlink.Link).Cid
 	cid2 := tbc2.TipLink.(cidlink.Link).Cid
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
+	depth10Selector := ssb.ExploreRecursive(selector.RecursionLimitDepth(10),
+		ssb.ExploreAll(ssb.ExploreRecursiveEdge())).Node()
 	remoteBlockDuration := 50 * time.Millisecond
 	testCases := []struct {
 		name               string
 		localLinkSystems   map[cid.Cid]*linking.LinkSystem
 		remoteLinkSystems  map[cid.Cid]*linking.LinkSystem
+		selector           []ipld.Node
 		expectedCandidates map[cid.Cid][]types.RetrievalCandidate
 		expectedEvents     map[cid.Cid][]types.EventCode
 		expectedStats      map[cid.Cid]*types.RetrievalStats
 		expectedErrors     map[cid.Cid]struct{}
+		expectedCids       []cid.Cid
 		cfg                retriever.BitswapConfig
 	}{
 		{
@@ -63,6 +81,7 @@ func TestBitswapRetriever(t *testing.T) {
 				cid1: {types.StartedCode, types.FirstByteCode, types.SuccessCode},
 				cid2: {types.StartedCode, types.FirstByteCode, types.SuccessCode},
 			},
+			expectedCids: allCids,
 			expectedStats: map[cid.Cid]*types.RetrievalStats{
 				cid1: {
 					RootCid:      cid1,
@@ -102,6 +121,7 @@ func TestBitswapRetriever(t *testing.T) {
 				cid1: {types.StartedCode, types.FirstByteCode, types.SuccessCode},
 				cid2: {types.StartedCode, types.FirstByteCode, types.SuccessCode},
 			},
+			expectedCids: allCids,
 			expectedStats: map[cid.Cid]*types.RetrievalStats{
 				cid1: {
 					RootCid:      cid1,
@@ -118,6 +138,46 @@ func TestBitswapRetriever(t *testing.T) {
 					Blocks:       45,
 					Duration:     remoteBlockDuration * 45,
 					AverageSpeed: uint64(float64(sizeOf(append(tbc2.Blocks(25, 45), tbc2.Blocks(75, 100)...))) / (remoteBlockDuration * 45).Seconds()),
+					TotalPayment: big.Zero(),
+					AskPrice:     big.Zero(),
+				},
+			},
+		},
+		{
+			name: "successful selective remote fetch",
+			remoteLinkSystems: map[cid.Cid]*linking.LinkSystem{
+				cid1: makeLsys(tbc1.AllBlocks()),
+				cid2: makeLsys(tbc2.AllBlocks()),
+			},
+			// recurse depth of 10 will yield the first 5 blocks *only*, because
+			// the selector counts nodes and we have blocks with {Parents:[&Any]},
+			// i.e. two jumps per block
+			selector: []ipld.Node{depth10Selector, depth10Selector},
+			expectedCandidates: map[cid.Cid][]types.RetrievalCandidate{
+				cid1: testutil.GenerateRetrievalCandidates(5),
+				cid2: testutil.GenerateRetrievalCandidates(7),
+			},
+			expectedEvents: map[cid.Cid][]types.EventCode{
+				cid1: {types.StartedCode, types.FirstByteCode, types.SuccessCode},
+				cid2: {types.StartedCode, types.FirstByteCode, types.SuccessCode},
+			},
+			expectedCids: append(tbc1Cids[:5], tbc2Cids[:5]...),
+			expectedStats: map[cid.Cid]*types.RetrievalStats{
+				cid1: {
+					RootCid:      cid1,
+					Size:         sizeOf(tbc1.AllBlocks()[:5]),
+					Blocks:       5,
+					Duration:     remoteBlockDuration * 5,
+					AverageSpeed: uint64(float64(sizeOf(tbc1.AllBlocks()[:5])) / (remoteBlockDuration * 5).Seconds()),
+					TotalPayment: big.Zero(),
+					AskPrice:     big.Zero(),
+				},
+				cid2: {
+					RootCid:      cid2,
+					Size:         sizeOf(tbc2.AllBlocks()[:5]),
+					Blocks:       5,
+					Duration:     remoteBlockDuration * 5,
+					AverageSpeed: uint64(float64(sizeOf(tbc2.AllBlocks()[:5])) / (remoteBlockDuration * 5).Seconds()),
 					TotalPayment: big.Zero(),
 					AskPrice:     big.Zero(),
 				},
@@ -175,7 +235,6 @@ func TestBitswapRetriever(t *testing.T) {
 				cid1: {types.StartedCode, types.FirstByteCode, types.FailedCode},
 				cid2: {types.StartedCode, types.FirstByteCode, types.FailedCode},
 			},
-
 			expectedErrors: map[cid.Cid]struct{}{
 				cid1: {},
 				cid2: {},
@@ -202,7 +261,6 @@ func TestBitswapRetriever(t *testing.T) {
 				remoteLinkSystems = make(map[cid.Cid]*linking.LinkSystem)
 			}
 			linkSystemForCid := func(c cid.Cid, lsMap map[cid.Cid]*linking.LinkSystem) *linking.LinkSystem {
-
 				if _, ok := lsMap[c]; !ok {
 					lsMap[c] = makeLsys(nil)
 				}
@@ -211,18 +269,27 @@ func TestBitswapRetriever(t *testing.T) {
 			rid1, err := types.NewRetrievalID()
 			req.NoError(err)
 			req1Context := types.RegisterRetrievalIDToContext(ctx, rid1)
+			var sel ipld.Node
+			if testCase.selector != nil {
+				sel = testCase.selector[0]
+			}
 			req1 := types.RetrievalRequest{
 				RetrievalID: rid1,
 				Cid:         cid1,
 				LinkSystem:  *linkSystemForCid(cid1, localLinkSystems),
+				Selector:    sel,
 			}
 			rid2, err := types.NewRetrievalID()
 			req.NoError(err)
 			req2Context := types.RegisterRetrievalIDToContext(ctx, rid2)
+			if testCase.selector != nil {
+				sel = testCase.selector[1]
+			}
 			req2 := types.RetrievalRequest{
 				RetrievalID: rid2,
 				Cid:         cid2,
 				LinkSystem:  *linkSystemForCid(cid2, localLinkSystems),
+				Selector:    sel,
 			}
 			mbs := bitswaphelpers.NewMultiblockstore()
 			clock := clock.NewMock()
@@ -305,16 +372,9 @@ func TestBitswapRetriever(t *testing.T) {
 			req.Equal(testCase.expectedEvents, receivedCodes)
 			req.Equal(expectedCandidates, mir.candidatesAdded)
 			req.Equal(map[types.RetrievalID]struct{}{rid1: {}, rid2: {}}, mir.candidatesRemoved)
-			if len(expectedErrors) == 0 {
-				var allCids []cid.Cid
-				for _, blk := range tbc1.AllBlocks() {
-					allCids = append(allCids, blk.Cid())
-				}
-				for _, blk := range tbc2.AllBlocks() {
-					allCids = append(allCids, blk.Cid())
-				}
-				req.ElementsMatch(allCids, mipc.incremented)
-				req.ElementsMatch(allCids, mipc.decremented)
+			if testCase.expectedCids != nil {
+				req.ElementsMatch(testCase.expectedCids, mipc.incremented)
+				req.ElementsMatch(testCase.expectedCids, mipc.decremented)
 			}
 		})
 	}
