@@ -25,7 +25,7 @@
 
 ## Introduction
 
-The Lassie HTTP Daemon is an HTTP interface for retrieving CAR files from the Filecoin network. It fetches content via CIDs over the GraphSync and Bitswap protocols.
+The Lassie HTTP Daemon is an HTTP interface for retrieving IPLD data from IPFS and Filecoin peers. It fetches content over the GraphSync and Bitswap protocols and provides the resulting data in CAR format.
 
 ## Specification
 
