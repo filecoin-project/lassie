@@ -12,8 +12,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 )
 
-var clog = logging.Logger("boost:lp2p:tspt:client")
-var slog = logging.Logger("boost:lp2p:tspt")
+var clog = logging.Logger("lassie:lp2p:tspt:client")
 
 // TransportsProtocolID is the protocol for querying which retrieval transports
 // the Storage Provider supports (http, libp2p, etc)

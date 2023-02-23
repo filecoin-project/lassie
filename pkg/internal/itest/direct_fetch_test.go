@@ -134,7 +134,7 @@ func TestDirectFetch(t *testing.T) {
 			req.NoError(err)
 			err = outCar.Finalize()
 			req.NoError(err)
-			outFile.Seek(0, os.SEEK_SET)
+			outFile.Seek(0, io.SeekStart)
 			// Open the CAR bytes as read-only storage
 			reader, err := storage.OpenReadable(outFile)
 			req.NoError(err)

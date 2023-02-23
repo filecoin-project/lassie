@@ -129,7 +129,6 @@ func (d *DirectCandidateFinder) retrievalCandidatesFromProtocolList(ctx context.
 		protocols = append(protocols, &metadata.GraphsyncFilecoinV1{})
 	}
 	_ = cs.sendCandidate(provider, protocols...)
-	return
 }
 
 func (d *DirectCandidateFinder) retrievalCandidatesFromTransportsProtocol(ctx context.Context, provider peer.AddrInfo, cs candidateSender) {
