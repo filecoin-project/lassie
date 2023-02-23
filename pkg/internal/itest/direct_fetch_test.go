@@ -124,6 +124,9 @@ func TestDirectFetch(t *testing.T) {
 			req.NoError(err)
 			outFile, err := os.CreateTemp(t.TempDir(), "lassie-test-")
 			req.NoError(err)
+			defer func() {
+				req.NoError(outFile.Close())
+			}()
 			outCar, err := storage.NewReadableWritable(outFile, []cid.Cid{rootCid}, carv2.WriteAsCarV1(true))
 			req.NoError(err)
 			outLsys := cidlink.DefaultLinkSystem()
