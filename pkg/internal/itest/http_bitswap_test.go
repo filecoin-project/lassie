@@ -2,78 +2,48 @@ package itest
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"testing"
 	"time"
 
-	"github.com/filecoin-project/index-provider/metadata"
-	"github.com/filecoin-project/lassie/pkg/internal/itest/testpeer"
+	"github.com/filecoin-project/lassie/pkg/internal/itest/mocknet"
 	"github.com/filecoin-project/lassie/pkg/internal/itest/unixfs"
-	"github.com/filecoin-project/lassie/pkg/internal/testutil"
 	"github.com/filecoin-project/lassie/pkg/lassie"
 	httpserver "github.com/filecoin-project/lassie/pkg/server/http"
-	"github.com/filecoin-project/lassie/pkg/types"
-	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-graphsync/storeutil"
-	"github.com/ipfs/go-libipfs/bitswap/network"
-	"github.com/ipfs/go-libipfs/bitswap/server"
 	"github.com/ipfs/go-unixfsnode"
 	"github.com/ipld/go-car/v2/storage"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	"github.com/libp2p/go-libp2p/core/peer"
-	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/stretchr/testify/require"
 )
 
 func TestBitswapFetchTwoPeers(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	rndSeed := time.Now().UTC().UnixNano()
+	t.Logf("random seed: %d", rndSeed)
+	var rndReader io.Reader = rand.New(rand.NewSource(rndSeed))
+
 	req := require.New(t)
-	mn := mocknet.New()
-	ctx := context.Background()
-	testPeerGenerator := testpeer.NewTestPeerGenerator(ctx, t, mn, []network.NetOpt{}, []server.Option{})
-	peers := testPeerGenerator.Peers(2)
+	mrn := mocknet.NewMockRetrievalNet(ctx, t)
+	mrn.AddBitswapPeers(2)
 
 	// build two files of 4MiB random bytes, packaged into unixfs DAGs
 	// (rootCid1 & rootCid2) and the original source data retained
 	// (srcData1, srcData2)
-	ls := storeutil.LinkSystemForBlockstore(peers[0].Blockstore())
-	rootCid1, srcData1 := unixfs.GenerateFile(t, &ls, rand.Reader, 4<<20)
-	ls = storeutil.LinkSystemForBlockstore(peers[1].Blockstore())
-	rootCid2, srcData2 := unixfs.GenerateFile(t, &ls, rand.Reader, 4<<20)
+	rootCid1, srcData1 := unixfs.GenerateFile(t, &mrn.Remotes[0].LinkSystem, rndReader, 4<<20)
+	mrn.Remotes[0].RootCid = rootCid1 // for the CandidateFinder
+	rootCid2, srcData2 := unixfs.GenerateFile(t, &mrn.Remotes[1].LinkSystem, rndReader, 4<<20)
+	mrn.Remotes[1].RootCid = rootCid2 // for the CandidateFinder
 
-	finder := &testutil.MockCandidateFinder{
-		Candidates: map[cid.Cid][]types.RetrievalCandidate{
-			rootCid1: {
-				{
-					RootCid: rootCid1,
-					MinerPeer: peer.AddrInfo{
-						ID:    peers[0].ID,
-						Addrs: peers[0].Host.Addrs(),
-					},
-					Metadata: metadata.Default.New(metadata.Bitswap{}),
-				},
-			},
-			rootCid2: {
-				{
-					RootCid: rootCid2,
-					MinerPeer: peer.AddrInfo{
-						ID:    peers[1].ID,
-						Addrs: peers[1].Host.Addrs(),
-					},
-					Metadata: metadata.Default.New(metadata.Bitswap{}),
-				},
-			},
-		},
-	}
-	self, err := mn.GenPeer()
-	req.NoError(err)
-	mn.LinkAll()
+	require.NoError(t, mrn.MN.LinkAll())
 
-	lassie, err := lassie.NewLassie(ctx, lassie.WithFinder(finder), lassie.WithHost(self), lassie.WithGlobalTimeout(5*time.Second))
+	lassie, err := lassie.NewLassie(ctx, lassie.WithFinder(mrn.Finder), lassie.WithHost(mrn.Self), lassie.WithGlobalTimeout(5*time.Second))
 	req.NoError(err)
 
 	httpServer, err := httpserver.NewHttpServer(ctx, lassie, httpserver.HttpServerConfig{
