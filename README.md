@@ -26,13 +26,29 @@ go build ./cmd/lassie
 
 ### Using
 
-The simplest way to use lassie it to just run the CLI, which currently has only one command:
+#### Fetch Command
+
+The simplest way to use lassie it to just run the CLI with the `fetch` command:
 
 ```
 lassie fetch <CID>
 ```
 
 This will output to a CAR file with the name of the CID in the current directory.
+
+For additional command options and parameters, use the `--help, -h` CLI option.
+
+#### HTTP Daemon Command
+
+An HTTP server to fetch content over HTTP can also be started via the `daemon` command.
+
+```
+$ lassie daemon
+```
+
+The [HTTP specification](./docs/HTTP_SPEC.md) doc outlines the request and response formats.
+
+For additional command options and parameters, use the `--help, -h` CLI option.
 
 ## Contribute
 
