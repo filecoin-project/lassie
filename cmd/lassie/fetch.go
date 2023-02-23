@@ -220,7 +220,7 @@ func (pp *progressPrinter) subscriber(event types.RetrievalEvent) {
 		if len(fetchProviderAddrInfos) > 0 {
 			fmt.Printf("Found %d storage providers candidates from the indexer, querying %s:\n", pp.candidatesFound, num)
 		} else {
-			fmt.Printf("Using the explicitly specified storage provider, querying %s:\n", num)
+			fmt.Printf("Using the explicitly specified storage provider(s), querying %s:\n", num)
 		}
 		for _, candidate := range ret.Candidates() {
 			fmt.Printf("\r\t%s, Protocols: %v\n", candidate.MinerPeer.ID, candidate.Metadata.Protocols())
