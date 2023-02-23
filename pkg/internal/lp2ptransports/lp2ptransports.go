@@ -19,7 +19,6 @@ var clog = logging.Logger("lassie:lp2p:tspt:client")
 const TransportsProtocolID = protocol.ID("/fil/retrieval/transports/1.0.0")
 
 const streamReadDeadline = 30 * time.Second
-const streamWriteDeadline = 30 * time.Second
 
 // TransportsClient sends retrieval queries over libp2p
 type TransportsClient struct {
