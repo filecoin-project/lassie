@@ -49,6 +49,7 @@ var fetchCmd = &cli.Command{
 		},
 		&cli.StringFlag{
 			Name:        "providers",
+			Aliases:     []string{"provider"},
 			DefaultText: "Providers will be discovered automatically",
 			Usage:       "Provider addresses including its peer ID, seperated by a comma. Example: /ip4/1.2.3.4/tcp/1234/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4",
 			Action: func(cctx *cli.Context, v string) error {
