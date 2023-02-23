@@ -25,13 +25,13 @@
 
 ## Introduction
 
-The Lassie HTTP Daemon is an HTTP interface for retrieving CAR files from the Filecoin network. It fetches content via CIDs over a number of possible protocols, choosing the best protocol for the job.
+The Lassie HTTP Daemon is an HTTP interface for retrieving CAR files from the Filecoin network. It fetches content via CIDs over the GraphSync and Bitswap protocols.
 
 ## Specification
 
 ### `GET /ipfs/{cid}[?params]`
 
-Retrieves from peers that have the given CID content, downloading as a CAR file.
+Retrieves from peers that have the content identified by the given root CID, streaming the DAG in the response in [CAR (v1)](https://ipld.io/specs/transport/car/carv1/) format.
 
 #### Request
 
@@ -45,13 +45,13 @@ Retrieves from peers that have the given CID content, downloading as a CAR file.
 
 ##### Path Parameters
 
-- `cid` - _Required_. The default string representation of the CID.
+- `cid` - _Required_. A valid string representation of the root CID of the DAG being requested.
 
 ##### Query Parameters
 
-- `filename` - _Optional_. Used to override the name of the downloaded CAR file.
+- `filename` - _Optional_. Used to override the `filename` property of the `Content-Disposition` response header which dictates the default save filename for the response CAR data used by an HTTP client / browser.
 
-    The filename extension cannot be missing and must be `.car`.
+    If provided, the filename extension cannot be missing and must be `.car`.
 
 - `format` - _Optional_. `format=<format>` can be used to specify the response content type. This is a URL-friendly alternative to providing an `Accept` header. Optional only if an `Accept` header value is provided, otherwise required.
 
@@ -75,9 +75,9 @@ Retrieves from peers that have the given CID content, downloading as a CAR file.
 - `404` - No candidates for the given CID were found
 
 - `500` - Internal Server Error
-    - The given CID path parameter could not be parsed
+    - The requested CID path parameter could not be parsed
     - An internal retrieval ID failed to generate
-    - The CAR file failed to write
+    - The internal blockstore file failed to write
 
 - `504` - Timeout occured while retrieving the given CID
 
@@ -87,11 +87,13 @@ Retrieves from peers that have the given CID content, downloading as a CAR file.
 
 - `Cache-Control` - Returns with `public, max-age=29030400, immutable`
 
-- `Content-Disposition` - Returns as an attachment, using the given `filename` query parameter if provided.
+- `Content-Disposition` - Returns as an attachment, using the given `filename` query parameter if provided, or if no `filename` query parameter is provided, uses the requested CID with a `.car` extension.
+
+    Example: `bafy...foo.car`
 
 - `Content-Type` - Returns with `application/vnd.ipld.car; version=1`
 
-- `Etag` - Returns with the given CID with the format as a suffix.
+- `Etag` - Returns with the requested CID with the format as a suffix.
 
     Example: `bafy...foo.car`
 
