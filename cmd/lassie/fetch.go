@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -17,11 +16,13 @@ import (
 	carv2 "github.com/ipld/go-car/v2"
 	carstore "github.com/ipld/go-car/v2/storage"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/urfave/cli/v2"
 )
 
-var fetchProviderAddrInfo *peer.AddrInfo
+var fetchProviderAddrInfos []peer.AddrInfo
 
 var fetchCmd = &cli.Command{
 	Name:   "fetch",
@@ -47,13 +48,20 @@ var fetchCmd = &cli.Command{
 			Usage:   "print progress output",
 		},
 		&cli.StringFlag{
-			Name:        "provider",
-			DefaultText: "The provider will be discovered automatically",
-			Usage:       "The provider addr including its peer ID. Example: /ip4/1.2.3.4/tcp/1234/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4",
+			Name:        "providers",
+			Aliases:     []string{"provider"},
+			DefaultText: "Providers will be discovered automatically",
+			Usage:       "Provider addresses including its peer ID, seperated by a comma. Example: /ip4/1.2.3.4/tcp/1234/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4",
 			Action: func(cctx *cli.Context, v string) error {
-				var err error
-				fetchProviderAddrInfo, err = peer.AddrInfoFromString(v)
-				return err
+				vs := strings.Split(v, ",")
+				for _, v := range vs {
+					fetchProviderAddrInfo, err := peer.AddrInfoFromString(v)
+					if err != nil {
+						return err
+					}
+					fetchProviderAddrInfos = append(fetchProviderAddrInfos, *fetchProviderAddrInfo)
+				}
+				return nil
 			},
 		},
 		FlagEventRecorderAuth,
@@ -78,9 +86,14 @@ func Fetch(c *cli.Context) error {
 	timeout := c.Duration("timeout")
 	timeoutOpt := lassie.WithProviderTimeout(timeout)
 
-	var opts = []lassie.LassieOption{timeoutOpt}
-	if fetchProviderAddrInfo != nil {
-		finderOpt := lassie.WithFinder(explicitCandidateFinder{provider: *fetchProviderAddrInfo})
+	host, err := libp2p.New(libp2p.ResourceManager(&network.NullResourceManager{}))
+	if err != nil {
+		return err
+	}
+	hostOpt := lassie.WithHost(host)
+	var opts = []lassie.LassieOption{timeoutOpt, hostOpt}
+	if len(fetchProviderAddrInfos) > 0 {
+		finderOpt := lassie.WithFinder(retriever.NewDirectCandidateFinder(host, fetchProviderAddrInfos))
 		opts = append(opts, finderOpt)
 	}
 
@@ -92,10 +105,10 @@ func Fetch(c *cli.Context) error {
 	// create and subscribe an event recorder API if configured
 	setupLassieEventRecorder(c, lassie)
 
-	if fetchProviderAddrInfo == nil {
+	if len(fetchProviderAddrInfos) == 0 {
 		fmt.Printf("Fetching %s", rootCid)
 	} else {
-		fmt.Printf("Fetching %s from %s", rootCid, fetchProviderAddrInfo.String())
+		fmt.Printf("Fetching %s from %v", rootCid, fetchProviderAddrInfos)
 	}
 	if progress {
 		fmt.Println()
@@ -204,10 +217,10 @@ func (pp *progressPrinter) subscriber(event types.RetrievalEvent) {
 		} else if pp.candidatesFound == 1 {
 			num = "it"
 		}
-		if fetchProviderAddrInfo == nil {
+		if len(fetchProviderAddrInfos) > 0 {
 			fmt.Printf("Found %d storage providers candidates from the indexer, querying %s:\n", pp.candidatesFound, num)
 		} else {
-			fmt.Printf("Using the explicitly specified storage provider, querying %s:\n", num)
+			fmt.Printf("Using the explicitly specified storage provider(s), querying %s:\n", num)
 		}
 		for _, candidate := range ret.Candidates() {
 			fmt.Printf("\r\t%s, Protocols: %v\n", candidate.MinerPeer.ID, candidate.Metadata.Protocols())
@@ -225,38 +238,4 @@ func (pp *progressPrinter) subscriber(event types.RetrievalEvent) {
 	case events.RetrievalEventSuccess:
 		// noop, handled at return from Retrieve()
 	}
-}
-
-var _ retriever.CandidateFinder = (*explicitCandidateFinder)(nil)
-
-type explicitCandidateFinder struct {
-	provider peer.AddrInfo
-}
-
-func (e explicitCandidateFinder) FindCandidatesAsync(ctx context.Context, c cid.Cid) (<-chan types.FindCandidatesResult, error) {
-	rs, err := e.FindCandidates(ctx, c)
-	if err != nil {
-		return nil, err
-	}
-	switch len(rs) {
-	case 0:
-		return nil, nil
-	default:
-		rch := make(chan types.FindCandidatesResult, len(rs))
-		for _, r := range rs {
-			rch <- types.FindCandidatesResult{
-				Candidate: r,
-			}
-		}
-		return rch, nil
-	}
-}
-
-func (e explicitCandidateFinder) FindCandidates(_ context.Context, c cid.Cid) ([]types.RetrievalCandidate, error) {
-	return []types.RetrievalCandidate{
-		{
-			MinerPeer: e.provider,
-			RootCid:   c,
-		},
-	}, nil
 }
