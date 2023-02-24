@@ -6,61 +6,28 @@ import (
 	"time"
 
 	"github.com/benbjohnson/clock"
+	"github.com/filecoin-project/lassie/pkg/internal/stream/internal"
 	"github.com/filecoin-project/lassie/pkg/types"
 )
 
-type internalSubscriber[T any] struct {
-	isStopped  bool
-	onNext     func(T)
-	onError    func(error)
-	onComplete func()
-}
-
-func (o internalSubscriber[T]) Next(t T) {
-	if !o.isStopped {
-		o.onNext(t)
-	}
-}
-func (o internalSubscriber[T]) Error(err error) {
-	if !o.isStopped {
-		o.isStopped = true
-		o.onError(err)
-	}
-}
-
-func (o internalSubscriber[T]) Complete() {
-	if !o.isStopped {
-		o.isStopped = true
-		o.onComplete()
-	}
-}
-
-func safeSubscriber[T any](subcriber types.StreamSubscriber[T]) types.StreamSubscriber[T] {
-	return &internalSubscriber[T]{
-		onNext:     subcriber.Next,
-		onError:    subcriber.Error,
-		onComplete: subcriber.Complete,
-	}
-}
-
 func NewMultiSubscriber[T any](subscribers []types.StreamSubscriber[T]) types.StreamSubscriber[T] {
-	return internalSubscriber[T]{
-		onNext: func(t T) {
+	return internal.NewSubscriber[T](
+		func(t T) {
 			for _, s := range subscribers {
 				s.Next(t)
 			}
 		},
-		onError: func(err error) {
+		func(err error) {
 			for _, s := range subscribers {
 				s.Error(err)
 			}
 		},
-		onComplete: func() {
+		func() {
 			for _, s := range subscribers {
 				s.Complete()
 			}
 		},
-	}
+	)
 }
 
 func operatorSubscriber[T any, U any](dest types.StreamSubscriber[U], onNext func(T)) types.StreamSubscriber[T] {
@@ -75,37 +42,6 @@ func operatorSubscriber[T any, U any](dest types.StreamSubscriber[U], onNext fun
 			dest.Complete()
 		},
 	}
-}
-
-type Operator[T any, U any] func(source types.Stream[T], subscriber types.StreamSubscriber[U])
-
-type stream[T any] struct {
-	subscribe func(types.StreamSubscriber[T])
-}
-
-func (s stream[T]) Subscribe(subscriber types.StreamSubscriber[T]) {
-	_, ok := subscriber.(*internalSubscriber[T])
-	if !ok {
-		subscriber = safeSubscriber(subscriber)
-	}
-	s.subscribe(subscriber)
-}
-
-type derivedStream[S any, T any] struct {
-	source   types.Stream[S]
-	operator Operator[S, T]
-}
-
-func (s derivedStream[S, T]) subscribe(subscriber types.StreamSubscriber[T]) {
-	s.operator(s.source, subscriber)
-}
-
-func NewStream[T any](subscribe func(types.StreamSubscriber[T])) types.Stream[T] {
-	return stream[T]{subscribe: subscribe}
-}
-
-func lift[T any, U any](source types.Stream[T], operator Operator[T, U]) types.Stream[U] {
-	return NewStream((derivedStream[T, U]{source: source, operator: operator}).subscribe)
 }
 
 // BufferDebounce groups values after each emission from the source channel for the specified duration

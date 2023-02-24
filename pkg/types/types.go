@@ -27,8 +27,24 @@ func Error[T any](err error) Result[T] {
 	return Result[T]{Err: err}
 }
 
+type GracefulCanceller interface {
+	TearDown() error
+}
+
+type gracefulCanceler struct {
+	tearDownFn func() error
+}
+
+func (gc gracefulCanceler) TearDown() error {
+	return gc.tearDownFn()
+}
+
+func OnTearDown(tearDownFn func() error) GracefulCanceller {
+	return gracefulCanceler{tearDownFn: tearDownFn}
+}
+
 type Stream[T any] interface {
-	Subscribe(StreamSubscriber[T])
+	Subscribe(StreamSubscriber[T]) GracefulCanceller
 }
 
 type StreamSubscriber[T any] interface {
@@ -251,7 +267,6 @@ func Identifier(event RetrievalEvent) string {
 // implement the RetrievalEvent interface and may contain additional information
 // about the event beyond what is available on the RetrievalEvent interface.
 type RetrievalEventSubscriber func(event RetrievalEvent)
-
 
 type contextKey string
 
