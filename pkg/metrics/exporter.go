@@ -6,6 +6,7 @@ import (
 	"contrib.go.opencensus.io/exporter/prometheus"
 	logging "github.com/ipfs/go-log/v2"
 	promclient "github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"go.opencensus.io/stats/view"
 )
 
@@ -24,6 +25,9 @@ func NewExporter(views ...*view.View) http.Handler {
 	if !ok {
 		logger.Warnf("failed to export default prometheus registry; some metrics will be unavailable; unexpected type: %T", promclient.DefaultRegisterer)
 	}
+
+	_ = registry.Register(collectors.NewGoCollector())
+	_ = registry.Register(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 
 	exp, err := prometheus.NewExporter(prometheus.Options{
 		Registry:  registry,

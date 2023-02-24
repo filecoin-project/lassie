@@ -55,3 +55,11 @@ var FlagEventRecorderUrl = &cli.StringFlag{
 	Usage:   "the url of an event recorder API",
 	EnvVars: []string{"LASSIE_EVENT_RECORDER_URL"},
 }
+
+// FlagExposeMetrics exposes prometheus metrics at /metrics on the daemon http
+// server.
+var FlagExposeMetrics = &cli.BoolFlag{
+	Name:    "expose-metrics",
+	Usage:   "expose metrics at /metrics",
+	EnvVars: []string{"LASSIE_EXPOSE_METRICS"},
+}
