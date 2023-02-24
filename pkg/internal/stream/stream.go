@@ -301,14 +301,16 @@ func CatchError[T any](source types.Stream[T], onError func(error)) types.Stream
 
 const splitBufferSize = 16
 
-func SplitStream[T any](ctx context.Context, source types.Stream[T], streamCount uint64, splitFn func(T) ([]T, error)) []types.Stream[T] {
-	subscribers := make([]types.StreamSubscriber[T], 0, streamCount)
-	splitStreams := make([]types.Stream[T], 0, streamCount)
+type StreamName string
+
+func SplitStream[T any](ctx context.Context, source types.Stream[T], streams map[StreamName]struct{}, splitFn func(T) (map[StreamName]T, error)) map[StreamName]types.Stream[T] {
+	subscribers := make(map[StreamName]types.StreamSubscriber[T], len(streams))
+	splitStreams := make(map[StreamName]types.Stream[T], len(streams))
 	var once sync.Once
-	for i := 0; i < int(streamCount); i++ {
+	for stream := range streams {
 		outgoing := make(chan types.Result[T], splitBufferSize)
-		subscribers = append(subscribers, NewChannelSubscriber(ctx, outgoing))
-		splitStreams = append(splitStreams, NewResultChannelStream(ctx, outgoing))
+		subscribers[stream] = NewChannelSubscriber(ctx, outgoing)
+		splitStreams[stream] = NewResultChannelStream(ctx, outgoing)
 	}
 	allSubscriber := NewMultiSubscriber(subscribers)
 	splitSubscriber := operatorSubscriber(allSubscriber,
@@ -318,24 +320,22 @@ func SplitStream[T any](ctx context.Context, source types.Stream[T], streamCount
 				allSubscriber.Error(splitErr)
 				return
 			}
-			for i, subscriber := range subscribers {
-				var next T
-				if i < len(splitValues) {
-					next = splitValues[i]
+			for key, subscriber := range subscribers {
+				if next, ok := splitValues[key]; ok {
+					subscriber.Next(next)
 				}
-				subscriber.Next(next)
 			}
 		})
-	linkedStreams := make([]types.Stream[T], 0, streamCount)
-	for _, splitStream := range splitStreams {
-		linkedStreams = append(linkedStreams, lift(splitStream, func(splitSource types.Stream[T], subscriber types.StreamSubscriber[T]) {
+	linkedStreams := make(map[StreamName]types.Stream[T], len(streams))
+	for streamName, splitStream := range splitStreams {
+		linkedStreams[streamName] = lift(splitStream, func(splitSource types.Stream[T], subscriber types.StreamSubscriber[T]) {
 			once.Do(func() {
 				go func() {
 					source.Subscribe(splitSubscriber)
 				}()
 			})
 			splitSource.Subscribe(subscriber)
-		}))
+		})
 	}
 	return linkedStreams
 }
@@ -392,6 +392,13 @@ func Error[T any](err error) types.Stream[T] {
 	return NewStream(func(subcriber types.StreamSubscriber[T]) {
 		subcriber.Error(err)
 	})
+}
+
+func Race[T any](streams []types.Stream[T]) types.Stream[T] {
+	if len(streams) == 1 {
+		return streams[0]
+	}
+	return NewStream((types.StreamSubscriber[T])))
 }
 
 func NewResultChannelStream[T any](ctx context.Context, incoming <-chan types.Result[T]) types.Stream[T] {

@@ -42,7 +42,7 @@ func (cs candidateSender) sendCandidate(addr peer.AddrInfo, protocols ...metadat
 	select {
 	case <-cs.ctx.Done():
 		return cs.ctx.Err()
-	case cs.candidateResults <- types.FindCandidatesResult{Candidate: types.RetrievalCandidate{
+	case cs.candidateResults <- types.FindCandidatesResult{Value: types.RetrievalCandidate{
 		MinerPeer: addr,
 		RootCid:   cs.rootCid,
 		Metadata:  metadata.Default.New(protocols...),
