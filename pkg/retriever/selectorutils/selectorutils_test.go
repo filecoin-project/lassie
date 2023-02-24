@@ -12,7 +12,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var matchAllJson = mustDagJson(selectorparse.CommonSelector_ExploreAllRecursively)
+var exploreAllJson = mustDagJson(selectorparse.CommonSelector_ExploreAllRecursively)
+
+// explore interpret-as (~), next (>), recursive (R), explore (a), next (>),
+// recursive edge (@), recursion limit depth 0, interpreted as unixfs-preload
+var exploreShallowJson = `{"~":{">":{"R":{":>":{"a":{">":{"@":{}}}},"l":{"depth":0}}},"as":"unixfs-preload"}}`
 
 func TestPathToSelector(t *testing.T) {
 	testCases := []struct {
@@ -20,32 +24,61 @@ func TestPathToSelector(t *testing.T) {
 		path             string
 		expectedErr      string
 		expextedSelector string
+		full             bool
 	}{
 		{
 			name:             "empty path",
 			path:             "",
-			expextedSelector: matchAllJson,
+			expextedSelector: exploreAllJson,
+			full:             true,
+		},
+		{
+			name:             "empty path shallow",
+			path:             "",
+			expextedSelector: exploreShallowJson,
+			full:             false,
 		},
 		{
 			name:        "no leading slash",
 			path:        "nope",
 			expectedErr: "path must start with /",
+			full:        true,
+		},
+		{
+			name:        "no leading slash shallow",
+			path:        "nope",
+			expectedErr: "path must start with /",
+			full:        false,
 		},
 		{
 			name:             "single field",
 			path:             "/foo",
-			expextedSelector: manualJsonFieldStart("foo") + matchAllJson + manualJsonFieldEnd(1),
+			expextedSelector: manualJsonFieldStart("foo") + exploreAllJson + manualJsonFieldEnd(1),
+			full:             true,
+		},
+		{
+			name:             "single field shallow",
+			path:             "/foo",
+			expextedSelector: manualJsonFieldStart("foo") + exploreShallowJson + manualJsonFieldEnd(1),
+			full:             false,
 		},
 		{
 			name:             "multiple fields",
 			path:             "/foo/bar",
-			expextedSelector: manualJsonFieldStart("foo") + manualJsonFieldStart("bar") + matchAllJson + manualJsonFieldEnd(2),
+			expextedSelector: manualJsonFieldStart("foo") + manualJsonFieldStart("bar") + exploreAllJson + manualJsonFieldEnd(2),
+			full:             true,
+		},
+		{
+			name:             "multiple fields shallow",
+			path:             "/foo/bar",
+			expextedSelector: manualJsonFieldStart("foo") + manualJsonFieldStart("bar") + exploreShallowJson + manualJsonFieldEnd(2),
+			full:             false,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			sel, err := selectorutils.PathToSelector(tc.path)
+			sel, err := selectorutils.UnixfsPathToSelector(tc.path, tc.full)
 			if tc.expectedErr != "" {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tc.expectedErr)
@@ -58,16 +91,13 @@ func TestPathToSelector(t *testing.T) {
 }
 
 func manualJsonFieldStart(name string) string {
-	// 1. union (|) of match current;
-	// 2. and explore field (f);
-	// 3. + specific field (f>);
-	// 4 with field name
-	return fmt.Sprintf(`{"|":[{".":{}},{"f":{"f>":{"%s":`, name)
+	// explore interpret-as (~) next (>), explore field (f) + specific field (f>), with field name
+	return fmt.Sprintf(`{"~":{">":{"f":{"f>":{"%s":`, name)
 }
 
 func manualJsonFieldEnd(fieldCount int) string {
-	// close all of the above
-	return strings.Repeat("}}}]}", fieldCount)
+	// close all of the above and specify "unixfs" for interpret-as
+	return strings.Repeat(`}}},"as":"unixfs"}}`, fieldCount)
 }
 
 func mustDagJson(n ipld.Node) string {

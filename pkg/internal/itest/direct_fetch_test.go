@@ -15,6 +15,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/internal/lp2ptransports"
 	"github.com/filecoin-project/lassie/pkg/lassie"
 	"github.com/filecoin-project/lassie/pkg/retriever"
+	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-unixfsnode"
 	carv2 "github.com/ipld/go-car/v2"
@@ -121,11 +122,9 @@ func TestDirectFetch(t *testing.T) {
 			}()
 			outCar, err := storage.NewReadableWritable(outFile, []cid.Cid{rootCid}, carv2.WriteAsCarV1(true))
 			req.NoError(err)
-			outLsys := cidlink.DefaultLinkSystem()
-			outLsys.SetReadStorage(outCar)
-			outLsys.SetWriteStorage(outCar)
-			outLsys.TrustedStorage = true
-			_, _, err = lassie.Fetch(ctx, rootCid, outLsys)
+			request, err := types.NewRequestForPath(outCar, rootCid, "", true)
+			req.NoError(err)
+			_, err = lassie.Fetch(ctx, request)
 			req.NoError(err)
 			err = outCar.Finalize()
 			req.NoError(err)

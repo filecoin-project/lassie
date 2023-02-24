@@ -7,9 +7,7 @@ import (
 
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/index-provider/metadata"
-	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
-	"github.com/ipld/go-ipld-prime"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
 )
@@ -27,37 +25,6 @@ func NewRetrievalCandidate(pid peer.ID, rootCid cid.Cid, protocols ...metadata.P
 		RootCid:   rootCid,
 		Metadata:  md,
 	}
-}
-
-type RetrievalID uuid.UUID
-
-func NewRetrievalID() (RetrievalID, error) {
-	u, err := uuid.NewRandom()
-	if err != nil {
-		return RetrievalID{}, err
-	}
-	return RetrievalID(u), nil
-}
-
-func (id RetrievalID) String() string {
-	return uuid.UUID(id).String()
-}
-
-func (id RetrievalID) MarshalText() ([]byte, error) {
-	return uuid.UUID(id).MarshalText()
-}
-
-func (id *RetrievalID) UnmarshalText(data []byte) error {
-	return (*uuid.UUID)(id).UnmarshalText(data)
-}
-
-// RetrievalRequest is the top level parameters for a request --
-// this should be left unchanged as you move down a retriever tree
-type RetrievalRequest struct {
-	RetrievalID RetrievalID
-	Cid         cid.Cid
-	LinkSystem  ipld.LinkSystem
-	Selector    ipld.Node
 }
 
 type Retriever interface {
