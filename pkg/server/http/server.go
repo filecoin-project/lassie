@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/filecoin-project/lassie/pkg/lassie"
+	"github.com/filecoin-project/lassie/pkg/metrics"
 	logging "github.com/ipfs/go-log/v2"
 )
 
@@ -25,6 +26,7 @@ type HttpServerConfig struct {
 	Port                uint
 	TempDir             string
 	MaxBlocksPerRequest uint64
+	Metrics             bool
 }
 
 // NewHttpServer creates a new HttpServer
@@ -54,6 +56,9 @@ func NewHttpServer(ctx context.Context, lassie *lassie.Lassie, cfg HttpServerCon
 
 	// Routes
 	mux.HandleFunc("/ipfs/", ipfsHandler(lassie, cfg))
+	if cfg.Metrics {
+		mux.Handle("/metrics", metrics.NewExporter())
+	}
 
 	return httpServer, nil
 }

@@ -63,6 +63,7 @@ var daemonFlags = []cli.Flag{
 	FlagEventRecorderAuth,
 	FlagEventRecorderInstanceId,
 	FlagEventRecorderUrl,
+	FlagExposeMetrics,
 	FlagVerbose,
 	FlagVeryVerbose,
 }
@@ -82,6 +83,7 @@ func daemonCommand(cctx *cli.Context) error {
 	maxBlocks := cctx.Uint64("maxblocks")
 	libp2pLowWater := cctx.Int("libp2p-conns-lowwater")
 	libp2pHighWater := cctx.Int("libp2p-conns-highwater")
+	exposeMetrics := cctx.Bool("expose-metrics")
 
 	lassieOpts := []lassie.LassieOption{lassie.WithProviderTimeout(20 * time.Second)}
 	if libp2pHighWater != 0 || libp2pLowWater != 0 {
@@ -105,6 +107,7 @@ func daemonCommand(cctx *cli.Context) error {
 		Port:                port,
 		TempDir:             tempDir,
 		MaxBlocksPerRequest: maxBlocks,
+		Metrics:             exposeMetrics,
 	})
 
 	if err != nil {
