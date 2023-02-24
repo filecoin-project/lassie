@@ -78,7 +78,7 @@ func (mcf *mockCandidateFinder) FindCandidatesAsync(ctx context.Context, cid cid
 	ch := make(chan types.FindCandidatesResult)
 	go func() {
 		cand, err := mcf.FindCandidates(ctx, cid)
-		ch <- types.FindCandidatesResult{Candidate: cand[0], Err: err}
+		ch <- types.FindCandidatesResult{Value: cand[0], Err: err}
 		close(ch)
 	}()
 	return ch, nil
