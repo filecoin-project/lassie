@@ -3,6 +3,7 @@ package stream
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/benbjohnson/clock"
@@ -31,17 +32,17 @@ func NewMultiSubscriber[T any](subscribers []types.StreamSubscriber[T]) types.St
 }
 
 func operatorSubscriber[T any, U any](dest types.StreamSubscriber[U], onNext func(T)) types.StreamSubscriber[T] {
-	return internalSubscriber[T]{
-		onNext: func(t T) {
+	return internal.NewSubscriber(
+		func(t T) {
 			onNext(t)
 		},
-		onError: func(err error) {
+		func(err error) {
 			dest.Error(err)
 		},
-		onComplete: func() {
+		func() {
 			dest.Complete()
 		},
-	}
+	)
 }
 
 // BufferDebounce groups values after each emission from the source channel for the specified duration
@@ -277,7 +278,7 @@ func SplitStream[T any](ctx context.Context, source types.Stream[T], streams map
 }
 
 func NewChannelSubscriber[T any](ctx context.Context, outgoing chan<- types.Result[T]) types.StreamSubscriber[T] {
-	return internalSubscriber[T]{
+	return internal.NewSubscriber[]()[T]{
 		onNext: func(t T) {
 			sendContext(ctx, outgoing, types.Value(t))
 		},
@@ -305,8 +306,8 @@ func sendContext[T any](ctx context.Context, outgoing chan<- T, next T) {
 }
 
 func ResultStream[T any](source types.Stream[types.Result[T]]) types.Stream[T] {
-	return lift(source, func(source types.Stream[types.Result[T]], subscriber types.StreamSubscriber[T]) {
-		resultSubscriber := operatorSubscriber(subscriber, func(next types.Result[T]) {
+	return internal.Lift(source, func(source types.Stream[types.Result[T]], subscriber *internal.Subscriber[T]) types.GracefulCanceller {
+		resultSubscriber := operatorSubscriber[types.Result[T],T](subscriber, func(next types.Result[T]) {
 			if next.Err != nil {
 				subscriber.Error(next.Err)
 				return
@@ -314,27 +315,82 @@ func ResultStream[T any](source types.Stream[types.Result[T]]) types.Stream[T] {
 			subscriber.Next(next.Value)
 		})
 		source.Subscribe(resultSubscriber)
+		return nil
 	})
 }
 
 func Just[T any](value T) types.Stream[T] {
-	return NewStream(func(subcriber types.StreamSubscriber[T]) {
+	return internal.NewStream(func(subcriber *internal.Subscriber[T]) types.GracefulCanceller {
 		subcriber.Next(value)
 		subcriber.Complete()
+		return nil
 	})
 }
 
 func Error[T any](err error) types.Stream[T] {
-	return NewStream(func(subcriber types.StreamSubscriber[T]) {
+	return internal.NewStream(func(subcriber *internal.Subscriber[T]) types.GracefulCanceller {
 		subcriber.Error(err)
+		return nil
 	})
 }
 
-func Race[T any](streams []types.Stream[T]) types.Stream[T] {
-	if len(streams) == 1 {
-		return streams[0]
-	}
-	return NewStream((types.StreamSubscriber[T])))
+func FromSlice[T any](values []T) types.Stream[T] {
+	return internal.NewStream(func(subscriber *internal.Subscriber[T]) types.GracefulCanceller {
+		for _, value := range values {
+			subscriber.Next(value)
+		}
+		subscriber.Complete()
+		return nil
+	})
+}
+
+func Merge[T any](streams []types.Stream[T]) types.Stream[T] {
+	return internal.Lift(FromSlice(streams), func(source types.Stream[types.Stream[T]], subscriber *internal.Subscriber[T]) types.GracefulCanceller {
+		var active atomic.Int64
+		var isComplete atomic.Bool
+		completeIfPossible := func() {
+			if isComplete.Load() && active.Load() == 0 {
+				subscriber.Complete()
+			}
+		}
+		mergingSubscriber := internal.NewSubscriber(
+			func(next types.Stream[T]) {
+				active.Add(1)
+				var innerComplete bool
+				innerSubscriber := internal.NewSubscriber(
+					func(val T) {
+						subscriber.Next(val)
+					},
+					func (err error) {
+						subscriber.Error(err)
+					},
+					func() {
+						innerComplete = true
+					},
+					types.OnTearDown(func() error {
+						if innerComplete {
+							active.Add(-1)
+							completeIfPossible()
+						}
+						return nil
+					}),
+				)
+				go func() {
+					next.Subscribe(innerSubscriber)
+				}()
+			},
+			func(err error) {
+				subscriber.Error(err)
+			},
+			func() {
+				isComplete.Store(true)
+				completeIfPossible()
+			},
+			nil,
+		)
+		source.Subscribe(mergingSubscriber)
+		return nil
+	})
 }
 
 func NewResultChannelStream[T any](ctx context.Context, incoming <-chan types.Result[T]) types.Stream[T] {
@@ -342,7 +398,7 @@ func NewResultChannelStream[T any](ctx context.Context, incoming <-chan types.Re
 }
 
 func NewChannelStream[T any](ctx context.Context, incoming <-chan T) types.Stream[T] {
-	return NewStream(func(subscriber types.StreamSubscriber[T]) {
+	return internal.NewStream(func(subscriber types.StreamSubscriber[T]) {
 		for {
 			select {
 			case <-ctx.Done():

@@ -44,3 +44,5 @@ func (acr asyncCandidateRetrieval) retrieveAsResult(candidates []types.Retrieval
 	stats, err := acr.RetrieveFromCandidates(candidates)
 	return types.RetrievalResult{Value: stats, Err: err}, nil
 }
+
+types

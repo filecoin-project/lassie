@@ -109,10 +109,8 @@ func (s *Subscription) Remove(child types.GracefulCanceller) {
 	}
 }
 
-func empty() *Subscription {
+func Empty() *Subscription {
 	e := NewSubscription(nil)
-	e.closed = true
+	e.TearDown()
 	return e
 }
-
-var Empty = empty()

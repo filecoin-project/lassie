@@ -13,6 +13,7 @@ type Subscriber[T any] struct {
 	onNext     func(T)
 	onError    func(error)
 	onComplete func()
+	onFinalize types.GracefulCanceller
 }
 
 func NewSafeSubscriber[T any](subcriber types.StreamSubscriber[T]) *Subscriber[T] {
@@ -23,7 +24,7 @@ func NewSafeSubscriber[T any](subcriber types.StreamSubscriber[T]) *Subscriber[T
 	}
 }
 
-func NewSubscriber[T any](onNext func(T), onError func(error), onComplete func()) types.StreamSubscriber[T] {
+func NewSubscriber[T any](onNext func(T), onError func(error), onComplete func(), onFinalize types.GracefulCanceller) types.StreamSubscriber[T] {
 	return &Subscriber[T]{
 		onNext:     onNext,
 		onError:    onError,
@@ -44,6 +45,7 @@ func (o *Subscriber[T]) Error(err error) {
 	if !o.isStopped {
 		o.isStopped = true
 		o.onError(err)
+		o.TearDown()
 	}
 }
 
@@ -53,15 +55,26 @@ func (o *Subscriber[T]) Complete() {
 	if !o.isStopped {
 		o.isStopped = true
 		o.onComplete()
+		o.TearDown()
 	}
 }
 
 func (o *Subscriber[T]) TearDown() error {
 	o.lk.Lock()
 	defer o.lk.Unlock()
-	if o.Subscription.closed {
+	o.Subscription.lock.Lock()
+	closed := o.Subscription.closed
+	o.Subscription.lock.Unlock()
+	if closed {
 		return nil
 	}
 	o.isStopped = true
-	return o.Subscription.TearDown()
+	err := o.Subscription.TearDown()
+	if err != nil {
+		return err
+	}
+	if o.onFinalize != nil {
+		return o.onFinalize.TearDown()
+	}
+	return nil
 }

@@ -2,10 +2,10 @@ package internal
 
 import "github.com/filecoin-project/lassie/pkg/types"
 
-type Operator[T any, U any] func(source types.Stream[T], subscriber types.StreamSubscriber[U]) types.GracefulCanceller
+type Operator[T any, U any] func(source types.Stream[T], subscriber *Subscriber[U]) types.GracefulCanceller
 
 type Stream[T any] struct {
-	subscribe func(types.StreamSubscriber[T]) types.GracefulCanceller
+	subscribe func(*Subscriber[T]) types.GracefulCanceller
 }
 
 func (s Stream[T]) Subscribe(subscriber types.StreamSubscriber[T]) types.GracefulCanceller {
@@ -22,11 +22,11 @@ type derivedStream[S any, T any] struct {
 	operator Operator[S, T]
 }
 
-func (s derivedStream[S, T]) subscribe(subscriber types.StreamSubscriber[T]) types.GracefulCanceller {
+func (s derivedStream[S, T]) subscribe(subscriber *Subscriber[T]) types.GracefulCanceller {
 	return s.operator(s.source, subscriber)
 }
 
-func NewStream[T any](subscribe func(types.StreamSubscriber[T]) types.GracefulCanceller) types.Stream[T] {
+func NewStream[T any](subscribe func(*Subscriber[T]) types.GracefulCanceller) types.Stream[T] {
 	return Stream[T]{subscribe: subscribe}
 }
 
