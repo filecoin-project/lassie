@@ -406,7 +406,11 @@ func (rc *RetrievalClient) RetrieveFromPeer(
 		// We could fail before a successful proposal
 		return nil, fmt.Errorf("%w: %s", retriever.ErrDealProposalFailed, err)
 	}
-	defer rc.dataTransfer.CloseDataTransferChannel(ctx, chanid)
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.TODO(), 1*time.Second)
+		defer cancel()
+		rc.dataTransfer.CloseDataTransferChannel(ctx, chanid)
+	}()
 
 	// Wait for the retrieval to finish before exiting the function
 awaitfinished:
