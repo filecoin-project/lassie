@@ -139,8 +139,8 @@ func (i *TestPeer) SetBlockstoreLatency(t time.Duration) time.Duration {
 	return i.blockstoreDelay.Set(t)
 }
 
-func (i TestPeer) AddrInfo() peer.AddrInfo {
-	return peer.AddrInfo{
+func (i TestPeer) AddrInfo() *peer.AddrInfo {
+	return &peer.AddrInfo{
 		ID:    i.ID,
 		Addrs: i.Host.Addrs(),
 	}
