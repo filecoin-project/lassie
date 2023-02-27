@@ -23,11 +23,12 @@ type Lassie struct {
 }
 
 type LassieConfig struct {
-	Finder          retriever.CandidateFinder
-	Host            host.Host
-	ProviderTimeout time.Duration
-	GlobalTimeout   time.Duration
-	Libp2pOptions   []libp2p.Option
+	Finder                 retriever.CandidateFinder
+	Host                   host.Host
+	ProviderTimeout        time.Duration
+	ConcurrentSPRetrievals uint
+	GlobalTimeout          time.Duration
+	Libp2pOptions          []libp2p.Option
 }
 
 type LassieOption func(cfg *LassieConfig)
@@ -73,7 +74,8 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 	})
 	retrieverCfg := retriever.RetrieverConfig{
 		DefaultMinerConfig: retriever.MinerConfig{
-			RetrievalTimeout: cfg.ProviderTimeout,
+			RetrievalTimeout:        cfg.ProviderTimeout,
+			MaxConcurrentRetrievals: cfg.ConcurrentSPRetrievals,
 		},
 	}
 
@@ -117,6 +119,12 @@ func WithHost(host host.Host) LassieOption {
 func WithLibp2pOpts(libp2pOptions ...libp2p.Option) LassieOption {
 	return func(cfg *LassieConfig) {
 		cfg.Libp2pOptions = libp2pOptions
+	}
+}
+
+func WithConcurrentSPRetrievals(maxConcurrentSPRtreievals uint) LassieOption {
+	return func(cfg *LassieConfig) {
+		cfg.ConcurrentSPRetrievals = maxConcurrentSPRtreievals
 	}
 }
 

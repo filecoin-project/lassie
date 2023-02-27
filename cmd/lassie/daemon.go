@@ -60,6 +60,14 @@ var daemonFlags = []cli.Flag{
 		DefaultText: "libp2p default",
 		EnvVars:     []string{"LASSIE_LIBP2P_CONNECTIONS_HIGHWATER"},
 	},
+	&cli.UintFlag{
+		Name:        "concurrent-sp-retrievals",
+		Aliases:     []string{"hw"},
+		Usage:       "max number of simultaneous SP retrievals",
+		Value:       0,
+		DefaultText: "no limit",
+		EnvVars:     []string{"LASSIE_CONCURRENT_SP_RETRIEVALS"},
+	},
 	FlagEventRecorderAuth,
 	FlagEventRecorderInstanceId,
 	FlagEventRecorderUrl,
@@ -84,14 +92,18 @@ func daemonCommand(cctx *cli.Context) error {
 	libp2pLowWater := cctx.Int("libp2p-conns-lowwater")
 	libp2pHighWater := cctx.Int("libp2p-conns-highwater")
 	exposeMetrics := cctx.Bool("expose-metrics")
-
+	concurrentSPRetrievals := cctx.Uint("concurrent-sp-retrievals")
 	lassieOpts := []lassie.LassieOption{lassie.WithProviderTimeout(20 * time.Second)}
 	if libp2pHighWater != 0 || libp2pLowWater != 0 {
 		connManager, err := connmgr.NewConnManager(libp2pLowWater, libp2pHighWater)
 		if err != nil {
 			return err
 		}
-		lassieOpts = append(lassieOpts, lassie.WithLibp2pOpts(libp2p.ConnectionManager(connManager)))
+		lassieOpts = append(
+			lassieOpts,
+			lassie.WithLibp2pOpts(libp2p.ConnectionManager(connManager)),
+			lassie.WithConcurrentSPRetrievals(concurrentSPRetrievals),
+		)
 	}
 	// create a lassie instance
 	lassie, err := lassie.NewLassie(cctx.Context, lassieOpts...)
