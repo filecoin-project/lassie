@@ -99,7 +99,11 @@ func daemonCommand(cctx *cli.Context) error {
 		if err != nil {
 			return err
 		}
-		lassieOpts = append(lassieOpts, lassie.WithLibp2pOpts(libp2p.ConnectionManager(connManager)), lassie.WithConcurrentSPRetrievals(concurrentSPRetrievals))
+		lassieOpts = append(
+			lassieOpts,
+			lassie.WithLibp2pOpts(libp2p.ConnectionManager(connManager)),
+			lassie.WithConcurrentSPRetrievals(concurrentSPRetrievals),
+		)
 	}
 	// create a lassie instance
 	lassie, err := lassie.NewLassie(cctx.Context, lassieOpts...)
