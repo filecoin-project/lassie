@@ -194,7 +194,7 @@ func (mcf *mockCandidateFinder) FindCandidates(ctx context.Context, cid cid.Cid)
 			} else {
 				md = metadata.Default.New(&metadata.GraphsyncFilecoinV1{PieceCID: cid})
 			}
-			candidates = append(candidates, types.RetrievalCandidate{MinerPeer: h.AddrInfo(), RootCid: cid, Metadata: md})
+			candidates = append(candidates, types.RetrievalCandidate{MinerPeer: *h.AddrInfo(), RootCid: cid, Metadata: md})
 		}
 	}
 	return candidates, nil

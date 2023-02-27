@@ -11,15 +11,11 @@ import (
 
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/lassie/pkg/internal/itest/mocknet"
-	"github.com/filecoin-project/lassie/pkg/internal/itest/testpeer"
 	"github.com/filecoin-project/lassie/pkg/internal/itest/unixfs"
 	"github.com/filecoin-project/lassie/pkg/internal/lp2ptransports"
 	"github.com/filecoin-project/lassie/pkg/lassie"
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-graphsync/storeutil"
-	bsnet "github.com/ipfs/go-libipfs/bitswap/network"
-	"github.com/ipfs/go-libipfs/bitswap/server"
 	"github.com/ipfs/go-unixfsnode"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/storage"
@@ -39,7 +35,6 @@ const (
 )
 
 func TestDirectFetch(t *testing.T) {
-
 	testCases := []struct {
 		name       string
 		directPeer int
@@ -57,6 +52,7 @@ func TestDirectFetch(t *testing.T) {
 			directPeer: transportsDirect,
 		},
 	}
+
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			req := require.New(t)
@@ -67,35 +63,29 @@ func TestDirectFetch(t *testing.T) {
 			t.Logf("random seed: %d", rndSeed)
 			var rndReader io.Reader = rand.New(rand.NewSource(rndSeed))
 
-			// build two files of 4MiB random bytes, packaged into unixfs DAGs
-			// (rootCid1 & rootCid2) and the original source data retained
-			// (srcData1, srcData2)
-			mrn := mocknet.NewMockRetrievalNet()
+			mrn := mocknet.NewMockRetrievalNet(ctx, t)
+			mrn.AddGraphsyncPeers(1)
+			mrn.AddBitswapPeers(1)
 
-			mrn.SetupNet(ctx, t)
-			mrn.SetupRetrieval(ctx, t)
-			graphsyncAddr := peer.AddrInfo{
-				ID:    mrn.HostRemote.ID(),
-				Addrs: mrn.HostRemote.Addrs(),
-			}
-			graphsyncMAs, err := peer.AddrInfoToP2pAddrs(&graphsyncAddr)
+			// generate separate 4MiB random unixfs file DAGs on both peers
+
+			// graphsync peer (0)
+			graphsyncMAs, err := peer.AddrInfoToP2pAddrs(mrn.Remotes[0].AddrInfo())
 			req.NoError(err)
-			rootCid, srcBytes := unixfs.GenerateFile(t, &mrn.LinkSystemRemote, rndReader, 4<<20)
+			rootCid, srcBytes := unixfs.GenerateFile(t, &mrn.Remotes[0].LinkSystem, rndReader, 4<<20)
+			mrn.Remotes[0].RootCid = rootCid // for the CandidateFinder
 			srcData := []unixfs.DirEntry{{Path: "", Cid: rootCid, Content: srcBytes}}
 			qr := testQueryResponse
 			qr.MinPricePerByte = abi.NewTokenAmount(0) // make it free so it's not filtered
-			mrn.SetupQuery(ctx, t, rootCid, qr)
-			testPeerGenerator := testpeer.NewTestPeerGenerator(ctx, t, mrn.MN, []bsnet.NetOpt{}, []server.Option{})
-			bitswapPeer := testPeerGenerator.Peers(1)[0]
-			ls := storeutil.LinkSystemForBlockstore(bitswapPeer.Blockstore())
-			rootCidBs, _ := unixfs.GenerateFile(t, &ls, bytes.NewReader(srcBytes), 4<<20)
+			mocknet.SetupQuery(t, mrn.Remotes[0], rootCid, qr)
+			mocknet.SetupRetrieval(t, mrn.Remotes[0])
+
+			// bitswap peer (1)
+			rootCidBs, _ := unixfs.GenerateFile(t, &mrn.Remotes[1].LinkSystem, bytes.NewReader(srcBytes), 4<<20)
 			req.Equal(rootCid, rootCidBs)
-			bitswapAddr := peer.AddrInfo{
-				ID:    bitswapPeer.Host.ID(),
-				Addrs: bitswapPeer.Host.Addrs(),
-			}
-			bitswapMAs, err := peer.AddrInfoToP2pAddrs(&bitswapAddr)
+			bitswapMAs, err := peer.AddrInfoToP2pAddrs(mrn.Remotes[1].AddrInfo())
 			req.NoError(err)
+
 			transportsAddr, clear := handleTransports(t, mrn.MN, []lp2ptransports.Protocol{
 				{
 					Name:      "bitswap",
@@ -106,21 +96,23 @@ func TestDirectFetch(t *testing.T) {
 					Addresses: graphsyncMAs,
 				},
 			})
-			mrn.MN.LinkAll()
+			req.NoError(mrn.MN.LinkAll())
 			defer clear()
+
 			var addr peer.AddrInfo
 			switch testCase.directPeer {
-			case bitswapDirect:
-				addr = bitswapAddr
 			case graphsyncDirect:
-				addr = graphsyncAddr
+				addr = *mrn.Remotes[0].AddrInfo()
+			case bitswapDirect:
+				addr = *mrn.Remotes[1].AddrInfo()
 			case transportsDirect:
 				addr = transportsAddr
 			default:
 				req.FailNow("unrecognized direct peer test")
 			}
-			directFinder := retriever.NewDirectCandidateFinder(mrn.HostLocal, []peer.AddrInfo{addr})
-			lassie, err := lassie.NewLassie(ctx, lassie.WithFinder(directFinder), lassie.WithHost(mrn.HostLocal), lassie.WithGlobalTimeout(5*time.Second))
+
+			directFinder := retriever.NewDirectCandidateFinder(mrn.Self, []peer.AddrInfo{addr})
+			lassie, err := lassie.NewLassie(ctx, lassie.WithFinder(directFinder), lassie.WithHost(mrn.Self), lassie.WithGlobalTimeout(5*time.Second))
 			req.NoError(err)
 			outFile, err := os.CreateTemp(t.TempDir(), "lassie-test-")
 			req.NoError(err)
@@ -151,7 +143,6 @@ func TestDirectFetch(t *testing.T) {
 			unixfs.CompareDirEntries(t, srcData, gotDir)
 		})
 	}
-
 }
 
 type transportsListener struct {

@@ -88,7 +88,7 @@ func TestQuery(t *testing.T) {
 			require.NoError(t, err)
 
 			var connected bool
-			qr, err := client.RetrievalQueryToPeer(ctx, mrn.Remotes[0].AddrInfo(), tt.requestCid, func() {
+			qr, err := client.RetrievalQueryToPeer(ctx, *mrn.Remotes[0].AddrInfo(), tt.requestCid, func() {
 				connected = true
 			})
 
