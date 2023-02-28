@@ -7,53 +7,51 @@ import (
 	"github.com/filecoin-project/lassie/pkg/types"
 )
 
-var _ types.CandidateRetriever = SplitRetriever{}
+var _ types.AsyncCandidateRetriever = SplitRetriever[int]{}
 
 // SplitRetriever retrieves by first splitting candidates with a splitter, then passing the split sets
 // to multiple retrievers using the given coordination style
-type SplitRetriever struct {
-	CandidateSplitter   types.CandidateSplitter
-	CandidateRetrievers []types.CandidateRetriever
-	CoordinationKind    types.CoordinationKind
+type SplitRetriever[T comparable] struct {
+	AsyncCandidateSplitter types.AsyncCandidateSplitter[T]
+	CandidateRetrievers    map[T]types.AsyncCandidateRetriever
+	CoordinationKind       types.CoordinationKind
 }
 
-func (m SplitRetriever) Retrieve(ctx context.Context, request types.RetrievalRequest, events func(types.RetrievalEvent)) types.CandidateRetrieval {
-	candidateRetrievals := make([]types.CandidateRetrieval, 0, len(m.CandidateRetrievers))
-	for _, candidateRetriever := range m.CandidateRetrievers {
-		candidateRetrievals = append(candidateRetrievals, candidateRetriever.Retrieve(ctx, request, events))
+func (m SplitRetriever[T]) Retrieve(ctx context.Context, request types.RetrievalRequest, events func(types.RetrievalEvent)) types.AsyncCandidateRetrieval {
+	candidateRetrievals := make(map[T]types.AsyncCandidateRetrieval, len(m.CandidateRetrievers))
+	for key, candidateRetriever := range m.CandidateRetrievers {
+		candidateRetrievals[key] = candidateRetriever.Retrieve(ctx, request, events)
 	}
-	return splitRetrieval{
-		retrievalSplitter:   m.CandidateSplitter.SplitRetrieval(ctx, request, events),
+	return splitRetrieval[T]{
+		retrievalSplitter:   m.AsyncCandidateSplitter.SplitRetrieval(ctx, request, events),
 		candidateRetrievals: candidateRetrievals,
 		coodinationKind:     m.CoordinationKind,
 		ctx:                 ctx,
 	}
 }
 
-type splitRetrieval struct {
-	retrievalSplitter   types.RetrievalSplitter
-	candidateRetrievals []types.CandidateRetrieval
+type splitRetrieval[T comparable] struct {
+	retrievalSplitter   types.AsyncRetrievalSplitter[T]
+	candidateRetrievals map[T]types.AsyncCandidateRetrieval
 	coodinationKind     types.CoordinationKind
 	ctx                 context.Context
 }
 
-func (m splitRetrieval) RetrieveFromCandidates(candidates []types.RetrievalCandidate) (*types.RetrievalStats, error) {
-	splitCandidates, err := m.retrievalSplitter.SplitCandidates(candidates)
-	if err != nil {
-		return nil, err
-	}
-	retrievers := make([]types.CandidateRetrievalCall, 0, len(splitCandidates))
-	for i, candidateSet := range splitCandidates {
-		if len(candidateSet) > 0 && i < len(m.candidateRetrievals) {
-			retrievers = append(retrievers, types.CandidateRetrievalCall{
-				Candidates:         candidateSet,
-				CandidateRetrieval: m.candidateRetrievals[i],
-			})
-		}
-	}
+func (m splitRetrieval[T]) RetrieveFromAsyncCandidates(asyncCandidates types.InboundAsyncCandidates) (*types.RetrievalStats, error) {
+	asyncSplitCandidates, errChan := m.retrievalSplitter.SplitAsyncCandidates(asyncCandidates)
 	coordinator, err := coordinators.Coordinator(m.coodinationKind)
 	if err != nil {
 		return nil, err
 	}
-	return coordinator(m.ctx, retrievers)
+	return coordinator(m.ctx, func(ctx context.Context, retrievalCall func(types.Retrieval)) {
+		for key, asyncCandidates := range asyncSplitCandidates {
+			if asyncCandidateRetrieval, ok := m.candidateRetrievals[key]; ok {
+				retrievalCall(types.AsyncCandidateRetrievalCall{
+					Candidates:              asyncCandidates,
+					AsyncCandidateRetrieval: asyncCandidateRetrieval,
+				})
+			}
+		}
+		retrievalCall(types.DeferredErrorRetrieval{Ctx: ctx, ErrChan: errChan})
+	})
 }

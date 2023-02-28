@@ -15,6 +15,8 @@ func Coordinator(kind types.CoordinationKind) (types.RetrievalCoordinator, error
 		return Race, nil
 	case types.SequentialCoordination:
 		return Sequence, nil
+	case types.AsyncCoordination:
+		return Async, nil
 	default:
 		return nil, errors.New("unrecognized retriever kind")
 	}

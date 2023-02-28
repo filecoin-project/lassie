@@ -53,12 +53,13 @@ type InProgressCids interface {
 // Note: this is a tradeoff over go-merkledag for traversal, cause selector execution is slow. But the solution
 // is to improve selector execution, not introduce unpredictable encoding.
 type BitswapRetriever struct {
-	bstore         MultiBlockstore
-	inProgressCids InProgressCids
-	routing        IndexerRouting
-	blockService   blockservice.BlockService
-	clock          clock.Clock
-	cfg            BitswapConfig
+	bstore                  MultiBlockstore
+	inProgressCids          InProgressCids
+	routing                 IndexerRouting
+	blockService            blockservice.BlockService
+	clock                   clock.Clock
+	cfg                     BitswapConfig
+	awaitReceivedCandidates chan<- struct{}
 }
 
 const shortenedDelay = 4 * time.Millisecond
@@ -77,23 +78,24 @@ func NewBitswapRetrieverFromHost(ctx context.Context, host host.Host, cfg Bitswa
 	bitswap := client.New(ctx, bsnet, bstore, client.ProviderSearchDelay(shortenedDelay))
 	bsnet.Start(bitswap)
 	bsrv := blockservice.New(bstore, bitswap)
-	return NewBitswapRetrieverFromDeps(bsrv, routing, inProgressCids, bstore, cfg, clock.New())
+	return NewBitswapRetrieverFromDeps(bsrv, routing, inProgressCids, bstore, cfg, clock.New(), nil)
 }
 
 // NewBitswapRetrieverFromDeps is primarily for testing, constructing behavior from direct dependencies
-func NewBitswapRetrieverFromDeps(bsrv blockservice.BlockService, routing IndexerRouting, inProgressCids InProgressCids, bstore MultiBlockstore, cfg BitswapConfig, clock clock.Clock) *BitswapRetriever {
+func NewBitswapRetrieverFromDeps(bsrv blockservice.BlockService, routing IndexerRouting, inProgressCids InProgressCids, bstore MultiBlockstore, cfg BitswapConfig, clock clock.Clock, awaitReceivedCandidates chan<- struct{}) *BitswapRetriever {
 	return &BitswapRetriever{
-		bstore:         bstore,
-		inProgressCids: inProgressCids,
-		routing:        routing,
-		blockService:   bsrv,
-		clock:          clock,
-		cfg:            cfg,
+		bstore:                  bstore,
+		inProgressCids:          inProgressCids,
+		routing:                 routing,
+		blockService:            bsrv,
+		clock:                   clock,
+		cfg:                     cfg,
+		awaitReceivedCandidates: awaitReceivedCandidates,
 	}
 }
 
 // Retrieve initializes a new bitswap session
-func (br *BitswapRetriever) Retrieve(ctx context.Context, request types.RetrievalRequest, events func(types.RetrievalEvent)) types.CandidateRetrieval {
+func (br *BitswapRetriever) Retrieve(ctx context.Context, request types.RetrievalRequest, events func(types.RetrievalEvent)) types.AsyncCandidateRetrieval {
 	return &bitswapRetrieval{br, blockservice.NewSession(ctx, br.blockService), ctx, request, events}
 }
 
@@ -106,9 +108,8 @@ type bitswapRetrieval struct {
 }
 
 // RetrieveFromCandidates retrieves via go-bitswap backed with the given candidates, under the auspices of a fetcher.Fetcher
-func (br *bitswapRetrieval) RetrieveFromCandidates(candidates []types.RetrievalCandidate) (*types.RetrievalStats, error) {
+func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.InboundAsyncCandidates) (*types.RetrievalStats, error) {
 	selector := br.request.GetSelector()
-
 	phaseStartTime := br.clock.Now()
 	// this is a hack cause we aren't able to track bitswap fetches per peer for now, so instead we just create a single peer for all events
 	bitswapCandidate := types.NewRetrievalCandidate(peer.ID(""), br.request.Cid, metadata.Bitswap{})
@@ -116,7 +117,6 @@ func (br *bitswapRetrieval) RetrieveFromCandidates(candidates []types.RetrievalC
 
 	// setup the linksystem to record bytes & blocks written -- since this isn't automatic w/o go-data-transfer
 	ctx, cancel := context.WithCancel(br.ctx)
-	defer cancel()
 	var lastBytesReceivedTimer *clock.Timer
 	if br.cfg.BlockTimeout != 0 {
 		lastBytesReceivedTimer = br.clock.AfterFunc(br.cfg.BlockTimeout, cancel)
@@ -138,7 +138,28 @@ func (br *bitswapRetrieval) RetrieveFromCandidates(candidates []types.RetrievalC
 	}
 
 	// setup providers for this retrieval
-	br.routing.AddProviders(br.request.RetrievalID, candidates)
+	hasCandidates, nextCandidates, err := ayncCandidates.Next(ctx)
+	if !hasCandidates || err != nil {
+		cancel()
+		// we never received any candidates, so we give up on bitswap retrieval
+		return nil, nil
+	}
+	br.routing.AddProviders(br.request.RetrievalID, nextCandidates)
+	go func() {
+		for {
+			hasCandidates, nextCandidates, err := ayncCandidates.Next(ctx)
+			if !hasCandidates || err != nil {
+				if br.awaitReceivedCandidates != nil {
+					select {
+					case <-br.ctx.Done():
+					case br.awaitReceivedCandidates <- struct{}{}:
+					}
+				}
+				return
+			}
+			br.routing.AddProviders(br.request.RetrievalID, nextCandidates)
+		}
+	}()
 	// setup providers linksystem for this retrieval
 	br.bstore.AddLinkSystem(br.request.RetrievalID, bitswaphelpers.NewByteCountingLinkSystem(&br.request.LinkSystem, cb))
 
@@ -147,7 +168,8 @@ func (br *bitswapRetrieval) RetrieveFromCandidates(candidates []types.RetrievalC
 	// replace the opener with a blockservice wrapper (we still want any known adls + reifiers, hence the copy)
 	wrappedLsys.StorageReadOpener = loaderForSession(br.request.RetrievalID, br.inProgressCids, br.bsGetter)
 	// run the retrieval
-	err := easyTraverse(ctx, cidlink.Link{Cid: br.request.Cid}, selector, &wrappedLsys)
+	err = easyTraverse(ctx, cidlink.Link{Cid: br.request.Cid}, selector, &wrappedLsys)
+	cancel()
 
 	// unregister relevant provider records & LinkSystem
 	br.routing.RemoveProviders(br.request.RetrievalID)

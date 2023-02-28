@@ -91,34 +91,37 @@ func NewRetriever(
 	config RetrieverConfig,
 	client RetrievalClient,
 	candidateFinder CandidateFinder,
-	bitswapRetriever types.CandidateRetriever,
+	bitswapRetriever types.AsyncCandidateRetriever,
 ) (*Retriever, error) {
 	retriever := &Retriever{
 		config:       config,
 		eventManager: events.NewEventManager(ctx),
 		spTracker:    newSpTracker(nil),
 	}
-	candidateRetrievers := []types.CandidateRetriever{}
-	protocols := []multicodec.Code{}
+	candidateRetrievers := map[multicodec.Code]types.AsyncCandidateRetriever{}
+	protocols = []multicodec.Code{}
 	if !config.DisableGraphsync {
-		candidateRetrievers = append(candidateRetrievers, &GraphSyncRetriever{
-			GetStorageProviderTimeout: retriever.getStorageProviderTimeout,
-			IsAcceptableQueryResponse: retriever.isAcceptableQueryResponse,
-			Client:                    client,
-		})
+		candidateRetrievers[multicodec.TransportGraphsyncFilecoinv1] = combinators.AsyncCandidateRetriever{
+			CandidateRetriever: &GraphSyncRetriever{
+				GetStorageProviderTimeout: retriever.getStorageProviderTimeout,
+				IsAcceptableQueryResponse: retriever.isAcceptableQueryResponse,
+				Client:                    client,
+			},
+		}
 		protocols = append(protocols, multicodec.TransportGraphsyncFilecoinv1)
 	}
 	if bitswapRetriever != nil {
-		candidateRetrievers = append(candidateRetrievers, bitswapRetriever)
+		candidateRetrievers[multicodec.TransportBitswap] = bitswapRetriever
 		protocols = append(protocols, multicodec.TransportBitswap)
 	}
 	retriever.executor = combinators.RetrieverWithCandidateFinder{
 		CandidateFinder: NewAssignableCandidateFinder(candidateFinder, retriever.isAcceptableStorageProvider),
-		CandidateRetriever: combinators.SplitRetriever{
-			CandidateSplitter:   NewProtocolSplitter(protocols),
-			CandidateRetrievers: candidateRetrievers,
-			CoordinationKind:    types.RaceCoordination,
+		CandidateRetriever: combinators.SplitRetriever[multicodec.Code]{
+			AsyncCandidateSplitter: combinators.NewAsyncCandidateSplitter(protocols, NewProtocolSplitter),
+			CandidateRetrievers:    candidateRetrievers,
+			CoordinationKind:       types.RaceCoordination,
 		},
+		CoordinationKind: types.RaceCoordination,
 	}
 
 	return retriever, nil

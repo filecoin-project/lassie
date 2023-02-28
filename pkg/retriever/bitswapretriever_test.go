@@ -294,8 +294,14 @@ func TestBitswapRetriever(t *testing.T) {
 			mbs := bitswaphelpers.NewMultiblockstore()
 			clock := clock.NewMock()
 
+			unlockExchange := make(chan struct{})
 			exchange := &mockExchange{
 				getLsys: func(ctx context.Context) (*linking.LinkSystem, error) {
+					select {
+					case <-ctx.Done():
+						req.FailNow("exchange not unlocked")
+					case <-unlockExchange:
+					}
 					clock.Add(remoteBlockDuration)
 					id, err := types.RetrievalIDFromContext(ctx)
 					if err != nil {
@@ -314,7 +320,8 @@ func TestBitswapRetriever(t *testing.T) {
 			bsrv := blockservice.New(mbs, exchange)
 			mir := newMockIndexerRouting()
 			mipc := &mockInProgressCids{}
-			bsr := retriever.NewBitswapRetrieverFromDeps(bsrv, mir, mipc, mbs, testCase.cfg, clock)
+			awaitReceivedCandidates := make(chan struct{}, 1)
+			bsr := retriever.NewBitswapRetrieverFromDeps(bsrv, mir, mipc, mbs, testCase.cfg, clock, awaitReceivedCandidates)
 			receivedEvents := make(map[cid.Cid][]types.RetrievalEvent)
 			retrievalCollector := func(evt types.RetrievalEvent) {
 				receivedEvents[evt.PayloadCid()] = append(receivedEvents[evt.PayloadCid()], evt)
@@ -336,16 +343,51 @@ func TestBitswapRetriever(t *testing.T) {
 			}
 			// reset the clock
 			clock.Set(time.Now())
-			stats, err := retrieval1.RetrieveFromCandidates(expectedCandidates[rid1])
+			retrievalResult := make(chan types.RetrievalResult, 1)
+			go func() {
+				stats, err := retrieval1.RetrieveFromAsyncCandidates(makeAsyncCandidates(expectedCandidates[rid1]))
+				retrievalResult <- types.RetrievalResult{stats, err}
+			}()
+			select {
+			case <-ctx.Done():
+				req.FailNow("did not receive all candidates")
+			case <-awaitReceivedCandidates:
+			}
+			close(unlockExchange)
+
+			var stats *types.RetrievalStats
+			select {
+			case <-ctx.Done():
+				req.FailNow("did not receive result")
+			case result := <-retrievalResult:
+				stats, err = result.Stats, result.Err
+			}
 			if stats != nil {
 				receivedStats[cid1] = stats
 			}
 			if err != nil {
 				receivedErrors[cid1] = struct{}{}
 			}
+
 			// reset the clock
 			clock.Set(time.Now())
-			stats, err = retrieval2.RetrieveFromCandidates(expectedCandidates[rid2])
+			unlockExchange = make(chan struct{})
+			go func() {
+				stats, err := retrieval2.RetrieveFromAsyncCandidates(makeAsyncCandidates(expectedCandidates[rid2]))
+				retrievalResult <- types.RetrievalResult{stats, err}
+			}()
+			select {
+			case <-ctx.Done():
+				req.FailNow("did not receive all candidates")
+			case <-awaitReceivedCandidates:
+			}
+			close(unlockExchange)
+			select {
+			case <-ctx.Done():
+				req.FailNow("did not receive result")
+			case result := <-retrievalResult:
+				stats, err = result.Stats, result.Err
+			}
 			if stats != nil {
 				receivedStats[cid2] = stats
 			}
@@ -419,18 +461,24 @@ func (me *mockExchange) NewSession(_ context.Context) exchange.Fetcher {
 }
 
 type mockIndexerRouting struct {
-	candidatesAdded   map[types.RetrievalID][]types.RetrievalCandidate
-	candidatesRemoved map[types.RetrievalID]struct{}
+	incomingRetrievals map[types.RetrievalID]struct{}
+	candidatesAdded    map[types.RetrievalID][]types.RetrievalCandidate
+	candidatesRemoved  map[types.RetrievalID]struct{}
 }
 
 func newMockIndexerRouting() *mockIndexerRouting {
 	return &mockIndexerRouting{
-		candidatesAdded:   make(map[types.RetrievalID][]types.RetrievalCandidate),
-		candidatesRemoved: make(map[types.RetrievalID]struct{}),
+		incomingRetrievals: make(map[types.RetrievalID]struct{}),
+		candidatesAdded:    make(map[types.RetrievalID][]types.RetrievalCandidate),
+		candidatesRemoved:  make(map[types.RetrievalID]struct{}),
 	}
 }
 func (mir *mockIndexerRouting) AddProviders(rid types.RetrievalID, candidates []types.RetrievalCandidate) {
 	mir.candidatesAdded[rid] = append(mir.candidatesAdded[rid], candidates...)
+}
+
+func (mir *mockIndexerRouting) SignalIncomingRetrieval(rid types.RetrievalID) {
+	mir.incomingRetrievals[rid] = struct{}{}
 }
 
 func (mir *mockIndexerRouting) RemoveProviders(rid types.RetrievalID) {
@@ -489,4 +537,13 @@ func (mipc *mockInProgressCids) Inc(c cid.Cid, _ types.RetrievalID) {
 
 func (mipc *mockInProgressCids) Dec(c cid.Cid, _ types.RetrievalID) {
 	mipc.decremented = append(mipc.decremented, c)
+}
+
+func makeAsyncCandidates(candidates []types.RetrievalCandidate) types.InboundAsyncCandidates {
+	incoming, outgoing := types.MakeAsyncCandidates(len(candidates))
+	for _, candidate := range candidates {
+		outgoing <- []types.RetrievalCandidate{candidate}
+	}
+	close(outgoing)
+	return incoming
 }

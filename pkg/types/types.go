@@ -27,12 +27,16 @@ func NewRetrievalCandidate(pid peer.ID, rootCid cid.Cid, protocols ...metadata.P
 	}
 }
 
+type Retrieval interface {
+	Retrieve() (*RetrievalStats, error)
+}
+
 type Retriever interface {
 	Retrieve(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) (*RetrievalStats, error)
 }
 
 type CandidateFinder interface {
-	FindCandidates(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) ([]RetrievalCandidate, error)
+	FindCandidates(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent), onCandidates func([]RetrievalCandidate)) error
 }
 
 type CandidateRetrieval interface {
@@ -43,12 +47,61 @@ type CandidateRetriever interface {
 	Retrieve(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) CandidateRetrieval
 }
 
-type RetrievalSplitter interface {
-	SplitCandidates([]RetrievalCandidate) ([][]RetrievalCandidate, error)
+func MakeAsyncCandidates(buffer int) (InboundAsyncCandidates, OutboundAsyncCandidates) {
+	asyncCandidates := make(chan []RetrievalCandidate, buffer)
+	return asyncCandidates, asyncCandidates
 }
 
-type CandidateSplitter interface {
-	SplitRetrieval(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) RetrievalSplitter
+type InboundAsyncCandidates <-chan []RetrievalCandidate
+
+func (ias InboundAsyncCandidates) Next(ctx context.Context) (bool, []RetrievalCandidate, error) {
+	// prioritize cancelled context
+	select {
+	case <-ctx.Done():
+		return false, nil, ctx.Err()
+	default:
+	}
+	select {
+	case <-ctx.Done():
+		return false, nil, ctx.Err()
+	case next, ok := <-ias:
+		return ok, next, nil
+	}
+}
+
+type OutboundAsyncCandidates chan<- []RetrievalCandidate
+
+func (oas OutboundAsyncCandidates) SendNext(ctx context.Context, next []RetrievalCandidate) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case oas <- next:
+		return nil
+	}
+}
+
+type AsyncCandidateRetrieval interface {
+	RetrieveFromAsyncCandidates(asyncCandidates InboundAsyncCandidates) (*RetrievalStats, error)
+}
+
+type AsyncCandidateRetriever interface {
+	Retrieve(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) AsyncCandidateRetrieval
+}
+
+type RetrievalSplitter[T comparable] interface {
+	SplitCandidates([]RetrievalCandidate) (map[T][]RetrievalCandidate, error)
+}
+
+type CandidateSplitter[T comparable] interface {
+	SplitRetrieval(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) RetrievalSplitter[T]
+}
+
+type AsyncRetrievalSplitter[T comparable] interface {
+	SplitAsyncCandidates(asyncCandidates InboundAsyncCandidates) (map[T]InboundAsyncCandidates, <-chan error)
+}
+
+type AsyncCandidateSplitter[T comparable] interface {
+	SplitRetrieval(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) AsyncRetrievalSplitter[T]
 }
 
 type RetrievalStats struct {
@@ -75,13 +128,43 @@ type CandidateRetrievalCall struct {
 	CandidateRetrieval CandidateRetrieval
 }
 
-type RetrievalCoordinator func(context.Context, []CandidateRetrievalCall) (*RetrievalStats, error)
+func (crc CandidateRetrievalCall) Retrieve() (*RetrievalStats, error) {
+	return crc.CandidateRetrieval.RetrieveFromCandidates(crc.Candidates)
+}
+
+type AsyncCandidateRetrievalCall struct {
+	Candidates              InboundAsyncCandidates
+	AsyncCandidateRetrieval AsyncCandidateRetrieval
+}
+
+func (acrc AsyncCandidateRetrievalCall) Retrieve() (*RetrievalStats, error) {
+	return acrc.AsyncCandidateRetrieval.RetrieveFromAsyncCandidates(acrc.Candidates)
+}
+
+type DeferredErrorRetrieval struct {
+	Ctx     context.Context
+	ErrChan <-chan error
+}
+
+func (der DeferredErrorRetrieval) Retrieve() (*RetrievalStats, error) {
+	select {
+	case <-der.Ctx.Done():
+		return nil, der.Ctx.Err()
+	case err := <-der.ErrChan:
+		return nil, err
+	}
+}
+
+type QueueRetrievalsFn func(ctx context.Context, nextRetrievalCall func(Retrieval))
+
+type RetrievalCoordinator func(context.Context, QueueRetrievalsFn) (*RetrievalStats, error)
 
 type CoordinationKind string
 
 const (
 	RaceCoordination       = "race"
 	SequentialCoordination = "sequential"
+	AsyncCoordination      = "async"
 )
 
 type Phase string
