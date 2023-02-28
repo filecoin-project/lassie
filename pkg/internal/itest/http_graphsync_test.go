@@ -24,8 +24,9 @@ import (
 
 func TestHttpRetrieval(t *testing.T) {
 	testCases := []struct {
-		name  string
-		limit uint64
+		name    string
+		limit   uint64
+		shallow bool
 	}{
 		{
 			name: "regular",
@@ -33,6 +34,11 @@ func TestHttpRetrieval(t *testing.T) {
 		{
 			name:  "max block limit",
 			limit: 3,
+		},
+		{
+			// shallow fetch should get the same DAG as full for a plain file
+			name:    "shallow",
+			shallow: true,
 		},
 	}
 	for _, testCase := range testCases {
@@ -87,6 +93,12 @@ func TestHttpRetrieval(t *testing.T) {
 			getReq, err := http.NewRequest("GET", addr, nil)
 			req.NoError(err)
 			getReq.Header.Add("Accept", "application/vnd.ipld.car")
+			if testCase.shallow {
+				q := getReq.URL.Query()
+				q.Add("depthType", "shallow")
+				getReq.URL.RawQuery = q.Encode()
+			}
+			t.Log("Fetching", getReq.URL.String())
 			client := &http.Client{}
 			resp, err := client.Do(getReq)
 			req.NoError(err)
