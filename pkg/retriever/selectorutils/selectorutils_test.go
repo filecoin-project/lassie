@@ -14,9 +14,8 @@ import (
 
 var exploreAllJson = mustDagJson(selectorparse.CommonSelector_ExploreAllRecursively)
 
-// explore interpret-as (~), next (>), recursive (R), explore (a), next (>),
-// recursive edge (@), recursion limit depth 0, interpreted as unixfs-preload
-var exploreShallowJson = `{"~":{">":{"R":{":>":{"a":{">":{"@":{}}}},"l":{"depth":0}}},"as":"unixfs-preload"}}`
+// explore interpret-as (~), next (>), match (.), interpreted as unixfs-preload
+var matchShallowJson = `{"~":{">":{".":{}},"as":"unixfs-preload"}}`
 
 func TestPathToSelector(t *testing.T) {
 	testCases := []struct {
@@ -35,7 +34,7 @@ func TestPathToSelector(t *testing.T) {
 		{
 			name:             "empty path shallow",
 			path:             "",
-			expextedSelector: exploreShallowJson,
+			expextedSelector: matchShallowJson,
 			full:             false,
 		},
 		{
@@ -59,7 +58,7 @@ func TestPathToSelector(t *testing.T) {
 		{
 			name:             "single field shallow",
 			path:             "/foo",
-			expextedSelector: manualJsonFieldStart("foo") + exploreShallowJson + manualJsonFieldEnd(1),
+			expextedSelector: manualJsonFieldStart("foo") + matchShallowJson + manualJsonFieldEnd(1),
 			full:             false,
 		},
 		{
@@ -71,7 +70,7 @@ func TestPathToSelector(t *testing.T) {
 		{
 			name:             "multiple fields shallow",
 			path:             "/foo/bar",
-			expextedSelector: manualJsonFieldStart("foo") + manualJsonFieldStart("bar") + exploreShallowJson + manualJsonFieldEnd(2),
+			expextedSelector: manualJsonFieldStart("foo") + manualJsonFieldStart("bar") + matchShallowJson + manualJsonFieldEnd(2),
 			full:             false,
 		},
 	}

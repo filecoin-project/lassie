@@ -39,12 +39,9 @@ func UnixfsPathToSelector(path string, full bool) (ipld.Node, error) {
 			ssb.ExploreAll(ssb.ExploreRecursiveEdge()),
 		)
 	} else {
-		// ExploreAll only this node, interpreted as unixfs-preload, which will
+		// Match only this node, interpreted as unixfs-preload, which will
 		// load sharded files and sharded directories, and not go further.
-		ss = ssb.ExploreInterpretAs("unixfs-preload", ssb.ExploreRecursive(
-			selector.RecursionLimitDepth(0),
-			ssb.ExploreAll(ssb.ExploreRecursiveEdge()),
-		))
+		ss = ssb.ExploreInterpretAs("unixfs-preload", ssb.Matcher())
 	}
 
 	segments := strings.Split(path, "/")
