@@ -8,6 +8,7 @@ import (
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/storage"
+	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 )
 
 type ReadableWritableStorage interface {
@@ -77,4 +78,13 @@ func NewRequestForPath(store ReadableWritableStorage, cid cid.Cid, path string, 
 		Selector:    selector,
 		LinkSystem:  linkSystem,
 	}, nil
+}
+
+// GetSelector will safely return a selector for this request. If none has been
+// set, it will return explore-all (full DAG).
+func (r RetrievalRequest) GetSelector() ipld.Node {
+	if r.Selector != nil {
+		return r.Selector
+	}
+	return selectorparse.CommonSelector_ExploreAllRecursively
 }

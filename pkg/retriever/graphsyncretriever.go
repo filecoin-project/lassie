@@ -285,7 +285,7 @@ func runRetrievalCandidate(
 				timeout,
 				candidate,
 				queryResponse,
-				req.Selector,
+				req.GetSelector(),
 				eventsCallback,
 			)
 
@@ -419,11 +419,6 @@ func retrievalPhase(
 	selector ipld.Node,
 	eventsCallback datatransfer.Subscriber,
 ) (*types.RetrievalStats, error) {
-
-	if selector == nil {
-		// use explore-all if no selector is specified
-		selector = selectorparse.CommonSelector_ExploreAllRecursively
-	}
 
 	ss := "*"
 	if selector != selectorparse.CommonSelector_ExploreAllRecursively {
