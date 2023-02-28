@@ -33,24 +33,23 @@ func TestRetrieval(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		generate func(*testing.T, linking.LinkSystem) (rootCid cid.Cid, srcData []unixfs.DirEntry)
+		generate func(*testing.T, linking.LinkSystem) (srcData unixfs.DirEntry)
 	}{
 		{
 			name: "UnixFSFileDAG",
-			generate: func(t *testing.T, linkSystem linking.LinkSystem) (cid.Cid, []unixfs.DirEntry) {
-				rootCid, srcBytes := unixfs.GenerateFile(t, &linkSystem, rndReader, 4<<20)
-				return rootCid, []unixfs.DirEntry{{Path: "", Cid: rootCid, Content: srcBytes}}
+			generate: func(t *testing.T, linkSystem linking.LinkSystem) unixfs.DirEntry {
+				return unixfs.GenerateFile(t, &linkSystem, rndReader, 4<<20)
 			},
 		},
 		{
 			name: "UnixFSDirectoryDAG",
-			generate: func(t *testing.T, linkSystem linking.LinkSystem) (cid.Cid, []unixfs.DirEntry) {
+			generate: func(t *testing.T, linkSystem linking.LinkSystem) unixfs.DirEntry {
 				return unixfs.GenerateDirectory(t, &linkSystem, rndReader, 16<<20, false)
 			},
 		},
 		{
 			name: "UnixFSShardedDirectoryDAG",
-			generate: func(t *testing.T, linkSystem linking.LinkSystem) (cid.Cid, []unixfs.DirEntry) {
+			generate: func(t *testing.T, linkSystem linking.LinkSystem) unixfs.DirEntry {
 				return unixfs.GenerateDirectory(t, &linkSystem, rndReader, 16<<20, true)
 			},
 		},
@@ -68,16 +67,16 @@ func TestRetrieval(t *testing.T) {
 			mrn.MN.LinkAll()
 
 			// Generate source data on the remote
-			rootCid, srcData := tt.generate(t, mrn.Remotes[0].LinkSystem)
+			srcData := tt.generate(t, mrn.Remotes[0].LinkSystem)
 
 			// Perform retrieval
-			linkSystemLocal := runRetrieval(t, ctx, mrn, rootCid, finishedChan)
+			linkSystemLocal := runRetrieval(t, ctx, mrn, srcData.Root, finishedChan)
 
 			// Check retrieved data by loading it from the blockstore via UnixFS so we
 			// reify the original single file data from the DAG
 			linkSystemLocal.NodeReifier = unixfsnode.Reify
 			// Convert to []DirEntry slice
-			gotDir := unixfs.ToDirEntry(t, linkSystemLocal, rootCid)
+			gotDir := unixfs.ToDirEntry(t, linkSystemLocal, srcData.Root, true)
 
 			// Validate data
 			unixfs.CompareDirEntries(t, srcData, gotDir)

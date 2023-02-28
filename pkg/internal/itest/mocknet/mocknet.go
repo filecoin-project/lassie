@@ -187,7 +187,7 @@ type mockCandidateFinder struct {
 func (mcf *mockCandidateFinder) FindCandidates(ctx context.Context, cid cid.Cid) ([]types.RetrievalCandidate, error) {
 	candidates := make([]types.RetrievalCandidate, 0)
 	for _, h := range mcf.mrn.Remotes {
-		if h.RootCid.Equals(cid) {
+		if _, has := h.Cids[cid]; has {
 			var md metadata.Metadata
 			if h.BitswapServer != nil {
 				md = metadata.Default.New(metadata.Bitswap{})

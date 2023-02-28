@@ -73,17 +73,15 @@ func TestDirectFetch(t *testing.T) {
 			// graphsync peer (0)
 			graphsyncMAs, err := peer.AddrInfoToP2pAddrs(mrn.Remotes[0].AddrInfo())
 			req.NoError(err)
-			rootCid, srcBytes := unixfs.GenerateFile(t, &mrn.Remotes[0].LinkSystem, rndReader, 4<<20)
-			mrn.Remotes[0].RootCid = rootCid // for the CandidateFinder
-			srcData := []unixfs.DirEntry{{Path: "", Cid: rootCid, Content: srcBytes}}
+			srcData1 := unixfs.GenerateFile(t, &mrn.Remotes[0].LinkSystem, rndReader, 4<<20)
 			qr := testQueryResponse
 			qr.MinPricePerByte = abi.NewTokenAmount(0) // make it free so it's not filtered
-			mocknet.SetupQuery(t, mrn.Remotes[0], rootCid, qr)
+			mocknet.SetupQuery(t, mrn.Remotes[0], srcData1.Root, qr)
 			mocknet.SetupRetrieval(t, mrn.Remotes[0])
 
 			// bitswap peer (1)
-			rootCidBs, _ := unixfs.GenerateFile(t, &mrn.Remotes[1].LinkSystem, bytes.NewReader(srcBytes), 4<<20)
-			req.Equal(rootCid, rootCidBs)
+			srcData2 := unixfs.GenerateFile(t, &mrn.Remotes[1].LinkSystem, bytes.NewReader(srcData1.Content), 4<<20)
+			req.Equal(srcData2.Root, srcData2.Root)
 			bitswapMAs, err := peer.AddrInfoToP2pAddrs(mrn.Remotes[1].AddrInfo())
 			req.NoError(err)
 
@@ -120,9 +118,9 @@ func TestDirectFetch(t *testing.T) {
 			defer func() {
 				req.NoError(outFile.Close())
 			}()
-			outCar, err := storage.NewReadableWritable(outFile, []cid.Cid{rootCid}, carv2.WriteAsCarV1(true))
+			outCar, err := storage.NewReadableWritable(outFile, []cid.Cid{srcData1.Root}, carv2.WriteAsCarV1(true))
 			req.NoError(err)
-			request, err := types.NewRequestForPath(outCar, rootCid, "", true)
+			request, err := types.NewRequestForPath(outCar, srcData1.Root, "", true)
 			req.NoError(err)
 			_, err = lassie.Fetch(ctx, request)
 			req.NoError(err)
@@ -138,8 +136,8 @@ func TestDirectFetch(t *testing.T) {
 			linkSys.SetReadStorage(reader)
 			linkSys.NodeReifier = unixfsnode.Reify
 			linkSys.TrustedStorage = true
-			gotDir := unixfs.ToDirEntry(t, linkSys, rootCid)
-			unixfs.CompareDirEntries(t, srcData, gotDir)
+			gotDir := unixfs.ToDirEntry(t, linkSys, srcData1.Root, true)
+			unixfs.CompareDirEntries(t, srcData1, gotDir)
 		})
 	}
 }

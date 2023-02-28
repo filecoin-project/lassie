@@ -15,8 +15,6 @@ import (
 	httpserver "github.com/filecoin-project/lassie/pkg/server/http"
 	"github.com/ipfs/go-unixfsnode"
 	"github.com/ipld/go-car/v2/storage"
-	dagpb "github.com/ipld/go-codec-dagpb"
-	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/stretchr/testify/require"
 )
@@ -36,10 +34,8 @@ func TestBitswapFetchTwoPeers(t *testing.T) {
 	// build two files of 4MiB random bytes, packaged into unixfs DAGs
 	// (rootCid1 & rootCid2) and the original source data retained
 	// (srcData1, srcData2)
-	rootCid1, srcData1 := unixfs.GenerateFile(t, &mrn.Remotes[0].LinkSystem, rndReader, 4<<20)
-	mrn.Remotes[0].RootCid = rootCid1 // for the CandidateFinder
-	rootCid2, srcData2 := unixfs.GenerateFile(t, &mrn.Remotes[1].LinkSystem, rndReader, 4<<20)
-	mrn.Remotes[1].RootCid = rootCid2 // for the CandidateFinder
+	srcData1 := unixfs.GenerateFile(t, &mrn.Remotes[0].LinkSystem, rndReader, 4<<20)
+	srcData2 := unixfs.GenerateFile(t, &mrn.Remotes[1].LinkSystem, rndReader, 4<<20)
 
 	require.NoError(t, mrn.MN.LinkAll())
 
@@ -61,12 +57,12 @@ func TestBitswapFetchTwoPeers(t *testing.T) {
 	resp1Chan := make(chan *http.Response, 1)
 	resp2Chan := make(chan *http.Response, 1)
 	go func() {
-		resp, err := http.DefaultClient.Get(fmt.Sprintf("http://%s/ipfs/%s?format=car", baseURL, rootCid1))
+		resp, err := http.DefaultClient.Get(fmt.Sprintf("http://%s/ipfs/%s?format=car", baseURL, srcData1.Root))
 		req.NoError(err)
 		resp1Chan <- resp
 	}()
 	go func() {
-		resp, err := http.DefaultClient.Get(fmt.Sprintf("http://%s/ipfs/%s?format=car", baseURL, rootCid2))
+		resp, err := http.DefaultClient.Get(fmt.Sprintf("http://%s/ipfs/%s?format=car", baseURL, srcData2.Root))
 		req.NoError(err)
 		resp2Chan <- resp
 	}()
@@ -91,11 +87,8 @@ func TestBitswapFetchTwoPeers(t *testing.T) {
 	outLsys := cidlink.DefaultLinkSystem()
 	outLsys.SetReadStorage(rCar)
 	outLsys.NodeReifier = unixfsnode.Reify
-	nd, err := outLsys.Load(linking.LinkContext{Ctx: ctx}, cidlink.Link{Cid: rootCid1}, dagpb.Type.PBNode)
-	req.NoError(err)
-	destData, err := nd.AsBytes()
-	req.NoError(err)
-	req.Equal(srcData1, destData)
+	destData := unixfs.ToDirEntry(t, outLsys, srcData1.Root, true)
+	unixfs.CompareDirEntries(t, srcData1, destData)
 
 	// verify second response
 	req.Equal(200, resp2.StatusCode)
@@ -106,11 +99,8 @@ func TestBitswapFetchTwoPeers(t *testing.T) {
 	outLsys = cidlink.DefaultLinkSystem()
 	outLsys.SetReadStorage(rCar)
 	outLsys.NodeReifier = unixfsnode.Reify
-	nd, err = outLsys.Load(linking.LinkContext{Ctx: ctx}, cidlink.Link{Cid: rootCid2}, dagpb.Type.PBNode)
-	req.NoError(err)
-	destData, err = nd.AsBytes()
-	req.NoError(err)
-	req.Equal(srcData2, destData)
+	destData = unixfs.ToDirEntry(t, outLsys, srcData2.Root, true)
+	unixfs.CompareDirEntries(t, srcData2, destData)
 
 	err = httpServer.Close()
 	req.NoError(err)

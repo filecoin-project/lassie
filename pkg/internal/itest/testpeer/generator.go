@@ -2,6 +2,8 @@ package testpeer
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"testing"
 	"time"
 
@@ -20,7 +22,9 @@ import (
 	delay "github.com/ipfs/go-ipfs-delay"
 	bsnet "github.com/ipfs/go-libipfs/bitswap/network"
 	"github.com/ipfs/go-libipfs/bitswap/server"
+	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/linking"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	routinghelpers "github.com/libp2p/go-libp2p-routing-helpers"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	p2ptestutil "github.com/libp2p/go-libp2p-testing/netutil"
@@ -125,7 +129,7 @@ type TestPeer struct {
 	Host               host.Host
 	blockstoreDelay    delay.D
 	LinkSystem         linking.LinkSystem
-	RootCid            cid.Cid
+	Cids               map[cid.Cid]struct{}
 }
 
 // Blockstore returns the block store for this test instance
@@ -205,13 +209,33 @@ func newTestPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity) (Test
 	if err != nil {
 		return TestPeer{}, nil, err
 	}
-	return TestPeer{
+	tp := TestPeer{
 		Host:            client,
 		ID:              p.ID(),
 		blockstore:      bstore,
 		blockstoreDelay: bsdelay,
 		LinkSystem:      storeutil.LinkSystemForBlockstore(bstore),
-	}, dstore, nil
+		Cids:            make(map[cid.Cid]struct{}),
+	}
+
+	wo := tp.LinkSystem.StorageWriteOpener
+	// track CIDs put into this store so we can serve via the CandidateFinder
+	tp.LinkSystem.StorageWriteOpener = func(lnkCtx linking.LinkContext) (io.Writer, linking.BlockWriteCommitter, error) {
+		w, c, err := wo(lnkCtx)
+		if err != nil {
+			return nil, nil, err
+		}
+		return w, func(lnk ipld.Link) error {
+			cid, ok := lnk.(cidlink.Link)
+			if !ok {
+				return fmt.Errorf("expected cidlink.Link, got %T", lnk)
+			}
+			tp.Cids[cid.Cid] = struct{}{}
+			return c(lnk)
+		}, nil
+	}
+
+	return tp, dstore, nil
 }
 
 func StartAndWaitForReady(ctx context.Context, manager datatransfer.Manager) error {
