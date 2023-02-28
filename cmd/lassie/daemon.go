@@ -62,7 +62,7 @@ var daemonFlags = []cli.Flag{
 	},
 	&cli.UintFlag{
 		Name:        "concurrent-sp-retrievals",
-		Aliases:     []string{"hw"},
+		Aliases:     []string{"cr"},
 		Usage:       "max number of simultaneous SP retrievals",
 		Value:       0,
 		DefaultText: "no limit",
