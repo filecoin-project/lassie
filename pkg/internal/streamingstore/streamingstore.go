@@ -40,7 +40,6 @@ type StreamingStore struct {
 	lk        sync.Mutex
 	closed    bool
 	f         *os.File
-	removed   bool // file was removed directly after opening (posix)
 	readWrite *carstore.StorageCar
 	write     storage.WritableStorage
 	tempDir   string
@@ -110,16 +109,13 @@ func (ss *StreamingStore) Close() error {
 	// don't need to Finalize the stores because we're writing CARv1
 	ss.closed = true
 	if ss.f != nil {
-		closeErr := ss.f.Close()
-		var removeErr error
-		if !ss.removed { // windows
-			removeErr = os.Remove(ss.f.Name())
-		}
+		errs := []error{ss.f.Close(), os.Remove(ss.f.Name())}
 		ss.f = nil
-		if closeErr != nil {
-			return closeErr
+		for _, err := range errs {
+			if err != nil {
+				return err
+			}
 		}
-		return removeErr
 	}
 	return nil
 }
@@ -145,12 +141,8 @@ func (ss *StreamingStore) lazyReadWrite() (*carstore.StorageCar, error) {
 // lazy*() methods.
 func (ss *StreamingStore) setupReadWrite() error {
 	var err error
-	ss.f, err = os.CreateTemp(ss.tempDir, "lassie_carstore")
-	if err != nil {
+	if ss.f, err = os.CreateTemp(ss.tempDir, "lassie_carstore"); err != nil {
 		return err
-	}
-	if err = os.Remove(ss.f.Name()); err == nil { // won't work on windows
-		ss.removed = true
 	}
 	ss.readWrite, err = carstore.NewReadableWritable(ss.f, ss.roots, carv2.WriteAsCarV1(true))
 	return err

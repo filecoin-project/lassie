@@ -36,10 +36,16 @@ var fetchCmd = &cli.Command{
 			TakesFile: true,
 		},
 		&cli.DurationFlag{
-			Name:    "timeout",
-			Aliases: []string{"t"},
-			Usage:   "consider it an error after not receiving a response from a storage provider for this long",
+			Name:    "provider-timeout",
+			Aliases: []string{"pt"},
+			Usage:   "consider it an error after not receiving a response from a storage provider after this amount of time",
 			Value:   20 * time.Second,
+		},
+		&cli.DurationFlag{
+			Name:    "global-timeout",
+			Aliases: []string{"gt"},
+			Usage:   "consider it an error after not completing the retrieval after this amount of time",
+			Value:   0,
 		},
 		&cli.BoolFlag{
 			Name:    "progress",
@@ -92,23 +98,31 @@ func Fetch(c *cli.Context) error {
 		return err
 	}
 
-	timeout := c.Duration("timeout")
-	timeoutOpt := lassie.WithProviderTimeout(timeout)
+	providerTimeout := c.Duration("provider-timeout")
+	providerTimeoutOpt := lassie.WithProviderTimeout(providerTimeout)
 
 	host, err := libp2p.New(libp2p.ResourceManager(&network.NullResourceManager{}))
 	if err != nil {
 		return err
 	}
 	hostOpt := lassie.WithHost(host)
-	var opts = []lassie.LassieOption{timeoutOpt, hostOpt}
+	var opts = []lassie.LassieOption{providerTimeoutOpt, hostOpt}
+
 	if len(fetchProviderAddrInfos) > 0 {
 		finderOpt := lassie.WithFinder(retriever.NewDirectCandidateFinder(host, fetchProviderAddrInfos))
 		opts = append(opts, finderOpt)
 	}
+
 	disableGraphsync := c.Bool("disable-graphsync")
 	if disableGraphsync {
 		opts = append(opts, lassie.WithGraphsyncDisabled())
 	}
+
+	globalTimeout := c.Duration("global-timeout")
+	if globalTimeout > 0 {
+		opts = append(opts, lassie.WithGlobalTimeout(globalTimeout))
+	}
+
 	lassie, err := lassie.NewLassie(c.Context, opts...)
 	if err != nil {
 		return err
