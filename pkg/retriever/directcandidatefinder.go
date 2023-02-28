@@ -5,12 +5,12 @@ import (
 	"sync"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer/v2"
-	"github.com/filecoin-project/index-provider/metadata"
 	"github.com/filecoin-project/lassie/pkg/internal/lp2ptransports"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	gsnet "github.com/ipfs/go-graphsync/network"
 	bsnet "github.com/ipfs/go-libipfs/bitswap/network"
+	"github.com/ipni/index-provider/metadata"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 )

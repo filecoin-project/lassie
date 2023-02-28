@@ -12,11 +12,11 @@ import (
 	"net/http"
 	"path"
 
-	"github.com/filecoin-project/index-provider/metadata"
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-log/v2"
+	"github.com/ipni/index-provider/metadata"
 	"github.com/ipni/storetheindex/api/v0/finder/model"
 	"github.com/multiformats/go-multihash"
 )

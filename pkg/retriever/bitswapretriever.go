@@ -10,7 +10,6 @@ import (
 
 	"github.com/benbjohnson/clock"
 	"github.com/filecoin-project/go-state-types/big"
-	"github.com/filecoin-project/index-provider/metadata"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/retriever/bitswaphelpers"
 	"github.com/filecoin-project/lassie/pkg/types"
@@ -26,6 +25,7 @@ import (
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
+	"github.com/ipni/index-provider/metadata"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
