@@ -68,6 +68,20 @@ var daemonFlags = []cli.Flag{
 		DefaultText: "no limit",
 		EnvVars:     []string{"LASSIE_CONCURRENT_SP_RETRIEVALS"},
 	},
+	&cli.DurationFlag{
+		Name:    "provider-timeout",
+		Aliases: []string{"pt"},
+		Usage:   "consider it an error after not receiving a response from a storage provider after this amount of time",
+		Value:   20 * time.Second,
+		EnvVars: []string{"LASSIE_PROVIDER_TIMEOUT"},
+	},
+	&cli.DurationFlag{
+		Name:    "global-timeout",
+		Aliases: []string{"gt"},
+		Usage:   "consider it an error after not completing a retrieval after this amount of time",
+		Value:   0,
+		EnvVars: []string{"LASSIE_GLOBAL_TIMEOUT"},
+	},
 	FlagEventRecorderAuth,
 	FlagEventRecorderInstanceId,
 	FlagEventRecorderUrl,
@@ -95,7 +109,13 @@ func daemonCommand(cctx *cli.Context) error {
 	exposeMetrics := cctx.Bool("expose-metrics")
 	concurrentSPRetrievals := cctx.Uint("concurrent-sp-retrievals")
 	disableGraphsync := cctx.Bool("disable-graphsync")
-	lassieOpts := []lassie.LassieOption{lassie.WithProviderTimeout(20 * time.Second)}
+	providerTimeout := cctx.Duration("provider-timeout")
+	globalTimeout := cctx.Duration("global-timeout")
+
+	lassieOpts := []lassie.LassieOption{lassie.WithProviderTimeout(providerTimeout)}
+	if globalTimeout > 0 {
+		lassieOpts = append(lassieOpts, lassie.WithGlobalTimeout(globalTimeout))
+	}
 	if libp2pHighWater != 0 || libp2pLowWater != 0 {
 		connManager, err := connmgr.NewConnManager(libp2pLowWater, libp2pHighWater)
 		if err != nil {
