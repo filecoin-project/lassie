@@ -19,18 +19,45 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func GenerateFile(t *testing.T, linkSys *linking.LinkSystem, randReader io.Reader, size int) (cid.Cid, []byte) {
+func cidCollector(ls *ipld.LinkSystem, cids *[]cid.Cid) (ipld.BlockWriteOpener, func()) {
+	swo := ls.StorageWriteOpener
+	return func(linkCtx ipld.LinkContext) (io.Writer, ipld.BlockWriteCommitter, error) {
+			w, c, err := swo(linkCtx)
+			if err != nil {
+				return nil, nil, err
+			}
+			return w, func(lnk ipld.Link) error {
+				*cids = append(*cids, lnk.(cidlink.Link).Cid)
+				return c(lnk)
+			}, nil
+		}, func() {
+			// reset
+			ls.StorageWriteOpener = swo
+		}
+}
+
+func GenerateFile(t *testing.T, linkSys *linking.LinkSystem, randReader io.Reader, size int) DirEntry {
 	// a file of `size` random bytes, packaged into unixfs DAGs, stored in the remote blockstore
 	delimited := io.LimitReader(randReader, int64(size))
 	var buf bytes.Buffer
 	buf.Grow(size)
 	delimited = io.TeeReader(delimited, &buf)
 	// "size-256144" sets the chunker, splitting bytes at 256144b boundaries
-	root, _, err := builder.BuildUnixFSFile(delimited, "size-256144", linkSys)
+	cids := make([]cid.Cid, 0)
+	var undo func()
+	linkSys.StorageWriteOpener, undo = cidCollector(linkSys, &cids)
+	defer undo()
+	root, gotSize, err := builder.BuildUnixFSFile(delimited, "size-256144", linkSys)
 	require.NoError(t, err)
 	srcData := buf.Bytes()
 	rootCid := root.(cidlink.Link).Cid
-	return rootCid, srcData
+	return DirEntry{
+		Path:     "",
+		Content:  srcData,
+		Root:     rootCid,
+		SelfCids: cids,
+		TSize:    uint64(gotSize),
+	}
 }
 
 func fileName(randReader io.Reader) (string, error) {
@@ -60,62 +87,71 @@ func rndInt(randReader io.Reader, max int) int {
 	return int(coin.Int64())
 }
 
-func GenerateDirectory(t *testing.T, linkSys *linking.LinkSystem, randReader io.Reader, targetSize int, rootSharded bool) (cid.Cid, []DirEntry) {
-	root, _, entries := generateDirectoryRecursive(t, linkSys, randReader, targetSize, "", rootSharded)
-	return root, entries
+func GenerateDirectory(t *testing.T, linkSys *linking.LinkSystem, randReader io.Reader, targetSize int, rootSharded bool) DirEntry {
+	return GenerateDirectoryFrom(t, linkSys, randReader, targetSize, "", rootSharded)
 }
 
-func generateDirectoryRecursive(t *testing.T,
+func GenerateDirectoryFrom(t *testing.T,
 	linkSys *linking.LinkSystem,
 	randReader io.Reader,
 	targetSize int,
 	dir string,
 	sharded bool,
-) (cid.Cid, int, []DirEntry) {
-
+) DirEntry {
 	var curSize int
-	targetFileSize := targetSize / 25
-	dirLinks := make([]dagpb.PBLink, 0)
-	entries := make([]DirEntry, 0)
+	targetFileSize := targetSize / 16
+	children := make([]DirEntry, 0)
 	for curSize < targetSize {
-		switch rndInt(randReader, 8) {
-		case 0:
-			if dir != "" {
+		switch rndInt(randReader, 6) {
+		case 0: // 1 in 6 chance of finishing this directory if not at root
+			if dir != "" && len(children) > 0 {
 				curSize = targetSize // not really, but we're done with this directory
 			} // else at the root we don't get to finish early
-		case 1:
-			// make a new directory
+		case 1: // 1 in 6 chance of making a new directory
+			if targetSize-curSize <= 1024 { // don't make tiny directories
+				continue
+			}
 			newDir, err := fileName(randReader)
 			require.NoError(t, err)
-			childRoot, childSize, childEntries := generateDirectoryRecursive(t, linkSys, randReader, targetSize, dir+"/"+newDir, false)
-			entries = append(entries, childEntries...)
-			lnk, err := builder.BuildUnixFSDirectoryEntry(newDir, int64(childSize), cidlink.Link{Cid: childRoot})
-			require.NoError(t, err)
-			dirLinks = append(dirLinks, lnk)
-			curSize += childSize
-		default:
-			// make a new file
-			sizeB, err := rand.Int(randReader, big.NewInt(int64(targetFileSize)))
-			require.NoError(t, err)
-			size := int(sizeB.Int64())
-			if size > targetSize-curSize {
-				size = targetSize - curSize
+			child := GenerateDirectoryFrom(t, linkSys, randReader, targetSize-curSize, dir+"/"+newDir, false)
+			children = append(children, child)
+			curSize += int(child.TSize)
+		default: // 4 in 6 chance of making a new file
+			var size int
+			for size == 0 { // don't make empty files
+				sizeB, err := rand.Int(randReader, big.NewInt(int64(targetFileSize)))
+				require.NoError(t, err)
+				size = int(sizeB.Int64())
+				if size > targetSize-curSize {
+					size = targetSize - curSize
+				}
 			}
-			root, byts := GenerateFile(t, linkSys, randReader, size)
+			entry := GenerateFile(t, linkSys, randReader, size)
 			name, err := fileName(randReader)
 			require.NoError(t, err)
-			entry := DirEntry{
-				Path:    dir + "/" + name,
-				Content: byts,
-				Cid:     root,
-			}
+			entry.Path = dir + "/" + name
 			curSize += size
-			entries = append(entries, entry)
-			lnk, err := builder.BuildUnixFSDirectoryEntry(name, int64(size), cidlink.Link{Cid: root})
-			require.NoError(t, err)
-			dirLinks = append(dirLinks, lnk)
+			children = append(children, entry)
 		}
 	}
+	dirEntry := BuildDirectory(t, linkSys, children, sharded)
+	dirEntry.Path = dir
+	return dirEntry
+}
+
+func BuildDirectory(t *testing.T, linkSys *linking.LinkSystem, children []DirEntry, sharded bool) DirEntry {
+	dirLinks := make([]dagpb.PBLink, 0)
+	for _, child := range children {
+		paths := strings.Split(child.Path, "/")
+		name := paths[len(paths)-1]
+		lnk, err := builder.BuildUnixFSDirectoryEntry(name, int64(child.TSize), cidlink.Link{Cid: child.Root})
+		require.NoError(t, err)
+		dirLinks = append(dirLinks, lnk)
+	}
+	cids := make([]cid.Cid, 0)
+	var undo func()
+	linkSys.StorageWriteOpener, undo = cidCollector(linkSys, &cids)
+	defer undo()
 	var root ipld.Link
 	var size uint64
 	var err error
@@ -129,5 +165,11 @@ func generateDirectoryRecursive(t *testing.T,
 		root, size, err = builder.BuildUnixFSDirectory(dirLinks, linkSys)
 		require.NoError(t, err)
 	}
-	return root.(cidlink.Link).Cid, int(size), entries
+	return DirEntry{
+		Path:     "",
+		Root:     root.(cidlink.Link).Cid,
+		SelfCids: cids,
+		TSize:    size,
+		Children: children,
+	}
 }

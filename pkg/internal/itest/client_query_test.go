@@ -13,7 +13,6 @@ import (
 	"github.com/ipfs/go-cid"
 	datastore "github.com/ipfs/go-datastore"
 	dss "github.com/ipfs/go-datastore/sync"
-	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/require"
 )
 
@@ -79,16 +78,17 @@ func TestQuery(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 
-			mrn := mocknet.NewMockRetrievalNet()
-			mrn.SetupNet(ctx, t)
-			mrn.SetupQuery(ctx, t, tt.expectCid, tt.expectResponse)
+			mrn := mocknet.NewMockRetrievalNet(ctx, t)
+			mrn.AddGraphsyncPeers(1)
+			mocknet.SetupQuery(t, mrn.Remotes[0], tt.expectCid, tt.expectResponse)
+			mrn.MN.LinkAll()
 
 			ds1 := dss.MutexWrap(datastore.NewMapDatastore())
-			client, err := client.NewClient(ds1, mrn.HostLocal, nil)
+			client, err := client.NewClient(ds1, mrn.Self, nil)
 			require.NoError(t, err)
 
 			var connected bool
-			qr, err := client.RetrievalQueryToPeer(ctx, peer.AddrInfo{ID: mrn.HostRemote.ID(), Addrs: mrn.HostRemote.Addrs()}, tt.requestCid, func() {
+			qr, err := client.RetrievalQueryToPeer(ctx, *mrn.Remotes[0].AddrInfo(), tt.requestCid, func() {
 				connected = true
 			})
 

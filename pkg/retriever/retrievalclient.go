@@ -26,6 +26,7 @@ type RetrievalClient interface {
 		peerID peer.ID,
 		minerWallet address.Address,
 		proposal *retrievalmarket.DealProposal,
+		selector ipld.Node,
 		eventsCallback datatransfer.Subscriber,
 		gracefulShutdownRequested <-chan struct{},
 	) (*types.RetrievalStats, error)

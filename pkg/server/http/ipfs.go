@@ -15,7 +15,6 @@ import (
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
-	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 )
 
 func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.ResponseWriter, *http.Request) {
@@ -103,11 +102,23 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		}
 
 		// Grab unixfs path if it exists
-		// var unixfsPath []string
-		// if len(urlPath) > 2 {
-		// 	unixfsPath = urlPath[2:]
-		// }
-		// TODO: Do something with unixfs path
+		unixfsPath := ""
+		if len(urlPath) > 2 {
+			unixfsPath = "/" + strings.Join(urlPath[2:], "/")
+		}
+
+		fullFetch := true
+		if req.URL.Query().Has("depthType") {
+			switch req.URL.Query().Get("depthType") {
+			case "full":
+			case "shallow":
+				fullFetch = false
+			default:
+				logger.logStatus(http.StatusBadRequest, "Invalid depthType parameter")
+				res.WriteHeader(http.StatusBadRequest)
+				return
+			}
+		}
 
 		// for setting Content-Disposition header based on filename url parameter
 		var filename string
@@ -158,7 +169,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 
 		// called when the store errors from any of its operations; only log the
 		// first error and assume that the error will propagate through to
-		// lassie.Retrieve
+		// lassie.Fetch
 		var errored bool
 		errorCb := func(error) {
 			if !errored {
@@ -179,14 +190,18 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		if cfg.MaxBlocksPerRequest > 0 {
 			store = limitstore.NewLimitStore(store, cfg.MaxBlocksPerRequest)
 		}
-		linkSystem := cidlink.DefaultLinkSystem()
-		linkSystem.SetReadStorage(store)
-		linkSystem.SetWriteStorage(store)
-		linkSystem.TrustedStorage = true
 
-		log.Debugw("fetching CID", "retrievalId", retrievalId, "CID", rootCid.String())
-		request := types.RetrievalRequest{RetrievalID: retrievalId, Cid: rootCid, LinkSystem: linkSystem}
-		stats, err := lassie.Retrieve(req.Context(), request)
+		request, err := types.NewRequestForPath(store, rootCid, unixfsPath, fullFetch)
+		if err != nil {
+			msg := fmt.Sprintf("Failed to create request: %s", err.Error())
+			logger.logStatus(http.StatusInternalServerError, msg)
+			http.Error(res, msg, http.StatusInternalServerError)
+			return
+		}
+		request.RetrievalID = retrievalId
+
+		log.Debugw("fetching CID", "retrievalId", retrievalId, "CID", rootCid.String(), "path", unixfsPath, "fullFetch", fullFetch)
+		stats, err := lassie.Fetch(req.Context(), request)
 		if err != nil {
 			select {
 			case <-bytesWritten:

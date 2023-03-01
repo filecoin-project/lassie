@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/require"
 )
@@ -162,7 +163,7 @@ func TestQueryFiltering(t *testing.T) {
 			require.Len(t, retrievingPeers, len(tc.expectedPeers))
 			for _, p := range tc.expectedPeers {
 				pid := peer.ID(p)
-				require.Contains(t, mockClient.GetReceivedRetrievals(), pid)
+				require.NotNil(t, mockClient.GetReceivedRetrievalFrom(pid))
 				require.Contains(t, retrievingPeers, pid)
 				found := false
 				for _, rqfc := range candidateQueriesFiltered {
@@ -392,7 +393,9 @@ func TestRetrievalRacing(t *testing.T) {
 			require.Len(t, retrievingPeers, len(tc.expectedRetrievalAttempts))
 			for _, p := range tc.expectedRetrievalAttempts {
 				pid := peer.ID(p)
-				require.Contains(t, mockClient.GetReceivedRetrievals(), pid)
+				rr := mockClient.GetReceivedRetrievalFrom(pid)
+				require.NotNil(t, rr)
+				require.Same(t, selectorparse.CommonSelector_ExploreAllRecursively, rr.Selector) // default selector
 			}
 		})
 	}
@@ -510,9 +513,9 @@ func TestMultipleRetrievals(t *testing.T) {
 	require.Len(t, candidateQueriesFiltered, 3)
 
 	// make sure we performed the retrievals we expected
-	require.Contains(t, mockClient.GetReceivedRetrievals(), peer.ID("foo")) // errored
-	require.Contains(t, mockClient.GetReceivedRetrievals(), peer.ID("bar"))
-	require.Contains(t, mockClient.GetReceivedRetrievals(), peer.ID("bing"))
+	require.NotNil(t, mockClient.GetReceivedRetrievalFrom(peer.ID("foo"))) // errored
+	require.NotNil(t, mockClient.GetReceivedRetrievalFrom(peer.ID("bar")))
+	require.NotNil(t, mockClient.GetReceivedRetrievalFrom(peer.ID("bing")))
 	require.Contains(t, retrievingPeers, peer.ID("foo")) // errored
 	require.Contains(t, retrievingPeers, peer.ID("bar"))
 	require.Contains(t, retrievingPeers, peer.ID("bing"))
@@ -622,14 +625,54 @@ func TestRetrievalReuse(t *testing.T) {
 	require.Len(t, candidateQueriesFiltered, 3)
 
 	// make sure we performed the retrievals we expected
-	require.Contains(t, mockClient.GetReceivedRetrievals(), peer.ID("foo")) // errored
-	require.Contains(t, retrievingPeers, peer.ID("foo"))                    // errored
-	require.Contains(t, mockClient.GetReceivedRetrievals(), peer.ID("bar"))
+	require.NotNil(t, mockClient.GetReceivedRetrievalFrom(peer.ID("foo"))) // errored
+	require.Contains(t, retrievingPeers, peer.ID("foo"))                   // errored
+	require.NotNil(t, mockClient.GetReceivedRetrievalFrom(peer.ID("bar")))
 	require.Contains(t, retrievingPeers, peer.ID("bar")) // errored
-	require.Contains(t, mockClient.GetReceivedRetrievals(), peer.ID("bing"))
+	require.NotNil(t, mockClient.GetReceivedRetrievalFrom(peer.ID("bing")))
 	require.Contains(t, retrievingPeers, peer.ID("bing")) // errored
 	require.Len(t, mockClient.GetReceivedRetrievals(), 3)
 	require.Len(t, retrievingPeers, 3)
+}
+
+func TestRetrievalSelector(t *testing.T) {
+	retrievalID := types.RetrievalID(uuid.New())
+	cid1 := cid.MustParse("bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")
+	successfulQueryResponse := retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}
+
+	mockClient := testutil.NewMockClient(
+		map[string]testutil.DelayedQueryReturn{"foo": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: 0}},
+		map[string]testutil.DelayedRetrievalReturn{"foo": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}, Delay: 0}},
+	)
+
+	cfg := &GraphSyncRetriever{
+		GetStorageProviderTimeout: func(peer peer.ID) time.Duration { return time.Second },
+		IsAcceptableQueryResponse: func(peer peer.ID, req types.RetrievalRequest, qr *retrievalmarket.QueryResponse) bool { return true },
+		Client:                    mockClient,
+	}
+
+	selector := selectorparse.CommonSelector_MatchPoint
+
+	retrieval := cfg.Retrieve(context.Background(), types.RetrievalRequest{
+		Cid:         cid1,
+		RetrievalID: retrievalID,
+		LinkSystem:  cidlink.DefaultLinkSystem(),
+		Selector:    selector,
+	}, nil)
+	stats, err := retrieval.RetrieveFromCandidates([]types.RetrievalCandidate{{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}})
+	require.NoError(t, err)
+	require.NotNil(t, stats)
+	require.Equal(t, mockClient.GetRetrievalReturns()["foo"].ResultStats, stats)
+
+	waitStart := time.Now()
+	cfg.wait() // internal goroutine cleanup
+	require.Less(t, time.Since(waitStart), time.Millisecond*100, "wait took %s", time.Since(waitStart))
+
+	// make sure we performed the retrievals we expected
+	rr := mockClient.GetReceivedRetrievalFrom(peer.ID("foo"))
+	require.NotNil(t, rr)
+	require.Same(t, selector, rr.Selector)
+	require.Len(t, mockClient.GetReceivedRetrievals(), 1)
 }
 
 type candidateQuery struct {

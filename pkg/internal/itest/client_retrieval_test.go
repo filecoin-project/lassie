@@ -22,6 +22,7 @@ import (
 	bstore "github.com/ipfs/go-ipfs-blockstore"
 	"github.com/ipfs/go-unixfsnode"
 	"github.com/ipld/go-ipld-prime/linking"
+	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/stretchr/testify/require"
 )
 
@@ -32,24 +33,23 @@ func TestRetrieval(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		generate func(*testing.T, linking.LinkSystem) (rootCid cid.Cid, srcData []unixfs.DirEntry)
+		generate func(*testing.T, linking.LinkSystem) (srcData unixfs.DirEntry)
 	}{
 		{
 			name: "UnixFSFileDAG",
-			generate: func(t *testing.T, linkSystem linking.LinkSystem) (cid.Cid, []unixfs.DirEntry) {
-				rootCid, srcBytes := unixfs.GenerateFile(t, &linkSystem, rndReader, 4<<20)
-				return rootCid, []unixfs.DirEntry{{Path: "", Cid: rootCid, Content: srcBytes}}
+			generate: func(t *testing.T, linkSystem linking.LinkSystem) unixfs.DirEntry {
+				return unixfs.GenerateFile(t, &linkSystem, rndReader, 4<<20)
 			},
 		},
 		{
 			name: "UnixFSDirectoryDAG",
-			generate: func(t *testing.T, linkSystem linking.LinkSystem) (cid.Cid, []unixfs.DirEntry) {
+			generate: func(t *testing.T, linkSystem linking.LinkSystem) unixfs.DirEntry {
 				return unixfs.GenerateDirectory(t, &linkSystem, rndReader, 16<<20, false)
 			},
 		},
 		{
 			name: "UnixFSShardedDirectoryDAG",
-			generate: func(t *testing.T, linkSystem linking.LinkSystem) (cid.Cid, []unixfs.DirEntry) {
+			generate: func(t *testing.T, linkSystem linking.LinkSystem) unixfs.DirEntry {
 				return unixfs.GenerateDirectory(t, &linkSystem, rndReader, 16<<20, true)
 			},
 		},
@@ -61,21 +61,22 @@ func TestRetrieval(t *testing.T) {
 			defer cancel()
 
 			// Setup mocknet
-			mrn := mocknet.NewMockRetrievalNet()
-			mrn.SetupNet(ctx, t)
-			mrn.SetupRetrieval(ctx, t)
+			mrn := mocknet.NewMockRetrievalNet(ctx, t)
+			mrn.AddGraphsyncPeers(1)
+			finishedChan := mocknet.SetupRetrieval(t, mrn.Remotes[0])
+			mrn.MN.LinkAll()
 
 			// Generate source data on the remote
-			rootCid, srcData := tt.generate(t, mrn.LinkSystemRemote)
+			srcData := tt.generate(t, mrn.Remotes[0].LinkSystem)
 
 			// Perform retrieval
-			linkSystemLocal := runRetrieval(t, ctx, mrn, rootCid)
+			linkSystemLocal := runRetrieval(t, ctx, mrn, srcData.Root, finishedChan)
 
 			// Check retrieved data by loading it from the blockstore via UnixFS so we
 			// reify the original single file data from the DAG
 			linkSystemLocal.NodeReifier = unixfsnode.Reify
 			// Convert to []DirEntry slice
-			gotDir := unixfs.ToDirEntry(t, linkSystemLocal, rootCid)
+			gotDir := unixfs.ToDirEntry(t, linkSystemLocal, srcData.Root, true)
 
 			// Validate data
 			unixfs.CompareDirEntries(t, srcData, gotDir)
@@ -83,7 +84,7 @@ func TestRetrieval(t *testing.T) {
 	}
 }
 
-func runRetrieval(t *testing.T, ctx context.Context, mrn *mocknet.MockRetrievalNet, rootCid cid.Cid) linking.LinkSystem {
+func runRetrieval(t *testing.T, ctx context.Context, mrn *mocknet.MockRetrievalNet, rootCid cid.Cid, finishedChan chan []datatransfer.Event) linking.LinkSystem {
 	req := require.New(t)
 
 	// Setup local datastore and blockstore
@@ -93,21 +94,21 @@ func runRetrieval(t *testing.T, ctx context.Context, mrn *mocknet.MockRetrievalN
 	linkSystemLocal := storeutil.LinkSystemForBlockstore(bsLocal)
 
 	// New client
-	client, err := client.NewClient(dtDsLocal, mrn.HostLocal, nil)
+	client, err := client.NewClient(dtDsLocal, mrn.Self, nil)
 	req.NoError(err)
 	req.NoError(client.AwaitReady())
 
 	// Collect events & stats
-	gotEvents := make([]datatransfer.Event, 0)
+	selfEvents := make([]datatransfer.Event, 0)
 	var lastReceivedBytes uint64
 	var lastReceivedBlocks uint64
-	finishedChan := make(chan struct{}, 1)
+	cleanupChan := make(chan struct{}, 1)
 	subscriberLocal := func(event datatransfer.Event, channelState datatransfer.ChannelState) {
-		gotEvents = append(gotEvents, event)
+		selfEvents = append(selfEvents, event)
 		lastReceivedBytes = channelState.Received()
 		lastReceivedBlocks = uint64(channelState.ReceivedCidsTotal())
 		if event.Code == datatransfer.CleanupComplete {
-			finishedChan <- struct{}{}
+			cleanupChan <- struct{}{}
 		}
 	}
 
@@ -125,9 +126,10 @@ func runRetrieval(t *testing.T, ctx context.Context, mrn *mocknet.MockRetrievalN
 	stats, err := client.RetrieveFromPeer(
 		ctx,
 		linkSystemLocal,
-		mrn.HostRemote.ID(),
+		mrn.Remotes[0].Host.ID(),
 		paymentAddress,
 		proposal,
+		selectorparse.CommonSelector_ExploreAllRecursively,
 		subscriberLocal,
 		shutdown,
 	)
@@ -135,8 +137,18 @@ func runRetrieval(t *testing.T, ctx context.Context, mrn *mocknet.MockRetrievalN
 	req.NotNil(stats)
 
 	// Ensure we are properly cleaned up
-	req.Eventually(mocknet.ChanCheck(ctx, t, finishedChan), 1*time.Second, 100*time.Millisecond)
-	mrn.WaitForFinish(ctx, t)
+	req.Eventually(func() bool {
+		select {
+		case <-cleanupChan:
+			return true
+		case <-ctx.Done():
+			require.Fail(t, ctx.Err().Error())
+			return false
+		default:
+			return false
+		}
+	}, 1*time.Second, 100*time.Millisecond)
+	remoteEvents := mocknet.WaitForFinish(ctx, t, finishedChan, 1*time.Second)
 
 	// Check stats
 	req.Equal(lastReceivedBytes, stats.Size)
@@ -147,22 +159,22 @@ func runRetrieval(t *testing.T, ctx context.Context, mrn *mocknet.MockRetrievalN
 	req.True(stats.TimeToFirstByte <= stats.Duration)
 
 	// Check events
-	req.Len(eventSliceFilter(gotEvents, datatransfer.Error), 0)
-	req.Len(eventSliceFilter(gotEvents, datatransfer.Open), 1)
-	req.Len(eventSliceFilter(gotEvents, datatransfer.Opened), 1)
-	req.Len(eventSliceFilter(gotEvents, datatransfer.TransferInitiated), 1)
-	req.Len(eventSliceFilter(gotEvents, datatransfer.Accept), 1)
-	req.Len(eventSliceFilter(gotEvents, datatransfer.ResumeResponder), 1)
-	req.Len(eventSliceFilter(gotEvents, datatransfer.FinishTransfer), 1)
-	req.Len(eventSliceFilter(gotEvents, datatransfer.CleanupComplete), 1)
+	req.Len(eventSliceFilter(selfEvents, datatransfer.Error), 0)
+	req.Len(eventSliceFilter(selfEvents, datatransfer.Open), 1)
+	req.Len(eventSliceFilter(selfEvents, datatransfer.Opened), 1)
+	req.Len(eventSliceFilter(selfEvents, datatransfer.TransferInitiated), 1)
+	req.Len(eventSliceFilter(selfEvents, datatransfer.Accept), 1)
+	req.Len(eventSliceFilter(selfEvents, datatransfer.ResumeResponder), 1)
+	req.Len(eventSliceFilter(selfEvents, datatransfer.FinishTransfer), 1)
+	req.Len(eventSliceFilter(selfEvents, datatransfer.CleanupComplete), 1)
 
 	// Check remote events
-	req.Len(eventSliceFilter(mrn.RemoteEvents, datatransfer.Error), 0)
-	req.Len(eventSliceFilter(mrn.RemoteEvents, datatransfer.Open), 1)
-	req.Len(eventSliceFilter(mrn.RemoteEvents, datatransfer.Accept), 1)
-	req.Len(eventSliceFilter(mrn.RemoteEvents, datatransfer.TransferInitiated), 1)
-	req.Len(eventSliceFilter(mrn.RemoteEvents, datatransfer.CleanupComplete), 1)
-	req.Len(eventSliceFilter(mrn.RemoteEvents, datatransfer.Complete), 1)
+	req.Len(eventSliceFilter(remoteEvents, datatransfer.Error), 0)
+	req.Len(eventSliceFilter(remoteEvents, datatransfer.Open), 1)
+	req.Len(eventSliceFilter(remoteEvents, datatransfer.Accept), 1)
+	req.Len(eventSliceFilter(remoteEvents, datatransfer.TransferInitiated), 1)
+	req.Len(eventSliceFilter(remoteEvents, datatransfer.CleanupComplete), 1)
+	req.Len(eventSliceFilter(remoteEvents, datatransfer.Complete), 1)
 
 	return linkSystemLocal
 }

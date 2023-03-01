@@ -13,6 +13,8 @@ import (
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/codec/dagjson"
+	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/rvagg/go-prioritywaitqueue"
 	"go.uber.org/multierr"
@@ -119,7 +121,6 @@ func (cfg *GraphSyncRetriever) Retrieve(
 }
 
 func (r *graphsyncRetrieval) RetrieveFromCandidates(candidates []types.RetrievalCandidate) (*types.RetrievalStats, error) {
-
 	ctx, cancelCtx := context.WithCancel(r.ctx)
 	defer cancelCtx()
 
@@ -276,7 +277,17 @@ func runRetrievalCandidate(
 
 			retrieval.sendEvent(events.Started(req.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate))
 
-			stats, retrievalErr = retrievalPhase(ctx, cfg, req.LinkSystem, client, timeout, candidate, queryResponse, eventsCallback)
+			stats, retrievalErr = retrievalPhase(
+				ctx,
+				cfg,
+				req.LinkSystem,
+				client,
+				timeout,
+				candidate,
+				queryResponse,
+				req.GetSelector(),
+				eventsCallback,
+			)
 
 			if retrievalErr != nil {
 				msg := retrievalErr.Error()
@@ -405,12 +416,24 @@ func retrievalPhase(
 	timeout time.Duration,
 	candidate types.RetrievalCandidate,
 	queryResponse *retrievalmarket.QueryResponse,
+	selector ipld.Node,
 	eventsCallback datatransfer.Subscriber,
 ) (*types.RetrievalStats, error) {
+
+	ss := "*"
+	if selector != selectorparse.CommonSelector_ExploreAllRecursively {
+		byts, err := ipld.Encode(selector, dagjson.Encode)
+		if err != nil {
+			return nil, err
+		}
+		ss = string(byts)
+	}
+
 	log.Infof(
-		"Attempting retrieval from miner %s for %s",
+		"Attempting retrieval from miner %s for %s (with selector: [%s])",
 		candidate.MinerPeer.ID,
 		candidate.RootCid,
+		ss,
 	)
 
 	proposal, err := RetrievalProposalForAsk(queryResponse, candidate.RootCid, nil)
@@ -463,6 +486,7 @@ func retrievalPhase(
 		candidate.MinerPeer.ID,
 		queryResponse.PaymentAddress,
 		proposal,
+		selector,
 		eventsSubscriber,
 		gracefulShutdownChan,
 	)

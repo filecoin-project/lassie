@@ -17,10 +17,9 @@ import (
 
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
+	"github.com/ipld/go-ipld-prime/traversal/selector"
 
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
-	"github.com/filecoin-project/go-fil-markets/storagemarket/impl/requestvalidation"
 
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/go-state-types/big"
@@ -148,11 +147,6 @@ func NewClientWithConfig(cfg *Config) (*RetrievalClient, error) {
 		return nil, err
 	}
 
-	err = dataTransfer.RegisterVoucherType(requestvalidation.StorageDataTransferVoucherType, nil)
-	if err != nil {
-		return nil, err
-	}
-
 	err = dataTransfer.RegisterVoucherType(retrievalmarket.DealProposalType, nil)
 	if err != nil {
 		return nil, err
@@ -198,6 +192,7 @@ func (rc *RetrievalClient) RetrieveFromPeer(
 	peerID peer.ID,
 	minerWallet address.Address,
 	proposal *retrievalmarket.DealProposal,
+	sel ipld.Node,
 	eventsCallback datatransfer.Subscriber,
 	gracefulShutdownRequested <-chan struct{},
 ) (*types.RetrievalStats, error) {
@@ -205,6 +200,10 @@ func (rc *RetrievalClient) RetrieveFromPeer(
 
 	ctx, span := tracer.Start(ctx, "rcRetrieveContent")
 	defer span.End()
+
+	if _, err := selector.CompileSelector(sel); err != nil {
+		return nil, fmt.Errorf("invalid selector: %w", err)
+	}
 
 	// Stats
 	startTime := time.Now()
@@ -398,7 +397,7 @@ func (rc *RetrievalClient) RetrieveFromPeer(
 		peerID,
 		datatransfer.TypedVoucher{Type: retrievalmarket.DealProposalType, Voucher: proposalVoucher},
 		proposal.PayloadCID,
-		selectorparse.CommonSelector_ExploreAllRecursively,
+		sel,
 		datatransfer.WithSubscriber(eventsCb),
 		datatransfer.WithTransportOptions(dttransport.UseStore(linkSystem)),
 	)

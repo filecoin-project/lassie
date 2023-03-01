@@ -15,7 +15,6 @@ import (
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
 	carstore "github.com/ipld/go-car/v2/storage"
-	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -26,7 +25,7 @@ var fetchProviderAddrInfos []peer.AddrInfo
 
 var fetchCmd = &cli.Command{
 	Name:   "fetch",
-	Usage:  "Fetches content from Filecoin",
+	Usage:  "Fetches content from the IPFS and Filecoin network",
 	Before: before,
 	Action: Fetch,
 	Flags: []cli.Flag{
@@ -46,6 +45,12 @@ var fetchCmd = &cli.Command{
 			Name:    "progress",
 			Aliases: []string{"p"},
 			Usage:   "print progress output",
+		},
+		&cli.BoolFlag{
+			Name:        "shallow",
+			Usage:       "only fetch the content at the end of the path",
+			DefaultText: "false, the entire DAG at the end of the path will be fetched",
+			Value:       false,
 		},
 		&cli.StringFlag{
 			Name:        "providers",
@@ -74,11 +79,14 @@ var fetchCmd = &cli.Command{
 
 func Fetch(c *cli.Context) error {
 	if c.Args().Len() != 1 {
-		return fmt.Errorf("usage: lassie fetch [-o <CAR file>] [-t <timeout>] <CID>")
+		return fmt.Errorf("usage: lassie fetch [-o <CAR file>] [-t <timeout>] <CID>[/path/to/content]")
 	}
 	progress := c.Bool("progress")
 
-	rootCid, err := cid.Parse(c.Args().Get(0))
+	cpath := c.Args().Get(0)
+	cstr := strings.Split(cpath, "/")[0]
+	path := strings.TrimPrefix(cpath, cstr)
+	rootCid, err := cid.Parse(cstr)
 	if err != nil {
 		return err
 	}
@@ -106,9 +114,9 @@ func Fetch(c *cli.Context) error {
 	setupLassieEventRecorder(c, lassie)
 
 	if len(fetchProviderAddrInfos) == 0 {
-		fmt.Printf("Fetching %s", rootCid)
+		fmt.Printf("Fetching %s", rootCid.String()+path)
 	} else {
-		fmt.Printf("Fetching %s from %v", rootCid, fetchProviderAddrInfos)
+		fmt.Printf("Fetching %s from %v", rootCid.String()+path, fetchProviderAddrInfos)
 	}
 	if progress {
 		fmt.Println()
@@ -155,13 +163,14 @@ func Fetch(c *cli.Context) error {
 			fmt.Printf("\rReceived %d blocks / %s...", blockCount, humanize.IBytes(byteLength))
 		}
 	}
-	store := cmdinternal.NewPutCbStore(parentOpener, putCb)
-	linkSystem := cidlink.DefaultLinkSystem()
-	linkSystem.SetReadStorage(store)
-	linkSystem.SetWriteStorage(store)
-	linkSystem.TrustedStorage = true
 
-	_, stats, err := lassie.Fetch(c.Context, rootCid, linkSystem)
+	store := cmdinternal.NewPutCbStore(parentOpener, putCb)
+	request, err := types.NewRequestForPath(store, rootCid, path, !c.Bool("shallow"))
+	if err != nil {
+		return err
+	}
+
+	stats, err := lassie.Fetch(c.Context, request)
 	if err != nil {
 		fmt.Println()
 		return err

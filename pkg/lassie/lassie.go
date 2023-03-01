@@ -9,19 +9,19 @@ import (
 	"github.com/filecoin-project/lassie/pkg/internal"
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/types"
-	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
-	"github.com/ipld/go-ipld-prime/linking"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/host"
 )
 
+// Lassie represents a reusable retrieval client.
 type Lassie struct {
 	cfg       *LassieConfig
 	retriever *retriever.Retriever
 }
 
+// LassieConfig customizes the behavior of a Lassie instance.
 type LassieConfig struct {
 	Finder                 retriever.CandidateFinder
 	Host                   host.Host
@@ -33,6 +33,7 @@ type LassieConfig struct {
 
 type LassieOption func(cfg *LassieConfig)
 
+// NewLassie creates a new Lassie instance.
 func NewLassie(ctx context.Context, opts ...LassieOption) (*Lassie, error) {
 	cfg := &LassieConfig{}
 	for _, opt := range opts {
@@ -41,6 +42,8 @@ func NewLassie(ctx context.Context, opts ...LassieOption) (*Lassie, error) {
 	return NewLassieWithConfig(ctx, cfg)
 }
 
+// NewLassieWithConfig creates a new Lassie instance with a custom
+// configuration.
 func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error) {
 	if cfg.Finder == nil {
 		var err error
@@ -84,6 +87,9 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 		return nil, err
 	}
 	retriever.Start()
+	if err := retrievalClient.AwaitReady(); err != nil { // wait for dt setup
+		return nil, err
+	}
 
 	lassie := &Lassie{
 		cfg:       cfg,
@@ -93,29 +99,38 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 	return lassie, nil
 }
 
+// WithFinder allows you to specify a custom candidate finder.
 func WithFinder(finder retriever.CandidateFinder) LassieOption {
 	return func(cfg *LassieConfig) {
 		cfg.Finder = finder
 	}
 }
 
+// WithProviderTimeout allows you to specify a custom timeout for retrieving
+// data from a provider. Beyond this limit, when no data has been received,
+// the retrieval will fail.
 func WithProviderTimeout(timeout time.Duration) LassieOption {
 	return func(cfg *LassieConfig) {
 		cfg.ProviderTimeout = timeout
 	}
 }
 
+// WithGlobalTimeout allows you to specify a custom timeout for the entire
+// retrieval process.
 func WithGlobalTimeout(timeout time.Duration) LassieOption {
 	return func(cfg *LassieConfig) {
 		cfg.GlobalTimeout = timeout
 	}
 }
+
+// WithHost allows you to specify a custom libp2p host.
 func WithHost(host host.Host) LassieOption {
 	return func(cfg *LassieConfig) {
 		cfg.Host = host
 	}
 }
 
+// WithLibp2pOpts allows you to specify custom libp2p options.
 func WithLibp2pOpts(libp2pOptions ...libp2p.Option) LassieOption {
 	return func(cfg *LassieConfig) {
 		cfg.Libp2pOptions = libp2pOptions
@@ -128,7 +143,7 @@ func WithConcurrentSPRetrievals(maxConcurrentSPRtreievals uint) LassieOption {
 	}
 }
 
-func (l *Lassie) Retrieve(ctx context.Context, request types.RetrievalRequest) (*types.RetrievalStats, error) {
+func (l *Lassie) Fetch(ctx context.Context, request types.RetrievalRequest) (*types.RetrievalStats, error) {
 	var cancel context.CancelFunc
 	if l.cfg.GlobalTimeout != time.Duration(0) {
 		ctx, cancel = context.WithTimeout(ctx, l.cfg.GlobalTimeout)
@@ -137,23 +152,8 @@ func (l *Lassie) Retrieve(ctx context.Context, request types.RetrievalRequest) (
 	return l.retriever.Retrieve(ctx, request, func(types.RetrievalEvent) {})
 }
 
-func (l *Lassie) Fetch(ctx context.Context, rootCid cid.Cid, linkSystem linking.LinkSystem) (types.RetrievalID, *types.RetrievalStats, error) {
-	// Assign an ID to this retrieval
-	retrievalId, err := types.NewRetrievalID()
-	if err != nil {
-		return types.RetrievalID{}, nil, err
-	}
-
-	// retrieve!
-	request := types.RetrievalRequest{RetrievalID: retrievalId, Cid: rootCid, LinkSystem: linkSystem}
-	stats, err := l.retriever.Retrieve(ctx, request, func(types.RetrievalEvent) {})
-	if err != nil {
-		return retrievalId, nil, err
-	}
-
-	return retrievalId, stats, nil
-}
-
+// RegisterSubscriber registers a subscriber to receive retrieval events.
+// The returned function can be called to unregister the subscriber.
 func (l *Lassie) RegisterSubscriber(subscriber types.RetrievalEventSubscriber) func() {
 	return l.retriever.RegisterSubscriber(subscriber)
 }
