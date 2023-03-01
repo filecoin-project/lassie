@@ -36,7 +36,7 @@ func collectResults(ctx context.Context, resultChan <-chan types.RetrievalResult
 	var totalErr error
 	finishedCount := 0
 	if totalRetrievers == 0 {
-		return nil, errors.New("No elibible retrievers")
+		return nil, errors.New("no elibible retrievers")
 	}
 	for {
 		select {
