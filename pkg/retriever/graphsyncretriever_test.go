@@ -137,7 +137,7 @@ func TestQueryFiltering(t *testing.T) {
 						retrievingPeers = append(retrievingPeers, event.StorageProviderId())
 					}
 				}
-			}).RetrieveFromCandidates(candidates)
+			}).RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, candidates))
 			require.Nil(t, stats)
 			require.Error(t, err)
 
@@ -349,7 +349,7 @@ func TestRetrievalRacing(t *testing.T) {
 						retrievingPeers = append(retrievingPeers, event.StorageProviderId())
 					}
 				}
-			}).RetrieveFromCandidates(candidates)
+			}).RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, candidates))
 			if tc.expectedRetrieval != "" {
 				require.NotNil(t, stats)
 				require.NoError(t, err)
@@ -468,11 +468,11 @@ func TestMultipleRetrievals(t *testing.T) {
 			Cid:         cid1,
 			RetrievalID: retrievalID,
 			LinkSystem:  cidlink.DefaultLinkSystem(),
-		}, evtCb).RetrieveFromCandidates([]types.RetrievalCandidate{
+		}, evtCb).RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{
 			{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}},
 			{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}},
 			{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}},
-		})
+		}))
 		require.NoError(t, err)
 		require.NotNil(t, stats)
 		// make sure we got the final retrieval we wanted
@@ -484,11 +484,11 @@ func TestMultipleRetrievals(t *testing.T) {
 		Cid:         cid2,
 		RetrievalID: retrievalID,
 		LinkSystem:  cidlink.DefaultLinkSystem(),
-	}, evtCb).RetrieveFromCandidates([]types.RetrievalCandidate{
+	}, evtCb).RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{
 		{MinerPeer: peer.AddrInfo{ID: peer.ID("bang")}},
 		{MinerPeer: peer.AddrInfo{ID: peer.ID("boom")}},
 		{MinerPeer: peer.AddrInfo{ID: peer.ID("bing")}},
-	})
+	}))
 	require.NoError(t, err)
 	require.NotNil(t, stats)
 	// make sure we got the final retrieval we wanted
@@ -588,21 +588,21 @@ func TestRetrievalReuse(t *testing.T) {
 		LinkSystem:  cidlink.DefaultLinkSystem(),
 	}, evtCb)
 
-	stats, err := retrieval.RetrieveFromCandidates([]types.RetrievalCandidate{
+	stats, err := retrieval.RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{
 		{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}},
 		{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}},
 		{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}},
-	})
+	}))
 	require.NoError(t, err)
 	require.NotNil(t, stats)
 	// make sure we got the final retrieval we wanted
 	require.Equal(t, mockClient.GetRetrievalReturns()["bar"].ResultStats, stats)
 
-	stats, err = retrieval.RetrieveFromCandidates([]types.RetrievalCandidate{
+	stats, err = retrieval.RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{
 		{MinerPeer: peer.AddrInfo{ID: peer.ID("bang")}},
 		{MinerPeer: peer.AddrInfo{ID: peer.ID("boom")}},
 		{MinerPeer: peer.AddrInfo{ID: peer.ID("bing")}},
-	})
+	}))
 	require.NoError(t, err)
 	require.NotNil(t, stats)
 	// make sure we got the final retrieval we wanted
@@ -659,7 +659,7 @@ func TestRetrievalSelector(t *testing.T) {
 		LinkSystem:  cidlink.DefaultLinkSystem(),
 		Selector:    selector,
 	}, nil)
-	stats, err := retrieval.RetrieveFromCandidates([]types.RetrievalCandidate{{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}})
+	stats, err := retrieval.RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}}))
 	require.NoError(t, err)
 	require.NotNil(t, stats)
 	require.Equal(t, mockClient.GetRetrievalReturns()["foo"].ResultStats, stats)
@@ -678,4 +678,14 @@ func TestRetrievalSelector(t *testing.T) {
 type candidateQuery struct {
 	peer          peer.ID
 	queryResponse retrievalmarket.QueryResponse
+}
+
+func MakeAsyncCandidates(t *testing.T, candidates []types.RetrievalCandidate) types.InboundAsyncCandidates {
+	incoming, outgoing := types.MakeAsyncCandidates(len(candidates))
+	for _, candidate := range candidates {
+		err := outgoing.SendNext(context.Background(), []types.RetrievalCandidate{candidate})
+		require.NoError(t, err)
+	}
+	close(outgoing)
+	return incoming
 }

@@ -17,7 +17,7 @@ func NewProtocolSplitter(protocols []multicodec.Code) types.CandidateSplitter[mu
 	return &ProtocolSplitter{protocols: protocols}
 }
 
-func (ps *ProtocolSplitter) SplitRetrieval(ctx context.Context, request types.RetrievalRequest, events func(types.RetrievalEvent)) types.RetrievalSplitter[multicodec.Code] {
+func (ps *ProtocolSplitter) SplitRetrievalRequest(ctx context.Context, request types.RetrievalRequest, events func(types.RetrievalEvent)) types.RetrievalSplitter[multicodec.Code] {
 	return &retrievalProtocolSplitter{ps}
 }
 

@@ -203,15 +203,15 @@ func (mcf *mockCandidateFinder) FindCandidates(ctx context.Context, cid cid.Cid)
 func (mcf *mockCandidateFinder) FindCandidatesAsync(ctx context.Context, cid cid.Cid) (<-chan types.FindCandidatesResult, error) {
 	ch := make(chan types.FindCandidatesResult)
 	go func() {
+		defer close(ch)
 		cand, _ := mcf.FindCandidates(ctx, cid)
 		for _, c := range cand {
-		select {
-		case ch <- types.FindCandidatesResult{Candidate: cand[0], Err: err}:
-		case <-ctx.Done():
-			return
+			select {
+			case ch <- types.FindCandidatesResult{Candidate: c, Err: nil}:
+			case <-ctx.Done():
+				return
+			}
 		}
-		}
-		close(ch)
 	}()
 	return ch, nil
 }

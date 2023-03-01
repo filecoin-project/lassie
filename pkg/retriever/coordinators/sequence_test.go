@@ -88,10 +88,10 @@ func TestSequence(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(ctx, time.Second)
 			defer cancel()
-			retrievalCalls := func(ctx context.Context, callRetrieval func(types.Retrieval)) {
+			retrievalCalls := func(ctx context.Context, callRetrieval func(types.RetrievalTask)) {
 				for _, result := range testCase.results {
-					callRetrieval(types.CandidateRetrievalCall{
-						CandidateRetrieval: &stubRetriever{result},
+					callRetrieval(types.AsyncRetrievalTask{
+						AsyncCandidateRetrieval: &stubRetriever{result},
 					})
 				}
 			}
@@ -106,6 +106,6 @@ type stubRetriever struct {
 	types.RetrievalResult
 }
 
-func (s *stubRetriever) RetrieveFromCandidates(_ []types.RetrievalCandidate) (*types.RetrievalStats, error) {
+func (s *stubRetriever) RetrieveFromAsyncCandidates(_ types.InboundAsyncCandidates) (*types.RetrievalStats, error) {
 	return s.Stats, s.Err
 }

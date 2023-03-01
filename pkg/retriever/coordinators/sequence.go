@@ -12,11 +12,11 @@ func Sequence(ctx context.Context, queueOperationsFn types.QueueRetrievalsFn) (*
 	var finalStats *types.RetrievalStats
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	queueOperationsFn(ctx, func(retrieval types.Retrieval) {
+	queueOperationsFn(ctx, func(retrieval types.RetrievalTask) {
 		if finalStats != nil {
 			return
 		}
-		stats, err := retrieval.Retrieve()
+		stats, err := retrieval.Run()
 		if err != nil {
 			totalErr = multierr.Append(totalErr, err)
 		}

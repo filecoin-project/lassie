@@ -91,22 +91,20 @@ func NewRetriever(
 	config RetrieverConfig,
 	client RetrievalClient,
 	candidateFinder CandidateFinder,
-	bitswapRetriever types.AsyncCandidateRetriever,
+	bitswapRetriever types.CandidateRetriever,
 ) (*Retriever, error) {
 	retriever := &Retriever{
 		config:       config,
 		eventManager: events.NewEventManager(ctx),
 		spTracker:    newSpTracker(nil),
 	}
-	candidateRetrievers := map[multicodec.Code]types.AsyncCandidateRetriever{}
+	candidateRetrievers := map[multicodec.Code]types.CandidateRetriever{}
 	protocols = []multicodec.Code{}
 	if !config.DisableGraphsync {
-		candidateRetrievers[multicodec.TransportGraphsyncFilecoinv1] = combinators.AsyncCandidateRetriever{
-			CandidateRetriever: &GraphSyncRetriever{
-				GetStorageProviderTimeout: retriever.getStorageProviderTimeout,
-				IsAcceptableQueryResponse: retriever.isAcceptableQueryResponse,
-				Client:                    client,
-			},
+		candidateRetrievers[multicodec.TransportGraphsyncFilecoinv1] = &GraphSyncRetriever{
+			GetStorageProviderTimeout: retriever.getStorageProviderTimeout,
+			IsAcceptableQueryResponse: retriever.isAcceptableQueryResponse,
+			Client:                    client,
 		}
 		protocols = append(protocols, multicodec.TransportGraphsyncFilecoinv1)
 	}

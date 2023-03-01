@@ -7,23 +7,23 @@ import (
 	"github.com/filecoin-project/lassie/pkg/types"
 )
 
-var _ types.AsyncCandidateRetriever = SplitRetriever[int]{}
+var _ types.CandidateRetriever = SplitRetriever[int]{}
 
 // SplitRetriever retrieves by first splitting candidates with a splitter, then passing the split sets
 // to multiple retrievers using the given coordination style
 type SplitRetriever[T comparable] struct {
 	AsyncCandidateSplitter types.AsyncCandidateSplitter[T]
-	CandidateRetrievers    map[T]types.AsyncCandidateRetriever
+	CandidateRetrievers    map[T]types.CandidateRetriever
 	CoordinationKind       types.CoordinationKind
 }
 
-func (m SplitRetriever[T]) Retrieve(ctx context.Context, request types.RetrievalRequest, events func(types.RetrievalEvent)) types.AsyncCandidateRetrieval {
-	candidateRetrievals := make(map[T]types.AsyncCandidateRetrieval, len(m.CandidateRetrievers))
+func (m SplitRetriever[T]) Retrieve(ctx context.Context, request types.RetrievalRequest, events func(types.RetrievalEvent)) types.CandidateRetreival {
+	candidateRetrievals := make(map[T]types.CandidateRetreival, len(m.CandidateRetrievers))
 	for key, candidateRetriever := range m.CandidateRetrievers {
 		candidateRetrievals[key] = candidateRetriever.Retrieve(ctx, request, events)
 	}
 	return splitRetrieval[T]{
-		retrievalSplitter:   m.AsyncCandidateSplitter.SplitRetrieval(ctx, request, events),
+		retrievalSplitter:   m.AsyncCandidateSplitter.SplitRetrievalRequest(ctx, request, events),
 		candidateRetrievals: candidateRetrievals,
 		coodinationKind:     m.CoordinationKind,
 		ctx:                 ctx,
@@ -32,7 +32,7 @@ func (m SplitRetriever[T]) Retrieve(ctx context.Context, request types.Retrieval
 
 type splitRetrieval[T comparable] struct {
 	retrievalSplitter   types.AsyncRetrievalSplitter[T]
-	candidateRetrievals map[T]types.AsyncCandidateRetrieval
+	candidateRetrievals map[T]types.CandidateRetreival
 	coodinationKind     types.CoordinationKind
 	ctx                 context.Context
 }
@@ -43,15 +43,15 @@ func (m splitRetrieval[T]) RetrieveFromAsyncCandidates(asyncCandidates types.Inb
 	if err != nil {
 		return nil, err
 	}
-	return coordinator(m.ctx, func(ctx context.Context, retrievalCall func(types.Retrieval)) {
+	return coordinator(m.ctx, func(ctx context.Context, retrievalCall func(types.RetrievalTask)) {
 		for key, asyncCandidates := range asyncSplitCandidates {
 			if asyncCandidateRetrieval, ok := m.candidateRetrievals[key]; ok {
-				retrievalCall(types.AsyncCandidateRetrievalCall{
+				retrievalCall(types.AsyncRetrievalTask{
 					Candidates:              asyncCandidates,
 					AsyncCandidateRetrieval: asyncCandidateRetrieval,
 				})
 			}
 		}
-		retrievalCall(types.DeferredErrorRetrieval{Ctx: ctx, ErrChan: errChan})
+		retrievalCall(types.DeferredErrorTask{Ctx: ctx, ErrChan: errChan})
 	})
 }

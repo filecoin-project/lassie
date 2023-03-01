@@ -9,7 +9,7 @@ import (
 // RetrieverWithCandidateFinder retrieves from a candidate retriever after first retrieving candidates from a candidate finder
 type RetrieverWithCandidateFinder struct {
 	CandidateFinder    types.CandidateFinder
-	CandidateRetriever types.AsyncCandidateRetriever
+	CandidateRetriever types.CandidateRetriever
 	CoordinationKind   types.CoordinationKind
 }
 

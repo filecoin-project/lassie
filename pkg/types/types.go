@@ -27,8 +27,9 @@ func NewRetrievalCandidate(pid peer.ID, rootCid cid.Cid, protocols ...metadata.P
 	}
 }
 
-type Retrieval interface {
-	Retrieve() (*RetrievalStats, error)
+// retrieval task is any task that can be run to produce a result
+type RetrievalTask interface {
+	Run() (*RetrievalStats, error)
 }
 
 type Retriever interface {
@@ -37,14 +38,6 @@ type Retriever interface {
 
 type CandidateFinder interface {
 	FindCandidates(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent), onCandidates func([]RetrievalCandidate)) error
-}
-
-type CandidateRetrieval interface {
-	RetrieveFromCandidates([]RetrievalCandidate) (*RetrievalStats, error)
-}
-
-type CandidateRetriever interface {
-	Retrieve(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) CandidateRetrieval
 }
 
 func MakeAsyncCandidates(buffer int) (InboundAsyncCandidates, OutboundAsyncCandidates) {
@@ -80,12 +73,12 @@ func (oas OutboundAsyncCandidates) SendNext(ctx context.Context, next []Retrieva
 	}
 }
 
-type AsyncCandidateRetrieval interface {
+type CandidateRetreival interface {
 	RetrieveFromAsyncCandidates(asyncCandidates InboundAsyncCandidates) (*RetrievalStats, error)
 }
 
-type AsyncCandidateRetriever interface {
-	Retrieve(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) AsyncCandidateRetrieval
+type CandidateRetriever interface {
+	Retrieve(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) CandidateRetreival
 }
 
 type RetrievalSplitter[T comparable] interface {
@@ -93,7 +86,7 @@ type RetrievalSplitter[T comparable] interface {
 }
 
 type CandidateSplitter[T comparable] interface {
-	SplitRetrieval(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) RetrievalSplitter[T]
+	SplitRetrievalRequest(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) RetrievalSplitter[T]
 }
 
 type AsyncRetrievalSplitter[T comparable] interface {
@@ -101,7 +94,7 @@ type AsyncRetrievalSplitter[T comparable] interface {
 }
 
 type AsyncCandidateSplitter[T comparable] interface {
-	SplitRetrieval(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) AsyncRetrievalSplitter[T]
+	SplitRetrievalRequest(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) AsyncRetrievalSplitter[T]
 }
 
 type RetrievalStats struct {
@@ -123,30 +116,29 @@ type RetrievalResult struct {
 	Err   error
 }
 
-type CandidateRetrievalCall struct {
-	Candidates         []RetrievalCandidate
-	CandidateRetrieval CandidateRetrieval
-}
+var _ RetrievalTask = AsyncRetrievalTask{}
 
-func (crc CandidateRetrievalCall) Retrieve() (*RetrievalStats, error) {
-	return crc.CandidateRetrieval.RetrieveFromCandidates(crc.Candidates)
-}
-
-type AsyncCandidateRetrievalCall struct {
+// AsyncRetrievalTask runs an asynchronous retrieval and returns a result
+type AsyncRetrievalTask struct {
 	Candidates              InboundAsyncCandidates
-	AsyncCandidateRetrieval AsyncCandidateRetrieval
+	AsyncCandidateRetrieval CandidateRetreival
 }
 
-func (acrc AsyncCandidateRetrievalCall) Retrieve() (*RetrievalStats, error) {
+// Run executes the asychronous retrieval task
+func (acrc AsyncRetrievalTask) Run() (*RetrievalStats, error) {
 	return acrc.AsyncCandidateRetrieval.RetrieveFromAsyncCandidates(acrc.Candidates)
 }
 
-type DeferredErrorRetrieval struct {
+var _ RetrievalTask = DeferredErrorTask{}
+
+// DeferredErrorTask simply reads from an error channel and returns the result as an error
+type DeferredErrorTask struct {
 	Ctx     context.Context
 	ErrChan <-chan error
 }
 
-func (der DeferredErrorRetrieval) Retrieve() (*RetrievalStats, error) {
+// Run reads the error channel and returns a result
+func (der DeferredErrorTask) Run() (*RetrievalStats, error) {
 	select {
 	case <-der.Ctx.Done():
 		return nil, der.Ctx.Err()
@@ -155,7 +147,7 @@ func (der DeferredErrorRetrieval) Retrieve() (*RetrievalStats, error) {
 	}
 }
 
-type QueueRetrievalsFn func(ctx context.Context, nextRetrievalCall func(Retrieval))
+type QueueRetrievalsFn func(ctx context.Context, nextRetrievalCall func(RetrievalTask))
 
 type RetrievalCoordinator func(context.Context, QueueRetrievalsFn) (*RetrievalStats, error)
 
@@ -164,7 +156,6 @@ type CoordinationKind string
 const (
 	RaceCoordination       = "race"
 	SequentialCoordination = "sequential"
-	AsyncCoordination      = "async"
 )
 
 type Phase string

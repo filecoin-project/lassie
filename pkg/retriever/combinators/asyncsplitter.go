@@ -6,15 +6,21 @@ import (
 	"github.com/filecoin-project/lassie/pkg/types"
 )
 
+// AsyncCandidateSplitter creates an splitter for a candidate stream from a simple function to split a set of candidates.
+// Essentially, on each new candidate set from the stream, we run the splitter function, and feed the split candidates sets
+// into the appropriate downstream candidate streams
 type AsyncCandidateSplitter[T comparable] struct {
 	Keys              []T
 	CandidateSplitter types.CandidateSplitter[T]
 }
 
+// NewCandidateSplitterFn constructs a new candidate splitter for the given keys
+// it's used to insurate
 type NewCandidateSplitterFn[T comparable] func(keys []T) types.CandidateSplitter[T]
 
 var _ types.AsyncCandidateSplitter[int] = AsyncCandidateSplitter[int]{}
 
+// NewAsyncCandidateSplitter creates a new candidate splitter with the given passed in sync splitter constructor
 func NewAsyncCandidateSplitter[T comparable](keys []T, newCandidateSplitter NewCandidateSplitterFn[T]) AsyncCandidateSplitter[T] {
 	return AsyncCandidateSplitter[T]{
 		Keys:              keys,
@@ -22,8 +28,9 @@ func NewAsyncCandidateSplitter[T comparable](keys []T, newCandidateSplitter NewC
 	}
 }
 
-func (acs AsyncCandidateSplitter[T]) SplitRetrieval(ctx context.Context, request types.RetrievalRequest, events func(types.RetrievalEvent)) types.AsyncRetrievalSplitter[T] {
-	retrievalSplitter := acs.CandidateSplitter.SplitRetrieval(ctx, request, events)
+// SplitRetrievalRequest splits candidate streams for a given retrieval request
+func (acs AsyncCandidateSplitter[T]) SplitRetrievalRequest(ctx context.Context, request types.RetrievalRequest, events func(types.RetrievalEvent)) types.AsyncRetrievalSplitter[T] {
+	retrievalSplitter := acs.CandidateSplitter.SplitRetrievalRequest(ctx, request, events)
 	return asyncRetrievalSplitter[T]{
 		AsyncCandidateSplitter: acs,
 		ctx:                    ctx,
@@ -39,10 +46,11 @@ type asyncRetrievalSplitter[T comparable] struct {
 
 const splitBufferSize = 16
 
-func (acr asyncRetrievalSplitter[T]) SplitAsyncCandidates(asyncCandidates types.InboundAsyncCandidates) (map[T]types.InboundAsyncCandidates, <-chan error) {
-	incoming := make(map[T]types.InboundAsyncCandidates, len(acr.Keys))
-	outgoing := make(map[T]types.OutboundAsyncCandidates, len(acr.Keys))
-	for _, k := range acr.Keys {
+// SplitAsyncCandidates performs the work of actually splitting streams for a given request
+func (ars asyncRetrievalSplitter[T]) SplitAsyncCandidates(asyncCandidates types.InboundAsyncCandidates) (map[T]types.InboundAsyncCandidates, <-chan error) {
+	incoming := make(map[T]types.InboundAsyncCandidates, len(ars.Keys))
+	outgoing := make(map[T]types.OutboundAsyncCandidates, len(ars.Keys))
+	for _, k := range ars.Keys {
 		incoming[k], outgoing[k] = types.MakeAsyncCandidates(splitBufferSize)
 	}
 	errChan := make(chan error, 1)
@@ -54,7 +62,7 @@ func (acr asyncRetrievalSplitter[T]) SplitAsyncCandidates(asyncCandidates types.
 			close(errChan)
 		}()
 		for {
-			hasCandidates, candidates, err := asyncCandidates.Next(acr.ctx)
+			hasCandidates, candidates, err := asyncCandidates.Next(ars.ctx)
 			if err != nil {
 				errChan <- err
 				return
@@ -63,13 +71,13 @@ func (acr asyncRetrievalSplitter[T]) SplitAsyncCandidates(asyncCandidates types.
 				errChan <- nil
 				return
 			}
-			splitCandidateSets, err := acr.retrievalSplitter.SplitCandidates(candidates)
+			splitCandidateSets, err := ars.retrievalSplitter.SplitCandidates(candidates)
 			if err != nil {
 				errChan <- err
 				return
 			}
 			for k, candidateSet := range splitCandidateSets {
-				err := outgoing[k].SendNext(acr.ctx, candidateSet)
+				err := outgoing[k].SendNext(ars.ctx, candidateSet)
 				if err != nil {
 					errChan <- err
 					return

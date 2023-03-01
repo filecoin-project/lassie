@@ -94,7 +94,7 @@ func TestAsyncCandidateSplitter(t *testing.T) {
 			asyncCandidateSplitter := combinators.NewAsyncCandidateSplitter(testCase.keys, func([]string) types.CandidateSplitter[string] {
 				return mockSplitter{testCase.splitFunc}
 			})
-			asyncRetrievalSplitter := asyncCandidateSplitter.SplitRetrieval(ctx, testutil.GenerateRetrievalRequests(t, 1)[0], func(types.RetrievalEvent) {})
+			asyncRetrievalSplitter := asyncCandidateSplitter.SplitRetrievalRequest(ctx, testutil.GenerateRetrievalRequests(t, 1)[0], func(types.RetrievalEvent) {})
 			streams, errChan := asyncRetrievalSplitter.SplitAsyncCandidates(incoming)
 			req.Len(streams, len(testCase.keys))
 			for _, key := range testCase.keys {
@@ -141,7 +141,7 @@ type mockSplitter struct {
 	splitFunc splitFunc
 }
 
-func (ms mockSplitter) SplitRetrieval(ctx context.Context, request types.RetrievalRequest, events func(types.RetrievalEvent)) types.RetrievalSplitter[string] {
+func (ms mockSplitter) SplitRetrievalRequest(ctx context.Context, request types.RetrievalRequest, events func(types.RetrievalEvent)) types.RetrievalSplitter[string] {
 	return ms
 }
 
