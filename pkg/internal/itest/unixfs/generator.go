@@ -108,9 +108,12 @@ func GenerateDirectoryFrom(t *testing.T,
 				curSize = targetSize // not really, but we're done with this directory
 			} // else at the root we don't get to finish early
 		case 1: // 1 in 6 chance of making a new directory
+			if targetSize-curSize <= 1024 { // don't make tiny directories
+				continue
+			}
 			newDir, err := fileName(randReader)
 			require.NoError(t, err)
-			child := GenerateDirectoryFrom(t, linkSys, randReader, targetSize, dir+"/"+newDir, false)
+			child := GenerateDirectoryFrom(t, linkSys, randReader, targetSize-curSize, dir+"/"+newDir, false)
 			children = append(children, child)
 			curSize += int(child.TSize)
 		default: // 4 in 6 chance of making a new file
