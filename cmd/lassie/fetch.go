@@ -74,6 +74,7 @@ var fetchCmd = &cli.Command{
 		FlagEventRecorderUrl,
 		FlagVerbose,
 		FlagVeryVerbose,
+		FlagDisableGraphsync,
 	},
 }
 
@@ -104,7 +105,10 @@ func Fetch(c *cli.Context) error {
 		finderOpt := lassie.WithFinder(retriever.NewDirectCandidateFinder(host, fetchProviderAddrInfos))
 		opts = append(opts, finderOpt)
 	}
-
+	disableGraphsync := c.Bool("disable-graphsync")
+	if disableGraphsync {
+		opts = append(opts, lassie.WithGraphsyncDisabled())
+	}
 	lassie, err := lassie.NewLassie(c.Context, opts...)
 	if err != nil {
 		return err

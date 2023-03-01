@@ -2,6 +2,7 @@ package coordinators
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/filecoin-project/lassie/pkg/types"
@@ -34,6 +35,9 @@ func Race(ctx context.Context, retrievalCalls []types.CandidateRetrievalCall) (*
 func collectResults(ctx context.Context, resultChan <-chan types.RetrievalResult, totalRetrievers int) (*types.RetrievalStats, error) {
 	var totalErr error
 	finishedCount := 0
+	if totalRetrievers == 0 {
+		return nil, errors.New("No elibible retrievers")
+	}
 	for {
 		select {
 		case result := <-resultChan:
