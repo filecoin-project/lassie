@@ -104,7 +104,7 @@ func GenerateDirectoryFrom(t *testing.T,
 	for curSize < targetSize {
 		switch rndInt(randReader, 6) {
 		case 0: // 1 in 6 chance of finishing this directory if not at root
-			if dir != "" {
+			if dir != "" && len(children) > 0 {
 				curSize = targetSize // not really, but we're done with this directory
 			} // else at the root we don't get to finish early
 		case 1: // 1 in 6 chance of making a new directory
@@ -117,11 +117,14 @@ func GenerateDirectoryFrom(t *testing.T,
 			children = append(children, child)
 			curSize += int(child.TSize)
 		default: // 4 in 6 chance of making a new file
-			sizeB, err := rand.Int(randReader, big.NewInt(int64(targetFileSize)))
-			require.NoError(t, err)
-			size := int(sizeB.Int64())
-			if size > targetSize-curSize {
-				size = targetSize - curSize
+			var size int
+			for size == 0 { // don't make empty files
+				sizeB, err := rand.Int(randReader, big.NewInt(int64(targetFileSize)))
+				require.NoError(t, err)
+				size = int(sizeB.Int64())
+				if size > targetSize-curSize {
+					size = targetSize - curSize
+				}
 			}
 			entry := GenerateFile(t, linkSys, randReader, size)
 			name, err := fileName(randReader)
