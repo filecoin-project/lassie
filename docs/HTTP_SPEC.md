@@ -29,7 +29,7 @@ The Lassie HTTP Daemon is an HTTP interface for retrieving IPLD data from IPFS a
 
 ## Specification
 
-### `GET /ipfs/{cid}[?params]`
+### `GET /ipfs/{cid}[/path][?params]`
 
 Retrieves from peers that have the content identified by the given root CID, streaming the DAG in the response in [CAR (v1)](https://ipld.io/specs/transport/car/carv1/) format.
 
@@ -47,6 +47,14 @@ Retrieves from peers that have the content identified by the given root CID, str
 
 - `cid` - _Required_. A valid string representation of the root CID of the DAG being requested.
 
+- `path` - _Optional_. A valid IPLD path to traverse within the DAG to the final content.
+
+    The path must begin with a `/`, and must describe a valid path within the DAG. The path will be resolved as a [UnixFS](https://github.com/ipfs/specs/blob/main/UNIXFS.md) path where the encountered path segments are within valid UnixFS blocks and can be read as named links. Where the blocks do not describe valid UnixFS data, the path segment(s) will be interpreted as describing plain IPLD nodes to traverse.
+    
+    All blocks from the root `cid` to the final content via the provided path will be returned, allowing for a verifiable CAR. The entire DAG will also be returned from the point where the path terminates. This behavior can be modified with the `depthType` query parameter.
+
+    Example: `/ipfs/bafy...foo/bar/baz` - where `bafy...foo` is the CID and `/bar/baz` is a path.
+
 ##### Query Parameters
 
 - `filename` - _Optional_. Used to override the `filename` property of the `Content-Disposition` response header which dictates the default save filename for the response CAR data used by an HTTP client / browser.
@@ -58,6 +66,12 @@ Retrieves from peers that have the content identified by the given root CID, str
     If provided, the format value must be `car`. Example: `format=car`.
 
     `format=car` &rarr; `Accept: application/vnd.ipld.car`
+
+- `depthType` - _Optional_. Used to specify the depth of the DAG to return in the response.
+
+    - `depthType=full` - Returns the entire DAG from the termination of the `{cid}[/path]` specifier, as well as all blocks from the `cid` to the `path` terminus where a `path` is provided. This is the default behavior when no `depthType` is provided.
+
+    - `depthType=shallow` - Returns only the content at the termination of the `{cid}[/path]` specifier, as well as all blocks from the `cid` to the `path` terminus where a `path` is provided. If the content is found to be UnixFS data, the entire UnixFS entity will be included. i.e. if `{cid}[/path]` terminates at a sharded UnixFS file, or a sharded UnixFS directory, the blocks required to reconsititute the entire file, or directory will be included. If the termination is a UnixFS sharded directory, only the full directory will be included, not the full DAG of the directory's contents.
 
 #### Response
 
