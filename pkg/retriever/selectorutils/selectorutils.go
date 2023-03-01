@@ -30,6 +30,11 @@ func UnixfsPathToSelector(path string, full bool) (ipld.Node, error) {
 		return nil, fmt.Errorf("path must start with /")
 	}
 
+	segments, err := pathSegments(path)
+	if err != nil {
+		return nil, err
+	}
+
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 	var ss builder.SelectorSpec
 	if full {
@@ -44,20 +49,7 @@ func UnixfsPathToSelector(path string, full bool) (ipld.Node, error) {
 		ss = ssb.ExploreInterpretAs("unixfs-preload", ssb.Matcher())
 	}
 
-	segments := strings.Split(path, "/")
 	for i := len(segments) - 1; i >= 0; i-- {
-		if segments[i] == "" {
-			// Allow one leading and one trailing '/' at most
-			if i == 0 || i == len(segments)-1 {
-				continue
-			}
-			return nil, fmt.Errorf("invalid empty path segment at position %d", i)
-		}
-
-		if segments[i] == "." || segments[i] == ".." {
-			return nil, fmt.Errorf("'%s' is unsupported in paths", segments[i])
-		}
-
 		// Wrap selector in ExploreFields as we walk back up through the path.
 		// We can assume each segment to be a unixfs path section, so we
 		// InterpretAs to make sure the node is reified through go-unixfsnode
@@ -65,9 +57,30 @@ func UnixfsPathToSelector(path string, full bool) (ipld.Node, error) {
 		// rather than bare IPLD pathing - which also gives us the ability to
 		// traverse through HAMT shards.
 		ss = ssb.ExploreInterpretAs("unixfs", ssb.ExploreFields(
-			func(efsb builder.ExploreFieldsSpecBuilder) { efsb.Insert(segments[i], ss) },
+			func(efsb builder.ExploreFieldsSpecBuilder) {
+				efsb.Insert(segments[i], ss)
+			},
 		))
 	}
 
 	return ss.Node(), nil
+}
+
+func pathSegments(path string) ([]string, error) {
+	segments := strings.Split(path, "/")
+	filtered := make([]string, 0, len(segments))
+	for i := 0; i < len(segments); i++ {
+		if segments[i] == "" {
+			// Allow one leading and one trailing '/' at most
+			if i == 0 || i == len(segments)-1 {
+				continue
+			}
+			return nil, fmt.Errorf("invalid empty path segment at position %d", i)
+		}
+		if segments[i] == "." || segments[i] == ".." {
+			return nil, fmt.Errorf("'%s' is unsupported in paths", segments[i])
+		}
+		filtered = append(filtered, segments[i])
+	}
+	return filtered, nil
 }

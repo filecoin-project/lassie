@@ -44,14 +44,18 @@ func ToDirEntry(t *testing.T, linkSys linking.LinkSystem, rootCid cid.Cid, expec
 	return *de
 }
 
-func CarToDirEntry(t *testing.T, root cid.Cid, carReader io.ReaderAt, expectFull bool) DirEntry {
+func CarBytesLinkSystem(t *testing.T, carReader io.ReaderAt) ipld.LinkSystem {
 	reader, err := storage.OpenReadable(carReader)
 	require.NoError(t, err)
 	linkSys := cidlink.DefaultLinkSystem()
 	linkSys.SetReadStorage(reader)
 	linkSys.NodeReifier = unixfsnode.Reify
 	linkSys.TrustedStorage = true
-	return ToDirEntry(t, linkSys, root, expectFull)
+	return linkSys
+}
+
+func CarToDirEntry(t *testing.T, carReader io.ReaderAt, root cid.Cid, expectFull bool) DirEntry {
+	return ToDirEntry(t, CarBytesLinkSystem(t, carReader), root, expectFull)
 }
 
 func toDirEntryRecursive(t *testing.T, linkSys linking.LinkSystem, rootCid cid.Cid, name string, expectFull bool) *DirEntry {

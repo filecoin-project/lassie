@@ -26,11 +26,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestHttpGraphsyncRetrieval(t *testing.T) {
-	rndSeed := time.Now().UTC().UnixNano()
-	t.Logf("random seed: %d", rndSeed)
-	var rndReader io.Reader = rand.New(rand.NewSource(rndSeed))
-
+func TestHttpFetch(t *testing.T) {
 	shallowQuery := func(q url.Values) {
 		q.Set("depthType", "shallow")
 	}
@@ -43,7 +39,7 @@ func TestHttpGraphsyncRetrieval(t *testing.T) {
 		graphsyncRemotes int
 		bitswapRemotes   int
 		modifyHttpConfig func(httpserver.HttpServerConfig) httpserver.HttpServerConfig
-		generate         func(*testing.T, []testpeer.TestPeer) []unixfs.DirEntry
+		generate         func(*testing.T, io.Reader, []testpeer.TestPeer) []unixfs.DirEntry
 		paths            []string
 		modifyQueries    []queryModifier
 		validateBodies   []bodyValidator
@@ -51,42 +47,42 @@ func TestHttpGraphsyncRetrieval(t *testing.T) {
 		{
 			name:             "graphsync large sharded file",
 			graphsyncRemotes: 1,
-			generate: func(t *testing.T, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20)}
 			},
 		},
 		{
 			name:           "bitswap large sharded file",
 			bitswapRemotes: 1,
-			generate: func(t *testing.T, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20)}
 			},
 		},
 		{
 			name:             "graphsync large directory",
 			graphsyncRemotes: 1,
-			generate: func(t *testing.T, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false)}
 			},
 		},
 		{
 			name:           "bitswap large directory",
 			bitswapRemotes: 1,
-			generate: func(t *testing.T, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false)}
 			},
 		},
 		{
 			name:             "graphsync large sharded directory",
 			graphsyncRemotes: 1,
-			generate: func(t *testing.T, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true)}
 			},
 		},
 		{
 			name:           "bitswap large sharded directory",
 			bitswapRemotes: 1,
-			generate: func(t *testing.T, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true)}
 			},
 		},
@@ -97,7 +93,7 @@ func TestHttpGraphsyncRetrieval(t *testing.T) {
 				cfg.MaxBlocksPerRequest = 3
 				return cfg
 			},
-			generate: func(t *testing.T, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20)}
 			},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
@@ -107,7 +103,7 @@ func TestHttpGraphsyncRetrieval(t *testing.T) {
 					srcData.SelfCids[0],
 					srcData.SelfCids[1],
 				}
-				validateCarBody(t, body, srcData.Root, wantCids)
+				validateCarBody(t, body, srcData.Root, wantCids, true)
 			}},
 		},
 		{
@@ -117,7 +113,7 @@ func TestHttpGraphsyncRetrieval(t *testing.T) {
 				cfg.MaxBlocksPerRequest = 3
 				return cfg
 			},
-			generate: func(t *testing.T, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20)}
 			},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
@@ -127,14 +123,14 @@ func TestHttpGraphsyncRetrieval(t *testing.T) {
 					srcData.SelfCids[0],
 					srcData.SelfCids[1],
 				}
-				validateCarBody(t, body, srcData.Root, wantCids)
+				validateCarBody(t, body, srcData.Root, wantCids, true)
 			}},
 		},
 		{
 			// shallow fetch should get the same DAG as full for a plain file
 			name:             "graphsync large sharded file, shallow",
 			graphsyncRemotes: 1,
-			generate: func(t *testing.T, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20)}
 			},
 			modifyQueries: []queryModifier{shallowQuery},
@@ -143,15 +139,15 @@ func TestHttpGraphsyncRetrieval(t *testing.T) {
 			// shallow fetch should get the same DAG as full for a plain file
 			name:           "bitswap large sharded file, shallow",
 			bitswapRemotes: 1,
-			generate: func(t *testing.T, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20)}
 			},
 			modifyQueries: []queryModifier{shallowQuery},
 		},
 		{
-			name:             "graphsync nested large sharded, with path, shallow",
+			name:             "graphsync nested large sharded file, with path, shallow",
 			graphsyncRemotes: 1,
-			generate: func(t *testing.T, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := &remotes[0].LinkSystem
 				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateFile(t, lsys, rndReader, 4<<20))}
 			},
@@ -160,18 +156,18 @@ func TestHttpGraphsyncRetrieval(t *testing.T) {
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
-					srcData.Children[1].Root,             // "/want"
-					srcData.Children[1].Children[1].Root, // "/want/want"
+					srcData.Children[1].Root,             // "/want2"
+					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
 					srcData.Children[1].Children[1].Children[1].SelfCids..., // "/want2/want1/want0" (full file)
 				)
-				validateCarBody(t, body, srcData.Root, wantCids)
+				validateCarBody(t, body, srcData.Root, wantCids, true)
 			}},
 		},
 		{
-			name:           "bitswap nested large sharded, with path, shallow",
+			name:           "bitswap nested large sharded file, with path, shallow",
 			bitswapRemotes: 1,
-			generate: func(t *testing.T, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := &remotes[0].LinkSystem
 				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateFile(t, lsys, rndReader, 4<<20))}
 			},
@@ -180,42 +176,42 @@ func TestHttpGraphsyncRetrieval(t *testing.T) {
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
-					srcData.Children[1].Root,             // "/want"
-					srcData.Children[1].Children[1].Root, // "/want/want"
+					srcData.Children[1].Root,             // "/want2"
+					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
 					srcData.Children[1].Children[1].Children[1].SelfCids..., // "/want2/want1/want0" (full file)
 				)
-				validateCarBody(t, body, srcData.Root, wantCids)
+				validateCarBody(t, body, srcData.Root, wantCids, true)
 			}},
 		},
 		{
 			name:             "graphsync large directory, shallow",
 			graphsyncRemotes: 1,
-			generate: func(t *testing.T, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false)}
 			},
 			modifyQueries: []queryModifier{shallowQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				// expect a CAR of one block, to represent the root directory we asked for
-				validateCarBody(t, body, srcData.Root, []cid.Cid{srcData.Root})
+				validateCarBody(t, body, srcData.Root, []cid.Cid{srcData.Root}, true)
 			}},
 		},
 		{
 			name:           "bitswap large directory, shallow",
 			bitswapRemotes: 1,
-			generate: func(t *testing.T, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false)}
 			},
 			modifyQueries: []queryModifier{shallowQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				// expect a CAR of one block, to represent the root directory we asked for
-				validateCarBody(t, body, srcData.Root, []cid.Cid{srcData.Root})
+				validateCarBody(t, body, srcData.Root, []cid.Cid{srcData.Root}, true)
 			}},
 		},
 		{
 			name:             "graphsync nested large directory, with path, shallow",
 			graphsyncRemotes: 1,
-			generate: func(t *testing.T, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := &remotes[0].LinkSystem
 				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false))}
 			},
@@ -224,18 +220,18 @@ func TestHttpGraphsyncRetrieval(t *testing.T) {
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
-					srcData.Children[1].Root,             // "/want"
-					srcData.Children[1].Children[1].Root, // "/want/want"
+					srcData.Children[1].Root,             // "/want2"
+					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
 					srcData.Children[1].Children[1].Children[1].SelfCids..., // "/want2/want1/want0" (full dir)
 				)
-				validateCarBody(t, body, srcData.Root, wantCids)
+				validateCarBody(t, body, srcData.Root, wantCids, true)
 			}},
 		},
 		{
 			name:           "bitswap nested large directory, with path, shallow",
 			bitswapRemotes: 1,
-			generate: func(t *testing.T, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := &remotes[0].LinkSystem
 				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false))}
 			},
@@ -244,44 +240,92 @@ func TestHttpGraphsyncRetrieval(t *testing.T) {
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
-					srcData.Children[1].Root,             // "/want"
-					srcData.Children[1].Children[1].Root, // "/want/want"
+					srcData.Children[1].Root,             // "/want2"
+					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
 					srcData.Children[1].Children[1].Children[1].SelfCids..., // "/want2/want1/want0" (full dir)
 				)
-				validateCarBody(t, body, srcData.Root, wantCids)
+				validateCarBody(t, body, srcData.Root, wantCids, true)
+			}},
+		},
+		{
+			name:             "graphsync nested large directory, with path, full",
+			graphsyncRemotes: 1,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				lsys := &remotes[0].LinkSystem
+				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false))}
+			},
+			paths: []string{"/want2/want1/want0"},
+			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
+				wantCids := append([]cid.Cid{
+					srcData.Root,                         // "/""
+					srcData.Children[1].Root,             // "/want2"
+					srcData.Children[1].Children[1].Root, // "/want2/want1"
+				},
+					srcData.Children[1].Children[1].Children[1].SelfCids..., // "/want2/want1/want0" (full dir)
+				)
+				// validate we got the shallow form
+				validateCarBody(t, body, srcData.Root, wantCids, false)
+				// validate that we got the full depth form under the path
+				gotDir := unixfs.CarToDirEntry(t, bytes.NewReader(body), srcData.Children[1].Children[1].Children[1].Root, true)
+				gotDir.Path = "want0"
+				unixfs.CompareDirEntries(t, srcData.Children[1].Children[1].Children[1], gotDir)
+			}},
+		},
+		{
+			name:           "bitswap nested large directory, with path, full",
+			bitswapRemotes: 1,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				lsys := &remotes[0].LinkSystem
+				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false))}
+			},
+			paths: []string{"/want2/want1/want0"},
+			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
+				wantCids := append([]cid.Cid{
+					srcData.Root,                         // "/""
+					srcData.Children[1].Root,             // "/want2"
+					srcData.Children[1].Children[1].Root, // "/want2/want1"
+				},
+					srcData.Children[1].Children[1].Children[1].SelfCids..., // "/want2/want1/want0" (full dir)
+				)
+				// validate we got the shallow form
+				validateCarBody(t, body, srcData.Root, wantCids, false)
+				// validate that we got the full depth form under the path
+				gotDir := unixfs.CarToDirEntry(t, bytes.NewReader(body), srcData.Children[1].Children[1].Children[1].Root, true)
+				gotDir.Path = "want0"
+				unixfs.CompareDirEntries(t, srcData.Children[1].Children[1].Children[1], gotDir)
 			}},
 		},
 		{
 			name:             "graphsync nested large sharded directory, shallow",
 			graphsyncRemotes: 1,
-			generate: func(t *testing.T, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true)}
 			},
 			modifyQueries: []queryModifier{shallowQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				// sharded directory contains multiple blocks, so we expect a CAR with
 				// exactly those blocks
-				validateCarBody(t, body, srcData.Root, srcData.SelfCids)
+				validateCarBody(t, body, srcData.Root, srcData.SelfCids, true)
 			}},
 		},
 		{
 			name:           "bitswap nested large sharded directory, shallow",
 			bitswapRemotes: 1,
-			generate: func(t *testing.T, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true)}
 			},
 			modifyQueries: []queryModifier{shallowQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				// sharded directory contains multiple blocks, so we expect a CAR with
 				// exactly those blocks
-				validateCarBody(t, body, srcData.Root, srcData.SelfCids)
+				validateCarBody(t, body, srcData.Root, srcData.SelfCids, true)
 			}},
 		},
 		{
 			name:             "graphsync nested large sharded directory, with path, shallow",
 			graphsyncRemotes: 1,
-			generate: func(t *testing.T, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := &remotes[0].LinkSystem
 				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true))}
 			},
@@ -290,18 +334,18 @@ func TestHttpGraphsyncRetrieval(t *testing.T) {
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
-					srcData.Children[1].Root,             // "/want"
-					srcData.Children[1].Children[1].Root, // "/want/want"
+					srcData.Children[1].Root,             // "/want2"
+					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
 					srcData.Children[1].Children[1].Children[1].SelfCids..., // "/want2/want1/want0" (full dir)
 				)
-				validateCarBody(t, body, srcData.Root, wantCids)
+				validateCarBody(t, body, srcData.Root, wantCids, true)
 			}},
 		},
 		{
 			name:           "bitswap nested large sharded directory, with path, shallow",
 			bitswapRemotes: 1,
-			generate: func(t *testing.T, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := &remotes[0].LinkSystem
 				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true))}
 			},
@@ -310,12 +354,60 @@ func TestHttpGraphsyncRetrieval(t *testing.T) {
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
-					srcData.Children[1].Root,             // "/want"
-					srcData.Children[1].Children[1].Root, // "/want/want"
+					srcData.Children[1].Root,             // "/want2"
+					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
 					srcData.Children[1].Children[1].Children[1].SelfCids..., // "/want2/want1/want0" (full dir)
 				)
-				validateCarBody(t, body, srcData.Root, wantCids)
+				validateCarBody(t, body, srcData.Root, wantCids, true)
+			}},
+		},
+		{
+			name:             "graphsync nested large sharded directory, with path, full",
+			graphsyncRemotes: 1,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				lsys := &remotes[0].LinkSystem
+				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true))}
+			},
+			paths: []string{"/want2/want1/want0"},
+			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
+				wantCids := append([]cid.Cid{
+					srcData.Root,                         // "/""
+					srcData.Children[1].Root,             // "/want2"
+					srcData.Children[1].Children[1].Root, // "/want2/want1"
+				},
+					srcData.Children[1].Children[1].Children[1].SelfCids..., // "/want2/want1/want0" (full dir)
+				)
+				// validate we got the shallow form
+				validateCarBody(t, body, srcData.Root, wantCids, false)
+				// validate that we got the full depth form under the path
+				gotDir := unixfs.CarToDirEntry(t, bytes.NewReader(body), srcData.Children[1].Children[1].Children[1].Root, true)
+				gotDir.Path = "want0"
+				unixfs.CompareDirEntries(t, srcData.Children[1].Children[1].Children[1], gotDir)
+			}},
+		},
+		{
+			name:           "bitswap nested large sharded directory, with path, full",
+			bitswapRemotes: 1,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				lsys := &remotes[0].LinkSystem
+				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true))}
+			},
+			paths: []string{"/want2/want1/want0"},
+			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
+				wantCids := append([]cid.Cid{
+					srcData.Root,                         // "/""
+					srcData.Children[1].Root,             // "/want2"
+					srcData.Children[1].Children[1].Root, // "/want2/want1"
+				},
+					srcData.Children[1].Children[1].Children[1].SelfCids..., // "/want2/want1/want0" (full dir)
+				)
+				// validate we got the shallow form
+				validateCarBody(t, body, srcData.Root, wantCids, false)
+				// validate that we got the full depth form under the path
+				gotDir := unixfs.CarToDirEntry(t, bytes.NewReader(body), srcData.Children[1].Children[1].Children[1].Root, true)
+				gotDir.Path = "want0"
+				unixfs.CompareDirEntries(t, srcData.Children[1].Children[1].Children[1], gotDir)
 			}},
 		},
 		{
@@ -325,7 +417,7 @@ func TestHttpGraphsyncRetrieval(t *testing.T) {
 			// the set.
 			name:           "bitswap, nested large sharded directory, spread across multiple peers, with path, shallow",
 			bitswapRemotes: 4,
-			generate: func(t *testing.T, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				// rotating linksystem - each block will be written to a different remote
 				lsys := cidlink.DefaultLinkSystem()
 				var blkIdx int
@@ -361,18 +453,18 @@ func TestHttpGraphsyncRetrieval(t *testing.T) {
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
-					srcData.Children[1].Root,             // "/want"
-					srcData.Children[1].Children[1].Root, // "/want/want"
+					srcData.Children[1].Root,             // "/want2"
+					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
 					srcData.Children[1].Children[1].Children[1].SelfCids..., // "/want2/want1/want0" (full dir)
 				)
-				validateCarBody(t, body, srcData.Root, wantCids)
+				validateCarBody(t, body, srcData.Root, wantCids, true)
 			}},
 		},
 		{
 			name:           "two separate, parallel bitswap retrievals",
 			bitswapRemotes: 2,
-			generate: func(t *testing.T, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{
 					unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20),
 					unixfs.GenerateDirectory(t, &remotes[1].LinkSystem, rndReader, 16<<20, false),
@@ -382,7 +474,7 @@ func TestHttpGraphsyncRetrieval(t *testing.T) {
 		{
 			name:             "two separate, parallel graphsync retrievals",
 			graphsyncRemotes: 2,
-			generate: func(t *testing.T, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{
 					unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20),
 					unixfs.GenerateDirectory(t, &remotes[1].LinkSystem, rndReader, 16<<20, false),
@@ -393,7 +485,7 @@ func TestHttpGraphsyncRetrieval(t *testing.T) {
 			name:             "parallel, separate graphsync and bitswap retrievals",
 			graphsyncRemotes: 1,
 			bitswapRemotes:   1,
-			generate: func(t *testing.T, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{
 					unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20),
 					unixfs.GenerateDirectory(t, &remotes[1].LinkSystem, rndReader, 16<<20, false),
@@ -403,9 +495,14 @@ func TestHttpGraphsyncRetrieval(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
+		testCase := testCase
 		t.Run(testCase.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
+
+			rndSeed := time.Now().UTC().UnixNano()
+			t.Logf("random seed: %d", rndSeed)
+			var rndReader io.Reader = rand.New(rand.NewSource(rndSeed))
 
 			mrn := mocknet.NewMockRetrievalNet(ctx, t)
 			mrn.AddGraphsyncPeers(testCase.graphsyncRemotes)
@@ -416,7 +513,7 @@ func TestHttpGraphsyncRetrieval(t *testing.T) {
 			mrn.AddBitswapPeers(testCase.bitswapRemotes)
 			require.NoError(t, mrn.MN.LinkAll())
 
-			srcData := testCase.generate(t, mrn.Remotes)
+			srcData := testCase.generate(t, rndReader, mrn.Remotes)
 			// setup graphsync remotes to handle queries
 			for i := 0; i < testCase.graphsyncRemotes; i++ {
 				qr := testQueryResponse
@@ -454,7 +551,7 @@ func TestHttpGraphsyncRetrieval(t *testing.T) {
 					// Make a request for our CID and read the complete CAR bytes
 					path := ""
 					if testCase.paths != nil && testCase.paths[i] != "" {
-						path = "/" + testCase.paths[i]
+						path = testCase.paths[i]
 					}
 					addr := fmt.Sprintf("http://%s/ipfs/%s%s", httpServer.Addr(), srcData[i].Root.String(), path)
 					getReq, err := http.NewRequest("GET", addr, nil)
@@ -503,7 +600,7 @@ func TestHttpGraphsyncRetrieval(t *testing.T) {
 				if testCase.validateBodies != nil && testCase.validateBodies[i] != nil {
 					testCase.validateBodies[i](t, srcData[i], body)
 				} else {
-					gotDir := unixfs.CarToDirEntry(t, srcData[i].Root, bytes.NewReader(body), true)
+					gotDir := unixfs.CarToDirEntry(t, bytes.NewReader(body), srcData[i].Root, true)
 					unixfs.CompareDirEntries(t, srcData[i], gotDir)
 				}
 			}
@@ -520,28 +617,36 @@ func TestHttpGraphsyncRetrieval(t *testing.T) {
 	}
 }
 
-func validateCarBody(t *testing.T, body []byte, root cid.Cid, wantCids []cid.Cid) {
+// validateCarBody reads the given bytes as a CAR, validates the root is correct
+// and that it contains all of the wantCids (not strictly in order). If
+// onlyWantCids is true, it also validates that wantCids are the only CIDs in
+// the CAR (with no duplicates).
+func validateCarBody(t *testing.T, body []byte, root cid.Cid, wantCids []cid.Cid, onlyWantCids bool) {
 	br, err := carv2.NewBlockReader(bytes.NewReader(body))
 	require.NoError(t, err)
 	require.Equal(t, []cid.Cid{root}, br.Roots)
-	var count int
+	gotCids := make([]cid.Cid, 0)
 	for {
 		blk, err := br.Next()
 		if err != nil {
 			require.EqualError(t, err, io.EOF.Error())
 			break
 		}
-		count++
+		gotCids = append(gotCids, blk.Cid())
+	}
+	for _, cw := range wantCids {
 		var found bool
-		for _, c := range wantCids {
-			if c.Equals(blk.Cid()) {
+		for _, cg := range gotCids {
+			if cw.Equals(cg) {
 				found = true
 				break
 			}
 		}
 		require.True(t, found)
 	}
-	require.Equal(t, len(wantCids), count)
+	if onlyWantCids {
+		require.Len(t, gotCids, len(wantCids))
+	}
 }
 
 // embeds the content we want in some random nested content such that it's
