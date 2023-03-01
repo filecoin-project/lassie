@@ -74,6 +74,7 @@ var daemonFlags = []cli.Flag{
 	FlagExposeMetrics,
 	FlagVerbose,
 	FlagVeryVerbose,
+	FlagDisableGraphsync,
 }
 
 var daemonCmd = &cli.Command{
@@ -93,6 +94,7 @@ func daemonCommand(cctx *cli.Context) error {
 	libp2pHighWater := cctx.Int("libp2p-conns-highwater")
 	exposeMetrics := cctx.Bool("expose-metrics")
 	concurrentSPRetrievals := cctx.Uint("concurrent-sp-retrievals")
+	disableGraphsync := cctx.Bool("disable-graphsync")
 	lassieOpts := []lassie.LassieOption{lassie.WithProviderTimeout(20 * time.Second)}
 	if libp2pHighWater != 0 || libp2pLowWater != 0 {
 		connManager, err := connmgr.NewConnManager(libp2pLowWater, libp2pHighWater)
@@ -104,6 +106,9 @@ func daemonCommand(cctx *cli.Context) error {
 			lassie.WithLibp2pOpts(libp2p.ConnectionManager(connManager)),
 			lassie.WithConcurrentSPRetrievals(concurrentSPRetrievals),
 		)
+	}
+	if disableGraphsync {
+		lassieOpts = append(lassieOpts, lassie.WithGraphsyncDisabled())
 	}
 	// create a lassie instance
 	lassie, err := lassie.NewLassie(cctx.Context, lassieOpts...)

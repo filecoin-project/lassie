@@ -29,6 +29,7 @@ type LassieConfig struct {
 	ConcurrentSPRetrievals uint
 	GlobalTimeout          time.Duration
 	Libp2pOptions          []libp2p.Option
+	DisableGraphsync       bool
 }
 
 type LassieOption func(cfg *LassieConfig)
@@ -80,6 +81,7 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 			RetrievalTimeout:        cfg.ProviderTimeout,
 			MaxConcurrentRetrievals: cfg.ConcurrentSPRetrievals,
 		},
+		DisableGraphsync: cfg.DisableGraphsync,
 	}
 
 	retriever, err := retriever.NewRetriever(ctx, retrieverCfg, retrievalClient, cfg.Finder, bitswapRetriever)
@@ -140,6 +142,12 @@ func WithLibp2pOpts(libp2pOptions ...libp2p.Option) LassieOption {
 func WithConcurrentSPRetrievals(maxConcurrentSPRtreievals uint) LassieOption {
 	return func(cfg *LassieConfig) {
 		cfg.ConcurrentSPRetrievals = maxConcurrentSPRtreievals
+	}
+}
+
+func WithGraphsyncDisabled() LassieOption {
+	return func(cfg *LassieConfig) {
+		cfg.DisableGraphsync = true
 	}
 }
 

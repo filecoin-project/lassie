@@ -40,6 +40,8 @@ func TestHttpFetch(t *testing.T) {
 		name             string
 		graphsyncRemotes int
 		bitswapRemotes   int
+		disableGraphsync bool
+		expectFail       bool
 		modifyHttpConfig func(httpserver.HttpServerConfig) httpserver.HttpServerConfig
 		generate         func(*testing.T, io.Reader, []testpeer.TestPeer) []unixfs.DirEntry
 		paths            []string
@@ -484,6 +486,18 @@ func TestHttpFetch(t *testing.T) {
 			},
 		},
 		{
+			name:             "two separate, parallel graphsync retrievals, with graphsync disabled",
+			graphsyncRemotes: 2,
+			disableGraphsync: true,
+			expectFail:       true,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				return []unixfs.DirEntry{
+					unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20),
+					unixfs.GenerateDirectory(t, &remotes[1].LinkSystem, rndReader, 16<<20, false),
+				}
+			},
+		},
+		{
 			name:             "parallel, separate graphsync and bitswap retrievals",
 			graphsyncRemotes: 1,
 			bitswapRemotes:   1,
@@ -525,11 +539,16 @@ func TestHttpFetch(t *testing.T) {
 
 			// Setup a new lassie
 			req := require.New(t)
-			lassie, err := lassie.NewLassie(
-				ctx,
-				lassie.WithProviderTimeout(20*time.Second),
+			opts := []lassie.LassieOption{lassie.WithProviderTimeout(20 * time.Second),
 				lassie.WithHost(mrn.Self),
 				lassie.WithFinder(mrn.Finder),
+			}
+			if testCase.disableGraphsync {
+				opts = append(opts, lassie.WithGraphsyncDisabled())
+			}
+			lassie, err := lassie.NewLassie(
+				ctx,
+				opts...,
 			)
 			req.NoError(err)
 
@@ -581,29 +600,35 @@ func TestHttpFetch(t *testing.T) {
 				}
 			}
 
-			// wait for graphsync retrievals to finish on the remotes
-			var wg sync.WaitGroup
-			wg.Add(len(finishedChans))
-			for _, finishedChan := range finishedChans {
-				go func(finishedChan chan []datatransfer.Event) {
-					mocknet.WaitForFinish(ctx, t, finishedChan, 1*time.Second)
-					wg.Done()
-				}(finishedChan)
+			if !testCase.disableGraphsync {
+				// wait for graphsync retrievals to finish on the remotes
+				var wg sync.WaitGroup
+				wg.Add(len(finishedChans))
+				for _, finishedChan := range finishedChans {
+					go func(finishedChan chan []datatransfer.Event) {
+						mocknet.WaitForFinish(ctx, t, finishedChan, 1*time.Second)
+						wg.Done()
+					}(finishedChan)
+				}
+				wg.Wait()
 			}
-			wg.Wait()
 
 			for i, resp := range responses {
-				req.Equal(http.StatusOK, resp.StatusCode)
-				body, err := io.ReadAll(resp.Body)
-				req.NoError(err)
-				resp.Body.Close()
-				req.NoError(err)
-
-				if testCase.validateBodies != nil && testCase.validateBodies[i] != nil {
-					testCase.validateBodies[i](t, srcData[i], body)
+				if testCase.expectFail {
+					req.Equal(http.StatusGatewayTimeout, resp.StatusCode)
 				} else {
-					gotDir := unixfs.CarToDirEntry(t, bytes.NewReader(body), srcData[i].Root, true)
-					unixfs.CompareDirEntries(t, srcData[i], gotDir)
+					req.Equal(http.StatusOK, resp.StatusCode)
+					body, err := io.ReadAll(resp.Body)
+					req.NoError(err)
+					resp.Body.Close()
+					req.NoError(err)
+
+					if testCase.validateBodies != nil && testCase.validateBodies[i] != nil {
+						testCase.validateBodies[i](t, srcData[i], body)
+					} else {
+						gotDir := unixfs.CarToDirEntry(t, bytes.NewReader(body), srcData[i].Root, true)
+						unixfs.CompareDirEntries(t, srcData[i], gotDir)
+					}
 				}
 			}
 

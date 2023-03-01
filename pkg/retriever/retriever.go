@@ -48,6 +48,7 @@ type RetrieverConfig struct {
 	DefaultMinerConfig MinerConfig
 	MinerConfigs       map[peer.ID]MinerConfig
 	PaidRetrievals     bool
+	DisableGraphsync   bool
 }
 
 func (cfg *RetrieverConfig) getMinerConfig(peer peer.ID) MinerConfig {
@@ -97,20 +98,24 @@ func NewRetriever(
 		eventManager: events.NewEventManager(ctx),
 		spTracker:    newSpTracker(nil),
 	}
-	candidateRetrievers := []types.CandidateRetriever{
-		&GraphSyncRetriever{
+	candidateRetrievers := []types.CandidateRetriever{}
+	protocols := []multicodec.Code{}
+	if !config.DisableGraphsync {
+		candidateRetrievers = append(candidateRetrievers, &GraphSyncRetriever{
 			GetStorageProviderTimeout: retriever.getStorageProviderTimeout,
 			IsAcceptableQueryResponse: retriever.isAcceptableQueryResponse,
 			Client:                    client,
-		},
+		})
+		protocols = append(protocols, multicodec.TransportGraphsyncFilecoinv1)
 	}
 	if bitswapRetriever != nil {
 		candidateRetrievers = append(candidateRetrievers, bitswapRetriever)
+		protocols = append(protocols, multicodec.TransportBitswap)
 	}
 	retriever.executor = combinators.RetrieverWithCandidateFinder{
 		CandidateFinder: NewAssignableCandidateFinder(candidateFinder, retriever.isAcceptableStorageProvider),
 		CandidateRetriever: combinators.SplitRetriever{
-			CandidateSplitter:   NewProtocolSplitter([]multicodec.Code{multicodec.TransportGraphsyncFilecoinv1, multicodec.TransportBitswap}),
+			CandidateSplitter:   NewProtocolSplitter(protocols),
 			CandidateRetrievers: candidateRetrievers,
 			CoordinationKind:    types.RaceCoordination,
 		},

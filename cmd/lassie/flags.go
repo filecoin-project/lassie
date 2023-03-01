@@ -63,3 +63,10 @@ var FlagExposeMetrics = &cli.BoolFlag{
 	Usage:   "expose metrics at /metrics",
 	EnvVars: []string{"LASSIE_EXPOSE_METRICS"},
 }
+
+// FlagDisableGraphsync turns off all retrievals over the graphsync protocol
+var FlagDisableGraphsync = &cli.BoolFlag{
+	Name:    "disable-graphsync",
+	Usage:   "turn off graphsync retrievals",
+	EnvVars: []string{"LASSIE_DISABLE_GRAPHSYNC"},
+}
