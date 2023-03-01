@@ -1,0 +1,9 @@
+name: lassie custom action setup
+description: Extends test timeouts so we can get our long integration tests done
+runs:
+  using: "composite"
+  steps:
+    - name: Extend test timeout length
+      shell: bash
+      run: |
+        echo "GO_TEST_TIMEOUT_SCALE=3" >> $GITHUB_ENV
