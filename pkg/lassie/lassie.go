@@ -87,6 +87,9 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 		return nil, err
 	}
 	retriever.Start()
+	if err := retrievalClient.AwaitReady(); err != nil { // wait for dt setup
+		return nil, err
+	}
 
 	lassie := &Lassie{
 		cfg:       cfg,
