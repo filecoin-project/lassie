@@ -3,9 +3,12 @@ package unixfs
 import (
 	"context"
 	"fmt"
+	"io"
 	"testing"
 
 	"github.com/ipfs/go-cid"
+	"github.com/ipfs/go-unixfsnode"
+	"github.com/ipld/go-car/v2/storage"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/datamodel"
@@ -39,6 +42,16 @@ func (de DirEntry) Link() ipld.Link {
 func ToDirEntry(t *testing.T, linkSys linking.LinkSystem, rootCid cid.Cid, expectFull bool) DirEntry {
 	de := toDirEntryRecursive(t, linkSys, rootCid, "", expectFull)
 	return *de
+}
+
+func CarToDirEntry(t *testing.T, root cid.Cid, carReader io.ReaderAt, expectFull bool) DirEntry {
+	reader, err := storage.OpenReadable(carReader)
+	require.NoError(t, err)
+	linkSys := cidlink.DefaultLinkSystem()
+	linkSys.SetReadStorage(reader)
+	linkSys.NodeReifier = unixfsnode.Reify
+	linkSys.TrustedStorage = true
+	return ToDirEntry(t, linkSys, root, expectFull)
 }
 
 func toDirEntryRecursive(t *testing.T, linkSys linking.LinkSystem, rootCid cid.Cid, name string, expectFull bool) *DirEntry {
