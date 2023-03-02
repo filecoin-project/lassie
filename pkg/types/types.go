@@ -125,8 +125,8 @@ type AsyncRetrievalTask struct {
 }
 
 // Run executes the asychronous retrieval task
-func (acrc AsyncRetrievalTask) Run() (*RetrievalStats, error) {
-	return acrc.AsyncCandidateRetrieval.RetrieveFromAsyncCandidates(acrc.Candidates)
+func (art AsyncRetrievalTask) Run() (*RetrievalStats, error) {
+	return art.AsyncCandidateRetrieval.RetrieveFromAsyncCandidates(art.Candidates)
 }
 
 var _ RetrievalTask = DeferredErrorTask{}
