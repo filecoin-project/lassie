@@ -3,6 +3,7 @@ package candidatebuffer_test
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -187,11 +188,14 @@ func TestCandidateBuffer(t *testing.T) {
 			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
 			req := require.New(t)
+			var receivedCandidatesLk sync.Mutex
 			var receivedCandidates [][]types.RetrievalCandidate
 			clock := clock.NewMock()
 			after := make(chan struct{})
 			candididateBuffer := candidatebuffer.NewCandidateBufferWithSync(func(next []types.RetrievalCandidate) {
+				receivedCandidatesLk.Lock()
 				receivedCandidates = append(receivedCandidates, next)
+				receivedCandidatesLk.Unlock()
 			}, clock, after)
 			incoming := make(chan types.FindCandidatesResult)
 			go func() {
@@ -218,7 +222,9 @@ func TestCandidateBuffer(t *testing.T) {
 			} else {
 				req.NoError(err)
 			}
+			receivedCandidatesLk.Lock()
 			req.Equal(testCase.expectedCandidateSets, receivedCandidates)
+			receivedCandidatesLk.Unlock()
 		})
 	}
 }

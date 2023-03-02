@@ -99,7 +99,7 @@ func NewRetriever(
 		spTracker:    newSpTracker(nil),
 	}
 	candidateRetrievers := map[multicodec.Code]types.CandidateRetriever{}
-	protocols = []multicodec.Code{}
+	protocols := []multicodec.Code{}
 	if !config.DisableGraphsync {
 		candidateRetrievers[multicodec.TransportGraphsyncFilecoinv1] = &GraphSyncRetriever{
 			GetStorageProviderTimeout: retriever.getStorageProviderTimeout,

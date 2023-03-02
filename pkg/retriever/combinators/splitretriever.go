@@ -2,6 +2,7 @@ package combinators
 
 import (
 	"context"
+	"errors"
 
 	"github.com/filecoin-project/lassie/pkg/retriever/coordinators"
 	"github.com/filecoin-project/lassie/pkg/types"
@@ -43,7 +44,7 @@ func (m splitRetrieval[T]) RetrieveFromAsyncCandidates(asyncCandidates types.Inb
 	if err != nil {
 		return nil, err
 	}
-	return coordinator(m.ctx, func(ctx context.Context, retrievalCall func(types.RetrievalTask)) {
+	stats, err := coordinator(m.ctx, func(ctx context.Context, retrievalCall func(types.RetrievalTask)) {
 		for key, asyncCandidates := range asyncSplitCandidates {
 			if asyncCandidateRetrieval, ok := m.candidateRetrievals[key]; ok {
 				retrievalCall(types.AsyncRetrievalTask{
@@ -54,4 +55,8 @@ func (m splitRetrieval[T]) RetrieveFromAsyncCandidates(asyncCandidates types.Inb
 		}
 		retrievalCall(types.DeferredErrorTask{Ctx: ctx, ErrChan: errChan})
 	})
+	if stats == nil && err == nil {
+		return nil, errors.New("no eligible retrievers")
+	}
+	return stats, err
 }
