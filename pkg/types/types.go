@@ -138,11 +138,11 @@ type DeferredErrorTask struct {
 }
 
 // Run reads the error channel and returns a result
-func (der DeferredErrorTask) Run() (*RetrievalStats, error) {
+func (det DeferredErrorTask) Run() (*RetrievalStats, error) {
 	select {
-	case <-der.Ctx.Done():
-		return nil, der.Ctx.Err()
-	case err := <-der.ErrChan:
+	case <-det.Ctx.Done():
+		return nil, det.Ctx.Err()
+	case err := <-det.ErrChan:
 		return nil, err
 	}
 }
