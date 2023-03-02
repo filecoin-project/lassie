@@ -346,7 +346,7 @@ func TestBitswapRetriever(t *testing.T) {
 			retrievalResult := make(chan types.RetrievalResult, 1)
 			go func() {
 				stats, err := retrieval1.RetrieveFromAsyncCandidates(makeAsyncCandidates(expectedCandidates[rid1]))
-				retrievalResult <- types.RetrievalResult{stats, err}
+				retrievalResult <- types.RetrievalResult{Stats: stats, Err: err}
 			}()
 			select {
 			case <-ctx.Done():
@@ -374,7 +374,7 @@ func TestBitswapRetriever(t *testing.T) {
 			unlockExchange = make(chan struct{})
 			go func() {
 				stats, err := retrieval2.RetrieveFromAsyncCandidates(makeAsyncCandidates(expectedCandidates[rid2]))
-				retrievalResult <- types.RetrievalResult{stats, err}
+				retrievalResult <- types.RetrievalResult{Stats: stats, Err: err}
 			}()
 			select {
 			case <-ctx.Done():
