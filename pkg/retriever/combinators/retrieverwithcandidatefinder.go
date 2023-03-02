@@ -10,7 +10,6 @@ import (
 type RetrieverWithCandidateFinder struct {
 	CandidateFinder    types.CandidateFinder
 	CandidateRetriever types.CandidateRetriever
-	CoordinationKind   types.CoordinationKind
 }
 
 var _ types.Retriever = RetrieverWithCandidateFinder{}

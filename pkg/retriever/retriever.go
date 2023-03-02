@@ -119,7 +119,6 @@ func NewRetriever(
 			CandidateRetrievers:    candidateRetrievers,
 			CoordinationKind:       types.RaceCoordination,
 		},
-		CoordinationKind: types.RaceCoordination,
 	}
 
 	return retriever, nil
