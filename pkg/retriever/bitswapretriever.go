@@ -53,12 +53,13 @@ type InProgressCids interface {
 // Note: this is a tradeoff over go-merkledag for traversal, cause selector execution is slow. But the solution
 // is to improve selector execution, not introduce unpredictable encoding.
 type BitswapRetriever struct {
-	bstore                  MultiBlockstore
-	inProgressCids          InProgressCids
-	routing                 IndexerRouting
-	blockService            blockservice.BlockService
-	clock                   clock.Clock
-	cfg                     BitswapConfig
+	bstore         MultiBlockstore
+	inProgressCids InProgressCids
+	routing        IndexerRouting
+	blockService   blockservice.BlockService
+	clock          clock.Clock
+	cfg            BitswapConfig
+	// this is purely for testing purposes, to insure that we receive all candidates
 	awaitReceivedCandidates chan<- struct{}
 }
 

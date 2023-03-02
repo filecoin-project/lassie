@@ -103,7 +103,7 @@ func TestRetriever(t *testing.T) {
 				{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
 			},
 			returns_queries: map[string]testutil.DelayedQueryReturn{
-				string(peerA): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 200},
+				string(peerA): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Second},
 				string(peerB): {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 5},
 			},
 			returns_retrievals: map[string]testutil.DelayedRetrievalReturn{
@@ -276,7 +276,7 @@ func TestRetriever(t *testing.T) {
 					TotalPayment:      big.Zero(),
 					RootCid:           cid1,
 					AskPrice:          abi.NewTokenAmount(0),
-				}, Delay: time.Millisecond * 500},
+				}, Delay: time.Second * 2},
 				string(peerB): {ResultStats: &types.RetrievalStats{
 					StorageProviderId: peerB,
 					Size:              20,

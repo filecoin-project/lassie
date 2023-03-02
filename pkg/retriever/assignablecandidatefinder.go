@@ -27,14 +27,14 @@ func NewAssignableCandidateFinder(candidateFinder CandidateFinder, isAcceptableS
 func NewAssignableCandidateFinderWithClock(candidateFinder CandidateFinder, isAcceptableStorageProvider IsAcceptableStorageProvider, clock clock.Clock) AssignableCandidateFinder {
 	return AssignableCandidateFinder{candidateFinder: candidateFinder, isAcceptableStorageProvider: isAcceptableStorageProvider, clock: clock}
 }
-func (rcf AssignableCandidateFinder) FindCandidates(ctx context.Context, request types.RetrievalRequest, eventsCallback func(types.RetrievalEvent), onCandidates func([]types.RetrievalCandidate)) error {
+func (acf AssignableCandidateFinder) FindCandidates(ctx context.Context, request types.RetrievalRequest, eventsCallback func(types.RetrievalEvent), onCandidates func([]types.RetrievalCandidate)) error {
 	ctx, cancelCtx := context.WithCancel(ctx)
 	defer cancelCtx()
 	phaseStarted := time.Now()
 
 	eventsCallback(events.Started(request.RetrievalID, phaseStarted, types.IndexerPhase, types.RetrievalCandidate{RootCid: request.Cid}))
 
-	candidateStream, err := rcf.candidateFinder.FindCandidatesAsync(ctx, request.Cid)
+	candidateStream, err := acf.candidateFinder.FindCandidatesAsync(ctx, request.Cid)
 
 	if err != nil {
 		eventsCallback(events.Failed(request.RetrievalID, phaseStarted, types.IndexerPhase, types.RetrievalCandidate{RootCid: request.Cid}, err.Error()))
@@ -47,7 +47,7 @@ func (rcf AssignableCandidateFinder) FindCandidates(ctx context.Context, request
 
 		acceptableCandidates := make([]types.RetrievalCandidate, 0)
 		for _, candidate := range candidates {
-			if rcf.isAcceptableStorageProvider == nil || rcf.isAcceptableStorageProvider(candidate.MinerPeer.ID) {
+			if acf.isAcceptableStorageProvider == nil || acf.isAcceptableStorageProvider(candidate.MinerPeer.ID) {
 				acceptableCandidates = append(acceptableCandidates, candidate)
 			}
 		}
@@ -59,7 +59,7 @@ func (rcf AssignableCandidateFinder) FindCandidates(ctx context.Context, request
 		eventsCallback(events.CandidatesFiltered(request.RetrievalID, phaseStarted, request.Cid, acceptableCandidates))
 		totalCandidates.Add(uint64(len(acceptableCandidates)))
 		onCandidates(acceptableCandidates)
-	}, rcf.clock)
+	}, acf.clock)
 
 	err = candidateBuffer.BufferStream(ctx, candidateStream, BufferWindow)
 	if err != nil {

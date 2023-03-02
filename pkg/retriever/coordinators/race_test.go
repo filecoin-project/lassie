@@ -150,7 +150,7 @@ func TestRace(t *testing.T) {
 				retrievalCalls := func(ctx context.Context, callRetrieval func(types.RetrievalTask)) {
 					for _, result := range testCase.results {
 						callRetrieval(types.AsyncRetrievalTask{
-							AsyncCandidateRetrieval: &timeoutRetriever{result, childCtx, clock, startChan},
+							AsyncCandidateRetrieval: &timeoutRetriever{result, ctx, clock, startChan},
 						})
 					}
 				}
