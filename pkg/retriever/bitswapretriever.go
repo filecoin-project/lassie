@@ -95,7 +95,7 @@ func NewBitswapRetrieverFromDeps(bsrv blockservice.BlockService, routing Indexer
 }
 
 // Retrieve initializes a new bitswap session
-func (br *BitswapRetriever) Retrieve(ctx context.Context, request types.RetrievalRequest, events func(types.RetrievalEvent)) types.CandidateRetreival {
+func (br *BitswapRetriever) Retrieve(ctx context.Context, request types.RetrievalRequest, events func(types.RetrievalEvent)) types.CandidateRetrieval {
 	return &bitswapRetrieval{br, blockservice.NewSession(ctx, br.blockService), ctx, request, events}
 }
 

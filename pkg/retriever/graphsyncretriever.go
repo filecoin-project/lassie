@@ -95,7 +95,7 @@ func (cfg *GraphSyncRetriever) Retrieve(
 	ctx context.Context,
 	retrievalRequest types.RetrievalRequest,
 	eventsCallback func(types.RetrievalEvent),
-) types.CandidateRetreival {
+) types.CandidateRetrieval {
 
 	if cfg == nil {
 		cfg = &GraphSyncRetriever{}

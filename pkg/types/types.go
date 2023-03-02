@@ -73,12 +73,12 @@ func (oas OutboundAsyncCandidates) SendNext(ctx context.Context, next []Retrieva
 	}
 }
 
-type CandidateRetreival interface {
+type CandidateRetrieval interface {
 	RetrieveFromAsyncCandidates(asyncCandidates InboundAsyncCandidates) (*RetrievalStats, error)
 }
 
 type CandidateRetriever interface {
-	Retrieve(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) CandidateRetreival
+	Retrieve(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) CandidateRetrieval
 }
 
 type RetrievalSplitter[T comparable] interface {
@@ -121,7 +121,7 @@ var _ RetrievalTask = AsyncRetrievalTask{}
 // AsyncRetrievalTask runs an asynchronous retrieval and returns a result
 type AsyncRetrievalTask struct {
 	Candidates              InboundAsyncCandidates
-	AsyncCandidateRetrieval CandidateRetreival
+	AsyncCandidateRetrieval CandidateRetrieval
 }
 
 // Run executes the asychronous retrieval task

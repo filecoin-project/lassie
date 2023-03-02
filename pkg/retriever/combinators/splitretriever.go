@@ -18,8 +18,8 @@ type SplitRetriever[T comparable] struct {
 	CoordinationKind       types.CoordinationKind
 }
 
-func (m SplitRetriever[T]) Retrieve(ctx context.Context, request types.RetrievalRequest, events func(types.RetrievalEvent)) types.CandidateRetreival {
-	candidateRetrievals := make(map[T]types.CandidateRetreival, len(m.CandidateRetrievers))
+func (m SplitRetriever[T]) Retrieve(ctx context.Context, request types.RetrievalRequest, events func(types.RetrievalEvent)) types.CandidateRetrieval {
+	candidateRetrievals := make(map[T]types.CandidateRetrieval, len(m.CandidateRetrievers))
 	for key, candidateRetriever := range m.CandidateRetrievers {
 		candidateRetrievals[key] = candidateRetriever.Retrieve(ctx, request, events)
 	}
@@ -33,7 +33,7 @@ func (m SplitRetriever[T]) Retrieve(ctx context.Context, request types.Retrieval
 
 type splitRetrieval[T comparable] struct {
 	retrievalSplitter   types.AsyncRetrievalSplitter[T]
-	candidateRetrievals map[T]types.CandidateRetreival
+	candidateRetrievals map[T]types.CandidateRetrieval
 	coodinationKind     types.CoordinationKind
 	ctx                 context.Context
 }
