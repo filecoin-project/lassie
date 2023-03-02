@@ -2,7 +2,6 @@ package coordinators
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/filecoin-project/lassie/pkg/types"

@@ -63,13 +63,6 @@ type GraphSyncRetriever struct {
 	GetStorageProviderTimeout GetStorageProviderTimeout
 	IsAcceptableQueryResponse IsAcceptableQueryResponse
 	Client                    RetrievalClient
-
-	waitGroup sync.WaitGroup // only used internally for testing cleanup
-}
-
-// wait is used internally for testing that we do proper goroutine cleanup
-func (cfg *GraphSyncRetriever) wait() {
-	cfg.waitGroup.Wait()
 }
 
 type retrievalResult struct {
@@ -131,9 +124,10 @@ func (r *graphsyncRetrieval) RetrieveFromAsyncCandidates(asyncCandidates types.I
 	}
 	// start retrievals
 	queryStartTime := time.Now()
-	r.waitGroup.Add(1)
+	var waitGroup sync.WaitGroup
+	waitGroup.Add(1)
 	go func() {
-		defer r.waitGroup.Done()
+		defer waitGroup.Done()
 		for {
 			hasCandidates, candidates, err := asyncCandidates.Next(ctx)
 			if !hasCandidates || err != nil {
@@ -141,9 +135,9 @@ func (r *graphsyncRetrieval) RetrieveFromAsyncCandidates(asyncCandidates types.I
 			}
 			for _, candidate := range candidates {
 				candidate := candidate
-				r.waitGroup.Add(1)
+				waitGroup.Add(1)
 				go func() {
-					defer r.waitGroup.Done()
+					defer waitGroup.Done()
 					runRetrievalCandidate(ctx, r.GraphSyncRetriever, r.request, r.Client, retrieval, queryStartTime, candidate)
 				}()
 			}
@@ -151,7 +145,7 @@ func (r *graphsyncRetrieval) RetrieveFromAsyncCandidates(asyncCandidates types.I
 	}()
 
 	go func() {
-		r.waitGroup.Wait()
+		waitGroup.Wait()
 		close(retrieval.resultChan)
 	}()
 

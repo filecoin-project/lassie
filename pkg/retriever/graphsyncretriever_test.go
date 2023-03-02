@@ -359,12 +359,6 @@ func TestRetrievalRacing(t *testing.T) {
 				require.Nil(t, stats)
 				require.Error(t, err)
 			}
-			waitStart := time.Now()
-			cfg.wait()
-			waited := time.Since(waitStart)
-			// make sure we didn't have to wait long to have the goroutines cleaned up, they should
-			// return very quickly from the mockClient#RetrievalQueryToPeer after a context cancel
-			require.Less(t, waited, 5*time.Millisecond, "wait took %s", waited)
 
 			// make sure we handled the queries we expected
 			var expectedQueryFailures int
@@ -497,8 +491,6 @@ func TestMultipleRetrievals(t *testing.T) {
 	// both retrievals should be ~ 100+200ms
 
 	waitStart := time.Now()
-	cfg.wait() // internal goroutine cleanup
-	require.Less(t, time.Since(waitStart), time.Millisecond*100, "wait took %s", time.Since(waitStart))
 	wg.Wait() // make sure we're done with our own goroutine
 	require.Less(t, time.Since(waitStart), time.Millisecond*100, "wg wait took %s", time.Since(waitStart))
 
@@ -608,12 +600,6 @@ func TestRetrievalReuse(t *testing.T) {
 	// make sure we got the final retrieval we wanted
 	require.Equal(t, mockClient.GetRetrievalReturns()["bing"].ResultStats, stats)
 
-	// both retrievals should be ~ 100+200ms
-
-	waitStart := time.Now()
-	cfg.wait() // internal goroutine cleanup
-	require.Less(t, time.Since(waitStart), time.Millisecond*100, "wait took %s", time.Since(waitStart))
-
 	// make sure we handled the queries we expected
 	require.Len(t, mockClient.GetReceivedQueries(), 6)
 	for _, p := range mockClient.GetReceivedQueries() {
@@ -663,10 +649,6 @@ func TestRetrievalSelector(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, stats)
 	require.Equal(t, mockClient.GetRetrievalReturns()["foo"].ResultStats, stats)
-
-	waitStart := time.Now()
-	cfg.wait() // internal goroutine cleanup
-	require.Less(t, time.Since(waitStart), time.Millisecond*100, "wait took %s", time.Since(waitStart))
 
 	// make sure we performed the retrievals we expected
 	rr := mockClient.GetReceivedRetrievalFrom(peer.ID("foo"))
