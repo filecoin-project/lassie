@@ -38,7 +38,6 @@ func Race(ctx context.Context, queueOperations types.QueueRetrievalsFn) (*types.
 		select {
 		case result, ok := <-resultChan:
 			if !ok {
-				fmt.Println("here!")
 				return nil, totalErr
 			}
 			if result.Err != nil {
