@@ -115,7 +115,6 @@ func (cfg *GraphSyncRetriever) Retrieve(
 
 func (r *graphsyncRetrieval) RetrieveFromAsyncCandidates(asyncCandidates types.InboundAsyncCandidates) (*types.RetrievalStats, error) {
 	ctx, cancelCtx := context.WithCancel(r.ctx)
-	defer cancelCtx()
 
 	retrieval := &graphsyncCandidateRetrieval{
 		resultChan: make(chan retrievalResult),
@@ -144,12 +143,22 @@ func (r *graphsyncRetrieval) RetrieveFromAsyncCandidates(asyncCandidates types.I
 		}
 	}()
 
+	finishAll := make(chan struct{}, 1)
 	go func() {
 		waitGroup.Wait()
 		close(retrieval.resultChan)
+		finishAll <- struct{}{}
 	}()
 
-	return collectResults(ctx, retrieval, r.eventsCallback)
+	stats, err := collectResults(ctx, retrieval, r.eventsCallback)
+	cancelCtx()
+	// optimistically try to wait for all routines to finish
+	select {
+	case <-finishAll:
+	case <-time.After(100 * time.Millisecond):
+		log.Warn("Unable to successfully cancel all retrieval attempts withing 100ms")
+	}
+	return stats, err
 }
 
 // collectResults is responsible for receiving query errors, retrieval errors
