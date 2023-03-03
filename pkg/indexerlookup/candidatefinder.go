@@ -127,7 +127,6 @@ func (idxf *IndexerCandidateFinder) FindCandidatesAsync(ctx context.Context, c c
 	}
 	switch resp.StatusCode {
 	case http.StatusOK:
-		defer resp.Body.Close()
 		return idxf.decodeProviderResultStream(ctx, c, resp.Body)
 	case http.StatusNotFound:
 		return nil, nil
@@ -153,10 +152,11 @@ func (idxf *IndexerCandidateFinder) newFindHttpRequest(ctx context.Context, c ci
 	return req, nil
 }
 
-func (idxf *IndexerCandidateFinder) decodeProviderResultStream(ctx context.Context, c cid.Cid, from io.Reader) (<-chan types.FindCandidatesResult, error) {
+func (idxf *IndexerCandidateFinder) decodeProviderResultStream(ctx context.Context, c cid.Cid, from io.ReadCloser) (<-chan types.FindCandidatesResult, error) {
 	rch := make(chan types.FindCandidatesResult, idxf.asyncResultsChanBuffer)
 	go func() {
 		defer close(rch)
+		defer from.Close()
 		scanner := bufio.NewScanner(from)
 		for {
 			var r types.FindCandidatesResult
