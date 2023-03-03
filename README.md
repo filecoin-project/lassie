@@ -24,9 +24,9 @@ Alternatively, you can clone the repository and build from source by running:
 go build ./cmd/lassie
 ```
 
-### Using
+## Usage
 
-#### Fetch Command
+### Fetch Command
 
 The simplest way to use lassie it to just run the CLI with the `fetch` command:
 
@@ -38,7 +38,7 @@ This will output to a CAR file with the name of the CID in the current directory
 
 For additional command options and parameters, use the `--help, -h` CLI option.
 
-#### HTTP Daemon Command
+### HTTP Daemon Command
 
 An HTTP server to fetch content over HTTP can also be started via the `daemon` command.
 
