@@ -7,16 +7,26 @@ import (
 	"go.uber.org/multierr"
 )
 
-func Sequence(ctx context.Context, retrievalCalls []types.CandidateRetrievalCall) (*types.RetrievalStats, error) {
+func Sequence(ctx context.Context, queueOperationsFn types.QueueRetrievalsFn) (*types.RetrievalStats, error) {
 	var totalErr error
-	for _, retrievalCall := range retrievalCalls {
-		stats, err := retrievalCall.CandidateRetrieval.RetrieveFromCandidates(retrievalCall.Candidates)
+	var finalStats *types.RetrievalStats
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	queueOperationsFn(ctx, func(retrieval types.RetrievalTask) {
+		if finalStats != nil {
+			return
+		}
+		stats, err := retrieval.Run()
 		if err != nil {
 			totalErr = multierr.Append(totalErr, err)
 		}
 		if stats != nil {
-			return stats, nil
+			finalStats = stats
+			cancel()
 		}
+	})
+	if finalStats == nil {
+		return nil, totalErr
 	}
-	return nil, totalErr
+	return finalStats, nil
 }

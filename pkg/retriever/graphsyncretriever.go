@@ -63,13 +63,6 @@ type GraphSyncRetriever struct {
 	GetStorageProviderTimeout GetStorageProviderTimeout
 	IsAcceptableQueryResponse IsAcceptableQueryResponse
 	Client                    RetrievalClient
-
-	waitGroup sync.WaitGroup // only used internally for testing cleanup
-}
-
-// wait is used internally for testing that we do proper goroutine cleanup
-func (cfg *GraphSyncRetriever) wait() {
-	cfg.waitGroup.Wait()
 }
 
 type retrievalResult struct {
@@ -120,9 +113,8 @@ func (cfg *GraphSyncRetriever) Retrieve(
 	}
 }
 
-func (r *graphsyncRetrieval) RetrieveFromCandidates(candidates []types.RetrievalCandidate) (*types.RetrievalStats, error) {
+func (r *graphsyncRetrieval) RetrieveFromAsyncCandidates(asyncCandidates types.InboundAsyncCandidates) (*types.RetrievalStats, error) {
 	ctx, cancelCtx := context.WithCancel(r.ctx)
-	defer cancelCtx()
 
 	retrieval := &graphsyncCandidateRetrieval{
 		resultChan: make(chan retrievalResult),
@@ -131,29 +123,66 @@ func (r *graphsyncRetrieval) RetrieveFromCandidates(candidates []types.Retrieval
 	}
 	// start retrievals
 	queryStartTime := time.Now()
-	r.waitGroup.Add(len(candidates))
-	for _, candidate := range candidates {
-		candidate := candidate
-		go func() {
-			runRetrievalCandidate(ctx, r.GraphSyncRetriever, r.request, r.Client, retrieval, queryStartTime, candidate)
-			r.waitGroup.Done()
-		}()
-	}
+	var waitGroup sync.WaitGroup
+	waitGroup.Add(1)
+	go func() {
+		defer waitGroup.Done()
+		for {
+			hasCandidates, candidates, err := asyncCandidates.Next(ctx)
+			if !hasCandidates || err != nil {
+				return
+			}
+			for _, candidate := range candidates {
+				candidate := candidate
+				waitGroup.Add(1)
+				go func() {
+					defer waitGroup.Done()
+					runRetrievalCandidate(ctx, r.GraphSyncRetriever, r.request, r.Client, retrieval, queryStartTime, candidate)
+				}()
+			}
+		}
+	}()
 
-	return collectResults(ctx, retrieval, len(candidates), r.eventsCallback)
+	finishAll := make(chan struct{}, 1)
+	go func() {
+		waitGroup.Wait()
+		close(retrieval.resultChan)
+		finishAll <- struct{}{}
+	}()
+
+	stats, err := collectResults(ctx, retrieval, r.eventsCallback)
+	cancelCtx()
+	// optimistically try to wait for all routines to finish
+	select {
+	case <-finishAll:
+	case <-time.After(100 * time.Millisecond):
+		log.Warn("Unable to successfully cancel all retrieval attempts withing 100ms")
+	}
+	return stats, err
 }
 
 // collectResults is responsible for receiving query errors, retrieval errors
 // and retrieval results and aggregating into an appropriate return of either
 // a complete RetrievalStats or an bundled multi-error
-func collectResults(ctx context.Context, retrieval *graphsyncCandidateRetrieval, expectedCandidates int, eventsCallback func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
-	var finishedCount int
+func collectResults(ctx context.Context, retrieval *graphsyncCandidateRetrieval, eventsCallback func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
 	var queryErrors error
 	var retrievalErrors error
 
 	for {
 		select {
-		case result := <-retrieval.resultChan:
+		case result, ok := <-retrieval.resultChan:
+			// have we got all responses but no success?
+			if !ok {
+				if retrievalErrors == nil {
+					// we failed, but didn't get any retrieval errors, so must have only got query errors
+					retrievalErrors = ErrAllQueriesFailed
+				} else {
+					// we failed, and got only retrieval errors
+					retrievalErrors = multierr.Append(retrievalErrors, ErrAllRetrievalsFailed)
+				}
+				return nil, multierr.Append(queryErrors, retrievalErrors)
+			}
+
 			if result.Event != nil {
 				eventsCallback(*result.Event)
 				break
@@ -167,18 +196,6 @@ func collectResults(ctx context.Context, retrieval *graphsyncCandidateRetrieval,
 			}
 			if result.Stats != nil {
 				return result.Stats, nil
-			}
-			// have we got all responses but no success?
-			finishedCount++
-			if finishedCount >= expectedCandidates {
-				if retrievalErrors == nil {
-					// we failed, but didn't get any retrieval errors, so must have only got query errors
-					retrievalErrors = ErrAllQueriesFailed
-				} else {
-					// we failed, and got only retrieval errors
-					retrievalErrors = multierr.Append(retrievalErrors, ErrAllRetrievalsFailed)
-				}
-				return nil, multierr.Append(queryErrors, retrievalErrors)
 			}
 		case <-ctx.Done():
 			return nil, context.Canceled

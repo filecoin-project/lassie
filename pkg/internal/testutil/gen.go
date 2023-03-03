@@ -9,6 +9,7 @@ import (
 	"github.com/ipfs/go-cid"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
 	"github.com/ipfs/go-libipfs/blocks"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/require"
 )
@@ -65,6 +66,21 @@ func GeneratePeers(n int) []peer.ID {
 		peerIds = append(peerIds, p)
 	}
 	return peerIds
+}
+
+// GenerateRetrievalRequests produces retrieval requests
+func GenerateRetrievalRequests(t *testing.T, n int) []types.RetrievalRequest {
+	cids := GenerateCids(n)
+	rids := GenerateRetrievalIDs(t, n)
+	requests := make([]types.RetrievalRequest, 0, n)
+	for i := 0; i < n; i++ {
+		requests = append(requests, types.RetrievalRequest{
+			RetrievalID: rids[i],
+			Cid:         cids[i],
+			LinkSystem:  cidlink.DefaultLinkSystem(),
+		})
+	}
+	return requests
 }
 
 // GenerateRetrievalCandidates produces n retrieval candidates

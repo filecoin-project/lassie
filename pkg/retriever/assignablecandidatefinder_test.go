@@ -148,11 +148,15 @@ func TestAssignableCandidateFinder(t *testing.T) {
 			rid1, err := types.NewRetrievalID()
 			req.NoError(err)
 			receivedErrors := make(map[cid.Cid]error)
-			candidates, err := retrievalCandidateFinder.FindCandidates(ctx, types.RetrievalRequest{
+			var candidates []types.RetrievalCandidate
+			candidateCollector := func(incoming []types.RetrievalCandidate) {
+				candidates = append(candidates, incoming...)
+			}
+			err = retrievalCandidateFinder.FindCandidates(ctx, types.RetrievalRequest{
 				RetrievalID: rid1,
 				Cid:         cid1,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
-			}, retrievalCollector)
+			}, retrievalCollector, candidateCollector)
 			if err != nil {
 				receivedErrors[cid1] = err
 			} else {
@@ -160,11 +164,12 @@ func TestAssignableCandidateFinder(t *testing.T) {
 			}
 			rid2, err := types.NewRetrievalID()
 			req.NoError(err)
-			candidates, err = retrievalCandidateFinder.FindCandidates(ctx, types.RetrievalRequest{
+			candidates = nil
+			err = retrievalCandidateFinder.FindCandidates(ctx, types.RetrievalRequest{
 				RetrievalID: rid2,
 				Cid:         cid2,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
-			}, retrievalCollector)
+			}, retrievalCollector, candidateCollector)
 			if err != nil {
 				receivedErrors[cid2] = err
 			} else {

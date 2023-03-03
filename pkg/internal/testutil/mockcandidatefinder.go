@@ -17,18 +17,20 @@ func (me *MockCandidateFinder) FindCandidatesAsync(ctx context.Context, c cid.Ci
 	if err != nil {
 		return nil, err
 	}
-	switch len(rs) {
-	case 0:
-		return nil, nil
-	default:
-		rch := make(chan types.FindCandidatesResult, len(rs))
+	rch := make(chan types.FindCandidatesResult, len(rs))
+	go func() {
 		for _, r := range rs {
-			rch <- types.FindCandidatesResult{
+			select {
+			case <-ctx.Done():
+				return
+			case rch <- types.FindCandidatesResult{
 				Candidate: r,
+			}:
 			}
 		}
-		return rch, nil
-	}
+		close(rch)
+	}()
+	return rch, nil
 }
 
 func (me *MockCandidateFinder) FindCandidates(ctx context.Context, cid cid.Cid) ([]types.RetrievalCandidate, error) {

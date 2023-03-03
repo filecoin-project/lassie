@@ -11,13 +11,13 @@ type ProtocolSplitter struct {
 	protocols []multicodec.Code
 }
 
-var _ types.CandidateSplitter = (*ProtocolSplitter)(nil)
+var _ types.CandidateSplitter[multicodec.Code] = (*ProtocolSplitter)(nil)
 
-func NewProtocolSplitter(protocols []multicodec.Code) *ProtocolSplitter {
+func NewProtocolSplitter(protocols []multicodec.Code) types.CandidateSplitter[multicodec.Code] {
 	return &ProtocolSplitter{protocols: protocols}
 }
 
-func (ps *ProtocolSplitter) SplitRetrieval(ctx context.Context, request types.RetrievalRequest, events func(types.RetrievalEvent)) types.RetrievalSplitter {
+func (ps *ProtocolSplitter) SplitRetrievalRequest(ctx context.Context, request types.RetrievalRequest, events func(types.RetrievalEvent)) types.RetrievalSplitter[multicodec.Code] {
 	return &retrievalProtocolSplitter{ps}
 }
 
@@ -25,17 +25,17 @@ type retrievalProtocolSplitter struct {
 	*ProtocolSplitter
 }
 
-func (rps *retrievalProtocolSplitter) SplitCandidates(candidates []types.RetrievalCandidate) ([][]types.RetrievalCandidate, error) {
-	protocolCandidates := make([][]types.RetrievalCandidate, len(rps.protocols))
+func (rps *retrievalProtocolSplitter) SplitCandidates(candidates []types.RetrievalCandidate) (map[multicodec.Code][]types.RetrievalCandidate, error) {
+	protocolCandidates := make(map[multicodec.Code][]types.RetrievalCandidate, len(rps.protocols))
 	for _, candidate := range candidates {
 		candidateProtocolsArr := candidate.Metadata.Protocols()
 		candidateProtocolsSet := make(map[multicodec.Code]struct{})
 		for _, candidateProtocol := range candidateProtocolsArr {
 			candidateProtocolsSet[candidateProtocol] = struct{}{}
 		}
-		for i, protocol := range rps.protocols {
+		for _, protocol := range rps.protocols {
 			if _, ok := candidateProtocolsSet[protocol]; ok {
-				protocolCandidates[i] = append(protocolCandidates[i], candidate)
+				protocolCandidates[protocol] = append(protocolCandidates[protocol], candidate)
 			}
 		}
 	}

@@ -98,26 +98,26 @@ func NewRetriever(
 		eventManager: events.NewEventManager(ctx),
 		spTracker:    newSpTracker(nil),
 	}
-	candidateRetrievers := []types.CandidateRetriever{}
+	candidateRetrievers := map[multicodec.Code]types.CandidateRetriever{}
 	protocols := []multicodec.Code{}
 	if !config.DisableGraphsync {
-		candidateRetrievers = append(candidateRetrievers, &GraphSyncRetriever{
+		candidateRetrievers[multicodec.TransportGraphsyncFilecoinv1] = &GraphSyncRetriever{
 			GetStorageProviderTimeout: retriever.getStorageProviderTimeout,
 			IsAcceptableQueryResponse: retriever.isAcceptableQueryResponse,
 			Client:                    client,
-		})
+		}
 		protocols = append(protocols, multicodec.TransportGraphsyncFilecoinv1)
 	}
 	if bitswapRetriever != nil {
-		candidateRetrievers = append(candidateRetrievers, bitswapRetriever)
+		candidateRetrievers[multicodec.TransportBitswap] = bitswapRetriever
 		protocols = append(protocols, multicodec.TransportBitswap)
 	}
 	retriever.executor = combinators.RetrieverWithCandidateFinder{
 		CandidateFinder: NewAssignableCandidateFinder(candidateFinder, retriever.isAcceptableStorageProvider),
-		CandidateRetriever: combinators.SplitRetriever{
-			CandidateSplitter:   NewProtocolSplitter(protocols),
-			CandidateRetrievers: candidateRetrievers,
-			CoordinationKind:    types.RaceCoordination,
+		CandidateRetriever: combinators.SplitRetriever[multicodec.Code]{
+			AsyncCandidateSplitter: combinators.NewAsyncCandidateSplitter(protocols, NewProtocolSplitter),
+			CandidateRetrievers:    candidateRetrievers,
+			CoordinationKind:       types.RaceCoordination,
 		},
 	}
 
