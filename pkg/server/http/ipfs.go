@@ -163,7 +163,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			res.Header().Set("X-Trace-Id", requestId)
 
 			logger.logStatus(200, "OK")
-			bytesWritten <- struct{}{}
+			close(bytesWritten)
 			return res, nil
 		}
 
@@ -171,10 +171,15 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		// first error and assume that the error will propagate through to
 		// lassie.Fetch
 		var errored bool
-		errorCb := func(error) {
+		errorCb := func(err error) {
 			if !errored {
 				errored = true
 				msg := fmt.Sprintf("Failed to write to CAR: %s", err.Error())
+				select {
+				case <-bytesWritten:
+					return
+				default:
+				}
 				logger.logStatus(http.StatusInternalServerError, msg)
 				http.Error(res, msg, http.StatusInternalServerError)
 			}
