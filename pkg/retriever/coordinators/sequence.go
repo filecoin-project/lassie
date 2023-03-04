@@ -16,7 +16,7 @@ func Sequence(ctx context.Context, queueOperationsFn types.QueueRetrievalsFn) (*
 		if finalStats != nil {
 			return
 		}
-		stats, err := retrieval.Run()
+		stats, err := retrieval.Run(ctx)
 		if err != nil {
 			totalErr = multierr.Append(totalErr, err)
 		}

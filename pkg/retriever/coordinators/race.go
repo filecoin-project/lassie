@@ -20,7 +20,7 @@ func Race(ctx context.Context, queueOperations types.QueueRetrievalsFn) (*types.
 			waitGroup.Add(1)
 			go func() {
 				defer waitGroup.Done()
-				stats, err := nextRetrieval.Run()
+				stats, err := nextRetrieval.Run(ctx)
 				select {
 				case <-ctx.Done():
 				case resultChan <- types.RetrievalResult{Stats: stats, Err: err}:

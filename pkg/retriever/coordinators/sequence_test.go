@@ -90,9 +90,7 @@ func TestSequence(t *testing.T) {
 			defer cancel()
 			retrievalCalls := func(ctx context.Context, callRetrieval func(types.RetrievalTask)) {
 				for _, result := range testCase.results {
-					callRetrieval(types.AsyncRetrievalTask{
-						AsyncCandidateRetrieval: &stubRetriever{result},
-					})
+					callRetrieval(&stubRetriever{result})
 				}
 			}
 			stats, err := coordinators.Sequence(ctx, retrievalCalls)
@@ -106,6 +104,6 @@ type stubRetriever struct {
 	types.RetrievalResult
 }
 
-func (s *stubRetriever) RetrieveFromAsyncCandidates(_ types.InboundAsyncCandidates) (*types.RetrievalStats, error) {
+func (s *stubRetriever) Run(ctx context.Context) (*types.RetrievalStats, error) {
 	return s.Stats, s.Err
 }

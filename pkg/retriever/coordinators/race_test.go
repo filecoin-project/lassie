@@ -149,9 +149,7 @@ func TestRace(t *testing.T) {
 			go func() {
 				retrievalCalls := func(ctx context.Context, callRetrieval func(types.RetrievalTask)) {
 					for _, result := range testCase.results {
-						callRetrieval(types.AsyncRetrievalTask{
-							AsyncCandidateRetrieval: &timeoutRetriever{result, ctx, clock, startChan},
-						})
+						callRetrieval(&timeoutRetriever{result, clock, startChan})
 					}
 				}
 				stats, err := coordinators.Race(childCtx, retrievalCalls)
@@ -190,17 +188,16 @@ type timeoutResult struct {
 
 type timeoutRetriever struct {
 	timeoutResult
-	ctx       context.Context
 	clock     clock.Clock
 	startChan chan<- struct{}
 }
 
-func (t *timeoutRetriever) RetrieveFromAsyncCandidates(types.InboundAsyncCandidates) (*types.RetrievalStats, error) {
+func (t *timeoutRetriever) Run(ctx context.Context) (*types.RetrievalStats, error) {
 	timer := t.clock.Timer(t.duration)
 	t.startChan <- struct{}{}
 	select {
-	case <-t.ctx.Done():
-		return nil, t.ctx.Err()
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	case <-timer.C:
 		return t.stats, t.err
 	}

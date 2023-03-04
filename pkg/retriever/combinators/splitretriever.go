@@ -46,19 +46,18 @@ func (m splitRetrieval[T]) RetrieveFromAsyncCandidates(asyncCandidates types.Inb
 		return nil, err
 	}
 	stats, err := coordinator(m.ctx, func(ctx context.Context, retrievalCall func(types.RetrievalTask)) {
-		candidateRetrievals := make(map[T]types.CandidateRetrieval, len(m.candidateRetrievers))
-		for key, candidateRetriever := range m.candidateRetrievers {
-			candidateRetrievals[key] = candidateRetriever.Retrieve(ctx, m.request, m.events)
-		}
+
 		for key, asyncCandidates := range asyncSplitCandidates {
-			if asyncCandidateRetrieval, ok := candidateRetrievals[key]; ok {
+			if asyncCandidateRetriever, ok := m.candidateRetrievers[key]; ok {
 				retrievalCall(types.AsyncRetrievalTask{
 					Candidates:              asyncCandidates,
-					AsyncCandidateRetrieval: asyncCandidateRetrieval,
+					Request:                 m.request,
+					Events:                  m.events,
+					AsyncCandidateRetriever: asyncCandidateRetriever,
 				})
 			}
 		}
-		retrievalCall(types.DeferredErrorTask{Ctx: ctx, ErrChan: errChan})
+		retrievalCall(types.DeferredErrorTask{ErrChan: errChan})
 	})
 	if stats == nil && err == nil {
 		return nil, errors.New("no eligible retrievers")

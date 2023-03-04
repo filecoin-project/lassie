@@ -29,7 +29,7 @@ func NewRetrievalCandidate(pid peer.ID, rootCid cid.Cid, protocols ...metadata.P
 
 // retrieval task is any task that can be run to produce a result
 type RetrievalTask interface {
-	Run() (*RetrievalStats, error)
+	Run(ctx context.Context) (*RetrievalStats, error)
 }
 
 type Retriever interface {
@@ -120,28 +120,30 @@ var _ RetrievalTask = AsyncRetrievalTask{}
 
 // AsyncRetrievalTask runs an asynchronous retrieval and returns a result
 type AsyncRetrievalTask struct {
+	Request                 RetrievalRequest
+	Events                  func(RetrievalEvent)
 	Candidates              InboundAsyncCandidates
-	AsyncCandidateRetrieval CandidateRetrieval
+	AsyncCandidateRetriever CandidateRetriever
 }
 
 // Run executes the asychronous retrieval task
-func (art AsyncRetrievalTask) Run() (*RetrievalStats, error) {
-	return art.AsyncCandidateRetrieval.RetrieveFromAsyncCandidates(art.Candidates)
+func (art AsyncRetrievalTask) Run(ctx context.Context) (*RetrievalStats, error) {
+	asyncRetrieval := art.AsyncCandidateRetriever.Retrieve(ctx, art.Request, art.Events)
+	return asyncRetrieval.RetrieveFromAsyncCandidates(art.Candidates)
 }
 
 var _ RetrievalTask = DeferredErrorTask{}
 
 // DeferredErrorTask simply reads from an error channel and returns the result as an error
 type DeferredErrorTask struct {
-	Ctx     context.Context
 	ErrChan <-chan error
 }
 
 // Run reads the error channel and returns a result
-func (det DeferredErrorTask) Run() (*RetrievalStats, error) {
+func (det DeferredErrorTask) Run(ctx context.Context) (*RetrievalStats, error) {
 	select {
-	case <-det.Ctx.Done():
-		return nil, det.Ctx.Err()
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	case err := <-det.ErrChan:
 		return nil, err
 	}
