@@ -55,7 +55,7 @@ func NewHttpServer(ctx context.Context, lassie *lassie.Lassie, cfg HttpServerCon
 	}
 
 	// Routes
-	mux.HandleFunc("/ipfs/", ipfsHandler(lassie, cfg))
+	mux.HandleFunc("/ipfs", ipfsHandler(lassie, cfg))
 	if cfg.Metrics {
 		mux.Handle("/metrics", metrics.NewExporter())
 	}
