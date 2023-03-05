@@ -66,11 +66,9 @@ type GraphSyncRetriever struct {
 }
 
 type retrievalResult struct {
-	PeerID     peer.ID
-	PhaseStart time.Time
-	Stats      *types.RetrievalStats
-	Event      *types.RetrievalEvent
-	Err        error
+	Stats *types.RetrievalStats
+	Event *types.RetrievalEvent
+	Err   error
 }
 
 // retrieval handles state on a per-retrieval (across multiple candidates) basis
@@ -86,6 +84,7 @@ type graphsyncCandidateRetrieval struct {
 	retrievalStartTime time.Time
 	resultChan         chan retrievalResult
 	finishChan         chan struct{}
+	sendEvent          func(types.RetrievalEvent)
 }
 
 // RetrieveFromCandidates performs a retrieval for a given CID by querying the indexer, then
@@ -120,6 +119,7 @@ func (r *graphsyncRetrieval) RetrieveFromAsyncCandidates(asyncCandidates types.I
 		resultChan: make(chan retrievalResult),
 		finishChan: make(chan struct{}),
 		waitQueue:  prioritywaitqueue.New(queryCompare),
+		sendEvent:  r.eventsCallback,
 	}
 	// start retrievals
 	queryStartTime := time.Now()
@@ -150,7 +150,7 @@ func (r *graphsyncRetrieval) RetrieveFromAsyncCandidates(asyncCandidates types.I
 		finishAll <- struct{}{}
 	}()
 
-	stats, err := collectResults(ctx, retrieval, r.eventsCallback)
+	stats, err := collectResults(ctx, retrieval)
 	cancelCtx()
 	// optimistically try to wait for all routines to finish
 	select {
@@ -164,7 +164,7 @@ func (r *graphsyncRetrieval) RetrieveFromAsyncCandidates(asyncCandidates types.I
 // collectResults is responsible for receiving query errors, retrieval errors
 // and retrieval results and aggregating into an appropriate return of either
 // a complete RetrievalStats or an bundled multi-error
-func collectResults(ctx context.Context, retrieval *graphsyncCandidateRetrieval, eventsCallback func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
+func collectResults(ctx context.Context, retrieval *graphsyncCandidateRetrieval) (*types.RetrievalStats, error) {
 	var queryErrors error
 	var retrievalErrors error
 
@@ -183,10 +183,6 @@ func collectResults(ctx context.Context, retrieval *graphsyncCandidateRetrieval,
 				return nil, multierr.Append(queryErrors, retrievalErrors)
 			}
 
-			if result.Event != nil {
-				eventsCallback(*result.Event)
-				break
-			}
 			if result.Err != nil {
 				if errors.Is(result.Err, ErrQueryFailed) {
 					queryErrors = multierr.Append(queryErrors, result.Err)
@@ -331,17 +327,17 @@ func runRetrievalCandidate(
 		// sending a retrievalResult, so each path here sends one in some form
 		if queryErr != nil || retrievalErr != nil {
 			if ctx.Err() != nil { // cancelled, don't report the error
-				retrieval.sendResult(retrievalResult{PhaseStart: phaseStartTime, PeerID: candidate.MinerPeer.ID})
+				retrieval.sendResult(retrievalResult{})
 			} else {
 				// an error of some kind to report
 				err := queryErr
 				if err == nil {
 					err = retrievalErr
 				}
-				retrieval.sendResult(retrievalResult{PhaseStart: phaseStartTime, PeerID: candidate.MinerPeer.ID, Err: err})
+				retrieval.sendResult(retrievalResult{Err: err})
 			}
 		} else { // success, we have stats and no errors
-			retrieval.sendResult(retrievalResult{PhaseStart: phaseStartTime, PeerID: candidate.MinerPeer.ID, Stats: stats})
+			retrieval.sendResult(retrievalResult{Stats: stats})
 		}
 	} // else nothing to do, we were cancelled
 
@@ -364,6 +360,12 @@ func (retrieval *graphsyncCandidateRetrieval) canSendResult() bool {
 // sendResult will only send a result to the parent goroutine if a retrieval has
 // finished (likely by a success), otherwise it will send the result
 func (retrieval *graphsyncCandidateRetrieval) sendResult(result retrievalResult) bool {
+	// prioritize finish chan
+	select {
+	case <-retrieval.finishChan:
+		return false
+	default:
+	}
 	select {
 	case <-retrieval.finishChan:
 		return false
@@ -376,10 +378,6 @@ func (retrieval *graphsyncCandidateRetrieval) sendResult(result retrievalResult)
 		}
 	}
 	return true
-}
-
-func (retrieval *graphsyncCandidateRetrieval) sendEvent(event types.RetrievalEvent) {
-	retrieval.sendResult(retrievalResult{PeerID: event.StorageProviderId(), Event: &event})
 }
 
 func totalCost(qres *retrievalmarket.QueryResponse) big.Int {

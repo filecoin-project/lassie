@@ -7,7 +7,10 @@ import (
 	"errors"
 
 	"github.com/filecoin-project/lassie/pkg/types"
+	logging "github.com/ipfs/go-log/v2"
 )
+
+var log = logging.Logger("lassie/retriever/coordinators")
 
 func Coordinator(kind types.CoordinationKind) (types.RetrievalCoordinator, error) {
 	switch kind {

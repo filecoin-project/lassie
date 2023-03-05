@@ -120,12 +120,15 @@ func TestQueryFiltering(t *testing.T) {
 			candidateQueries := make([]candidateQuery, 0)
 			candidateQueriesFiltered := make([]candidateQuery, 0)
 
+			var eventLk sync.Mutex
 			// perform retrieval and test top-level results, we should only error in this test
 			stats, err := cfg.Retrieve(context.Background(), types.RetrievalRequest{
 				Cid:         cid.Undef,
 				RetrievalID: retrievalID,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
 			}, func(event types.RetrievalEvent) {
+				eventLk.Lock()
+				defer eventLk.Unlock()
 				require.Equal(t, retrievalID, event.RetrievalId())
 				switch ret := event.(type) {
 				case events.RetrievalEventQueryAsked:
@@ -332,12 +335,15 @@ func TestRetrievalRacing(t *testing.T) {
 			candidateQueries := make([]candidateQuery, 0)
 			candidateQueriesFiltered := make([]candidateQuery, 0)
 
+			var eventsLk sync.Mutex
 			// perform retrieval and make sure we got a result
 			stats, err := cfg.Retrieve(context.Background(), types.RetrievalRequest{
 				Cid:         cid.Undef,
 				RetrievalID: retrievalID,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
 			}, func(event types.RetrievalEvent) {
+				eventsLk.Lock()
+				defer eventsLk.Unlock()
 				require.Equal(t, retrievalID, event.RetrievalId())
 				switch ret := event.(type) {
 				case events.RetrievalEventQueryAsked:

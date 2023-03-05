@@ -3,6 +3,7 @@ package coordinators
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/filecoin-project/lassie/pkg/types"
 	"go.uber.org/multierr"
@@ -28,10 +29,21 @@ func Race(ctx context.Context, queueOperations types.QueueRetrievalsFn) (*types.
 			}()
 		})
 	}()
+	done := make(chan struct{}, 1)
 	go func() {
 		waitGroup.Wait()
 		close(resultChan)
+		done <- struct{}{}
 	}()
+	stats, err := consume(ctx, resultChan)
+	select {
+	case <-done:
+	case <-time.After(100 * time.Millisecond):
+	}
+	return stats, err
+}
+
+func consume(ctx context.Context, resultChan <-chan types.RetrievalResult) (*types.RetrievalStats, error) {
 	var totalErr error
 	for {
 		select {
