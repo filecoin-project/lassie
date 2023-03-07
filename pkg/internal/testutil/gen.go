@@ -1,7 +1,6 @@
 package testutil
 
 import (
-	"fmt"
 	"math/rand"
 	"testing"
 
@@ -10,6 +9,8 @@ import (
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
 	"github.com/ipfs/go-libipfs/blocks"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipni/index-provider/metadata"
+	crypto "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/require"
 )
@@ -58,12 +59,17 @@ func GenerateCids(n int) []cid.Cid {
 var peerSeq int
 
 // GeneratePeers creates n peer ids.
-func GeneratePeers(n int) []peer.ID {
+func GeneratePeers(t *testing.T, n int) []peer.ID {
+	src := rand.NewSource(seedSeq)
+	seedSeq++
+	r := rand.New(src)
 	peerIds := make([]peer.ID, 0, n)
 	for i := 0; i < n; i++ {
-		peerSeq++
-		p := peer.ID(fmt.Sprint(peerSeq))
-		peerIds = append(peerIds, p)
+		_, publicKey, err := crypto.GenerateEd25519Key(r)
+		require.NoError(t, err)
+		peerID, err := peer.IDFromPublicKey(publicKey)
+		require.NoError(t, err)
+		peerIds = append(peerIds, peerID)
 	}
 	return peerIds
 }
@@ -84,12 +90,12 @@ func GenerateRetrievalRequests(t *testing.T, n int) []types.RetrievalRequest {
 }
 
 // GenerateRetrievalCandidates produces n retrieval candidates
-func GenerateRetrievalCandidates(n int) []types.RetrievalCandidate {
+func GenerateRetrievalCandidates(t *testing.T, n int) []types.RetrievalCandidate {
 	candidates := make([]types.RetrievalCandidate, 0, n)
 	c := GenerateCid()
+	peers := GeneratePeers(t, n)
 	for i := 0; i < n; i++ {
-		peerSeq++
-		candidates = append(candidates, types.NewRetrievalCandidate(peer.ID(fmt.Sprint(peerSeq)), c))
+		candidates = append(candidates, types.NewRetrievalCandidate(peers[i], c, &metadata.Bitswap{}))
 	}
 	return candidates
 }

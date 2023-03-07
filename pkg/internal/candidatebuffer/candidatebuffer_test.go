@@ -16,7 +16,7 @@ import (
 
 func TestCandidateBuffer(t *testing.T) {
 	ctx := context.Background()
-	candidates := testutil.GenerateRetrievalCandidates(10)
+	candidates := testutil.GenerateRetrievalCandidates(t, 10)
 
 	type candidateResultAt struct {
 		timeDelta time.Duration

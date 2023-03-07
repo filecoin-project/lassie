@@ -16,7 +16,7 @@ func TestAsyncCandidateSplitter(t *testing.T) {
 	ctx := context.Background()
 	candidateSets := make([][]types.RetrievalCandidate, 0, 3)
 	for i := 0; i < 3; i++ {
-		candidateSets = append(candidateSets, testutil.GenerateRetrievalCandidates((i+1)*2))
+		candidateSets = append(candidateSets, testutil.GenerateRetrievalCandidates(t, (i+1)*2))
 	}
 	testCases := []struct {
 		name                 string

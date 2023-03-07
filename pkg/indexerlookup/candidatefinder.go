@@ -129,7 +129,9 @@ func (idxf *IndexerCandidateFinder) FindCandidatesAsync(ctx context.Context, c c
 	case http.StatusOK:
 		return idxf.decodeProviderResultStream(ctx, c, resp.Body)
 	case http.StatusNotFound:
-		return nil, nil
+		returned := make(chan types.FindCandidatesResult)
+		close(returned)
+		return returned, nil
 	default:
 		return nil, fmt.Errorf("batch find query failed: %v", http.StatusText(resp.StatusCode))
 	}

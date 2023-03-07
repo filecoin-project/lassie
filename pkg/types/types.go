@@ -9,6 +9,7 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipni/index-provider/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multicodec"
 )
 
@@ -21,7 +22,7 @@ type RetrievalCandidate struct {
 func NewRetrievalCandidate(pid peer.ID, rootCid cid.Cid, protocols ...metadata.Protocol) RetrievalCandidate {
 	md := metadata.Default.New(protocols...)
 	return RetrievalCandidate{
-		MinerPeer: peer.AddrInfo{ID: pid},
+		MinerPeer: peer.AddrInfo{ID: pid, Addrs: []multiaddr.Multiaddr{}},
 		RootCid:   rootCid,
 		Metadata:  md,
 	}
