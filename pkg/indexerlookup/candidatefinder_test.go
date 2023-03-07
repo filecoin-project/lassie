@@ -92,7 +92,7 @@ func TestCandidateFinder(t *testing.T) {
 				err := mockIndexer.Start()
 				closeErr <- err
 			}()
-			indexerURL, err := url.Parse("http://127.0.0.1:7575")
+			indexerURL, err := url.Parse(mockIndexer.Addr())
 			req.NoError(err)
 			candidateFinder, err := indexerlookup.NewCandidateFinder(indexerlookup.WithHttpEndpoint(indexerURL))
 			req.NoError(err)
