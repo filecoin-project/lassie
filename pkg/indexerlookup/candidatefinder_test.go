@@ -85,7 +85,7 @@ func TestCandidateFinder(t *testing.T) {
 			defer cancel()
 			req := require.New(t)
 			clock := clock.NewMock()
-			mockIndexer, err := mockindexer.NewMockIndexer(ctx, "127.0.0.1", 7575, testCase.cidReturns, clock)
+			mockIndexer, err := mockindexer.NewMockIndexer(ctx, "127.0.0.1", 0, testCase.cidReturns, clock)
 			req.NoError(err)
 			closeErr := make(chan error, 1)
 			go func() {
