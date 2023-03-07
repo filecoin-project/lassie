@@ -74,8 +74,8 @@ func TestBitswapRetriever(t *testing.T) {
 				cid2: makeLsys(tbc2.AllBlocks()),
 			},
 			expectedCandidates: map[cid.Cid][]types.RetrievalCandidate{
-				cid1: testutil.GenerateRetrievalCandidates(5),
-				cid2: testutil.GenerateRetrievalCandidates(7),
+				cid1: testutil.GenerateRetrievalCandidates(t, 5),
+				cid2: testutil.GenerateRetrievalCandidates(t, 7),
 			},
 			expectedEvents: map[cid.Cid][]types.EventCode{
 				cid1: {types.StartedCode, types.FirstByteCode, types.SuccessCode},
@@ -114,8 +114,8 @@ func TestBitswapRetriever(t *testing.T) {
 				cid2: makeLsys(append(tbc2.Blocks(0, 25), tbc2.Blocks(45, 75)...)),
 			},
 			expectedCandidates: map[cid.Cid][]types.RetrievalCandidate{
-				cid1: testutil.GenerateRetrievalCandidates(5),
-				cid2: testutil.GenerateRetrievalCandidates(7),
+				cid1: testutil.GenerateRetrievalCandidates(t, 5),
+				cid2: testutil.GenerateRetrievalCandidates(t, 7),
 			},
 			expectedEvents: map[cid.Cid][]types.EventCode{
 				cid1: {types.StartedCode, types.FirstByteCode, types.SuccessCode},
@@ -154,8 +154,8 @@ func TestBitswapRetriever(t *testing.T) {
 			// i.e. two jumps per block
 			selector: []ipld.Node{depth10Selector, depth10Selector},
 			expectedCandidates: map[cid.Cid][]types.RetrievalCandidate{
-				cid1: testutil.GenerateRetrievalCandidates(5),
-				cid2: testutil.GenerateRetrievalCandidates(7),
+				cid1: testutil.GenerateRetrievalCandidates(t, 5),
+				cid2: testutil.GenerateRetrievalCandidates(t, 7),
 			},
 			expectedEvents: map[cid.Cid][]types.EventCode{
 				cid1: {types.StartedCode, types.FirstByteCode, types.SuccessCode},
@@ -190,8 +190,8 @@ func TestBitswapRetriever(t *testing.T) {
 				cid2: makeLsys(tbc2.Blocks(0, 50)),
 			},
 			expectedCandidates: map[cid.Cid][]types.RetrievalCandidate{
-				cid1: testutil.GenerateRetrievalCandidates(5),
-				cid2: testutil.GenerateRetrievalCandidates(7),
+				cid1: testutil.GenerateRetrievalCandidates(t, 5),
+				cid2: testutil.GenerateRetrievalCandidates(t, 7),
 			},
 			expectedEvents: map[cid.Cid][]types.EventCode{
 				cid1: {types.StartedCode, types.FirstByteCode, types.FailedCode},
@@ -209,8 +209,8 @@ func TestBitswapRetriever(t *testing.T) {
 				cid2: makeLsys(tbc2.Blocks(0, 50)),
 			},
 			expectedCandidates: map[cid.Cid][]types.RetrievalCandidate{
-				cid1: testutil.GenerateRetrievalCandidates(5),
-				cid2: testutil.GenerateRetrievalCandidates(7),
+				cid1: testutil.GenerateRetrievalCandidates(t, 5),
+				cid2: testutil.GenerateRetrievalCandidates(t, 7),
 			},
 			expectedEvents: map[cid.Cid][]types.EventCode{
 				cid1: {types.StartedCode, types.FailedCode},
@@ -228,8 +228,8 @@ func TestBitswapRetriever(t *testing.T) {
 				cid2: makeLsys(tbc2.AllBlocks()),
 			},
 			expectedCandidates: map[cid.Cid][]types.RetrievalCandidate{
-				cid1: testutil.GenerateRetrievalCandidates(5),
-				cid2: testutil.GenerateRetrievalCandidates(7),
+				cid1: testutil.GenerateRetrievalCandidates(t, 5),
+				cid2: testutil.GenerateRetrievalCandidates(t, 7),
 			},
 			expectedEvents: map[cid.Cid][]types.EventCode{
 				cid1: {types.StartedCode, types.FirstByteCode, types.FailedCode},

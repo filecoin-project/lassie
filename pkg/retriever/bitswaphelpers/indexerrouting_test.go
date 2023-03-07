@@ -38,9 +38,9 @@ func TestIndexerRouting(t *testing.T) {
 	verifyCandidates(ctx, t, nil, ir.FindProvidersAsync(ctx, cids[0], 5))
 	verifyCandidates(ctx, t, nil, ir.FindProvidersAsync(ctx, cids[1], 5))
 	verifyCandidates(ctx, t, nil, ir.FindProvidersAsync(ctx, cids[2], 5))
-	candidates1 := testutil.GenerateRetrievalCandidates(10)
-	candidates2 := testutil.GenerateRetrievalCandidates(10)
-	candidates3 := testutil.GenerateRetrievalCandidates(10)
+	candidates1 := testutil.GenerateRetrievalCandidates(t, 10)
+	candidates2 := testutil.GenerateRetrievalCandidates(t, 10)
+	candidates3 := testutil.GenerateRetrievalCandidates(t, 10)
 	ir.AddProviders(id1, candidates1)
 	ir.AddProviders(id2, candidates2)
 	ir.AddProviders(id3, candidates3)
@@ -48,7 +48,7 @@ func TestIndexerRouting(t *testing.T) {
 	verifyCandidates(ctx, t, candidates2[:5], ir.FindProvidersAsync(ctx, cids[1], 5))
 	verifyCandidates(ctx, t, candidates3[:5], ir.FindProvidersAsync(ctx, cids[2], 5))
 	// add more to one retrieval
-	extraCandidates := testutil.GenerateRetrievalCandidates(5)
+	extraCandidates := testutil.GenerateRetrievalCandidates(t, 5)
 	ir.AddProviders(id1, extraCandidates)
 	// remove another retrieval
 	ir.RemoveProviders(id2)
