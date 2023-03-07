@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/filecoin-project/lassie/pkg/internal/limitstore"
-	"github.com/filecoin-project/lassie/pkg/internal/streamingstore"
 	lassie "github.com/filecoin-project/lassie/pkg/lassie"
 	"github.com/filecoin-project/lassie/pkg/retriever"
+	"github.com/filecoin-project/lassie/pkg/streamingstore"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 )

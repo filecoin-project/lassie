@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/lassie"
 	"github.com/filecoin-project/lassie/pkg/retriever"
+	"github.com/filecoin-project/lassie/pkg/streamingstore"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
@@ -32,7 +34,7 @@ var fetchCmd = &cli.Command{
 		&cli.StringFlag{
 			Name:      "output",
 			Aliases:   []string{"o"},
-			Usage:     "the CAR file to write to, may be an existing or a new CAR",
+			Usage:     "the CAR file to write to, may be an existing or a new CAR, or use '-' to write to stdout",
 			TakesFile: true,
 		},
 		&cli.DurationFlag{
@@ -132,13 +134,13 @@ func Fetch(c *cli.Context) error {
 	setupLassieEventRecorder(c, lassie)
 
 	if len(fetchProviderAddrInfos) == 0 {
-		fmt.Printf("Fetching %s", rootCid.String()+path)
+		fmt.Fprintf(c.App.ErrWriter, "Fetching %s", rootCid.String()+path)
 	} else {
-		fmt.Printf("Fetching %s from %v", rootCid.String()+path, fetchProviderAddrInfos)
+		fmt.Fprintf(c.App.ErrWriter, "Fetching %s from %v", rootCid.String()+path, fetchProviderAddrInfos)
 	}
 	if progress {
-		fmt.Println()
-		pp := &progressPrinter{}
+		fmt.Fprintln(c.App.ErrWriter)
+		pp := &progressPrinter{writer: c.App.ErrWriter}
 		lassie.RegisterSubscriber(pp.subscriber)
 	}
 
@@ -157,7 +159,15 @@ func Fetch(c *cli.Context) error {
 	// then data-transfer and all the way back up to retrieval; we should
 	// probably have a way to cancel the retrieval and return an error
 	// immediately if this fails.
-	var parentOpener = func() (*carstore.StorageCar, error) {
+	var parentOpener = func() (cmdinternal.ReadableWritableStorage, error) {
+		if outfile == "-" {
+			getWriter := func() (io.Writer, error) {
+				return &onlyWriter{c.App.Writer}, nil
+			}
+			errorCb := func(err error) {}
+			return streamingstore.NewStreamingStore(c.Context, []cid.Cid{rootCid}, "", getWriter, errorCb), nil
+		}
+
 		var err error
 		// always Create, truncating and making a new store - can't resume here
 		// because our headers (roots) won't match
@@ -176,9 +186,9 @@ func Fetch(c *cli.Context) error {
 		blockCount += putCount
 		byteLength += uint64(putBytes)
 		if !progress {
-			fmt.Print(strings.Repeat(".", putCount))
+			fmt.Fprint(c.App.ErrWriter, strings.Repeat(".", putCount))
 		} else {
-			fmt.Printf("\rReceived %d blocks / %s...", blockCount, humanize.IBytes(byteLength))
+			fmt.Fprintf(c.App.ErrWriter, "\rReceived %d blocks / %s...", blockCount, humanize.IBytes(byteLength))
 		}
 	}
 
@@ -190,10 +200,10 @@ func Fetch(c *cli.Context) error {
 
 	stats, err := lassie.Fetch(c.Context, request)
 	if err != nil {
-		fmt.Println()
+		fmt.Fprintln(c.App.ErrWriter)
 		return err
 	}
-	fmt.Printf("\nFetched [%s] from [%s]:\n"+
+	fmt.Fprintf(c.App.ErrWriter, "\nFetched [%s] from [%s]:\n"+
 		"\tDuration: %s\n"+
 		"\t  Blocks: %d\n"+
 		"\t   Bytes: %s\n",
@@ -204,11 +214,12 @@ func Fetch(c *cli.Context) error {
 		humanize.IBytes(stats.Size),
 	)
 
-	return store.Finalize()
+	return nil
 }
 
 type progressPrinter struct {
 	candidatesFound int
+	writer          io.Writer
 }
 
 func (pp *progressPrinter) subscriber(event types.RetrievalEvent) {
@@ -216,25 +227,25 @@ func (pp *progressPrinter) subscriber(event types.RetrievalEvent) {
 	case events.RetrievalEventStarted:
 		switch ret.Phase() {
 		case types.IndexerPhase:
-			fmt.Printf("\rQuerying indexer for %s...\n", ret.PayloadCid())
+			fmt.Fprintf(pp.writer, "\rQuerying indexer for %s...\n", ret.PayloadCid())
 		case types.QueryPhase:
-			fmt.Printf("\rQuerying [%s] (%s)...\n", types.Identifier(ret), ret.Code())
+			fmt.Fprintf(pp.writer, "\rQuerying [%s] (%s)...\n", types.Identifier(ret), ret.Code())
 		case types.RetrievalPhase:
-			fmt.Printf("\rRetrieving from [%s] (%s)...\n", types.Identifier(ret), ret.Code())
+			fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", types.Identifier(ret), ret.Code())
 		}
 	case events.RetrievalEventConnected:
 		switch ret.Phase() {
 		case types.QueryPhase:
-			fmt.Printf("\rQuerying [%s] (%s)...\n", types.Identifier(ret), ret.Code())
+			fmt.Fprintf(pp.writer, "\rQuerying [%s] (%s)...\n", types.Identifier(ret), ret.Code())
 		case types.RetrievalPhase:
-			fmt.Printf("\rRetrieving from [%s] (%s)...\n", types.Identifier(ret), ret.Code())
+			fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", types.Identifier(ret), ret.Code())
 		}
 	case events.RetrievalEventProposed:
-		fmt.Printf("\rRetrieving from [%s] (%s)...\n", types.Identifier(ret), ret.Code())
+		fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", types.Identifier(ret), ret.Code())
 	case events.RetrievalEventAccepted:
-		fmt.Printf("\rRetrieving from [%s] (%s)...\n", types.Identifier(ret), ret.Code())
+		fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", types.Identifier(ret), ret.Code())
 	case events.RetrievalEventFirstByte:
-		fmt.Printf("\rRetrieving from [%s] (%s)...\n", types.Identifier(ret), ret.Code())
+		fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", types.Identifier(ret), ret.Code())
 	case events.RetrievalEventCandidatesFound:
 		pp.candidatesFound = len(ret.Candidates())
 	case events.RetrievalEventCandidatesFiltered:
@@ -245,24 +256,32 @@ func (pp *progressPrinter) subscriber(event types.RetrievalEvent) {
 			num = "it"
 		}
 		if len(fetchProviderAddrInfos) > 0 {
-			fmt.Printf("Found %d storage providers candidates from the indexer, querying %s:\n", pp.candidatesFound, num)
+			fmt.Fprintf(pp.writer, "Found %d storage providers candidates from the indexer, querying %s:\n", pp.candidatesFound, num)
 		} else {
-			fmt.Printf("Using the explicitly specified storage provider(s), querying %s:\n", num)
+			fmt.Fprintf(pp.writer, "Using the explicitly specified storage provider(s), querying %s:\n", num)
 		}
 		for _, candidate := range ret.Candidates() {
-			fmt.Printf("\r\t%s, Protocols: %v\n", candidate.MinerPeer.ID, candidate.Metadata.Protocols())
+			fmt.Fprintf(pp.writer, "\r\t%s, Protocols: %v\n", candidate.MinerPeer.ID, candidate.Metadata.Protocols())
 		}
 	case events.RetrievalEventQueryAsked:
-		fmt.Printf("\rGot query response from [%s] (checking): size=%s, price-per-byte=%s, unseal-price=%s, message=%s\n", types.Identifier(ret), humanize.IBytes(ret.QueryResponse().Size), ret.QueryResponse().MinPricePerByte, ret.QueryResponse().UnsealPrice, ret.QueryResponse().Message)
+		fmt.Fprintf(pp.writer, "\rGot query response from [%s] (checking): size=%s, price-per-byte=%s, unseal-price=%s, message=%s\n", types.Identifier(ret), humanize.IBytes(ret.QueryResponse().Size), ret.QueryResponse().MinPricePerByte, ret.QueryResponse().UnsealPrice, ret.QueryResponse().Message)
 	case events.RetrievalEventQueryAskedFiltered:
-		fmt.Printf("\rGot query response from [%s] (filtered): size=%s, price-per-byte=%s, unseal-price=%s, message=%s\n", types.Identifier(ret), humanize.IBytes(ret.QueryResponse().Size), ret.QueryResponse().MinPricePerByte, ret.QueryResponse().UnsealPrice, ret.QueryResponse().Message)
+		fmt.Fprintf(pp.writer, "\rGot query response from [%s] (filtered): size=%s, price-per-byte=%s, unseal-price=%s, message=%s\n", types.Identifier(ret), humanize.IBytes(ret.QueryResponse().Size), ret.QueryResponse().MinPricePerByte, ret.QueryResponse().UnsealPrice, ret.QueryResponse().Message)
 	case events.RetrievalEventFailed:
 		if ret.Phase() == types.IndexerPhase {
-			fmt.Printf("\rRetrieval failure from indexer: %s\n", ret.ErrorMessage())
+			fmt.Fprintf(pp.writer, "\rRetrieval failure from indexer: %s\n", ret.ErrorMessage())
 		} else {
-			fmt.Printf("\rRetrieval failure for [%s]: %s\n", types.Identifier(ret), ret.ErrorMessage())
+			fmt.Fprintf(pp.writer, "\rRetrieval failure for [%s]: %s\n", types.Identifier(ret), ret.ErrorMessage())
 		}
 	case events.RetrievalEventSuccess:
 		// noop, handled at return from Retrieve()
 	}
+}
+
+type onlyWriter struct {
+	w io.Writer
+}
+
+func (ow *onlyWriter) Write(p []byte) (n int, err error) {
+	return ow.w.Write(p)
 }

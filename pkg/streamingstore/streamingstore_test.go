@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/filecoin-project/lassie/pkg/internal/streamingstore"
+	"github.com/filecoin-project/lassie/pkg/streamingstore"
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
 	mh "github.com/multiformats/go-multihash"
