@@ -56,8 +56,6 @@ func GenerateCids(n int) []cid.Cid {
 	return cids
 }
 
-var peerSeq int
-
 // GeneratePeers creates n peer ids.
 func GeneratePeers(t *testing.T, n int) []peer.ID {
 	src := rand.NewSource(seedSeq)
