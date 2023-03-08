@@ -19,7 +19,7 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 
-	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
+	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
 
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/go-state-types/big"
@@ -147,18 +147,18 @@ func NewClientWithConfig(cfg *Config) (*RetrievalClient, error) {
 		return nil, err
 	}
 
-	err = dataTransfer.RegisterVoucherType(retrievalmarket.DealProposalType, nil)
+	err = dataTransfer.RegisterVoucherType(retrievaltypes.DealProposalType, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	err = dataTransfer.RegisterVoucherType(retrievalmarket.DealPaymentType, nil)
+	err = dataTransfer.RegisterVoucherType(retrievaltypes.DealPaymentType, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	if cfg.RetrievalConfigurer != nil {
-		if err := dataTransfer.RegisterTransportConfigurer(retrievalmarket.DealProposalType, cfg.RetrievalConfigurer); err != nil {
+		if err := dataTransfer.RegisterTransportConfigurer(retrievaltypes.DealProposalType, cfg.RetrievalConfigurer); err != nil {
 			return nil, err
 		}
 	}
@@ -191,7 +191,7 @@ func (rc *RetrievalClient) RetrieveFromPeer(
 	linkSystem ipld.LinkSystem,
 	peerID peer.ID,
 	minerWallet address.Address,
-	proposal *retrievalmarket.DealProposal,
+	proposal *retrievaltypes.DealProposal,
 	sel ipld.Node,
 	eventsCallback datatransfer.Subscriber,
 	gracefulShutdownRequested <-chan struct{},
@@ -271,7 +271,7 @@ func (rc *RetrievalClient) RetrieveFromPeer(
 		case datatransfer.NewVoucher:
 		case datatransfer.NewVoucherResult:
 			lastVoucher := state.LastVoucherResult()
-			resType, err := retrievalmarket.DealResponseFromNode(lastVoucher.Voucher)
+			resType, err := retrievaltypes.DealResponseFromNode(lastVoucher.Voucher)
 			if err != nil {
 				log.Errorf("unexpected voucher result received: %s", err.Error())
 				return
@@ -283,10 +283,10 @@ func (rc *RetrievalClient) RetrieveFromPeer(
 			}
 
 			switch resType.Status {
-			case retrievalmarket.DealStatusAccepted:
+			case retrievaltypes.DealStatusAccepted:
 				log.Info("Deal accepted")
 			// Respond with a payment voucher when funds are requested
-			case retrievalmarket.DealStatusFundsNeeded, retrievalmarket.DealStatusFundsNeededLastPayment:
+			case retrievaltypes.DealStatusFundsNeeded, retrievaltypes.DealStatusFundsNeededLastPayment:
 				if willingToPay && paymentRequired {
 					log.Infof("Sending payment voucher (nonce: %v, amount: %v)", nonce, resType.PaymentOwed)
 
@@ -308,13 +308,13 @@ func (rc *RetrievalClient) RetrieveFromPeer(
 						return
 					}
 
-					paymentVoucher := retrievalmarket.BindnodeRegistry.TypeToNode(&retrievalmarket.DealPayment{
+					paymentVoucher := retrievaltypes.BindnodeRegistry.TypeToNode(&retrievaltypes.DealPayment{
 						ID:             proposal.ID,
 						PaymentChannel: payChanAddr,
 						PaymentVoucher: voucher,
 					})
 
-					if err := rc.dataTransfer.SendVoucher(ctx, state.ChannelID(), datatransfer.TypedVoucher{Type: retrievalmarket.DealPaymentType, Voucher: paymentVoucher}); err != nil {
+					if err := rc.dataTransfer.SendVoucher(ctx, state.ChannelID(), datatransfer.TypedVoucher{Type: retrievaltypes.DealPaymentType, Voucher: paymentVoucher}); err != nil {
 						finish(fmt.Errorf("failed to send payment voucher: %w", err))
 						return
 					}
@@ -324,19 +324,19 @@ func (rc *RetrievalClient) RetrieveFromPeer(
 					finish(fmt.Errorf("the miner requested payment even though this transaction was determined to be zero cost"))
 					return
 				}
-			case retrievalmarket.DealStatusRejected:
+			case retrievaltypes.DealStatusRejected:
 				finish(fmt.Errorf("deal rejected: %s", resType.Message))
 				return
-			case retrievalmarket.DealStatusFundsNeededUnseal, retrievalmarket.DealStatusUnsealing:
+			case retrievaltypes.DealStatusFundsNeededUnseal, retrievaltypes.DealStatusUnsealing:
 				finish(fmt.Errorf("data is sealed"))
 				return
-			case retrievalmarket.DealStatusCancelled:
+			case retrievaltypes.DealStatusCancelled:
 				finish(fmt.Errorf("deal cancelled: %s", resType.Message))
 				return
-			case retrievalmarket.DealStatusErrored:
+			case retrievaltypes.DealStatusErrored:
 				finish(fmt.Errorf("deal errored: %s", resType.Message))
 				return
-			case retrievalmarket.DealStatusCompleted:
+			case retrievaltypes.DealStatusCompleted:
 				if allBytesReceived {
 					finish(nil)
 					return
@@ -391,11 +391,11 @@ func (rc *RetrievalClient) RetrieveFromPeer(
 	}
 
 	// Submit the retrieval deal proposal to the miner
-	proposalVoucher := retrievalmarket.BindnodeRegistry.TypeToNode(proposal)
+	proposalVoucher := retrievaltypes.BindnodeRegistry.TypeToNode(proposal)
 	chanid, err := rc.dataTransfer.OpenPullDataChannel(
 		ctx,
 		peerID,
-		datatransfer.TypedVoucher{Type: retrievalmarket.DealProposalType, Voucher: proposalVoucher},
+		datatransfer.TypedVoucher{Type: retrievaltypes.DealProposalType, Voucher: proposalVoucher},
 		proposal.PayloadCID,
 		sel,
 		datatransfer.WithSubscriber(eventsCb),
@@ -469,7 +469,7 @@ func (rc *RetrievalClient) RetrievalQueryToPeer(
 	peerAddr peer.AddrInfo,
 	payloadCid cid.Cid,
 	onConnected func(),
-) (*retrievalmarket.QueryResponse, error) {
+) (*retrievaltypes.QueryResponse, error) {
 
 	ctx, span := tracer.Start(ctx, "retrievalQueryPeer", trace.WithAttributes(
 		attribute.Stringer("peerID", peerAddr.ID),
@@ -504,11 +504,11 @@ func (rc *RetrievalClient) RetrievalQueryToPeer(
 
 	// send query and read response in a goroutine so we can gracefully handle
 	// context cancellation
-	qrCh := make(chan *retrievalmarket.QueryResponse, 1)
+	qrCh := make(chan *retrievaltypes.QueryResponse, 1)
 	errCh := make(chan error, 1)
 	go func() {
 		// send query
-		if err := types.QueryToWriter(&retrievalmarket.Query{PayloadCID: payloadCid}, stream); err != nil {
+		if err := types.QueryToWriter(&retrievaltypes.Query{PayloadCID: payloadCid}, stream); err != nil {
 			select {
 			case errCh <- fmt.Errorf("failed to send query: %w", err):
 			case <-ctx.Done():

@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/filecoin-project/go-address"
-	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
+	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/lassie/pkg/client"
 	"github.com/filecoin-project/lassie/pkg/internal/itest/mocknet"
@@ -16,9 +16,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var testQueryResponse = retrievalmarket.QueryResponse{
-	Status:                     retrievalmarket.QueryResponseAvailable,
-	PieceCIDFound:              retrievalmarket.QueryItemAvailable,
+var testQueryResponse = retrievaltypes.QueryResponse{
+	Status:                     retrievaltypes.QueryResponseAvailable,
+	PieceCIDFound:              retrievaltypes.QueryItemAvailable,
 	Size:                       1234,
 	PaymentAddress:             address.TestAddress,
 	MinPricePerByte:            abi.NewTokenAmount(5678),
@@ -35,8 +35,8 @@ func TestQuery(t *testing.T) {
 		name           string
 		expectCid      cid.Cid
 		requestCid     cid.Cid
-		expectResponse retrievalmarket.QueryResponse
-		resultResponse retrievalmarket.QueryResponse
+		expectResponse retrievaltypes.QueryResponse
+		resultResponse retrievaltypes.QueryResponse
 		resultErr      bool
 	}{
 		{
@@ -52,9 +52,9 @@ func TestQuery(t *testing.T) {
 			expectCid:      testCid1,
 			requestCid:     testCid2,
 			expectResponse: testQueryResponse,
-			resultResponse: retrievalmarket.QueryResponse{
-				Status:                     retrievalmarket.QueryResponseUnavailable,
-				PieceCIDFound:              retrievalmarket.QueryItemUnavailable,
+			resultResponse: retrievaltypes.QueryResponse{
+				Status:                     retrievaltypes.QueryResponseUnavailable,
+				PieceCIDFound:              retrievaltypes.QueryItemUnavailable,
 				Size:                       0,
 				PaymentAddress:             address.Address{},
 				MinPricePerByte:            abi.NewTokenAmount(0),

@@ -8,7 +8,7 @@ import (
 
 	"github.com/filecoin-project/go-address"
 	datatransfer "github.com/filecoin-project/go-data-transfer/v2"
-	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
+	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
@@ -44,10 +44,10 @@ func TestClient(t *testing.T) {
 	}
 	selector := selectorparse.CommonSelector_MatchPoint
 	minerWallet := address.Address{}
-	proposal := &retrievalmarket.DealProposal{
+	proposal := &retrievaltypes.DealProposal{
 		PayloadCID: cid.MustParse("bafyreibdoxfay27gf4ye3t5a7aa5h4z2azw7hhhz36qrbf5qleldj76qfa"),
-		Params: retrievalmarket.Params{
-			Selector:     retrievalmarket.CborGenCompatibleNode{Node: selector},
+		Params: retrievaltypes.Params{
+			Selector:     retrievaltypes.CborGenCompatibleNode{Node: selector},
 			PricePerByte: big.Zero(),
 			UnsealPrice:  big.Zero(),
 		},
@@ -74,8 +74,8 @@ func TestClient(t *testing.T) {
 	require.Equal(t, proposal.PayloadCID, client.dataTransfer.(*fakeDataTransfer).openedPulls[0].baseCid)
 	require.Equal(t, p, client.dataTransfer.(*fakeDataTransfer).openedPulls[0].to)
 	voucher := client.dataTransfer.(*fakeDataTransfer).openedPulls[0].voucher
-	require.Equal(t, retrievalmarket.DealProposalType, voucher.Type)
-	gotVoucher, err := retrievalmarket.BindnodeRegistry.TypeFromNode(voucher.Voucher, (*retrievalmarket.DealProposal)(nil))
+	require.Equal(t, retrievaltypes.DealProposalType, voucher.Type)
+	gotVoucher, err := retrievaltypes.BindnodeRegistry.TypeFromNode(voucher.Voucher, (*retrievaltypes.DealProposal)(nil))
 	require.NoError(t, err)
 	require.Equal(t, proposal, gotVoucher)
 
@@ -93,10 +93,10 @@ func TestClient_BadSelector(t *testing.T) {
 	linkSys := cidlink.DefaultLinkSystem()
 	selector := basicnode.NewFloat(100.2)
 	minerWallet := address.Address{}
-	proposal := &retrievalmarket.DealProposal{
+	proposal := &retrievaltypes.DealProposal{
 		PayloadCID: cid.MustParse("bafyreibdoxfay27gf4ye3t5a7aa5h4z2azw7hhhz36qrbf5qleldj76qfa"),
-		Params: retrievalmarket.Params{
-			Selector:     retrievalmarket.CborGenCompatibleNode{Node: selector},
+		Params: retrievaltypes.Params{
+			Selector:     retrievaltypes.CborGenCompatibleNode{Node: selector},
 			PricePerByte: big.Zero(),
 			UnsealPrice:  big.Zero(),
 		},

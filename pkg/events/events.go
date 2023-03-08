@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
+	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
@@ -32,7 +32,7 @@ type EventWithCandidates interface {
 
 type EventWithQueryResponse interface {
 	types.RetrievalEvent
-	QueryResponse() retrievalmarket.QueryResponse
+	QueryResponse() retrievaltypes.QueryResponse
 }
 
 type baseEvent struct {
@@ -110,19 +110,19 @@ func Connected(retrievalId types.RetrievalID, phaseStartTime time.Time, phase ty
 
 type RetrievalEventQueryAsked struct {
 	spBaseEvent
-	queryResponse retrievalmarket.QueryResponse
+	queryResponse retrievaltypes.QueryResponse
 }
 
-func QueryAsked(retrievalId types.RetrievalID, phaseStartTime time.Time, candidate types.RetrievalCandidate, queryResponse retrievalmarket.QueryResponse) RetrievalEventQueryAsked {
+func QueryAsked(retrievalId types.RetrievalID, phaseStartTime time.Time, candidate types.RetrievalCandidate, queryResponse retrievaltypes.QueryResponse) RetrievalEventQueryAsked {
 	return RetrievalEventQueryAsked{spBaseEvent{baseEvent{time.Now(), retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}, queryResponse}
 }
 
 type RetrievalEventQueryAskedFiltered struct {
 	spBaseEvent
-	queryResponse retrievalmarket.QueryResponse
+	queryResponse retrievaltypes.QueryResponse
 }
 
-func QueryAskedFiltered(retrievalId types.RetrievalID, phaseStartTime time.Time, candidate types.RetrievalCandidate, queryResponse retrievalmarket.QueryResponse) RetrievalEventQueryAskedFiltered {
+func QueryAskedFiltered(retrievalId types.RetrievalID, phaseStartTime time.Time, candidate types.RetrievalCandidate, queryResponse retrievaltypes.QueryResponse) RetrievalEventQueryAskedFiltered {
 	return RetrievalEventQueryAskedFiltered{spBaseEvent{baseEvent{time.Now(), retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}, queryResponse}
 }
 
@@ -203,7 +203,7 @@ func (r RetrievalEventConnected) String() string {
 }
 func (r RetrievalEventQueryAsked) Code() types.EventCode { return types.QueryAskedCode }
 func (r RetrievalEventQueryAsked) Phase() types.Phase    { return types.QueryPhase }
-func (r RetrievalEventQueryAsked) QueryResponse() retrievalmarket.QueryResponse {
+func (r RetrievalEventQueryAsked) QueryResponse() retrievaltypes.QueryResponse {
 	return r.queryResponse
 }
 func (r RetrievalEventQueryAsked) String() string {
@@ -211,7 +211,7 @@ func (r RetrievalEventQueryAsked) String() string {
 }
 func (r RetrievalEventQueryAskedFiltered) Code() types.EventCode { return types.QueryAskedFilteredCode }
 func (r RetrievalEventQueryAskedFiltered) Phase() types.Phase    { return types.QueryPhase }
-func (r RetrievalEventQueryAskedFiltered) QueryResponse() retrievalmarket.QueryResponse {
+func (r RetrievalEventQueryAskedFiltered) QueryResponse() retrievaltypes.QueryResponse {
 	return r.queryResponse
 } // QueryResponse returns the response from a storage provider to a query-ask
 func (r RetrievalEventQueryAskedFiltered) String() string {
