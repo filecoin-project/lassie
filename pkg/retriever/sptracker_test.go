@@ -7,6 +7,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
+	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,6 +16,7 @@ import (
 func TestSuspend(t *testing.T) {
 	ret := types.RetrievalID(uuid.New())
 	cid := cid.MustParse("bafkqaalb")
+	selector := selectorparse.CommonSelector_ExploreAllRecursively
 	testSPA := peer.ID("A")
 	testSPB := peer.ID("B")
 	testSPC := peer.ID("C")
@@ -27,7 +29,7 @@ func TestSuspend(t *testing.T) {
 
 	tracker := newSpTracker(cfg)
 
-	assert.True(t, tracker.RegisterRetrieval(ret, cid))
+	assert.True(t, tracker.RegisterRetrieval(ret, cid, selector))
 
 	// Must have max failures + 1 logged and be marked as suspended... and then
 	// no longer be marked as suspended after the suspension duration is up
@@ -56,6 +58,7 @@ func TestSuspend(t *testing.T) {
 
 func TestSPConcurrency(t *testing.T) {
 	tracker := newSpTracker(nil)
+	selector := selectorparse.CommonSelector_ExploreAllRecursively
 	ret1 := types.RetrievalID(uuid.New())
 	cid1 := cid.MustParse("bafkqaalb")
 	ret2 := types.RetrievalID(uuid.New())
@@ -66,7 +69,7 @@ func TestSPConcurrency(t *testing.T) {
 	p2 := peer.ID("B")
 	p3 := peer.ID("C")
 
-	assert.True(t, tracker.RegisterRetrieval(ret1, cid1))
+	assert.True(t, tracker.RegisterRetrieval(ret1, cid1, selector))
 
 	require.Equal(t, uint(0), tracker.GetConcurrency(p1))
 	require.Equal(t, uint(0), tracker.GetConcurrency(p2))
@@ -79,14 +82,14 @@ func TestSPConcurrency(t *testing.T) {
 	require.Equal(t, uint(1), tracker.GetConcurrency(p2))
 	require.Equal(t, uint(1), tracker.GetConcurrency(p3))
 
-	assert.True(t, tracker.RegisterRetrieval(ret2, cid2))
+	assert.True(t, tracker.RegisterRetrieval(ret2, cid2, selector))
 	require.NoError(t, tracker.AddToRetrieval(ret2, []peer.ID{p1, p2}))
 
 	require.Equal(t, uint(2), tracker.GetConcurrency(p1))
 	require.Equal(t, uint(2), tracker.GetConcurrency(p2))
 	require.Equal(t, uint(1), tracker.GetConcurrency(p3))
 
-	assert.True(t, tracker.RegisterRetrieval(ret3, cid3))
+	assert.True(t, tracker.RegisterRetrieval(ret3, cid3, selector))
 	require.NoError(t, tracker.AddToRetrieval(ret3, []peer.ID{p1}))
 
 	require.Equal(t, uint(3), tracker.GetConcurrency(p1))
@@ -109,8 +112,8 @@ func TestSPConcurrency(t *testing.T) {
 	require.Equal(t, uint(0), tracker.GetConcurrency(p3))
 
 	// test failures reducing concurrency
-	assert.True(t, tracker.RegisterRetrieval(ret1, cid1))
-	assert.True(t, tracker.RegisterRetrieval(ret2, cid2))
+	assert.True(t, tracker.RegisterRetrieval(ret1, cid1, selector))
+	assert.True(t, tracker.RegisterRetrieval(ret2, cid2, selector))
 	require.NoError(t, tracker.AddToRetrieval(ret1, []peer.ID{p1, p2, p3}))
 	require.NoError(t, tracker.AddToRetrieval(ret2, []peer.ID{p1, p2, p3}))
 
@@ -141,21 +144,28 @@ func TestRetrievalUniqueness(t *testing.T) {
 	cid1 := cid.MustParse("bafkqaalb")
 	ret2 := types.RetrievalID(uuid.New())
 	cid2 := cid.MustParse("bafkqaalc")
+	ret3 := types.RetrievalID(uuid.New())
+	all := selectorparse.CommonSelector_ExploreAllRecursively
+	matcher := selectorparse.CommonSelector_MatchPoint
 
 	// unique RetrievalID and unique CID; i.e. can't retrieve the same CID simultaneously
-	assert.True(t, tracker.RegisterRetrieval(ret1, cid1))
-	assert.False(t, tracker.RegisterRetrieval(ret1, cid1))
-	assert.False(t, tracker.RegisterRetrieval(ret1, cid2))
-	assert.False(t, tracker.RegisterRetrieval(ret2, cid1))
+	assert.True(t, tracker.RegisterRetrieval(ret1, cid1, all))
+	assert.False(t, tracker.RegisterRetrieval(ret1, cid1, all))
+	assert.False(t, tracker.RegisterRetrieval(ret1, cid2, all))
+	assert.False(t, tracker.RegisterRetrieval(ret2, cid1, all))
+
+	// unique Retrieval ID can register for a different selector w/ same cid
+	assert.True(t, tracker.RegisterRetrieval(ret3, cid1, matcher))
 
 	require.NoError(t, tracker.EndRetrieval(ret1))
 	require.Error(t, tracker.EndRetrieval(ret1))
 	require.Error(t, tracker.EndRetrieval(ret2))
+	require.NoError(t, tracker.EndRetrieval(ret3))
 
-	assert.True(t, tracker.RegisterRetrieval(ret2, cid1))
-	assert.False(t, tracker.RegisterRetrieval(ret2, cid1))
-	assert.True(t, tracker.RegisterRetrieval(ret1, cid2))
-	assert.False(t, tracker.RegisterRetrieval(ret2, cid1))
+	assert.True(t, tracker.RegisterRetrieval(ret2, cid1, all))
+	assert.False(t, tracker.RegisterRetrieval(ret2, cid1, all))
+	assert.True(t, tracker.RegisterRetrieval(ret1, cid2, all))
+	assert.False(t, tracker.RegisterRetrieval(ret2, cid1, all))
 
 	require.NoError(t, tracker.EndRetrieval(ret1))
 	require.NoError(t, tracker.EndRetrieval(ret2))

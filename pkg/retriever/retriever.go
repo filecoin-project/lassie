@@ -204,7 +204,7 @@ func (retriever *Retriever) Retrieve(
 	if !retriever.eventManager.IsStarted() {
 		return nil, ErrRetrieverNotStarted
 	}
-	if !retriever.spTracker.RegisterRetrieval(request.RetrievalID, request.Cid) {
+	if !retriever.spTracker.RegisterRetrieval(request.RetrievalID, request.Cid, request.GetSelector()) {
 		return nil, fmt.Errorf("%w: %s", ErrRetrievalAlreadyRunning, request.Cid)
 	}
 	defer func() {
