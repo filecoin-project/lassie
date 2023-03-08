@@ -2,14 +2,18 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/filecoin-project/lassie/pkg/lassie"
 	httpserver "github.com/filecoin-project/lassie/pkg/server/http"
 	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
 	"github.com/urfave/cli/v2"
 )
+
+var bootstrapPeerAddrInfos []peer.AddrInfo
 
 var daemonFlags = []cli.Flag{
 	&cli.StringFlag{
@@ -68,6 +72,23 @@ var daemonFlags = []cli.Flag{
 		DefaultText: "no limit",
 		EnvVars:     []string{"LASSIE_CONCURRENT_SP_RETRIEVALS"},
 	},
+	&cli.StringFlag{
+		Name:        "bootstrap-peers",
+		Usage:       "Bootstrap peer addresses including its peer ID, seperated by a comma. Example: /ip4/1.2.3.4/tcp/1234/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4",
+		DefaultText: "no bootstrap peers",
+		Action: func(cctx *cli.Context, v string) error {
+			vs := strings.Split(v, ",")
+			for _, v := range vs {
+				bootstrapPeerAddrInfo, err := peer.AddrInfoFromString(v)
+				if err != nil {
+					return err
+				}
+				bootstrapPeerAddrInfos = append(bootstrapPeerAddrInfos, *bootstrapPeerAddrInfo)
+			}
+			return nil
+		},
+		EnvVars: []string{"LASSIE_BOOTSTRAP_PEERS"},
+	},
 	FlagEventRecorderAuth,
 	FlagEventRecorderInstanceId,
 	FlagEventRecorderUrl,
@@ -109,6 +130,9 @@ func daemonCommand(cctx *cli.Context) error {
 	}
 	if disableGraphsync {
 		lassieOpts = append(lassieOpts, lassie.WithGraphsyncDisabled())
+	}
+	if len(bootstrapPeerAddrInfos) > 0 {
+		lassieOpts = append(lassieOpts, lassie.WithBootstrapPeers(bootstrapPeerAddrInfos))
 	}
 	// create a lassie instance
 	lassie, err := lassie.NewLassie(cctx.Context, lassieOpts...)

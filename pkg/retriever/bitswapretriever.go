@@ -33,6 +33,7 @@ import (
 type IndexerRouting interface {
 	AddProviders(types.RetrievalID, []types.RetrievalCandidate)
 	RemoveProviders(types.RetrievalID)
+	SignalIncomingRetrieval(id types.RetrievalID)
 }
 
 // MultiBlockstore are the require methods to track linksystems
@@ -139,13 +140,14 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	}
 
 	// setup providers for this retrieval
-	hasCandidates, nextCandidates, err := ayncCandidates.Next(ctx)
-	if !hasCandidates || err != nil {
-		cancel()
-		// we never received any candidates, so we give up on bitswap retrieval
-		return nil, nil
-	}
-	br.routing.AddProviders(br.request.RetrievalID, nextCandidates)
+	br.routing.SignalIncomingRetrieval(br.request.RetrievalID)
+	//hasCandidates, nextCandidates, err := ayncCandidates.Next(ctx)
+	//if !hasCandidates || err != nil {
+	//	cancel()
+	//	// we never received any candidates, so we give up on bitswap retrieval
+	//	return nil, nil
+	//}
+	//br.routing.AddProviders(br.request.RetrievalID, nextCandidates)
 	go func() {
 		for {
 			hasCandidates, nextCandidates, err := ayncCandidates.Next(ctx)
@@ -169,7 +171,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	// replace the opener with a blockservice wrapper (we still want any known adls + reifiers, hence the copy)
 	wrappedLsys.StorageReadOpener = loaderForSession(br.request.RetrievalID, br.inProgressCids, br.bsGetter)
 	// run the retrieval
-	err = easyTraverse(ctx, cidlink.Link{Cid: br.request.Cid}, selector, &wrappedLsys)
+	err := easyTraverse(ctx, cidlink.Link{Cid: br.request.Cid}, selector, &wrappedLsys)
 	cancel()
 
 	// unregister relevant provider records & LinkSystem

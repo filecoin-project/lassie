@@ -41,10 +41,10 @@ func (rcf RetrieverWithCandidateFinder) Retrieve(ctx context.Context, request ty
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case err := <-findErr:
-			if err != nil {
-				return nil, err
-			}
+		//case err := <-findErr:
+		//	if err != nil {
+		//		return nil, err
+		//	}
 		case result := <-resultChan:
 			return result.Stats, result.Err
 		}

@@ -7,11 +7,15 @@ import (
 
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
+	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/codec/dagjson"
+	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 type activeRetrieval struct {
 	cid                cid.Cid
+	selectorString     string
 	storageProviderIds []peer.ID
 }
 
@@ -60,19 +64,20 @@ func newSpTracker(cfg *spTrackerConfig) *spTracker {
 
 // RegisterRetrieval registers a retrieval, returning false if the retrieval for
 // this RetrievalID or CID CID already exists, or true if it is new.
-func (spt *spTracker) RegisterRetrieval(retrievalId types.RetrievalID, cid cid.Cid) bool {
+func (spt *spTracker) RegisterRetrieval(retrievalId types.RetrievalID, cid cid.Cid, selector datamodel.Node) bool {
 	spt.lk.Lock()
 	defer spt.lk.Unlock()
 	if _, has := spt.arm[retrievalId]; has {
 		return false
 	}
+	jsonSelector, _ := ipld.Encode(selector, dagjson.Encode)
 	for rid, ar := range spt.arm {
-		if rid == retrievalId || ar.cid == cid {
+		if rid == retrievalId || (ar.cid == cid && ar.selectorString == string(jsonSelector)) {
 			return false
 		}
 	}
 	// new
-	spt.arm[retrievalId] = activeRetrieval{cid, make([]peer.ID, 0)}
+	spt.arm[retrievalId] = activeRetrieval{cid, string(jsonSelector), make([]peer.ID, 0)}
 	return true
 }
 

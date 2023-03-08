@@ -2,6 +2,8 @@ package lassie
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"time"
 
 	"github.com/filecoin-project/lassie/pkg/client"
@@ -10,10 +12,15 @@ import (
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-datastore"
-	"github.com/ipfs/go-datastore/sync"
+	dssync "github.com/ipfs/go-datastore/sync"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/peer"
+	peerstore "github.com/libp2p/go-libp2p/core/peerstore"
 )
+
+var log = logging.Logger("lassie")
 
 // Lassie represents a reusable retrieval client.
 type Lassie struct {
@@ -30,6 +37,7 @@ type LassieConfig struct {
 	GlobalTimeout          time.Duration
 	Libp2pOptions          []libp2p.Option
 	DisableGraphsync       bool
+	BootstrapPeers         []peer.AddrInfo
 }
 
 type LassieOption func(cfg *LassieConfig)
@@ -58,11 +66,18 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 		cfg.ProviderTimeout = 20 * time.Second
 	}
 
-	datastore := sync.MutexWrap(datastore.NewMapDatastore())
+	datastore := dssync.MutexWrap(datastore.NewMapDatastore())
 
 	if cfg.Host == nil {
 		var err error
 		cfg.Host, err = internal.InitHost(ctx, cfg.Libp2pOptions)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if len(cfg.BootstrapPeers) > 0 {
+		err := bootstrapConnect(ctx, cfg.Host, cfg.BootstrapPeers)
 		if err != nil {
 			return nil, err
 		}
@@ -132,6 +147,13 @@ func WithHost(host host.Host) LassieOption {
 	}
 }
 
+// WithBootstrapPeers allows you to specify a custom libp2p host.
+func WithBootstrapPeers(bootstrapPeers []peer.AddrInfo) LassieOption {
+	return func(cfg *LassieConfig) {
+		cfg.BootstrapPeers = bootstrapPeers
+	}
+}
+
 // WithLibp2pOpts allows you to specify custom libp2p options.
 func WithLibp2pOpts(libp2pOptions ...libp2p.Option) LassieOption {
 	return func(cfg *LassieConfig) {
@@ -164,4 +186,47 @@ func (l *Lassie) Fetch(ctx context.Context, request types.RetrievalRequest) (*ty
 // The returned function can be called to unregister the subscriber.
 func (l *Lassie) RegisterSubscriber(subscriber types.RetrievalEventSubscriber) func() {
 	return l.retriever.RegisterSubscriber(subscriber)
+}
+
+func bootstrapConnect(ctx context.Context, ph host.Host, peers []peer.AddrInfo) error {
+
+	errs := make(chan error, len(peers))
+	var wg sync.WaitGroup
+	for _, p := range peers {
+
+		// performed asynchronously because when performed synchronously, if
+		// one `Connect` call hangs, subsequent calls are more likely to
+		// fail/abort due to an expiring context.
+		// Also, performed asynchronously for dial speed.
+
+		wg.Add(1)
+		go func(p peer.AddrInfo) {
+			defer wg.Done()
+			log.Debugf("%s bootstrapping to %s", ph.ID(), p.ID)
+
+			ph.Peerstore().AddAddrs(p.ID, p.Addrs, peerstore.PermanentAddrTTL)
+			if err := ph.Connect(ctx, p); err != nil {
+				log.Debugf("failed to bootstrap with %v: %s", p.ID, err)
+				errs <- err
+				return
+			}
+			log.Infof("bootstrapped with %v", p.ID)
+		}(p)
+	}
+	wg.Wait()
+
+	// our failure condition is when no connection attempt succeeded.
+	// So drain the errs channel, counting the results.
+	close(errs)
+	count := 0
+	var err error
+	for err = range errs {
+		if err != nil {
+			count++
+		}
+	}
+	if count == len(peers) {
+		return fmt.Errorf("failed to bootstrap. %s", err)
+	}
+	return nil
 }
