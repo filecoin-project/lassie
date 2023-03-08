@@ -54,6 +54,10 @@ func (c *CandidateBuffer) emit() {
 // when the Buffer was setup. The timer is reset and the collection emptied until another result comes in. This has the effect of grouping
 // results that occur in the same general time frame.
 func (c *CandidateBuffer) BufferStream(ctx context.Context, incoming <-chan types.FindCandidatesResult, bufferingTime time.Duration) error {
+	var wg sync.WaitGroup
+	defer func() {
+		wg.Wait()
+	}()
 	for {
 		select {
 		case <-ctx.Done():
@@ -85,7 +89,9 @@ func (c *CandidateBuffer) BufferStream(ctx context.Context, incoming <-chan type
 			if c.afterEach != nil {
 				c.afterEach <- struct{}{}
 			}
+			wg.Add(1)
 			go func() {
+				defer wg.Done()
 				select {
 				case <-timerCtx.Done():
 					if !timer.Stop() {
