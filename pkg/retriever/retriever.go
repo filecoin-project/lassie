@@ -199,6 +199,7 @@ func (retriever *Retriever) Retrieve(
 	request types.RetrievalRequest,
 	eventsCB func(types.RetrievalEvent),
 ) (*types.RetrievalStats, error) {
+	startTime := time.Now()
 
 	ctx = types.RegisterRetrievalIDToContext(ctx, request.RetrievalID)
 	if !retriever.eventManager.IsStarted() {
@@ -224,6 +225,9 @@ func (retriever *Retriever) Retrieve(
 		eventsCB,
 	)
 
+	// Emit a Started event denoting that the entire fetch phase has started
+	onRetrievalEvent(events.Started(request.RetrievalID, startTime, types.FetchPhase, types.RetrievalCandidate{RootCid: request.Cid}))
+
 	// retrieve, note that we could get a successful retrieval
 	// (retrievalStats!=nil) _and_ also an error return because there may be
 	// multiple failures along the way, if we got a retrieval then we'll pretend
@@ -233,6 +237,10 @@ func (retriever *Retriever) Retrieve(
 		request,
 		onRetrievalEvent,
 	)
+
+	// Emit a Finished event denoting that the entire fetch phase has finished
+	onRetrievalEvent(events.Finished(request.RetrievalID, startTime, types.RetrievalCandidate{RootCid: request.Cid}))
+
 	if err != nil && retrievalStats == nil {
 		return nil, err
 	}

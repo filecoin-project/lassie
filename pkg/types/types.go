@@ -162,6 +162,8 @@ const (
 type Phase string
 
 const (
+	// FetchPhase encompasses the entire process from start to end, involves the finished event
+	FetchPhase Phase = "fetch"
 	// IndexerPhase involves a candidates-found|failure
 	IndexerPhase Phase = "indexer"
 	// QueryPhase involves a connect, query-asked|failure
@@ -184,6 +186,7 @@ const (
 	FirstByteCode          EventCode = "first-byte-received"
 	FailedCode             EventCode = "failure"
 	SuccessCode            EventCode = "success"
+	FinishedCode           EventCode = "finished"
 )
 
 type RetrievalEvent interface {

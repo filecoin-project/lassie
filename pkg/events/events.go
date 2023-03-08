@@ -23,6 +23,7 @@ var (
 	_ types.RetrievalEvent = RetrievalEventFirstByte{}
 	_ types.RetrievalEvent = RetrievalEventFailed{}
 	_ types.RetrievalEvent = RetrievalEventSuccess{}
+	_ types.RetrievalEvent = RetrievalEventFinished{}
 )
 
 type EventWithCandidates interface {
@@ -108,6 +109,7 @@ func Connected(retrievalId types.RetrievalID, phaseStartTime time.Time, phase ty
 	return RetrievalEventConnected{spBaseEvent{baseEvent{time.Now(), retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}, phase}
 }
 
+// RetrievalEventQueryAsked describes when the query-ask returned during the QueryPhase
 type RetrievalEventQueryAsked struct {
 	spBaseEvent
 	queryResponse retrievaltypes.QueryResponse
@@ -117,6 +119,7 @@ func QueryAsked(retrievalId types.RetrievalID, phaseStartTime time.Time, candida
 	return RetrievalEventQueryAsked{spBaseEvent{baseEvent{time.Now(), retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}, queryResponse}
 }
 
+// RetrievalEventQueryAskedFiltered describes when the query-ask was filtered during the QueryPhase
 type RetrievalEventQueryAskedFiltered struct {
 	spBaseEvent
 	queryResponse retrievaltypes.QueryResponse
@@ -126,6 +129,7 @@ func QueryAskedFiltered(retrievalId types.RetrievalID, phaseStartTime time.Time,
 	return RetrievalEventQueryAskedFiltered{spBaseEvent{baseEvent{time.Now(), retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}, queryResponse}
 }
 
+// RetrievalEventProposed describes when the proposal took place during the RetrievalPhase
 type RetrievalEventProposed struct {
 	spBaseEvent
 }
@@ -134,6 +138,7 @@ func Proposed(retrievalId types.RetrievalID, phaseStartTime time.Time, candidate
 	return RetrievalEventProposed{spBaseEvent{baseEvent{time.Now(), retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}}
 }
 
+// RetrievalEventStarted describes when a phase starts
 type RetrievalEventStarted struct {
 	spBaseEvent
 	phase types.Phase
@@ -143,6 +148,7 @@ func Started(retrievalId types.RetrievalID, phaseStartTime time.Time, phase type
 	return RetrievalEventStarted{spBaseEvent{baseEvent{time.Now(), retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}, phase}
 }
 
+// RetrievalEventFirstByte describes when the first byte of data was received during the RetrievalPhase
 type RetrievalEventAccepted struct {
 	spBaseEvent
 }
@@ -151,6 +157,7 @@ func Accepted(retrievalId types.RetrievalID, phaseStartTime time.Time, candidate
 	return RetrievalEventAccepted{spBaseEvent{baseEvent{time.Now(), retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}}
 }
 
+// RetrievalEventFirstByte describes when the first byte of data was received during the RetrievalPhase
 type RetrievalEventFirstByte struct {
 	spBaseEvent
 }
@@ -159,6 +166,7 @@ func FirstByte(retrievalId types.RetrievalID, phaseStartTime time.Time, candidat
 	return RetrievalEventFirstByte{spBaseEvent{baseEvent{time.Now(), retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}}
 }
 
+// RetrievalEventFailed describes a phase agnostic failure
 type RetrievalEventFailed struct {
 	spBaseEvent
 	phase        types.Phase
@@ -169,6 +177,7 @@ func Failed(retrievalId types.RetrievalID, phaseStartTime time.Time, phase types
 	return RetrievalEventFailed{spBaseEvent{baseEvent{time.Now(), retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}, phase, errorMessage}
 }
 
+// RetrievalEventSuccess describes a successful retrieval of data during the RetrievalPhase
 type RetrievalEventSuccess struct {
 	spBaseEvent
 	receivedSize uint64
@@ -179,6 +188,15 @@ type RetrievalEventSuccess struct {
 
 func Success(retrievalId types.RetrievalID, phaseStartTime time.Time, candidate types.RetrievalCandidate, receivedSize uint64, receivedCids uint64, duration time.Duration, totalPayment big.Int) RetrievalEventSuccess {
 	return RetrievalEventSuccess{spBaseEvent{baseEvent{time.Now(), retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}, receivedSize, receivedCids, duration, totalPayment}
+}
+
+// RetrievalEventFinished describes when an entire fetch finishes
+type RetrievalEventFinished struct {
+	spBaseEvent
+}
+
+func Finished(retrievalId types.RetrievalID, phaseStartTime time.Time, candidate types.RetrievalCandidate) RetrievalEventFinished {
+	return RetrievalEventFinished{spBaseEvent{baseEvent{time.Now(), retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}}
 }
 
 func (r RetrievalEventCandidatesFound) Code() types.EventCode { return types.CandidatesFoundCode }
@@ -255,4 +273,9 @@ func (r RetrievalEventSuccess) ReceivedSize() uint64 { return r.receivedSize }
 func (r RetrievalEventSuccess) ReceivedCids() uint64 { return r.receivedCids }
 func (r RetrievalEventSuccess) String() string {
 	return fmt.Sprintf("SuccessEvent<%s, %s, %s, %s, %v, { %s, %s, %d, %d }>", r.eventTime, r.retrievalId, r.payloadCid, r.storageProviderId, r.protocols, r.duration, r.totalPayment, r.receivedSize, r.receivedCids)
+}
+func (r RetrievalEventFinished) Code() types.EventCode { return types.FinishedCode }
+func (r RetrievalEventFinished) Phase() types.Phase    { return types.FetchPhase }
+func (r RetrievalEventFinished) String() string {
+	return fmt.Sprintf("FinishedEvent<%s, %s, %s, %s, %v>", r.eventTime, r.retrievalId, r.payloadCid, r.storageProviderId, r.protocols)
 }
