@@ -68,7 +68,7 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 		}
 	}
 
-	retrievalClient, err := client.NewClient(datastore, cfg.Host, nil)
+	retrievalClient, err := client.NewClient(ctx, datastore, cfg.Host, nil)
 	if err != nil {
 		return nil, err
 	}

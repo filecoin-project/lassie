@@ -94,7 +94,7 @@ func runRetrieval(t *testing.T, ctx context.Context, mrn *mocknet.MockRetrievalN
 	linkSystemLocal := storeutil.LinkSystemForBlockstore(bsLocal)
 
 	// New client
-	client, err := client.NewClient(dtDsLocal, mrn.Self, nil)
+	client, err := client.NewClient(ctx, dtDsLocal, mrn.Self, nil)
 	req.NoError(err)
 	req.NoError(client.AwaitReady())
 

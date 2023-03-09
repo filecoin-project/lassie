@@ -177,6 +177,11 @@ func WaitForFinish(ctx context.Context, t *testing.T, finishChan chan []datatran
 }
 
 func (mrn *MockRetrievalNet) TearDown() error {
+	for _, h := range mrn.Remotes {
+		if h.DatatransferServer != nil {
+			h.DatatransferServer.Stop(mrn.ctx)
+		}
+	}
 	return mrn.MN.Close()
 }
 
