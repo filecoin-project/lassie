@@ -61,10 +61,7 @@ func NewRequestForPath(store ReadableWritableStorage, cid cid.Cid, path string, 
 	}
 
 	// Turn the path into a selector
-	selector, err := selectorutils.UnixfsPathToSelector(path, full)
-	if err != nil {
-		return RetrievalRequest{}, err
-	}
+	selector := selectorutils.PathToUnixfsExploreSelector(path, full)
 
 	linkSystem := cidlink.DefaultLinkSystem()
 	linkSystem.SetReadStorage(store)

@@ -21,7 +21,6 @@ func TestPathToSelector(t *testing.T) {
 	testCases := []struct {
 		name             string
 		path             string
-		expectedErr      string
 		expextedSelector string
 		full             bool
 	}{
@@ -36,18 +35,6 @@ func TestPathToSelector(t *testing.T) {
 			path:             "",
 			expextedSelector: matchShallowJson,
 			full:             false,
-		},
-		{
-			name:        "no leading slash",
-			path:        "nope",
-			expectedErr: "path must start with /",
-			full:        true,
-		},
-		{
-			name:        "no leading slash shallow",
-			path:        "nope",
-			expectedErr: "path must start with /",
-			full:        false,
 		},
 		{
 			name:             "single field",
@@ -73,17 +60,37 @@ func TestPathToSelector(t *testing.T) {
 			expextedSelector: manualJsonFieldStart("foo") + manualJsonFieldStart("bar") + matchShallowJson + manualJsonFieldEnd(2),
 			full:             false,
 		},
+		{
+			name:             "leading slash optional",
+			path:             "foo/bar",
+			expextedSelector: manualJsonFieldStart("foo") + manualJsonFieldStart("bar") + exploreAllJson + manualJsonFieldEnd(2),
+			full:             true,
+		},
+		{
+			name:             "trailing slash optional",
+			path:             "/foo/bar/",
+			expextedSelector: manualJsonFieldStart("foo") + manualJsonFieldStart("bar") + exploreAllJson + manualJsonFieldEnd(2),
+			full:             true,
+		},
+		// a go-ipld-prime specific thing, not clearly specified by path spec (?)
+		{
+			name:             ".. is a field named ..",
+			path:             "/foo/../bar/",
+			expextedSelector: manualJsonFieldStart("foo") + manualJsonFieldStart("..") + manualJsonFieldStart("bar") + exploreAllJson + manualJsonFieldEnd(3),
+			full:             true,
+		},
+		{
+			// a go-ipld-prime specific thing, not clearly specified by path spec
+			name:             "redundant slashes ignored",
+			path:             "foo///bar",
+			expextedSelector: manualJsonFieldStart("foo") + manualJsonFieldStart("bar") + exploreAllJson + manualJsonFieldEnd(2),
+			full:             true,
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			sel, err := selectorutils.UnixfsPathToSelector(tc.path, tc.full)
-			if tc.expectedErr != "" {
-				require.Error(t, err)
-				require.Contains(t, err.Error(), tc.expectedErr)
-				return
-			}
-			require.NoError(t, err)
+			sel := selectorutils.PathToUnixfsExploreSelector(tc.path, tc.full)
 			require.Equal(t, tc.expextedSelector, mustDagJson(sel))
 		})
 	}
