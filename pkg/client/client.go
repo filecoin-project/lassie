@@ -169,6 +169,10 @@ func NewClientWithConfig(ctx context.Context, cfg *Config) (*RetrievalClient, er
 	if err := dataTransfer.Start(ctx); err != nil {
 		return nil, err
 	}
+	go func() {
+		<-ctx.Done()
+		dataTransfer.Stop(context.Background())
+	}()
 
 	client := &RetrievalClient{
 		dataTransfer: dataTransfer,

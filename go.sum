@@ -126,8 +126,8 @@ github.com/filecoin-project/go-commp-utils/nonffi v0.0.0-20220905160352-62059082
 github.com/filecoin-project/go-crypto v0.0.0-20191218222705-effae4ea9f03 h1:2pMXdBnCiXjfCYx/hLqFxccPoqsSveQFxVLvNxy9bus=
 github.com/filecoin-project/go-crypto v0.0.0-20191218222705-effae4ea9f03/go.mod h1:+viYnvGtUTgJRdy6oaeF4MTFKAfatX071MPDPBL11EQ=
 github.com/filecoin-project/go-data-transfer v1.15.2 h1:PzqsFr2Q/onMGKrGh7TtRT0dKsJcVJrioJJnjnKmxlk=
-github.com/filecoin-project/go-data-transfer/v2 v2.0.0-rc4 h1:Y5RMvFT4OthsAhDx7xKfkJ5QdiWq9Ox7N46Mi0PF0PE=
-github.com/filecoin-project/go-data-transfer/v2 v2.0.0-rc4/go.mod h1:1WDoUgWYB2KvogfPTdDmoyBTa9cb9+oGwqKCCipnJeY=
+github.com/filecoin-project/go-data-transfer/v2 v2.0.0-rc5 h1:lqjkVplfTRt5GV7Pxjo+H+Jhnh7tgUIhKFFLxGvjv1Y=
+github.com/filecoin-project/go-data-transfer/v2 v2.0.0-rc5/go.mod h1:YY4onZJ9LoSP19kdJWD7PZ0ZDJSQnbcEXYfjezMLTog=
 github.com/filecoin-project/go-ds-versioning v0.1.2 h1:to4pTadv3IeV1wvgbCbN6Vqd+fu+7tveXgv/rCEZy6w=
 github.com/filecoin-project/go-ds-versioning v0.1.2/go.mod h1:C9/l9PnB1+mwPa26BBVpCjG/XQCB0yj/q5CK2J8X1I4=
 github.com/filecoin-project/go-fil-commcid v0.0.0-20200716160307-8f644712406f/go.mod h1:Eaox7Hvus1JgPrL5+M3+h7aSPHc0cVqpSxA+TxIEpZQ=
@@ -484,8 +484,8 @@ github.com/libp2p/go-cidranger v1.1.0 h1:ewPN8EZ0dd1LSnrtuwd4709PXVcITVeuwbag38y
 github.com/libp2p/go-cidranger v1.1.0/go.mod h1:KWZTfSr+r9qEo9OkI9/SIEeAtw+NNoU0dXIXt15Okic=
 github.com/libp2p/go-flow-metrics v0.1.0 h1:0iPhMI8PskQwzh57jB9WxIuIOQ0r+15PChFGkx3Q3WM=
 github.com/libp2p/go-flow-metrics v0.1.0/go.mod h1:4Xi8MX8wj5aWNDAZttg6UPmc0ZrnFNsMtpsYUClFtro=
-github.com/libp2p/go-libp2p v0.26.1 h1:I9bHj5KteIB1tsBWLT25TTttx5xSjun3ph/q/8Xax/k=
-github.com/libp2p/go-libp2p v0.26.1/go.mod h1:HKQUKIQ5NhzabNMWq9Wczcs5Ksdx4LQ/ISAq4MRqBHQ=
+github.com/libp2p/go-libp2p v0.26.2 h1:eHEoW/696FP7/6DxOvcrKfTD6Bi0DExxiMSZUJxswA0=
+github.com/libp2p/go-libp2p v0.26.2/go.mod h1:x75BN32YbwuY0Awm2Uix4d4KOz+/4piInkp4Wr3yOo8=
 github.com/libp2p/go-libp2p-asn-util v0.3.0 h1:gMDcMyYiZKkocGXDQ5nsUQyquC9+H+iLEQHwOCZ7s8s=
 github.com/libp2p/go-libp2p-asn-util v0.3.0/go.mod h1:B1mcOrKUE35Xq/ASTmQ4tN3LNzVVaMNmq2NACuqyB9w=
 github.com/libp2p/go-libp2p-core v0.20.1 h1:fQz4BJyIFmSZAiTbKV8qoYhEH5Dtv/cVhZbG3Ib/+Cw=

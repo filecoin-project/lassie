@@ -79,6 +79,10 @@ func NewBitswapRetrieverFromHost(ctx context.Context, host host.Host, cfg Bitswa
 	bitswap := client.New(ctx, bsnet, bstore, client.ProviderSearchDelay(shortenedDelay))
 	bsnet.Start(bitswap)
 	bsrv := blockservice.New(bstore, bitswap)
+	go func() {
+		<-ctx.Done()
+		bsnet.Stop()
+	}()
 	return NewBitswapRetrieverFromDeps(bsrv, routing, inProgressCids, bstore, cfg, clock.New(), nil)
 }
 
