@@ -26,6 +26,8 @@ import (
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/stretchr/testify/require"
+
+	_ "net/http/pprof"
 )
 
 func TestHttpFetch(t *testing.T) {

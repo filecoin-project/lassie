@@ -7,7 +7,7 @@ require (
 	github.com/benbjohnson/clock v1.3.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/filecoin-project/go-address v1.1.0
-	github.com/filecoin-project/go-data-transfer/v2 v2.0.0-rc4
+	github.com/filecoin-project/go-data-transfer/v2 v2.0.0-rc5
 	github.com/filecoin-project/go-state-types v0.10.0
 	github.com/google/go-cmp v0.5.9
 	github.com/google/uuid v1.3.0
@@ -29,7 +29,7 @@ require (
 	github.com/ipld/go-ipld-prime v0.20.0
 	github.com/ipni/index-provider v0.10.2
 	github.com/ipni/storetheindex v0.5.8
-	github.com/libp2p/go-libp2p v0.26.1
+	github.com/libp2p/go-libp2p v0.26.2
 	github.com/libp2p/go-libp2p-routing-helpers v0.6.1
 	github.com/libp2p/go-libp2p-testing v0.12.0
 	github.com/multiformats/go-multiaddr v0.8.0
