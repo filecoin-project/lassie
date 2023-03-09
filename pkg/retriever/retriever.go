@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
+	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/metrics"
@@ -181,7 +181,7 @@ func (retriever *Retriever) isAcceptableStorageProvider(storageProviderId peer.I
 // isAcceptableQueryResponse determines whether a queryResponse is acceptable
 // according to the current configuration. For now this is just checking whether
 // PaidRetrievals is set and not accepting paid retrievals if so.
-func (retriever *Retriever) isAcceptableQueryResponse(peer peer.ID, req types.RetrievalRequest, queryResponse *retrievalmarket.QueryResponse) bool {
+func (retriever *Retriever) isAcceptableQueryResponse(peer peer.ID, req types.RetrievalRequest, queryResponse *retrievaltypes.QueryResponse) bool {
 	// filter out paid retrievals if necessary
 
 	acceptable := retriever.config.PaidRetrievals || big.Add(big.Mul(queryResponse.MinPricePerByte, big.NewIntUnsigned(queryResponse.Size)), queryResponse.UnsealPrice).Equals(big.Zero())

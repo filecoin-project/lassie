@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
+	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/types"
@@ -42,7 +42,7 @@ func TestEventManager(t *testing.T) {
 	em.DispatchEvent(events.CandidatesFiltered(id, indexerStart, cid, []types.RetrievalCandidate{{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid}, {MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, {MinerPeer: peer.AddrInfo{ID: peerC}, RootCid: cid}}))
 	em.DispatchEvent(events.Started(id, queryStart, types.QueryPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid}))
 	em.DispatchEvent(events.Failed(id, queryStart, types.QueryPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid}, "error @ query failure"))
-	em.DispatchEvent(events.QueryAsked(id, queryStart, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseError, Size: 100, Message: "error @ response"}))
+	em.DispatchEvent(events.QueryAsked(id, queryStart, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseError, Size: 100, Message: "error @ response"}))
 	em.DispatchEvent(events.Started(id, retrievalStart, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}))
 	em.DispatchEvent(events.Success(id, retrievalStart, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, 100, 200, time.Second*300, big.NewInt(400)))
 	em.DispatchEvent(events.Failed(id, retrievalStart, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, "error @ retrieval failure"))
@@ -58,7 +58,7 @@ func TestEventManager(t *testing.T) {
 	em.DispatchEvent(events.CandidatesFiltered(id, indexerStart, cid, []types.RetrievalCandidate{{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid}, {MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, {MinerPeer: peer.AddrInfo{ID: peerC}, RootCid: cid}}))
 	em.DispatchEvent(events.Started(id, queryStart, types.QueryPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid}))
 	em.DispatchEvent(events.Failed(id, queryStart, types.QueryPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid}, "error @ query failure"))
-	em.DispatchEvent(events.QueryAsked(id, queryStart, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseError, Size: 100, Message: "error @ response"}))
+	em.DispatchEvent(events.QueryAsked(id, queryStart, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseError, Size: 100, Message: "error @ response"}))
 	em.DispatchEvent(events.Started(id, indexerStart, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}))
 	em.DispatchEvent(events.Success(id, retrievalStart, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, 100, 200, time.Second*300, big.NewInt(400)))
 	em.DispatchEvent(events.Failed(id, retrievalStart, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, "error @ retrieval failure"))
@@ -159,7 +159,7 @@ func TestEventManager(t *testing.T) {
 		require.Equal(t, queryStart, event.PhaseStartTime())
 		require.Equal(t, types.QueryPhase, event.Phase())
 		require.Equal(t, peerB, event.(events.RetrievalEventQueryAsked).StorageProviderId())
-		require.Equal(t, retrievalmarket.QueryResponseError, event.(events.RetrievalEventQueryAsked).QueryResponse().Status)
+		require.Equal(t, retrievaltypes.QueryResponseError, event.(events.RetrievalEventQueryAsked).QueryResponse().Status)
 		require.Equal(t, uint64(100), event.(events.RetrievalEventQueryAsked).QueryResponse().Size)
 		require.Equal(t, "error @ response", event.(events.RetrievalEventQueryAsked).QueryResponse().Message)
 	}

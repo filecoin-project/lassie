@@ -5,7 +5,7 @@ import (
 
 	"github.com/filecoin-project/go-address"
 	datatransfer "github.com/filecoin-project/go-data-transfer/v2"
-	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
+	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
@@ -18,14 +18,14 @@ type RetrievalClient interface {
 		minerPeer peer.AddrInfo,
 		cid cid.Cid,
 		onConnected func(),
-	) (*retrievalmarket.QueryResponse, error)
+	) (*retrievaltypes.QueryResponse, error)
 
 	RetrieveFromPeer(
 		ctx context.Context,
 		linkSystem ipld.LinkSystem,
 		peerID peer.ID,
 		minerWallet address.Address,
-		proposal *retrievalmarket.DealProposal,
+		proposal *retrievaltypes.DealProposal,
 		selector ipld.Node,
 		eventsCallback datatransfer.Subscriber,
 		gracefulShutdownRequested <-chan struct{},

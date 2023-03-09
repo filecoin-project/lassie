@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/filecoin-project/go-address"
-	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
+	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/internal/testutil"
@@ -27,66 +27,66 @@ func TestQueryFiltering(t *testing.T) {
 	testCases := []struct {
 		name           string
 		paid           bool
-		queryResponses map[string]*retrievalmarket.QueryResponse
+		queryResponses map[string]*retrievaltypes.QueryResponse
 		expectedPeers  []string
 	}{
 		{
 			name: "PaidRetrievals: true",
 			paid: true,
-			queryResponses: map[string]*retrievalmarket.QueryResponse{
-				"foo": {Message: "foo", Status: retrievalmarket.QueryResponseUnavailable},
-				"bar": {Message: "bar", Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.NewInt(1), Size: 2, UnsealPrice: big.Zero()},
-				"baz": {Message: "baz", Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()},
+			queryResponses: map[string]*retrievaltypes.QueryResponse{
+				"foo": {Message: "foo", Status: retrievaltypes.QueryResponseUnavailable},
+				"bar": {Message: "bar", Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.NewInt(1), Size: 2, UnsealPrice: big.Zero()},
+				"baz": {Message: "baz", Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()},
 			},
 			expectedPeers: []string{"bar", "baz"},
 		},
 		{
 			name: "PaidRetrievals: false",
 			paid: false,
-			queryResponses: map[string]*retrievalmarket.QueryResponse{
-				"foo": {Message: "foo", Status: retrievalmarket.QueryResponseUnavailable},
-				"bar": {Message: "bar", Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.NewInt(1), Size: 2, UnsealPrice: big.Zero()},
-				"baz": {Message: "baz", Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()},
+			queryResponses: map[string]*retrievaltypes.QueryResponse{
+				"foo": {Message: "foo", Status: retrievaltypes.QueryResponseUnavailable},
+				"bar": {Message: "bar", Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.NewInt(1), Size: 2, UnsealPrice: big.Zero()},
+				"baz": {Message: "baz", Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()},
 			},
 			expectedPeers: []string{"baz"},
 		},
 		{
 			name: "PaidRetrievals: true, /w only paid",
 			paid: true,
-			queryResponses: map[string]*retrievalmarket.QueryResponse{
-				"foo": {Message: "foo", Status: retrievalmarket.QueryResponseUnavailable},
-				"bar": {Message: "bar", Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.NewInt(1), Size: 2, UnsealPrice: big.Zero()},
-				"baz": {Message: "baz", Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.NewInt(1), Size: 2, UnsealPrice: big.Zero()},
+			queryResponses: map[string]*retrievaltypes.QueryResponse{
+				"foo": {Message: "foo", Status: retrievaltypes.QueryResponseUnavailable},
+				"bar": {Message: "bar", Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.NewInt(1), Size: 2, UnsealPrice: big.Zero()},
+				"baz": {Message: "baz", Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.NewInt(1), Size: 2, UnsealPrice: big.Zero()},
 			},
 			expectedPeers: []string{"bar", "baz"},
 		},
 		{
 			name: "PaidRetrievals: false, /w only paid",
 			paid: false,
-			queryResponses: map[string]*retrievalmarket.QueryResponse{
-				"foo": {Message: "foo", Status: retrievalmarket.QueryResponseUnavailable},
-				"bar": {Message: "bar", Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.NewInt(1), Size: 2, UnsealPrice: big.Zero()},
-				"baz": {Message: "baz", Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.NewInt(1), Size: 2, UnsealPrice: big.Zero()},
+			queryResponses: map[string]*retrievaltypes.QueryResponse{
+				"foo": {Message: "foo", Status: retrievaltypes.QueryResponseUnavailable},
+				"bar": {Message: "bar", Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.NewInt(1), Size: 2, UnsealPrice: big.Zero()},
+				"baz": {Message: "baz", Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.NewInt(1), Size: 2, UnsealPrice: big.Zero()},
 			},
 			expectedPeers: []string{},
 		},
 		{
 			name: "PaidRetrievals: true, w/ no paid",
 			paid: true,
-			queryResponses: map[string]*retrievalmarket.QueryResponse{
-				"foo": {Message: "foo", Status: retrievalmarket.QueryResponseUnavailable},
-				"bar": {Message: "bar", Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()},
-				"baz": {Message: "baz", Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()},
+			queryResponses: map[string]*retrievaltypes.QueryResponse{
+				"foo": {Message: "foo", Status: retrievaltypes.QueryResponseUnavailable},
+				"bar": {Message: "bar", Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()},
+				"baz": {Message: "baz", Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()},
 			},
 			expectedPeers: []string{"bar", "baz"},
 		},
 		{
 			name: "PaidRetrievals: false, w/ no paid",
 			paid: false,
-			queryResponses: map[string]*retrievalmarket.QueryResponse{
-				"foo": {Message: "foo", Status: retrievalmarket.QueryResponseUnavailable},
-				"bar": {Message: "bar", Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()},
-				"baz": {Message: "baz", Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()},
+			queryResponses: map[string]*retrievaltypes.QueryResponse{
+				"foo": {Message: "foo", Status: retrievaltypes.QueryResponseUnavailable},
+				"bar": {Message: "bar", Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()},
+				"baz": {Message: "baz", Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()},
 			},
 			expectedPeers: []string{"bar", "baz"},
 		},
@@ -110,7 +110,7 @@ func TestQueryFiltering(t *testing.T) {
 
 			cfg := &GraphSyncRetriever{
 				GetStorageProviderTimeout: func(peer peer.ID) time.Duration { return time.Second },
-				IsAcceptableQueryResponse: func(peer peer.ID, req types.RetrievalRequest, queryResponse *retrievalmarket.QueryResponse) bool {
+				IsAcceptableQueryResponse: func(peer peer.ID, req types.RetrievalRequest, queryResponse *retrievaltypes.QueryResponse) bool {
 					return tc.paid || big.Add(big.Mul(queryResponse.MinPricePerByte, big.NewIntUnsigned(queryResponse.Size)), queryResponse.UnsealPrice).Equals(big.Zero())
 				},
 				Client: mockClient,
@@ -180,7 +180,7 @@ func TestQueryFiltering(t *testing.T) {
 }
 
 func TestRetrievalRacing(t *testing.T) {
-	successfulQueryResponse := retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}
+	successfulQueryResponse := retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}
 
 	testCases := []struct {
 		name                      string
@@ -273,10 +273,10 @@ func TestRetrievalRacing(t *testing.T) {
 		{
 			name: "racing chooses best",
 			queryReturns: map[string]testutil.DelayedQueryReturn{
-				"foo":  {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond},
-				"bar":  {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 100},
-				"baz":  {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 100},
-				"bang": {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 4, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 100},
+				"foo":  {QueryResponse: &retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond},
+				"bar":  {QueryResponse: &retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 100},
+				"baz":  {QueryResponse: &retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 100},
+				"bang": {QueryResponse: &retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 4, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 100},
 			},
 			expectedQueryReturns: []string{"foo", "bar", "baz", "bang"},
 			retrievalReturns: map[string]testutil.DelayedRetrievalReturn{
@@ -294,10 +294,10 @@ func TestRetrievalRacing(t *testing.T) {
 		{
 			name: "racing chooses fastest query",
 			queryReturns: map[string]testutil.DelayedQueryReturn{
-				"foo":  {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 0},
-				"bar":  {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 220},
-				"baz":  {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 200},
-				"bang": {QueryResponse: &retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 100},
+				"foo":  {QueryResponse: &retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 0},
+				"bar":  {QueryResponse: &retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 220},
+				"baz":  {QueryResponse: &retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 200},
+				"bang": {QueryResponse: &retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 100},
 			},
 			expectedQueryReturns: []string{"foo", "bar", "baz", "bang"},
 			retrievalReturns: map[string]testutil.DelayedRetrievalReturn{
@@ -324,7 +324,7 @@ func TestRetrievalRacing(t *testing.T) {
 			}
 			cfg := &GraphSyncRetriever{
 				GetStorageProviderTimeout: func(peer peer.ID) time.Duration { return time.Second },
-				IsAcceptableQueryResponse: func(peer peer.ID, req types.RetrievalRequest, qr *retrievalmarket.QueryResponse) bool { return true },
+				IsAcceptableQueryResponse: func(peer peer.ID, req types.RetrievalRequest, qr *retrievaltypes.QueryResponse) bool { return true },
 				Client:                    mockClient,
 			}
 
@@ -400,7 +400,7 @@ func TestMultipleRetrievals(t *testing.T) {
 	retrievalID := types.RetrievalID(uuid.New())
 	cid1 := cid.MustParse("bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")
 	cid2 := cid.MustParse("bafyrgqhai26anf3i7pips7q22coa4sz2fr4gk4q4sqdtymvvjyginfzaqewveaeqdh524nsktaq43j65v22xxrybrtertmcfxufdam3da3hbk")
-	successfulQueryResponse := retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}
+	successfulQueryResponse := retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}
 
 	mockClient := testutil.NewMockClient(
 		map[string]testutil.DelayedQueryReturn{
@@ -427,7 +427,7 @@ func TestMultipleRetrievals(t *testing.T) {
 
 	cfg := &GraphSyncRetriever{
 		GetStorageProviderTimeout: func(peer peer.ID) time.Duration { return time.Second },
-		IsAcceptableQueryResponse: func(peer peer.ID, req types.RetrievalRequest, qr *retrievalmarket.QueryResponse) bool { return true },
+		IsAcceptableQueryResponse: func(peer peer.ID, req types.RetrievalRequest, qr *retrievaltypes.QueryResponse) bool { return true },
 		Client:                    mockClient,
 	}
 
@@ -519,7 +519,7 @@ func TestMultipleRetrievals(t *testing.T) {
 func TestRetrievalReuse(t *testing.T) {
 	retrievalID := types.RetrievalID(uuid.New())
 	cid1 := cid.MustParse("bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")
-	successfulQueryResponse := retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}
+	successfulQueryResponse := retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}
 
 	mockClient := testutil.NewMockClient(
 		map[string]testutil.DelayedQueryReturn{
@@ -546,7 +546,7 @@ func TestRetrievalReuse(t *testing.T) {
 
 	cfg := &GraphSyncRetriever{
 		GetStorageProviderTimeout: func(peer peer.ID) time.Duration { return time.Second },
-		IsAcceptableQueryResponse: func(peer peer.ID, req types.RetrievalRequest, qr *retrievalmarket.QueryResponse) bool { return true },
+		IsAcceptableQueryResponse: func(peer peer.ID, req types.RetrievalRequest, qr *retrievaltypes.QueryResponse) bool { return true },
 		Client:                    mockClient,
 	}
 
@@ -624,7 +624,7 @@ func TestRetrievalReuse(t *testing.T) {
 func TestRetrievalSelector(t *testing.T) {
 	retrievalID := types.RetrievalID(uuid.New())
 	cid1 := cid.MustParse("bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")
-	successfulQueryResponse := retrievalmarket.QueryResponse{Status: retrievalmarket.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}
+	successfulQueryResponse := retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}
 
 	mockClient := testutil.NewMockClient(
 		map[string]testutil.DelayedQueryReturn{"foo": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: 0}},
@@ -633,7 +633,7 @@ func TestRetrievalSelector(t *testing.T) {
 
 	cfg := &GraphSyncRetriever{
 		GetStorageProviderTimeout: func(peer peer.ID) time.Duration { return time.Second },
-		IsAcceptableQueryResponse: func(peer peer.ID, req types.RetrievalRequest, qr *retrievalmarket.QueryResponse) bool { return true },
+		IsAcceptableQueryResponse: func(peer peer.ID, req types.RetrievalRequest, qr *retrievaltypes.QueryResponse) bool { return true },
 		Client:                    mockClient,
 	}
 
@@ -659,7 +659,7 @@ func TestRetrievalSelector(t *testing.T) {
 
 type candidateQuery struct {
 	peer          peer.ID
-	queryResponse retrievalmarket.QueryResponse
+	queryResponse retrievaltypes.QueryResponse
 }
 
 func MakeAsyncCandidates(t *testing.T, candidates []types.RetrievalCandidate) types.InboundAsyncCandidates {

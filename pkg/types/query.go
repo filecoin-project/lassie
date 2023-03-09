@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
+	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/node/bindnode"
 )
@@ -17,18 +17,18 @@ var querySchema []byte
 
 // QueryResponseFromReader reads a QueryResponse object in dag-cbor form from
 // a stream
-func QueryResponseFromReader(r io.Reader) (*retrievalmarket.QueryResponse, error) {
-	dpIface, err := retrievalmarket.BindnodeRegistry.TypeFromReader(r, &retrievalmarket.QueryResponse{}, dagcbor.Decode)
+func QueryResponseFromReader(r io.Reader) (*retrievaltypes.QueryResponse, error) {
+	dpIface, err := retrievaltypes.BindnodeRegistry.TypeFromReader(r, &retrievaltypes.QueryResponse{}, dagcbor.Decode)
 	if err != nil {
 		return nil, fmt.Errorf("invalid QueryResponse: %w", err)
 	}
-	dp, _ := dpIface.(*retrievalmarket.QueryResponse) // safe to assume type
+	dp, _ := dpIface.(*retrievaltypes.QueryResponse) // safe to assume type
 	return dp, nil
 }
 
 // QueryToWriter writes a Query object in dag-cbor form to a stream
-func QueryToWriter(q *retrievalmarket.Query, w io.Writer) error {
-	return retrievalmarket.BindnodeRegistry.TypeToWriter(q, w, dagcbor.Encode)
+func QueryToWriter(q *retrievaltypes.Query, w io.Writer) error {
+	return retrievaltypes.BindnodeRegistry.TypeToWriter(q, w, dagcbor.Encode)
 }
 
 func init() {
@@ -40,10 +40,10 @@ func init() {
 		typName string
 		opts    []bindnode.Option
 	}{
-		{(*retrievalmarket.QueryResponse)(nil), "QueryResponse", []bindnode.Option{retrievalmarket.AddressBindnodeOption, retrievalmarket.TokenAmountBindnodeOption}},
-		{(*retrievalmarket.Query)(nil), "Query", []bindnode.Option{}},
+		{(*retrievaltypes.QueryResponse)(nil), "QueryResponse", []bindnode.Option{retrievaltypes.AddressBindnodeOption, retrievaltypes.TokenAmountBindnodeOption}},
+		{(*retrievaltypes.Query)(nil), "Query", []bindnode.Option{}},
 	} {
-		if err := retrievalmarket.BindnodeRegistry.RegisterType(r.typ, string(querySchema), r.typName, r.opts...); err != nil {
+		if err := retrievaltypes.BindnodeRegistry.RegisterType(r.typ, string(querySchema), r.typName, r.opts...); err != nil {
 			panic(err.Error())
 		}
 	}

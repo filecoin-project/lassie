@@ -9,7 +9,7 @@ import (
 
 	"github.com/filecoin-project/go-address"
 	datatransfer "github.com/filecoin-project/go-data-transfer/v2"
-	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
+	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/client"
 	"github.com/filecoin-project/lassie/pkg/internal/itest/mocknet"
@@ -113,10 +113,10 @@ func runRetrieval(t *testing.T, ctx context.Context, mrn *mocknet.MockRetrievalN
 	}
 
 	// Retrieve
-	proposal := &retrievalmarket.DealProposal{
+	proposal := &retrievaltypes.DealProposal{
 		PayloadCID: rootCid,
-		ID:         retrievalmarket.DealID(100),
-		Params: retrievalmarket.Params{
+		ID:         retrievaltypes.DealID(100),
+		Params: retrievaltypes.Params{
 			PricePerByte: big.Zero(),
 			UnsealPrice:  big.Zero(),
 		},

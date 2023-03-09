@@ -8,7 +8,7 @@ import (
 	"time"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer/v2"
-	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
+	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
 	"github.com/filecoin-project/lassie/pkg/internal/itest/testpeer"
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/types"
@@ -83,8 +83,8 @@ func (mrn *MockRetrievalNet) AddGraphsyncPeers(n int) {
 	}
 }
 
-func SetupQuery(t *testing.T, remote testpeer.TestPeer, expectCid cid.Cid, qr retrievalmarket.QueryResponse) {
-	remote.Host.SetStreamHandler(retrievalmarket.QueryProtocolID, func(s network.Stream) {
+func SetupQuery(t *testing.T, remote testpeer.TestPeer, expectCid cid.Cid, qr retrievaltypes.QueryResponse) {
+	remote.Host.SetStreamHandler("/fil/retrieval/qry/1.0.0", func(s network.Stream) {
 		// we're doing some manual IPLD work here to exercise other parts of the
 		// messaging stack to make sure we're communicating according to spec
 
@@ -124,8 +124,8 @@ func SetupQuery(t *testing.T, remote testpeer.TestPeer, expectCid cid.Cid, qr re
 				require.NoError(t, err)
 				qp.MapEntry(ma, "UnsealPrice", qp.Bytes(priceBytes))
 			} else {
-				qp.MapEntry(ma, "Status", qp.Int(int64(retrievalmarket.QueryResponseUnavailable)))
-				qp.MapEntry(ma, "PieceCIDFound", qp.Int(int64(retrievalmarket.QueryItemUnavailable)))
+				qp.MapEntry(ma, "Status", qp.Int(int64(retrievaltypes.QueryResponseUnavailable)))
+				qp.MapEntry(ma, "PieceCIDFound", qp.Int(int64(retrievaltypes.QueryItemUnavailable)))
 				qp.MapEntry(ma, "Size", qp.Int(0))
 				qp.MapEntry(ma, "PaymentAddress", qp.Bytes([]byte{}))
 				qp.MapEntry(ma, "MinPricePerByte", qp.Bytes([]byte{}))
@@ -144,7 +144,7 @@ func SetupQuery(t *testing.T, remote testpeer.TestPeer, expectCid cid.Cid, qr re
 func SetupRetrieval(t *testing.T, remote testpeer.TestPeer) chan []datatransfer.Event {
 	// Register DealProposal voucher type with automatic Pull acceptance
 	remoteDealValidator := &mockDealValidator{acceptPull: true}
-	require.NoError(t, remote.DatatransferServer.RegisterVoucherType(retrievalmarket.DealProposalType, remoteDealValidator))
+	require.NoError(t, remote.DatatransferServer.RegisterVoucherType(retrievaltypes.DealProposalType, remoteDealValidator))
 
 	remoteEvents := make([]datatransfer.Event, 0)
 	finishedChan := make(chan []datatransfer.Event, 1)
