@@ -1,7 +1,6 @@
 package types
 
 import (
-	"github.com/filecoin-project/lassie/pkg/retriever/selectorutils"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-unixfsnode"
@@ -61,7 +60,11 @@ func NewRequestForPath(store ReadableWritableStorage, cid cid.Cid, path string, 
 	}
 
 	// Turn the path into a selector
-	selector := selectorutils.PathToUnixfsExploreSelector(path, full)
+	targetSelector := unixfsnode.ExploreAllRecursivelySelector // full
+	if !full {
+		targetSelector = unixfsnode.MatchUnixFSPreloadSelector // shallow
+	}
+	selector := unixfsnode.UnixFSPathSelectorBuilder(path, targetSelector, false)
 
 	linkSystem := cidlink.DefaultLinkSystem()
 	linkSystem.SetReadStorage(store)
