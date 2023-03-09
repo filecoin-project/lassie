@@ -124,6 +124,7 @@ func ConnectPeers(instances []TestPeer) {
 type TestPeer struct {
 	ID                 peer.ID
 	BitswapServer      *server.Server
+	BitswapNetwork     bsnet.BitSwapNetwork
 	DatatransferServer datatransfer.Manager
 	blockstore         blockstore.Blockstore
 	Host               host.Host
@@ -163,7 +164,12 @@ func NewTestBitswapPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity
 	bsNet := bsnet.NewFromIpfsHost(peer.Host, routinghelpers.Null{}, netOptions...)
 	bs := server.New(ctx, bsNet, peer.blockstore, bsOptions...)
 	bsNet.Start(bs)
+	go func() {
+		<-ctx.Done()
+		bsNet.Stop()
+	}()
 	peer.BitswapServer = bs
+	peer.BitswapNetwork = bsNet
 	return peer, nil
 }
 

@@ -85,7 +85,7 @@ type Config struct {
 }
 
 // Creates a new RetrievalClient
-func NewClient(datastore datastore.Batching, host host.Host, payChanMgr PayChannelManager, opts ...func(*Config)) (*RetrievalClient, error) {
+func NewClient(ctx context.Context, datastore datastore.Batching, host host.Host, payChanMgr PayChannelManager, opts ...func(*Config)) (*RetrievalClient, error) {
 	cfg := &Config{
 		ChannelMonitorConfig: dtchannelmonitor.Config{
 			AcceptTimeout:          acceptTimeout,
@@ -118,20 +118,18 @@ func NewClient(datastore datastore.Batching, host host.Host, payChanMgr PayChann
 		opt(cfg)
 	}
 
-	return NewClientWithConfig(cfg)
+	return NewClientWithConfig(ctx, cfg)
 }
 
 // Creates a new RetrievalClient with the given Config
-func NewClientWithConfig(cfg *Config) (*RetrievalClient, error) {
-	ctx := context.Background()
-
+func NewClientWithConfig(ctx context.Context, cfg *Config) (*RetrievalClient, error) {
 	if cfg.PayChannelManager != nil {
 		if err := cfg.PayChannelManager.Start(); err != nil {
 			return nil, err
 		}
 	}
 
-	graphSync := graphsync.New(context.Background(),
+	graphSync := graphsync.New(ctx,
 		gsnetwork.NewFromLibp2pHost(cfg.Host),
 		cidlink.DefaultLinkSystem(),
 		cfg.GraphsyncOpts...,

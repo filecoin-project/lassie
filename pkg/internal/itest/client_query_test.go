@@ -84,7 +84,7 @@ func TestQuery(t *testing.T) {
 			mrn.MN.LinkAll()
 
 			ds1 := dss.MutexWrap(datastore.NewMapDatastore())
-			client, err := client.NewClient(ds1, mrn.Self, nil)
+			client, err := client.NewClient(ctx, ds1, mrn.Self, nil)
 			require.NoError(t, err)
 
 			var connected bool

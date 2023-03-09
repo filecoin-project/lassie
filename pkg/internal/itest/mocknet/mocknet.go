@@ -3,6 +3,7 @@ package mocknet
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -177,6 +178,23 @@ func WaitForFinish(ctx context.Context, t *testing.T, finishChan chan []datatran
 }
 
 func (mrn *MockRetrievalNet) TearDown() error {
+	var wg sync.WaitGroup
+	for _, h := range mrn.Remotes {
+		wg.Add(1)
+		go func(h testpeer.TestPeer) {
+			defer wg.Done()
+			if h.DatatransferServer != nil {
+				h.DatatransferServer.Stop(context.Background())
+			}
+			if h.BitswapServer != nil {
+				h.BitswapServer.Close()
+			}
+			if h.BitswapNetwork != nil {
+				h.BitswapNetwork.Stop()
+			}
+		}(h)
+	}
+	wg.Wait()
 	return mrn.MN.Close()
 }
 
