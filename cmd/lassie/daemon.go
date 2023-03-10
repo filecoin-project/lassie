@@ -196,7 +196,7 @@ func daemonCommand(cctx *cli.Context) error {
 	if exposeMetrics {
 		fmt.Println("Shutting down Lassie daemon")
 		if err = metricsServer.Close(); err != nil {
-			log.Errorw("failed to close http server", "err", err)
+			log.Errorw("failed to close metrics server", "err", err)
 		}
 	}
 
