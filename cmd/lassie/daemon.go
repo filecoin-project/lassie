@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/filecoin-project/lassie/pkg/lassie"
+	"github.com/filecoin-project/lassie/pkg/metrics"
 	httpserver "github.com/filecoin-project/lassie/pkg/server/http"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
@@ -86,6 +87,8 @@ var daemonFlags = []cli.Flag{
 	FlagEventRecorderInstanceId,
 	FlagEventRecorderUrl,
 	FlagExposeMetrics,
+	FlagMetricsPort,
+	FlagMetricsAddress,
 	FlagVerbose,
 	FlagVeryVerbose,
 	FlagDisableGraphsync,
@@ -107,6 +110,8 @@ func daemonCommand(cctx *cli.Context) error {
 	libp2pLowWater := cctx.Int("libp2p-conns-lowwater")
 	libp2pHighWater := cctx.Int("libp2p-conns-highwater")
 	exposeMetrics := cctx.Bool("expose-metrics")
+	metricsPort := cctx.Uint("metrics-port")
+	metricsAddress := cctx.String("metrics-address")
 	concurrentSPRetrievals := cctx.Uint("concurrent-sp-retrievals")
 	disableGraphsync := cctx.Bool("disable-graphsync")
 	providerTimeout := cctx.Duration("provider-timeout")
@@ -144,7 +149,6 @@ func daemonCommand(cctx *cli.Context) error {
 		Port:                port,
 		TempDir:             tempDir,
 		MaxBlocksPerRequest: maxBlocks,
-		Metrics:             exposeMetrics,
 	})
 
 	if err != nil {
@@ -153,21 +157,47 @@ func daemonCommand(cctx *cli.Context) error {
 	}
 
 	serverErrChan := make(chan error, 1)
+	metricsServerErrChan := make(chan error, 1)
 	go func() {
 		fmt.Printf("Lassie daemon listening on address %s\n", httpServer.Addr())
 		fmt.Println("Hit CTRL-C to stop the daemon")
 		serverErrChan <- httpServer.Start()
 	}()
 
+	var metricsServer *metrics.MetricsServer
+	if exposeMetrics {
+		metricsServer, err = metrics.NewHttpServer(cctx.Context, metricsAddress, metricsPort)
+
+		if err != nil {
+			log.Errorw("failed to create metrics server", "err", err)
+			return err
+		}
+
+		go func() {
+			fmt.Printf("Lassie metrics listening on address %s\n", metricsServer.Addr())
+			fmt.Println("Hit CTRL-C to stop the server")
+			metricsServerErrChan <- metricsServer.Start()
+		}()
+	}
+
 	select {
 	case <-cctx.Done(): // command was cancelled
 	case err = <-serverErrChan: // error from server
 		log.Errorw("failed to start http server", "err", err)
+	case err = <-metricsServerErrChan: // error from server
+		log.Errorw("failed to start metrics server", "err", err)
 	}
 
 	fmt.Println("Shutting down Lassie daemon")
 	if err = httpServer.Close(); err != nil {
 		log.Errorw("failed to close http server", "err", err)
+	}
+
+	if exposeMetrics {
+		fmt.Println("Shutting down Lassie metrics server")
+		if err = metricsServer.Close(); err != nil {
+			log.Errorw("failed to close metrics server", "err", err)
+		}
 	}
 
 	fmt.Println("Lassie daemon stopped")
