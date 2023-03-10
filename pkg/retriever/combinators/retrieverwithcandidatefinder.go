@@ -25,14 +25,14 @@ func (rcf RetrieverWithCandidateFinder) Retrieve(ctx context.Context, request ty
 
 	findErr := make(chan error, 1)
 	resultChan := make(chan types.RetrievalResult, 1)
-	go func() {
+	go func(findErr chan<- error) {
 		defer close(findErr)
 		defer close(outbound)
 		err := rcf.CandidateFinder.FindCandidates(ctx, request, events, func(candidates []types.RetrievalCandidate) {
 			_ = outbound.SendNext(ctx, candidates)
 		})
 		findErr <- err
-	}()
+	}(findErr)
 	go func() {
 		stats, err := asyncCandidateRetrieval.RetrieveFromAsyncCandidates(inbound)
 		resultChan <- types.RetrievalResult{Stats: stats, Err: err}
@@ -45,6 +45,7 @@ func (rcf RetrieverWithCandidateFinder) Retrieve(ctx context.Context, request ty
 			if err != nil {
 				return nil, err
 			}
+			findErr = nil
 		case result := <-resultChan:
 			return result.Stats, result.Err
 		}

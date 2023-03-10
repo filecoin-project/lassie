@@ -64,6 +64,24 @@ var FlagExposeMetrics = &cli.BoolFlag{
 	EnvVars: []string{"LASSIE_EXPOSE_METRICS"},
 }
 
+// FlagMetricsAddress sets the address on which to expose metrics and pprof information
+var FlagMetricsAddress = &cli.StringFlag{
+	Name:        "metrics-address",
+	Usage:       "the address to expose metrics for prometheus and pprof when expose metrics is true",
+	Value:       "127.0.0.1",
+	DefaultText: "127.0.0.1",
+	EnvVars:     []string{"LASSIE_METRICS_ADDRESS"},
+}
+
+// FlagMetricsPort sets the port on which to expose metrics and pprof information
+var FlagMetricsPort = &cli.UintFlag{
+	Name:        "metrics-port",
+	Usage:       "the port to expose metrics for prometheus and pprof when expose metrics is true",
+	Value:       0,
+	DefaultText: "random",
+	EnvVars:     []string{"LASSIE_METRICS_PORT"},
+}
+
 // FlagDisableGraphsync turns off all retrievals over the graphsync protocol
 var FlagDisableGraphsync = &cli.BoolFlag{
 	Name:    "disable-graphsync",
