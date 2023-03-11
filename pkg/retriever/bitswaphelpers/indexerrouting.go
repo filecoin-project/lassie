@@ -6,13 +6,10 @@ import (
 
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
-	logging "github.com/ipfs/go-log/v2"
 	routinghelpers "github.com/libp2p/go-libp2p-routing-helpers"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
 )
-
-var log = logging.Logger("lassie/bitswap")
 
 var _ routing.Routing = (*IndexerRouting)(nil)
 

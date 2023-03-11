@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"sync/atomic"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/linking/preload"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
@@ -101,7 +103,13 @@ func NewBitswapRetrieverFromDeps(bsrv blockservice.BlockService, routing Indexer
 
 // Retrieve initializes a new bitswap session
 func (br *BitswapRetriever) Retrieve(ctx context.Context, request types.RetrievalRequest, events func(types.RetrievalEvent)) types.CandidateRetrieval {
-	return &bitswapRetrieval{br, blockservice.NewSession(ctx, br.blockService), ctx, request, events}
+	return &bitswapRetrieval{
+		BitswapRetriever: br,
+		bsGetter:         blockservice.NewSession(ctx, br.blockService),
+		ctx:              ctx,
+		request:          request,
+		events:           events,
+	}
 }
 
 type bitswapRetrieval struct {
@@ -169,12 +177,29 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	// setup providers linksystem for this retrieval
 	br.bstore.AddLinkSystem(br.request.RetrievalID, bitswaphelpers.NewByteCountingLinkSystem(&br.request.LinkSystem, cb))
 
+	loader := loaderForSession(br.request.RetrievalID, br.inProgressCids, br.bsGetter)
+	// TODO: configurable tmpdir
+	// TODO: configurable parallelism
+	// TODO: move streamingstore down to the graphsync retriever so we are only
+	// passed either a linking.BlockWriteOpener or a storage.WritableStorage
+	// which generates the CARv1, letting bitswap and graphsync deal with the
+	// custom caching they need. Currently we're wrapping streamingstore in
+	// preloadstorage which means we have two temporary CARs, one of which is
+	// never read from.
+	storage, err := bitswaphelpers.NewPreloadStorage(loader, os.TempDir(), 5)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	storage.Start(ctx)
+
 	// copy the link system
 	wrappedLsys := br.request.LinkSystem
 	// replace the opener with a blockservice wrapper (we still want any known adls + reifiers, hence the copy)
-	wrappedLsys.StorageReadOpener = loaderForSession(br.request.RetrievalID, br.inProgressCids, br.bsGetter)
+	wrappedLsys.StorageReadOpener = storage.Loader
 	// run the retrieval
-	err = easyTraverse(ctx, cidlink.Link{Cid: br.request.Cid}, selector, &wrappedLsys)
+	err = easyTraverse(ctx, cidlink.Link{Cid: br.request.Cid}, selector, &wrappedLsys, storage.Preloader)
+	storage.Stop()
 	cancel()
 
 	// unregister relevant provider records & LinkSystem
@@ -224,17 +249,25 @@ func loaderForSession(retrievalID types.RetrievalID, inProgressCids InProgressCi
 			return nil, lctx.Ctx.Err()
 		default:
 		}
+		fmt.Println("bs.GetBlock()", cidLink.Cid.String(), retrievalID)
 		blk, err := bs.GetBlock(lctx.Ctx, cidLink.Cid)
 		inProgressCids.Dec(cidLink.Cid, retrievalID)
 		if err != nil {
 			return nil, err
 		}
-
+		fmt.Println("bs.GetBlock() done", cidLink.Cid.String(), retrievalID)
 		return bytes.NewReader(blk.RawData()), nil
 	}
 }
 
-func easyTraverse(ctx context.Context, root datamodel.Link, traverseSelector datamodel.Node, lsys *linking.LinkSystem) error {
+func easyTraverse(
+	ctx context.Context,
+	root datamodel.Link,
+	traverseSelector datamodel.Node,
+	lsys *linking.LinkSystem,
+	preloader preload.Loader,
+) error {
+
 	protoChooser := dagpb.AddSupportToChooser(basicnode.Chooser)
 
 	// retrieve first node
@@ -252,6 +285,7 @@ func easyTraverse(ctx context.Context, root datamodel.Link, traverseSelector dat
 			Ctx:                            ctx,
 			LinkSystem:                     *lsys,
 			LinkTargetNodePrototypeChooser: protoChooser,
+			Preloader:                      preloader,
 		},
 	}
 	progress.LastBlock.Link = root
