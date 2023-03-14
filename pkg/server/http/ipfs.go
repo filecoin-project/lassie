@@ -15,7 +15,6 @@ import (
 	"github.com/filecoin-project/lassie/pkg/storage"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
-	ipldstorage "github.com/ipld/go-ipld-prime/storage"
 	"github.com/multiformats/go-multicodec"
 )
 
@@ -166,13 +165,13 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		bytesWritten := make(chan struct{}, 1)
 
 		carWriter := storage.NewDeferredCarWriterForStream(rootCid, res)
+		carStore := storage.NewTeeingTempReadWrite(carWriter.BlockWriteOpener(), cfg.TempDir)
 		defer func() {
-			fmt.Println("ipfsHandler deferred Close()")
-			if err := carWriter.Close(); err != nil {
-				log.Errorw("failed to close CAR streamafter retrieval", "retrievalId", retrievalId, "err", err)
+			if err := carStore.Close(); err != nil {
+				log.Errorf("error closing temp store: %s", err)
 			}
 		}()
-		var store ipldstorage.WritableStorage = carWriter
+		var store types.ReadableWritableStorage = carStore
 
 		// extract block limit from query param as needed
 		var blockLimit uint64
@@ -186,7 +185,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			if blockLimit == 0 || (cfg.MaxBlocksPerRequest > 0 && blockLimit > cfg.MaxBlocksPerRequest) {
 				blockLimit = cfg.MaxBlocksPerRequest
 			}
-			store = limitstore.NewLimitStore(carWriter, blockLimit)
+			store = limitstore.NewLimitStore(carStore, blockLimit)
 		}
 
 		carWriter.OnPut(func(int) {

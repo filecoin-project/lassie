@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/ipld/go-ipld-prime/storage"
+	"github.com/filecoin-project/lassie/pkg/types"
 )
 
 type ErrExceededLimit struct {
@@ -19,15 +19,15 @@ func (e ErrExceededLimit) Error() string {
 var _ io.Closer = (*LimitStore)(nil)
 
 type LimitStore struct {
-	storage.WritableStorage
+	types.ReadableWritableStorage
 	counter uint64
 	limit   uint64
 }
 
-func NewLimitStore(storage storage.WritableStorage, limit uint64) *LimitStore {
+func NewLimitStore(storage types.ReadableWritableStorage, limit uint64) *LimitStore {
 	return &LimitStore{
-		WritableStorage: storage,
-		limit:           limit,
+		ReadableWritableStorage: storage,
+		limit:                   limit,
 	}
 }
 
@@ -35,7 +35,7 @@ func (ls *LimitStore) Put(ctx context.Context, key string, data []byte) error {
 	if ls.counter >= ls.limit {
 		return ErrExceededLimit{ls.limit}
 	}
-	has, err := ls.WritableStorage.Has(ctx, key)
+	has, err := ls.ReadableWritableStorage.Has(ctx, key)
 	if err != nil {
 		return err
 	}
@@ -43,11 +43,11 @@ func (ls *LimitStore) Put(ctx context.Context, key string, data []byte) error {
 		return nil
 	}
 	ls.counter++
-	return ls.WritableStorage.Put(ctx, key, data)
+	return ls.ReadableWritableStorage.Put(ctx, key, data)
 }
 
 func (ls *LimitStore) Close() error {
-	if closer, ok := ls.WritableStorage.(io.Closer); ok {
+	if closer, ok := ls.ReadableWritableStorage.(io.Closer); ok {
 		return closer.Close()
 	}
 	return nil

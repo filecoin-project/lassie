@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -149,17 +150,18 @@ func Fetch(c *cli.Context) error {
 		outfile = c.String("output")
 	}
 
-	var store *storage.DeferredCarWriter
+	var carWriter *storage.DeferredCarWriter
 	if outfile == "-" { // stdout
-		store = storage.NewDeferredCarWriterForStream(rootCid, &onlyWriter{c.App.Writer})
+		carWriter = storage.NewDeferredCarWriterForStream(rootCid, &onlyWriter{c.App.Writer})
 	} else {
-		store = storage.NewDeferredCarWriterForPath(rootCid, outfile)
+		carWriter = storage.NewDeferredCarWriterForPath(rootCid, outfile)
 	}
+	store := storage.NewTeeingTempReadWrite(carWriter.BlockWriteOpener(), os.TempDir())
 	defer store.Close()
 
 	var blockCount int
 	var byteLength uint64
-	store.OnPut(func(putBytes int) {
+	carWriter.OnPut(func(putBytes int) {
 		blockCount++
 		byteLength += uint64(putBytes)
 		if !progress {
