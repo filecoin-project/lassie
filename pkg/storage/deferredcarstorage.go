@@ -31,6 +31,9 @@ func NewDeferredCarStorage(tempDir string) *DeferredCarStorage {
 
 // Close will clean up any temporary resources used by the storage.
 func (dcs *DeferredCarStorage) Close() error {
+	dcs.lk.Lock()
+	defer dcs.lk.Unlock()
+
 	if dcs.closed {
 		return nil
 	}

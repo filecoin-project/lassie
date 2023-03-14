@@ -17,8 +17,6 @@ import (
 	"go.uber.org/multierr"
 )
 
-var inst int = 0
-
 type preloadingLink struct {
 	refCnt     uint64
 	loadSyncer sync.Once
@@ -32,8 +30,6 @@ type request struct {
 }
 
 type PreloadCachingStorage struct {
-	id int
-
 	parentLinkSystem linking.LinkSystem
 	fetcher          linking.BlockReadOpener
 	concurrency      int
@@ -60,10 +56,7 @@ func NewPreloadCachingStorage(
 	fetcher linking.BlockReadOpener,
 	concurrency int,
 ) (*PreloadCachingStorage, error) {
-	id := inst
-	inst++
 	cs := &PreloadCachingStorage{
-		id:               id,
 		fetcher:          fetcher,
 		parentLinkSystem: parentLinkSystem,
 		concurrency:      concurrency,
@@ -378,7 +371,7 @@ func (cs *PreloadCachingStorage) Put(ctx context.Context, key string, content []
 */
 
 func (cs *PreloadCachingStorage) PrintStats() {
-	fmt.Printf("PreloadCachingStorage stats (%d):\n", cs.id)
+	fmt.Println("PreloadCachingStorage stats:")
 	fmt.Println("  preloads:", len(cs.preloads))
 	fmt.Println("  not found:", len(cs.notFound))
 	fmt.Println("  preloaded hits:", cs.preloadedHits)
