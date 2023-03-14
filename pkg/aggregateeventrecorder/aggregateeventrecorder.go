@@ -19,20 +19,23 @@ const httpTimeout = 5 * time.Second
 const parallelPosters = 5
 
 type tempData struct {
-	startTime time.Time
-	ttfb      int64
-	ttfbTime  time.Time
+	startTime     time.Time
+	firstByteTime time.Time
+	ttfb          int64
+	success       bool
+	spId          string
+	bandwidth     uint64
 }
 
 type AggregateEvent struct {
-	InstanceID        string    `json:"instanceId"`        // The ID of the Lassie instance generating the event
-	RetrievalID       string    `json:"retrievalId"`       // The unique ID of the retrieval
-	StorageProviderID string    `json:"storageProviderId"` // The ID of the storage provider that served the retrieval content
-	TimeToFirstByte   int64     `json:"timeToFirstByte"`   // The time it took to receive the first byte in seconds
-	Bandwidth         uint64    `json:"bandwidth"`         // The bandwidth of the retrieval in bytes per second
-	Success           bool      `json:"success"`           // Wether or not the retreival ended with a success event
-	StartTime         time.Time `json:"startTime"`         // The time the retrieval started
-	EndTime           time.Time `json:"endTime"`           // The time the retrieval ended
+	InstanceID        string    `json:"instanceId"`                  // The ID of the Lassie instance generating the event
+	RetrievalID       string    `json:"retrievalId"`                 // The unique ID of the retrieval
+	StorageProviderID string    `json:"storageProviderId,omitempty"` // The ID of the storage provider that served the retrieval content
+	TimeToFirstByte   int64     `json:"timeToFirstByte,omitempty"`   // The time it took to receive the first byte in milliseconds
+	Bandwidth         uint64    `json:"bandwidth,omitempty"`         // The bandwidth of the retrieval in bytes per second
+	Success           bool      `json:"success"`                     // Wether or not the retreival ended with a success event
+	StartTime         time.Time `json:"startTime"`                   // The time the retrieval started
+	EndTime           time.Time `json:"endTime"`                     // The time the retrieval ended
 }
 
 type batchedEvents struct {
@@ -102,46 +105,52 @@ func (a *aggregateEventRecorder) ingestEvents() {
 			switch event.Code() {
 			case types.StartedCode:
 				// Record when first phase starts to help calculate time to first byte later
-				if event.Phase() == types.IndexerPhase {
-					a.eventTempMap[id] = tempData{event.Time(), 0, time.Time{}}
+				if event.Phase() == types.FetchPhase {
+					a.eventTempMap[id] = tempData{
+						startTime:     event.Time(),
+						firstByteTime: time.Time{},
+						spId:          "",
+						success:       false,
+						bandwidth:     0,
+						ttfb:          0,
+					}
 				}
 
 			case types.FirstByteCode:
 				// Calculate time to first byte
 				tempData := a.eventTempMap[id]
-				tempData.ttfbTime = event.Time()
+				tempData.firstByteTime = event.Time()
 				tempData.ttfb = event.Time().Sub(tempData.startTime).Milliseconds()
 				a.eventTempMap[id] = tempData
 
-			case types.SuccessCode, types.FinishedCode:
-				// We will receive a finished code right after
-				// a success code, so ignore any event that we
-				// haven't saved or have already deleted
+			case types.SuccessCode:
+				tempData := a.eventTempMap[id]
+				tempData.success = true
+				tempData.spId = event.(events.RetrievalEventSuccess).StorageProviderId().String()
+
+				// Calculate bandwidth
+				receivedSize := event.(events.RetrievalEventSuccess).ReceivedSize()
+				duration := event.Time().Sub(tempData.firstByteTime)
+				tempData.bandwidth = uint64(float64(receivedSize) / duration.Seconds())
+
+				a.eventTempMap[id] = tempData
+
+			case types.FinishedCode:
 				tempData, ok := a.eventTempMap[id]
 				if !ok {
+					logging.Errorf("Received Finished event but can't find aggregate data. Skipping creation of aggregate event.")
 					continue
-				}
-
-				success := event.Code() == types.SuccessCode
-				spId := event.StorageProviderId().String()
-				endTime := event.Time()
-
-				var bandwidth uint64
-				if success {
-					receivedSize := event.(events.RetrievalEventSuccess).ReceivedSize()
-					duration := event.Time().Sub(tempData.ttfbTime)
-					bandwidth = uint64(float64(receivedSize) / duration.Seconds())
 				}
 
 				aggregatedEvent := AggregateEvent{
 					InstanceID:        a.instanceID,
 					RetrievalID:       id,
-					StorageProviderID: spId,
+					StorageProviderID: tempData.spId,
 					TimeToFirstByte:   tempData.ttfb,
-					Bandwidth:         bandwidth,
-					Success:           true,
+					Bandwidth:         tempData.bandwidth,
+					Success:           tempData.success,
 					StartTime:         tempData.startTime,
-					EndTime:           endTime,
+					EndTime:           event.Time(),
 				}
 
 				// Delete the key when we're done with the data
