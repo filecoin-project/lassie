@@ -20,7 +20,6 @@ import (
 
 func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
-		fmt.Println("REQUEST: ", req.Method, req.URL.Path)
 		logger := newRequestLogger(req.Method, req.URL.Path)
 		logger.logPath()
 
