@@ -118,7 +118,6 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	phaseStartTime := br.clock.Now()
 	// this is a hack cause we aren't able to track bitswap fetches per peer for now, so instead we just create a single peer for all events
 	bitswapCandidate := types.NewRetrievalCandidate(peer.ID(""), br.request.Cid, metadata.Bitswap{})
-	br.events(events.Started(br.request.RetrievalID, phaseStartTime, types.RetrievalPhase, bitswapCandidate))
 
 	// setup the linksystem to record bytes & blocks written -- since this isn't automatic w/o go-data-transfer
 	ctx, cancel := context.WithCancel(br.ctx)
@@ -149,6 +148,8 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		// we never received any candidates, so we give up on bitswap retrieval
 		return nil, nil
 	}
+	br.events(events.Started(br.request.RetrievalID, phaseStartTime, types.RetrievalPhase, bitswapCandidate))
+
 	br.routing.AddProviders(br.request.RetrievalID, nextCandidates)
 	go func() {
 		for {
