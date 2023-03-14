@@ -130,8 +130,10 @@ func (a *aggregateEventRecorder) ingestEvents() {
 
 				// Calculate bandwidth
 				receivedSize := event.(events.RetrievalEventSuccess).ReceivedSize()
-				duration := event.Time().Sub(tempData.firstByteTime)
-				tempData.bandwidth = uint64(float64(receivedSize) / duration.Seconds())
+				duration := event.Time().Sub(tempData.firstByteTime).Seconds()
+				if duration != 0 {
+					tempData.bandwidth = uint64(float64(receivedSize) / duration)
+				}
 
 				a.eventTempMap[id] = tempData
 
