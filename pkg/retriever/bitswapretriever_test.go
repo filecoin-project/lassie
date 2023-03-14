@@ -536,7 +536,6 @@ type correctedMemStore struct {
 func (cms *correctedMemStore) Get(ctx context.Context, key string) ([]byte, error) {
 	data, err := cms.Store.Get(ctx, key)
 	if err != nil && err.Error() == "404" {
-		// fmt.Println("corectedMemStore Get 404")
 		err = format.ErrNotFound{}
 	}
 	return data, err
@@ -545,7 +544,6 @@ func (cms *correctedMemStore) Get(ctx context.Context, key string) ([]byte, erro
 func (cms *correctedMemStore) GetStream(ctx context.Context, key string) (io.ReadCloser, error) {
 	rc, err := cms.Store.GetStream(ctx, key)
 	if err != nil && err.Error() == "404" {
-		// fmt.Println("corectedMemStore GetStream 404")
 		err = format.ErrNotFound{}
 	}
 	return rc, err
