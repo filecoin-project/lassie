@@ -137,15 +137,15 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		lastBytesReceivedTimer = br.clock.AfterFunc(br.cfg.BlockTimeout, cancel)
 	}
 
-	totalWritten := uint64(0)
-	blockCount := uint64(0)
+	totalWritten := atomic.Uint64{}
+	blockCount := atomic.Uint64{}
 	cb := func(bytesWritten uint64) {
 		// record first byte received
-		if totalWritten == 0 {
+		if totalWritten.Load() == 0 {
 			br.events(events.FirstByte(br.clock.Now(), br.request.RetrievalID, phaseStartTime, bitswapCandidate))
 		}
-		atomic.AddUint64(&totalWritten, bytesWritten)
-		atomic.AddUint64(&blockCount, 1)
+		totalWritten.Add(bytesWritten)
+		blockCount.Add(1)
 		// reset the timer
 		if bytesWritten > 0 && lastBytesReceivedTimer != nil {
 			lastBytesReceivedTimer.Reset(br.cfg.BlockTimeout)
@@ -231,15 +231,15 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		return nil, err
 	}
 	duration := br.clock.Since(phaseStartTime)
-	speed := uint64(float64(totalWritten) / duration.Seconds())
+	speed := uint64(float64(totalWritten.Load()) / duration.Seconds())
 
 	// record success
 	br.events(events.Success(br.clock.Now(),
 		br.request.RetrievalID,
 		phaseStartTime,
 		bitswapCandidate,
-		totalWritten,
-		blockCount,
+		totalWritten.Load(),
+		blockCount.Load(),
 		duration,
 		big.Zero()))
 
@@ -247,8 +247,8 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	return &types.RetrievalStats{
 		StorageProviderId: peer.ID(""),
 		RootCid:           br.request.Cid,
-		Size:              totalWritten,
-		Blocks:            blockCount,
+		Size:              totalWritten.Load(),
+		Blocks:            blockCount.Load(),
 		Duration:          duration,
 		AverageSpeed:      speed,
 		TotalPayment:      big.Zero(),
