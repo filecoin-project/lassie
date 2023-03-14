@@ -171,7 +171,6 @@ func TestRetriever(t *testing.T) {
 				events.Success(rid, rst, types.NewRetrievalCandidate(peerA, cid1), 1, 2, 3*time.Second, big.Zero()),
 			},
 		},
-
 		{
 			name: "two candidates, fast one fails query, slow wins",
 			candidates: []types.RetrievalCandidate{

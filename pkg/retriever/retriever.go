@@ -15,6 +15,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/retriever/combinators"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
+	"github.com/ipni/index-provider/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
 	"go.opencensus.io/stats"
@@ -113,7 +114,7 @@ func NewRetriever(
 		protocols = append(protocols, multicodec.TransportBitswap)
 	}
 	retriever.executor = combinators.RetrieverWithCandidateFinder{
-		CandidateFinder: NewAssignableCandidateFinder(candidateFinder, retriever.isAcceptableStorageProvider),
+		CandidateFinder: NewAssignableCandidateFinder(candidateFinder, retriever.filderIndexerCandidate),
 		CandidateRetriever: combinators.SplitRetriever[multicodec.Code]{
 			AsyncCandidateSplitter: combinators.NewAsyncCandidateSplitter(protocols, NewProtocolSplitter),
 			CandidateRetrievers:    candidateRetrievers,
@@ -150,7 +151,29 @@ func (retriever *Retriever) getStorageProviderTimeout(storageProviderId peer.ID)
 // is acceptable as a retrieval candidate. It checks the blacklists and
 // whitelists, the miner monitor for failures and whether we are already at
 // concurrency limit for this SP.
-func (retriever *Retriever) isAcceptableStorageProvider(storageProviderId peer.ID) bool {
+func (retriever *Retriever) filderIndexerCandidate(candidate types.RetrievalCandidate) (bool, types.RetrievalCandidate) {
+	protocols := candidate.Metadata.Protocols()
+	newProtocolMetadata := make([]metadata.Protocol, 0, len(protocols))
+	for _, protocol := range protocols {
+		includeProtocol := true
+		switch protocol {
+		case multicodec.TransportGraphsyncFilecoinv1:
+			includeProtocol = retriever.isAcceptableGraphsyncCandidate(candidate.MinerPeer.ID)
+		case multicodec.TransportBitswap:
+			includeProtocol = retriever.isAcceptableBitswapCandidate(candidate.MinerPeer.ID)
+		}
+		if includeProtocol {
+			newProtocolMetadata = append(newProtocolMetadata, candidate.Metadata.Get(protocol))
+		}
+	}
+	return len(newProtocolMetadata) != 0, types.RetrievalCandidate{
+		MinerPeer: candidate.MinerPeer,
+		RootCid:   candidate.RootCid,
+		Metadata:  metadata.Default.New(newProtocolMetadata...),
+	}
+}
+
+func (retriever *Retriever) isAcceptableGraphsyncCandidate(storageProviderId peer.ID) bool {
 	// Skip blacklist
 	if retriever.config.MinerBlacklist[storageProviderId] {
 		return false
@@ -172,6 +195,20 @@ func (retriever *Retriever) isAcceptableStorageProvider(storageProviderId peer.I
 	minerConfig := retriever.config.getMinerConfig(storageProviderId)
 	if minerConfig.MaxConcurrentRetrievals > 0 &&
 		retriever.spTracker.GetConcurrency(storageProviderId) >= minerConfig.MaxConcurrentRetrievals {
+		return false
+	}
+
+	return true
+}
+
+func (retriever *Retriever) isAcceptableBitswapCandidate(storageProviderId peer.ID) bool {
+	// Skip blacklist
+	if retriever.config.MinerBlacklist[storageProviderId] {
+		return false
+	}
+
+	// Skip non-whitelist IF the whitelist isn't empty
+	if len(retriever.config.MinerWhitelist) > 0 && !retriever.config.MinerWhitelist[storageProviderId] {
 		return false
 	}
 

@@ -124,13 +124,13 @@ func TestAssignableCandidateFinder(t *testing.T) {
 				allCandidateResults[c] = candidateResults
 			}
 			candidateFinder := &testutil.MockCandidateFinder{Error: testCase.candidateError, Candidates: allCandidateResults}
-			isAcceptableStorageProvider := func(testPeer peer.ID) bool {
+			isAcceptableStorageProvider := func(candidate types.RetrievalCandidate) (bool, types.RetrievalCandidate) {
 				for _, filteredPeer := range testCase.filteredPeers {
-					if testPeer == peer.ID(filteredPeer) {
-						return false
+					if candidate.MinerPeer.ID == peer.ID(filteredPeer) {
+						return false, types.RetrievalCandidate{}
 					}
 				}
-				return true
+				return true, candidate
 			}
 			receivedCandidates := make(map[cid.Cid][]string)
 			appendCandidates := func(cid cid.Cid, candidates []types.RetrievalCandidate) {

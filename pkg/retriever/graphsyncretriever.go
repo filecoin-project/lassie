@@ -25,7 +25,6 @@ type CandidateCallback func(types.RetrievalCandidate) error
 type CandidateErrorCallback func(types.RetrievalCandidate, error)
 
 type GetStorageProviderTimeout func(peer peer.ID) time.Duration
-type IsAcceptableStorageProvider func(peer peer.ID) bool
 type IsAcceptableQueryResponse func(peer peer.ID, req types.RetrievalRequest, queryResponse *retrievaltypes.QueryResponse) bool
 
 type queryCandidate struct {

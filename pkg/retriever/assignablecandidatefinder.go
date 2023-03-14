@@ -12,20 +12,22 @@ import (
 	"github.com/filecoin-project/lassie/pkg/types"
 )
 
+type FilterIndexerCandidate func(types.RetrievalCandidate) (bool, types.RetrievalCandidate)
+
 // AssignableCandidateFinder finds and filters candidates for a given retrieval
 type AssignableCandidateFinder struct {
-	isAcceptableStorageProvider IsAcceptableStorageProvider
-	candidateFinder             CandidateFinder
-	clock                       clock.Clock
+	filterIndexerCandidate FilterIndexerCandidate
+	candidateFinder        CandidateFinder
+	clock                  clock.Clock
 }
 
 const BufferWindow = 5 * time.Millisecond
 
-func NewAssignableCandidateFinder(candidateFinder CandidateFinder, isAcceptableStorageProvider IsAcceptableStorageProvider) AssignableCandidateFinder {
-	return NewAssignableCandidateFinderWithClock(candidateFinder, isAcceptableStorageProvider, clock.New())
+func NewAssignableCandidateFinder(candidateFinder CandidateFinder, filterIndexerCandidate FilterIndexerCandidate) AssignableCandidateFinder {
+	return NewAssignableCandidateFinderWithClock(candidateFinder, filterIndexerCandidate, clock.New())
 }
-func NewAssignableCandidateFinderWithClock(candidateFinder CandidateFinder, isAcceptableStorageProvider IsAcceptableStorageProvider, clock clock.Clock) AssignableCandidateFinder {
-	return AssignableCandidateFinder{candidateFinder: candidateFinder, isAcceptableStorageProvider: isAcceptableStorageProvider, clock: clock}
+func NewAssignableCandidateFinderWithClock(candidateFinder CandidateFinder, filterIndexerCandidate FilterIndexerCandidate, clock clock.Clock) AssignableCandidateFinder {
+	return AssignableCandidateFinder{candidateFinder: candidateFinder, filterIndexerCandidate: filterIndexerCandidate, clock: clock}
 }
 func (acf AssignableCandidateFinder) FindCandidates(ctx context.Context, request types.RetrievalRequest, eventsCallback func(types.RetrievalEvent), onCandidates func([]types.RetrievalCandidate)) error {
 	ctx, cancelCtx := context.WithCancel(ctx)
@@ -47,7 +49,12 @@ func (acf AssignableCandidateFinder) FindCandidates(ctx context.Context, request
 
 		acceptableCandidates := make([]types.RetrievalCandidate, 0)
 		for _, candidate := range candidates {
-			if acf.isAcceptableStorageProvider == nil || acf.isAcceptableStorageProvider(candidate.MinerPeer.ID) {
+			hasFilterCandidateFn := acf.filterIndexerCandidate != nil
+			keepCandidate := true
+			if hasFilterCandidateFn {
+				keepCandidate, candidate = acf.filterIndexerCandidate(candidate)
+			}
+			if keepCandidate {
 				acceptableCandidates = append(acceptableCandidates, candidate)
 			}
 		}
