@@ -15,6 +15,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/storage"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/urfave/cli/v2"
@@ -156,8 +157,8 @@ func Fetch(c *cli.Context) error {
 	} else {
 		carWriter = storage.NewDeferredCarWriterForPath(rootCid, outfile)
 	}
-	store := storage.NewTeeingTempReadWrite(carWriter.BlockWriteOpener(), os.TempDir())
-	defer store.Close()
+	carStore := storage.NewTeeingTempReadWrite(carWriter.BlockWriteOpener(), os.TempDir())
+	defer carStore.Close()
 
 	var blockCount int
 	var byteLength uint64
@@ -171,10 +172,16 @@ func Fetch(c *cli.Context) error {
 		}
 	}, false)
 
-	request, err := types.NewRequestForPath(store, rootCid, path, !c.Bool("shallow"))
+	request, err := types.NewRequestForPath(carStore, rootCid, path, !c.Bool("shallow"))
 	if err != nil {
 		return err
 	}
+	// setup preload storage for bitswap, the temporary CAR store can set up a
+	// separate preload space in its storage
+	request.PreloadLinkSystem = cidlink.DefaultLinkSystem()
+	preloadStore := carStore.PreloadStore()
+	request.PreloadLinkSystem.SetReadStorage(preloadStore)
+	request.PreloadLinkSystem.SetWriteStorage(preloadStore)
 
 	stats, err := lassie.Fetch(c.Context, request)
 	if err != nil {

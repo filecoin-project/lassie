@@ -15,6 +15,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/storage"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/multiformats/go-multicodec"
 )
 
@@ -212,6 +213,12 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			return
 		}
 		request.RetrievalID = retrievalId
+		// setup preload storage for bitswap, the temporary CAR store can set up a
+		// separate preload space in its storage
+		request.PreloadLinkSystem = cidlink.DefaultLinkSystem()
+		preloadStore := carStore.PreloadStore()
+		request.PreloadLinkSystem.SetReadStorage(preloadStore)
+		request.PreloadLinkSystem.SetWriteStorage(preloadStore)
 
 		log.Debugw("fetching CID", "retrievalId", retrievalId, "CID", rootCid.String(), "path", unixfsPath, "fullFetch", fullFetch)
 		stats, err := lassie.Fetch(req.Context(), request)
