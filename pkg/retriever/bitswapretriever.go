@@ -206,6 +206,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		concurrency,
 	)
 	if err != nil {
+		br.routing.RemoveProviders(br.request.RetrievalID)
 		cancel()
 		return nil, err
 	}
