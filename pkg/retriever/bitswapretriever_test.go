@@ -222,6 +222,14 @@ func TestBitswapRetriever(t *testing.T) {
 			},
 		},
 		{
+			name: "failed no candidates",
+			localLinkSystems: map[cid.Cid]*linking.LinkSystem{
+				cid1: makeLsys(tbc1.Blocks(0, 50)),
+				cid2: makeLsys(tbc2.Blocks(0, 50)),
+			},
+			expectedCandidates: map[cid.Cid][]types.RetrievalCandidate{},
+		},
+		{
 			name: "timeout",
 			remoteLinkSystems: map[cid.Cid]*linking.LinkSystem{
 				cid1: makeLsys(tbc1.AllBlocks()),
@@ -348,10 +356,12 @@ func TestBitswapRetriever(t *testing.T) {
 				stats, err := retrieval1.RetrieveFromAsyncCandidates(makeAsyncCandidates(expectedCandidates[rid1]))
 				retrievalResult <- types.RetrievalResult{Stats: stats, Err: err}
 			}()
-			select {
-			case <-ctx.Done():
-				req.FailNow("did not receive all candidates")
-			case <-awaitReceivedCandidates:
+			if len(expectedCandidates[rid1]) > 0 {
+				select {
+				case <-ctx.Done():
+					req.FailNow("did not receive all candidates")
+				case <-awaitReceivedCandidates:
+				}
 			}
 			close(unlockExchange)
 
@@ -376,10 +386,12 @@ func TestBitswapRetriever(t *testing.T) {
 				stats, err := retrieval2.RetrieveFromAsyncCandidates(makeAsyncCandidates(expectedCandidates[rid2]))
 				retrievalResult <- types.RetrievalResult{Stats: stats, Err: err}
 			}()
-			select {
-			case <-ctx.Done():
-				req.FailNow("did not receive all candidates")
-			case <-awaitReceivedCandidates:
+			if len(expectedCandidates[rid2]) > 0 {
+				select {
+				case <-ctx.Done():
+					req.FailNow("did not receive all candidates")
+				case <-awaitReceivedCandidates:
+				}
 			}
 			close(unlockExchange)
 			select {
@@ -411,9 +423,19 @@ func TestBitswapRetriever(t *testing.T) {
 					receivedCodes[key] = append(receivedCodes[key], event.Code())
 				}
 			}
+			if testCase.expectedEvents == nil {
+				testCase.expectedEvents = make(map[cid.Cid][]types.EventCode)
+			}
 			req.Equal(testCase.expectedEvents, receivedCodes)
 			req.Equal(expectedCandidates, mir.candidatesAdded)
-			req.Equal(map[types.RetrievalID]struct{}{rid1: {}, rid2: {}}, mir.candidatesRemoved)
+			expectedCandidatesRemoved := map[types.RetrievalID]struct{}{}
+			if len(expectedCandidates[rid1]) > 0 {
+				expectedCandidatesRemoved[rid1] = struct{}{}
+			}
+			if len(expectedCandidates[rid2]) > 0 {
+				expectedCandidatesRemoved[rid2] = struct{}{}
+			}
+			req.Equal(expectedCandidatesRemoved, mir.candidatesRemoved)
 			if testCase.expectedCids != nil {
 				req.ElementsMatch(testCase.expectedCids, mipc.incremented)
 				req.ElementsMatch(testCase.expectedCids, mipc.decremented)
