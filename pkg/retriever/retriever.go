@@ -151,7 +151,7 @@ func (retriever *Retriever) getStorageProviderTimeout(storageProviderId peer.ID)
 // is acceptable as a retrieval candidate. It checks the blacklists and
 // whitelists, the miner monitor for failures and whether we are already at
 // concurrency limit for this SP.
-func (retriever *Retriever) filderIndexerCandidate(candidate types.RetrievalCandidate) (bool, types.RetrievalCandidate) {
+func (retriever *Retriever) filterIndexerCandidate(candidate types.RetrievalCandidate) (bool, types.RetrievalCandidate) {
 	protocols := candidate.Metadata.Protocols()
 	newProtocolMetadata := make([]metadata.Protocol, 0, len(protocols))
 	for _, protocol := range protocols {
