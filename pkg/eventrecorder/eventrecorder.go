@@ -99,6 +99,11 @@ func toStrings(protocols []multicodec.Code) []string {
 }
 
 func (er *EventRecorder) RecordEvent(event types.RetrievalEvent) {
+	if event.Phase() == types.FetchPhase {
+		// ignore indexer events for now, it can get very chatty in the autoretrieve
+		// case where every request results in an indexer lookup
+		return
+	}
 	if er.cfg.DisableIndexerEvents && event.Phase() == types.IndexerPhase {
 		// ignore indexer events for now, it can get very chatty in the autoretrieve
 		// case where every request results in an indexer lookup
