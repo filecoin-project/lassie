@@ -32,6 +32,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
+const DefaultConcurrency = 6
+
 // IndexerRouting are the required methods to track indexer routing
 type IndexerRouting interface {
 	AddProviders(types.RetrievalID, []types.RetrievalCandidate)
@@ -161,6 +163,42 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	}
 	br.events(events.Started(br.clock.Now(), br.request.RetrievalID, phaseStartTime, types.RetrievalPhase, bitswapCandidate))
 
+	loader := loaderForSession(br.request.RetrievalID, br.inProgressCids, br.bsGetter)
+	tmpDir := br.BitswapRetriever.cfg.TempDir
+	if tmpDir == "" {
+		tmpDir = os.TempDir()
+	}
+	concurrency := br.BitswapRetriever.cfg.Concurrency
+	if concurrency <= 0 {
+		concurrency = DefaultConcurrency
+	}
+	cacheLinkSys := br.request.PreloadLinkSystem
+	if cacheLinkSys.StorageReadOpener == nil || cacheLinkSys.StorageWriteOpener == nil {
+		// an uninitialised LinkSystem that we can't actually use, so we'll create a
+		// new one
+		cacheStore := storage.NewDeferredCarStorage(tmpDir)
+		cacheLinkSys = cidlink.DefaultLinkSystem()
+		cacheLinkSys.SetReadStorage(cacheStore)
+		cacheLinkSys.SetWriteStorage(cacheStore)
+		defer cacheStore.Close()
+	}
+	storage, err := bitswaphelpers.NewPreloadCachingStorage(
+		br.request.LinkSystem,
+		cacheLinkSys,
+		loader,
+		concurrency,
+	)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	storage.Start(ctx)
+
+	// setup providers linksystem for this retrieval
+	br.bstore.AddLinkSystem(
+		br.request.RetrievalID,
+		bitswaphelpers.NewByteCountingLinkSystem(storage.BitswapLinkSystem, cb),
+	)
 	br.routing.AddProviders(br.request.RetrievalID, nextCandidates)
 	go func() {
 		for {
@@ -177,46 +215,6 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 			br.routing.AddProviders(br.request.RetrievalID, nextCandidates)
 		}
 	}()
-
-	loader := loaderForSession(br.request.RetrievalID, br.inProgressCids, br.bsGetter)
-	// TODO: configurable tmpdir
-	// TODO: configurable parallelism
-	// TODO: move streamingstore down to the graphsync retriever so we are only
-	// passed either a linking.BlockWriteOpener or a storage.WritableStorage
-	// which generates the CARv1, letting bitswap and graphsync deal with the
-	// custom caching they need. Currently we're wrapping streamingstore in
-	// preloadstorage which means we have two temporary CARs, one of which is
-	// never read from.
-	tmpDir := br.BitswapRetriever.cfg.TempDir
-	if tmpDir == "" {
-		tmpDir = os.TempDir()
-	}
-	concurrency := br.BitswapRetriever.cfg.Concurrency
-	if concurrency <= 0 {
-		concurrency = 6
-	}
-	cacheStorage := br.request.PreloadCache
-	if cacheStorage == nil {
-		cacheStorage = storage.NewDeferredCarStorage(tmpDir)
-	}
-	storage, err := bitswaphelpers.NewPreloadCachingStorage(
-		br.request.LinkSystem,
-		cacheStorage,
-		loader,
-		concurrency,
-	)
-	if err != nil {
-		br.routing.RemoveProviders(br.request.RetrievalID)
-		cancel()
-		return nil, err
-	}
-	storage.Start(ctx)
-
-	// setup providers linksystem for this retrieval
-	br.bstore.AddLinkSystem(
-		br.request.RetrievalID,
-		bitswaphelpers.NewByteCountingLinkSystem(storage.BitswapLinkSystem, cb),
-	)
 
 	// run the retrieval
 	err = easyTraverse(ctx, cidlink.Link{Cid: br.request.Cid}, selector, storage.TraversalLinkSystem, storage.Preloader)

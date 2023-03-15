@@ -45,12 +45,12 @@ func (id *RetrievalID) UnmarshalText(data []byte) error {
 // RetrievalRequest is the top level parameters for a request --
 // this should be left unchanged as you move down a retriever tree
 type RetrievalRequest struct {
-	RetrievalID  RetrievalID
-	Cid          cid.Cid
-	LinkSystem   ipld.LinkSystem
-	Selector     ipld.Node
-	Protocols    []multicodec.Code
-	PreloadCache ReadableWritableStorage
+	RetrievalID       RetrievalID
+	Cid               cid.Cid
+	LinkSystem        ipld.LinkSystem
+	Selector          ipld.Node
+	Protocols         []multicodec.Code
+	PreloadLinkSystem ipld.LinkSystem
 }
 
 // NewRequestForPath creates a new RetrievalRequest from the provided parameters
