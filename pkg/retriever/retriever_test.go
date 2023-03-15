@@ -177,7 +177,6 @@ func TestRetriever(t *testing.T) {
 				events.Finished(rid, rst, types.RetrievalCandidate{RootCid: cid1}),
 			},
 		},
-
 		{
 			name: "two candidates, fast one fails query, slow wins",
 			candidates: []types.RetrievalCandidate{
