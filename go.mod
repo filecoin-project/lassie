@@ -46,6 +46,8 @@ require (
 	golang.org/x/net v0.7.0
 )
 
+require github.com/libp2p/go-mplex v0.7.0 // indirect
+
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bep/debounce v1.2.1 // indirect

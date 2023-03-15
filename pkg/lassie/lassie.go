@@ -6,7 +6,7 @@ import (
 
 	"github.com/filecoin-project/lassie/pkg/client"
 	"github.com/filecoin-project/lassie/pkg/indexerlookup"
-	"github.com/filecoin-project/lassie/pkg/internal"
+	lassielp2p "github.com/filecoin-project/lassie/pkg/libp2p"
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-datastore"
@@ -62,7 +62,7 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 
 	if cfg.Host == nil {
 		var err error
-		cfg.Host, err = internal.InitHost(ctx, cfg.Libp2pOptions)
+		cfg.Host, err = lassielp2p.InitHost(ctx, cfg.Libp2pOptions)
 		if err != nil {
 			return nil, err
 		}
