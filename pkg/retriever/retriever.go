@@ -114,7 +114,7 @@ func NewRetriever(
 		protocols = append(protocols, multicodec.TransportBitswap)
 	}
 	retriever.executor = combinators.RetrieverWithCandidateFinder{
-		CandidateFinder: NewAssignableCandidateFinder(candidateFinder, retriever.filderIndexerCandidate),
+		CandidateFinder: NewAssignableCandidateFinder(candidateFinder, retriever.filterIndexerCandidate),
 		CandidateRetriever: combinators.SplitRetriever[multicodec.Code]{
 			AsyncCandidateSplitter: combinators.NewAsyncCandidateSplitter(protocols, NewProtocolSplitter),
 			CandidateRetrievers:    candidateRetrievers,
