@@ -11,6 +11,7 @@ import (
 	cmdinternal "github.com/filecoin-project/lassie/cmd/lassie/internal"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/lassie"
+	"github.com/filecoin-project/lassie/pkg/net/host"
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/streamingstore"
 	"github.com/filecoin-project/lassie/pkg/types"
@@ -18,7 +19,6 @@ import (
 	carv2 "github.com/ipld/go-car/v2"
 	carstore "github.com/ipld/go-car/v2/storage"
 	"github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/urfave/cli/v2"
 )
@@ -103,7 +103,7 @@ func Fetch(c *cli.Context) error {
 	providerTimeout := c.Duration("provider-timeout")
 	providerTimeoutOpt := lassie.WithProviderTimeout(providerTimeout)
 
-	host, err := libp2p.New(libp2p.ResourceManager(&network.NullResourceManager{}))
+	host, err := host.InitHost(c.Context, []libp2p.Option{})
 	if err != nil {
 		return err
 	}

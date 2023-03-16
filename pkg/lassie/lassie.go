@@ -4,15 +4,14 @@ import (
 	"context"
 	"time"
 
-	"github.com/filecoin-project/lassie/pkg/client"
 	"github.com/filecoin-project/lassie/pkg/indexerlookup"
-	"github.com/filecoin-project/lassie/pkg/internal"
+	"github.com/filecoin-project/lassie/pkg/net/client"
+	"github.com/filecoin-project/lassie/pkg/net/host"
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p/core/host"
 )
 
 // Lassie represents a reusable retrieval client.
@@ -62,7 +61,7 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 
 	if cfg.Host == nil {
 		var err error
-		cfg.Host, err = internal.InitHost(ctx, cfg.Libp2pOptions)
+		cfg.Host, err = host.InitHost(ctx, cfg.Libp2pOptions)
 		if err != nil {
 			return nil, err
 		}
