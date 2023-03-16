@@ -1,4 +1,4 @@
-package libp2p
+package host
 
 import (
 	"context"
@@ -31,7 +31,7 @@ var defaultAddrs = []string{"/ip4/0.0.0.0/tcp/4001",
 	"/ip6/::/udp/4001/quic-v1/webtransport",
 }
 
-func InitHost(ctx context.Context, opts []libp2p.Option, listenAddrs ...multiaddr.Multiaddr) (host.Host, error) {
+func InitHost(ctx context.Context, opts []libp2p.Option, listenAddrs ...multiaddr.Multiaddr) (Host, error) {
 	opts = append([]libp2p.Option{libp2p.Identity(nil), libp2p.ResourceManager(&network.NullResourceManager{})}, opts...)
 	if len(listenAddrs) > 0 {
 		opts = append([]libp2p.Option{libp2p.ListenAddrs(listenAddrs...)}, opts...)
@@ -71,3 +71,6 @@ func listenAddresses(addresses []string) ([]multiaddr.Multiaddr, error) {
 
 	return listen, nil
 }
+
+// Host is a type alias for libp2p host
+type Host = host.Host

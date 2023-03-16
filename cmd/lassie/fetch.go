@@ -11,7 +11,7 @@ import (
 	cmdinternal "github.com/filecoin-project/lassie/cmd/lassie/internal"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/lassie"
-	lassielp2p "github.com/filecoin-project/lassie/pkg/libp2p"
+	"github.com/filecoin-project/lassie/pkg/net/host"
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/streamingstore"
 	"github.com/filecoin-project/lassie/pkg/types"
@@ -103,7 +103,7 @@ func Fetch(c *cli.Context) error {
 	providerTimeout := c.Duration("provider-timeout")
 	providerTimeoutOpt := lassie.WithProviderTimeout(providerTimeout)
 
-	host, err := lassielp2p.InitHost(c.Context, []libp2p.Option{})
+	host, err := host.InitHost(c.Context, []libp2p.Option{})
 	if err != nil {
 		return err
 	}
