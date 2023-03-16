@@ -8,10 +8,12 @@ import (
 	"github.com/filecoin-project/lassie/pkg/net/client"
 	"github.com/filecoin-project/lassie/pkg/net/host"
 	"github.com/filecoin-project/lassie/pkg/retriever"
+	"github.com/filecoin-project/lassie/pkg/session"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p"
+	"github.com/multiformats/go-multicodec"
 )
 
 // Lassie represents a reusable retrieval client.
@@ -28,7 +30,7 @@ type LassieConfig struct {
 	ConcurrentSPRetrievals uint
 	GlobalTimeout          time.Duration
 	Libp2pOptions          []libp2p.Option
-	DisableGraphsync       bool
+	Protocols              []multicodec.Code
 }
 
 type LassieOption func(cfg *LassieConfig)
@@ -67,30 +69,47 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 		}
 	}
 
-	retrievalClient, err := client.NewClient(ctx, datastore, cfg.Host, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	bitswapRetriever := retriever.NewBitswapRetrieverFromHost(ctx, cfg.Host, retriever.BitswapConfig{
-		BlockTimeout: cfg.ProviderTimeout,
-	})
-	retrieverCfg := retriever.RetrieverConfig{
-		DefaultMinerConfig: retriever.MinerConfig{
+	sessionConfig := session.Config{
+		DefaultMinerConfig: session.MinerConfig{
 			RetrievalTimeout:        cfg.ProviderTimeout,
 			MaxConcurrentRetrievals: cfg.ConcurrentSPRetrievals,
 		},
-		DisableGraphsync: cfg.DisableGraphsync,
+	}
+	session := session.NewSession(sessionConfig, true)
+
+	if cfg.Protocols == nil {
+		cfg.Protocols = []multicodec.Code{multicodec.TransportBitswap, multicodec.TransportGraphsyncFilecoinv1}
 	}
 
-	retriever, err := retriever.NewRetriever(ctx, retrieverCfg, retrievalClient, cfg.Finder, bitswapRetriever)
+	protocolRetrievers := make(map[multicodec.Code]types.CandidateRetriever)
+	for _, protocol := range cfg.Protocols {
+		switch protocol {
+		case multicodec.TransportGraphsyncFilecoinv1:
+			retrievalClient, err := client.NewClient(ctx, datastore, cfg.Host, nil)
+			if err != nil {
+				return nil, err
+			}
+
+			if err := retrievalClient.AwaitReady(); err != nil { // wait for dt setup
+				return nil, err
+			}
+			protocolRetrievers[protocol] = &retriever.GraphSyncRetriever{
+				GetStorageProviderTimeout: session.GetStorageProviderTimeout,
+				IsAcceptableQueryResponse: session.IsAcceptableQueryResponse,
+				Client:                    retrievalClient,
+			}
+		case multicodec.TransportBitswap:
+			protocolRetrievers[protocol] = retriever.NewBitswapRetrieverFromHost(ctx, cfg.Host, retriever.BitswapConfig{
+				BlockTimeout: cfg.ProviderTimeout,
+			})
+		}
+	}
+
+	retriever, err := retriever.NewRetriever(ctx, session, cfg.Finder, protocolRetrievers)
 	if err != nil {
 		return nil, err
 	}
 	retriever.Start()
-	if err := retrievalClient.AwaitReady(); err != nil { // wait for dt setup
-		return nil, err
-	}
 
 	lassie := &Lassie{
 		cfg:       cfg,
@@ -144,9 +163,9 @@ func WithConcurrentSPRetrievals(maxConcurrentSPRtreievals uint) LassieOption {
 	}
 }
 
-func WithGraphsyncDisabled() LassieOption {
+func WithProtocols(protocols []multicodec.Code) LassieOption {
 	return func(cfg *LassieConfig) {
-		cfg.DisableGraphsync = true
+		cfg.Protocols = protocols
 	}
 }
 

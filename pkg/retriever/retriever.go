@@ -8,14 +8,12 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
-	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/metrics"
 	"github.com/filecoin-project/lassie/pkg/retriever/combinators"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
-	"github.com/ipni/index-provider/metadata"
+	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
 	"go.opencensus.io/stats"
@@ -37,43 +35,19 @@ var (
 	ErrRetrievalAlreadyRunning     = errors.New("retrieval already running for CID")
 )
 
-type MinerConfig struct {
-	RetrievalTimeout        time.Duration
-	MaxConcurrentRetrievals uint
-}
-
-// All config values should be safe to leave uninitialized
-type RetrieverConfig struct {
-	MinerBlacklist     map[peer.ID]bool
-	MinerWhitelist     map[peer.ID]bool
-	DefaultMinerConfig MinerConfig
-	MinerConfigs       map[peer.ID]MinerConfig
-	PaidRetrievals     bool
-	DisableGraphsync   bool
-}
-
-func (cfg *RetrieverConfig) getMinerConfig(peer peer.ID) MinerConfig {
-	minerCfg := cfg.DefaultMinerConfig
-
-	if individual, ok := cfg.MinerConfigs[peer]; ok {
-		if individual.MaxConcurrentRetrievals != 0 {
-			minerCfg.MaxConcurrentRetrievals = individual.MaxConcurrentRetrievals
-		}
-
-		if individual.RetrievalTimeout != 0 {
-			minerCfg.RetrievalTimeout = individual.RetrievalTimeout
-		}
-	}
-
-	return minerCfg
+type Session interface {
+	RegisterRetrieval(retrievalId types.RetrievalID, cid cid.Cid, selector datamodel.Node) bool
+	EndRetrieval(retrievalId types.RetrievalID) error
+	AddToRetrieval(retrievalId types.RetrievalID, storageProviderIds []peer.ID) error
+	RecordFailure(storageProviderId peer.ID, retrievalId types.RetrievalID) error
+	FilterIndexerCandidate(candidate types.RetrievalCandidate) (bool, types.RetrievalCandidate)
 }
 
 type Retriever struct {
 	// Assumed immutable during operation
-	config       RetrieverConfig
 	executor     types.Retriever
 	eventManager *events.EventManager
-	spTracker    *spTracker
+	session      Session
 }
 
 type CandidateFinder interface {
@@ -89,32 +63,21 @@ type eventStats struct {
 
 func NewRetriever(
 	ctx context.Context,
-	config RetrieverConfig,
-	client RetrievalClient,
+	session Session,
 	candidateFinder CandidateFinder,
-	bitswapRetriever types.CandidateRetriever,
+	protocolRetrievers map[multicodec.Code]types.CandidateRetriever,
 ) (*Retriever, error) {
 	retriever := &Retriever{
-		config:       config,
 		eventManager: events.NewEventManager(ctx),
-		spTracker:    newSpTracker(nil),
+		session:      session,
 	}
 	candidateRetrievers := map[multicodec.Code]types.CandidateRetriever{}
 	protocols := []multicodec.Code{}
-	if !config.DisableGraphsync {
-		candidateRetrievers[multicodec.TransportGraphsyncFilecoinv1] = &GraphSyncRetriever{
-			GetStorageProviderTimeout: retriever.getStorageProviderTimeout,
-			IsAcceptableQueryResponse: retriever.isAcceptableQueryResponse,
-			Client:                    client,
-		}
-		protocols = append(protocols, multicodec.TransportGraphsyncFilecoinv1)
-	}
-	if bitswapRetriever != nil {
-		candidateRetrievers[multicodec.TransportBitswap] = bitswapRetriever
-		protocols = append(protocols, multicodec.TransportBitswap)
+	for protocol := range protocolRetrievers {
+		protocols = append(protocols, protocol)
 	}
 	retriever.executor = combinators.RetrieverWithCandidateFinder{
-		CandidateFinder: NewAssignableCandidateFinder(candidateFinder, retriever.filterIndexerCandidate),
+		CandidateFinder: NewAssignableCandidateFinder(candidateFinder, session.FilterIndexerCandidate),
 		CandidateRetriever: combinators.SplitRetriever[multicodec.Code]{
 			AsyncCandidateSplitter: combinators.NewAsyncCandidateSplitter(protocols, NewProtocolSplitter),
 			CandidateRetrievers:    candidateRetrievers,
@@ -143,92 +106,6 @@ func (retriever *Retriever) RegisterSubscriber(subscriber types.RetrievalEventSu
 	return retriever.eventManager.RegisterSubscriber(subscriber)
 }
 
-func (retriever *Retriever) getStorageProviderTimeout(storageProviderId peer.ID) time.Duration {
-	return retriever.config.getMinerConfig(storageProviderId).RetrievalTimeout
-}
-
-// isAcceptableStorageProvider checks whether the storage provider in question
-// is acceptable as a retrieval candidate. It checks the blacklists and
-// whitelists, the miner monitor for failures and whether we are already at
-// concurrency limit for this SP.
-func (retriever *Retriever) filterIndexerCandidate(candidate types.RetrievalCandidate) (bool, types.RetrievalCandidate) {
-	protocols := candidate.Metadata.Protocols()
-	newProtocolMetadata := make([]metadata.Protocol, 0, len(protocols))
-	for _, protocol := range protocols {
-		includeProtocol := true
-		switch protocol {
-		case multicodec.TransportGraphsyncFilecoinv1:
-			includeProtocol = retriever.isAcceptableGraphsyncCandidate(candidate.MinerPeer.ID)
-		case multicodec.TransportBitswap:
-			includeProtocol = retriever.isAcceptableBitswapCandidate(candidate.MinerPeer.ID)
-		}
-		if includeProtocol {
-			newProtocolMetadata = append(newProtocolMetadata, candidate.Metadata.Get(protocol))
-		}
-	}
-	return len(newProtocolMetadata) != 0, types.RetrievalCandidate{
-		MinerPeer: candidate.MinerPeer,
-		RootCid:   candidate.RootCid,
-		Metadata:  metadata.Default.New(newProtocolMetadata...),
-	}
-}
-
-func (retriever *Retriever) isAcceptableGraphsyncCandidate(storageProviderId peer.ID) bool {
-	// Skip blacklist
-	if retriever.config.MinerBlacklist[storageProviderId] {
-		return false
-	}
-
-	// Skip non-whitelist IF the whitelist isn't empty
-	if len(retriever.config.MinerWhitelist) > 0 && !retriever.config.MinerWhitelist[storageProviderId] {
-		return false
-	}
-
-	// Skip suspended SPs from the minerMonitor
-	if retriever.spTracker.IsSuspended(storageProviderId) {
-		return false
-	}
-
-	// Skip if we are currently at our maximum concurrent retrievals for this SP
-	// since we likely won't be able to retrieve from them at the moment even if
-	// query is successful
-	minerConfig := retriever.config.getMinerConfig(storageProviderId)
-	if minerConfig.MaxConcurrentRetrievals > 0 &&
-		retriever.spTracker.GetConcurrency(storageProviderId) >= minerConfig.MaxConcurrentRetrievals {
-		return false
-	}
-
-	return true
-}
-
-func (retriever *Retriever) isAcceptableBitswapCandidate(storageProviderId peer.ID) bool {
-	// Skip blacklist
-	if retriever.config.MinerBlacklist[storageProviderId] {
-		return false
-	}
-
-	// Skip non-whitelist IF the whitelist isn't empty
-	if len(retriever.config.MinerWhitelist) > 0 && !retriever.config.MinerWhitelist[storageProviderId] {
-		return false
-	}
-
-	return true
-}
-
-// isAcceptableQueryResponse determines whether a queryResponse is acceptable
-// according to the current configuration. For now this is just checking whether
-// PaidRetrievals is set and not accepting paid retrievals if so.
-func (retriever *Retriever) isAcceptableQueryResponse(peer peer.ID, req types.RetrievalRequest, queryResponse *retrievaltypes.QueryResponse) bool {
-	// filter out paid retrievals if necessary
-
-	acceptable := retriever.config.PaidRetrievals || big.Add(big.Mul(queryResponse.MinPricePerByte, big.NewIntUnsigned(queryResponse.Size)), queryResponse.UnsealPrice).Equals(big.Zero())
-	if !acceptable {
-		log.Debugf("skipping query response from %s for %s: paid retrieval not allowed", peer, req.Cid)
-		retriever.spTracker.RemoveStorageProviderFromRetrieval(peer, req.RetrievalID)
-	}
-	return acceptable
-}
-
 // Retrieve attempts to retrieve the given CID using the configured
 // CandidateFinder to find storage providers that should have the CID.
 func (retriever *Retriever) Retrieve(
@@ -242,11 +119,11 @@ func (retriever *Retriever) Retrieve(
 	if !retriever.eventManager.IsStarted() {
 		return nil, ErrRetrieverNotStarted
 	}
-	if !retriever.spTracker.RegisterRetrieval(request.RetrievalID, request.Cid, request.GetSelector()) {
+	if !retriever.session.RegisterRetrieval(request.RetrievalID, request.Cid, request.GetSelector()) {
 		return nil, fmt.Errorf("%w: %s", ErrRetrievalAlreadyRunning, request.Cid)
 	}
 	defer func() {
-		if err := retriever.spTracker.EndRetrieval(request.RetrievalID); err != nil {
+		if err := retriever.session.EndRetrieval(request.RetrievalID); err != nil {
 			log.Errorf("failed to end retrieval tracking for %s: %s", request.Cid, err.Error())
 		}
 	}()
@@ -255,7 +132,7 @@ func (retriever *Retriever) Retrieve(
 	eventStats := &eventStats{}
 	onRetrievalEvent := makeOnRetrievalEvent(ctx,
 		retriever.eventManager,
-		retriever.spTracker,
+		retriever.session,
 		request.Cid,
 		request.RetrievalID,
 		eventStats,
@@ -311,7 +188,7 @@ func (retriever *Retriever) Retrieve(
 func makeOnRetrievalEvent(
 	ctx context.Context,
 	eventManager *events.EventManager,
-	spTracker *spTracker,
+	session Session,
 	retrievalCid cid.Cid,
 	retrievalId types.RetrievalID,
 	eventStats *eventStats,
@@ -326,11 +203,11 @@ func makeOnRetrievalEvent(
 		case events.RetrievalEventCandidatesFound:
 			handleCandidatesFoundEvent(ret)
 		case events.RetrievalEventCandidatesFiltered:
-			handleCandidatesFilteredEvent(retrievalId, spTracker, retrievalCid, ret)
+			handleCandidatesFilteredEvent(retrievalId, session, retrievalCid, ret)
 		case events.RetrievalEventStarted:
 			handleStartedEvent(ret)
 		case events.RetrievalEventFailed:
-			handleFailureEvent(ctx, spTracker, retrievalId, eventStats, ret)
+			handleFailureEvent(ctx, session, retrievalId, eventStats, ret)
 		case events.RetrievalEventQueryAsked: // query-ask success
 			handleQueryAskEvent(ctx, eventStats, ret)
 		case events.RetrievalEventQueryAskedFiltered:
@@ -365,13 +242,13 @@ func handleQueryAskEvent(
 // handleFailureEvent is called when a query _or_ retrieval fails
 func handleFailureEvent(
 	ctx context.Context,
-	spTracker *spTracker,
+	session Session,
 	retrievalId types.RetrievalID,
 	eventStats *eventStats,
 	event events.RetrievalEventFailed,
 ) {
 	if event.Phase() != types.IndexerPhase { // indexer failures don't have a storageProviderId
-		spTracker.RecordFailure(event.StorageProviderId(), retrievalId)
+		session.RecordFailure(event.StorageProviderId(), retrievalId)
 	}
 
 	msg := event.ErrorMessage()
@@ -423,7 +300,7 @@ func handleStartedEvent(event events.RetrievalEventStarted) {
 
 func handleCandidatesFilteredEvent(
 	retrievalId types.RetrievalID,
-	spTracker *spTracker,
+	session Session,
 	retrievalCid cid.Cid,
 	event events.RetrievalEventCandidatesFiltered,
 ) {
@@ -433,7 +310,7 @@ func handleCandidatesFilteredEvent(
 		for _, c := range event.Candidates() {
 			ids = append(ids, c.MinerPeer.ID)
 		}
-		if err := spTracker.AddToRetrieval(retrievalId, ids); err != nil {
+		if err := session.AddToRetrieval(retrievalId, ids); err != nil {
 			log.Errorf("failed to add storage providers to tracked retrieval for %s: %s", retrievalCid, err.Error())
 		}
 	}
