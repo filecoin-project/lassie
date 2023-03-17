@@ -29,7 +29,7 @@ require (
 	github.com/ipld/go-ipld-prime v0.20.0
 	github.com/ipni/index-provider v0.10.2
 	github.com/ipni/storetheindex v0.5.8
-	github.com/libp2p/go-libp2p v0.26.2
+	github.com/libp2p/go-libp2p v0.26.3
 	github.com/libp2p/go-libp2p-routing-helpers v0.6.1
 	github.com/libp2p/go-libp2p-testing v0.12.0
 	github.com/multiformats/go-multiaddr v0.8.0
