@@ -122,10 +122,3 @@ var FlagProtocols = &cli.StringFlag{
 		return err
 	},
 }
-
-// FlagDisableBitswap turns off all retrievals over the bitswap protocol
-var FlagDisableBitswap = &cli.BoolFlag{
-	Name:    "disable-bitswap",
-	Usage:   "turn off bitswap retrievals",
-	EnvVars: []string{"LASSIE_DISABLE_BITSWAP"},
-}
