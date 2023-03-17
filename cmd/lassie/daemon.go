@@ -91,7 +91,7 @@ var daemonFlags = []cli.Flag{
 	FlagMetricsAddress,
 	FlagVerbose,
 	FlagVeryVerbose,
-	FlagDisableGraphsync,
+	FlagProtocols,
 }
 
 var daemonCmd = &cli.Command{
@@ -113,7 +113,6 @@ func daemonCommand(cctx *cli.Context) error {
 	metricsPort := cctx.Uint("metrics-port")
 	metricsAddress := cctx.String("metrics-address")
 	concurrentSPRetrievals := cctx.Uint("concurrent-sp-retrievals")
-	disableGraphsync := cctx.Bool("disable-graphsync")
 	providerTimeout := cctx.Duration("provider-timeout")
 	globalTimeout := cctx.Duration("global-timeout")
 
@@ -132,8 +131,8 @@ func daemonCommand(cctx *cli.Context) error {
 			lassie.WithConcurrentSPRetrievals(concurrentSPRetrievals),
 		)
 	}
-	if disableGraphsync {
-		lassieOpts = append(lassieOpts, lassie.WithGraphsyncDisabled())
+	if len(protocols) > 0 {
+		lassieOpts = append(lassieOpts, lassie.WithProtocols(protocols))
 	}
 	// create a lassie instance
 	lassie, err := lassie.NewLassie(cctx.Context, lassieOpts...)

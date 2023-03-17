@@ -71,7 +71,6 @@ func NewRetriever(
 		eventManager: events.NewEventManager(ctx),
 		session:      session,
 	}
-	candidateRetrievers := map[multicodec.Code]types.CandidateRetriever{}
 	protocols := []multicodec.Code{}
 	for protocol := range protocolRetrievers {
 		protocols = append(protocols, protocol)
@@ -80,7 +79,7 @@ func NewRetriever(
 		CandidateFinder: NewAssignableCandidateFinder(candidateFinder, session.FilterIndexerCandidate),
 		CandidateRetriever: combinators.SplitRetriever[multicodec.Code]{
 			AsyncCandidateSplitter: combinators.NewAsyncCandidateSplitter(protocols, NewProtocolSplitter),
-			CandidateRetrievers:    candidateRetrievers,
+			CandidateRetrievers:    protocolRetrievers,
 			CoordinationKind:       types.RaceCoordination,
 		},
 	}

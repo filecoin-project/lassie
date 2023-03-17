@@ -77,7 +77,7 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 	}
 	session := session.NewSession(sessionConfig, true)
 
-	if cfg.Protocols == nil {
+	if len(cfg.Protocols) == 0 {
 		cfg.Protocols = []multicodec.Code{multicodec.TransportBitswap, multicodec.TransportGraphsyncFilecoinv1}
 	}
 

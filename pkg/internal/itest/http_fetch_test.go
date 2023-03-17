@@ -25,6 +25,7 @@ import (
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/multiformats/go-multicodec"
 	"github.com/stretchr/testify/require"
 
 	_ "net/http/pprof"
@@ -546,7 +547,7 @@ func TestHttpFetch(t *testing.T) {
 				lassie.WithFinder(mrn.Finder),
 			}
 			if testCase.disableGraphsync {
-				opts = append(opts, lassie.WithGraphsyncDisabled())
+				opts = append(opts, lassie.WithProtocols([]multicodec.Code{multicodec.TransportBitswap}))
 			}
 			lassie, err := lassie.NewLassie(
 				ctx,

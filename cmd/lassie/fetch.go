@@ -82,7 +82,7 @@ var fetchCmd = &cli.Command{
 		FlagEventRecorderUrl,
 		FlagVerbose,
 		FlagVeryVerbose,
-		FlagDisableGraphsync,
+		FlagProtocols,
 	},
 }
 
@@ -115,9 +115,8 @@ func Fetch(c *cli.Context) error {
 		opts = append(opts, finderOpt)
 	}
 
-	disableGraphsync := c.Bool("disable-graphsync")
-	if disableGraphsync {
-		opts = append(opts, lassie.WithGraphsyncDisabled())
+	if len(protocols) > 0 {
+		opts = append(opts, lassie.WithProtocols(protocols))
 	}
 
 	globalTimeout := c.Duration("global-timeout")
