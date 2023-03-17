@@ -65,6 +65,7 @@ func before(cctx *cli.Context) error {
 		"lassie/httpserver",
 		"indexerlookup",
 		"lassie/bitswap",
+		"lassie/aggregateeventrecorder",
 	}
 
 	level := "WARN"
