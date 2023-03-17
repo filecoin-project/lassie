@@ -27,6 +27,8 @@ var _ io.Closer = (*DeferredCarWriter)(nil)
 // only begins when the first Put() operation is performed. If the output is a
 // file, it will be created when the first Put() operation is performed.
 // DeferredCarWriter is threadsafe, and can be used concurrently.
+// Closing the writer will close, but not delete, the underlying file. This
+// writer is intended for constructing the final output CARv1 for the user.
 type DeferredCarWriter struct {
 	root      cid.Cid
 	outPath   string

@@ -1,14 +1,13 @@
-package storage_test
+package storage
 
 import (
 	"bytes"
 	"context"
 	"io"
 	"math/rand"
+	"os"
 	"testing"
-	"time"
 
-	"github.com/filecoin-project/lassie/pkg/storage"
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
 	mh "github.com/multiformats/go-multihash"
@@ -17,148 +16,187 @@ import (
 
 var rng = rand.New(rand.NewSource(3333))
 
-func TestDeferredCarWriterWritesCARv1(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
+func TestDeferredCarWriterForPath(t *testing.T) {
+	ctx := context.Background()
+	testCid1, testData1 := randBlock()
+	testCid2, testData2 := randBlock()
 
-	tc := []struct {
-		name            string
-		readBeforeWrite bool
-		readDuringWrite bool
-		readAfterClose  bool
-	}{
-		{
-			name:            "read before write",
-			readBeforeWrite: true,
-		},
-		{
-			name:            "read during write",
-			readDuringWrite: true,
-		},
-		{
-			name:           "read after close",
-			readAfterClose: true,
-		},
-		{
-			name:            "read before, during and after close",
-			readBeforeWrite: true,
-			readDuringWrite: true,
-			readAfterClose:  true,
-		},
-	}
+	tmpFile := t.TempDir() + "/test.car"
 
-	for _, tt := range tc {
-		t.Run(tt.name, func(t *testing.T) {
+	cw := NewDeferredCarWriterForPath(testCid1, tmpFile)
+
+	_, err := os.Stat(tmpFile)
+	require.True(t, os.IsNotExist(err))
+
+	require.NoError(t, cw.Put(ctx, testCid1.KeyString(), testData1))
+	require.NoError(t, cw.Put(ctx, testCid2.KeyString(), testData2))
+
+	stat, err := os.Stat(tmpFile)
+	require.NoError(t, err)
+	require.True(t, stat.Size() > int64(len(testData1)+len(testData2)))
+
+	require.NoError(t, cw.Close())
+
+	// shouldn't be deleted
+	_, err = os.Stat(tmpFile)
+	require.NoError(t, err)
+
+	r, err := os.Open(tmpFile)
+	require.NoError(t, err)
+	carv2, err := carv2.NewBlockReader(r)
+	require.NoError(t, err)
+
+	// compare CAR contents to what we wrote
+	require.Equal(t, carv2.Roots, []cid.Cid{testCid1})
+	require.Equal(t, carv2.Version, uint64(1))
+
+	blk, err := carv2.Next()
+	require.NoError(t, err)
+	require.Equal(t, blk.Cid(), testCid1)
+	require.Equal(t, blk.RawData(), testData1)
+
+	blk, err = carv2.Next()
+	require.NoError(t, err)
+	require.Equal(t, blk.Cid(), testCid2)
+	require.Equal(t, blk.RawData(), testData2)
+
+	_, err = carv2.Next()
+	require.ErrorIs(t, err, io.EOF)
+}
+
+func TestDeferredCarWriterForStream(t *testing.T) {
+	for _, tc := range []string{"path", "stream"} {
+		tc := tc
+		t.Run(tc, func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
 			testCid1, testData1 := randBlock()
 			testCid2, testData2 := randBlock()
+			testCid3, _ := randBlock()
 
+			var cw *DeferredCarWriter
 			var buf bytes.Buffer
-			cw := storage.NewDeferredCarWriterForStream(testCid1, &buf)
-			ss := storage.NewTeeingTempReadWrite(cw.BlockWriteOpener(), "")
-			t.Cleanup(func() { ss.Close() })
+			tmpFile := t.TempDir() + "/test.car"
 
-			if tt.readBeforeWrite {
-				has, err := ss.Has(ctx, randCid().KeyString())
-				require.NoError(t, err)
-				require.False(t, has)
-				got, err := ss.Get(ctx, randCid().KeyString())
-				require.Error(t, err)
-				nf, ok := err.(interface{ NotFound() bool })
-				require.True(t, ok)
-				require.True(t, nf.NotFound())
-				require.Nil(t, got)
-				gotStream, err := ss.GetStream(ctx, randCid().KeyString())
-				require.Error(t, err)
-				nf, ok = err.(interface{ NotFound() bool })
-				require.True(t, ok)
-				require.True(t, nf.NotFound())
-				require.Nil(t, gotStream)
+			if tc == "path" {
+				cw = NewDeferredCarWriterForPath(testCid1, tmpFile)
+				_, err := os.Stat(tmpFile)
+				require.True(t, os.IsNotExist(err))
+			} else {
+				cw = NewDeferredCarWriterForStream(testCid1, &buf)
+				require.Equal(t, buf.Len(), 0)
 			}
 
-			require.NoError(t, ss.Put(ctx, testCid1.KeyString(), testData1))
-
-			if tt.readDuringWrite {
-				got, err := ss.Get(ctx, testCid1.KeyString())
-				require.NoError(t, err)
-				require.Equal(t, testData1, got)
-				gotStream, err := ss.GetStream(ctx, testCid1.KeyString())
-				require.NoError(t, err)
-				got, err = io.ReadAll(gotStream)
-				require.NoError(t, err)
-				require.Equal(t, testData1, got)
-
-				has, err := ss.Has(ctx, randCid().KeyString())
-				require.NoError(t, err)
-				require.False(t, has)
-				got, err = ss.Get(ctx, randCid().KeyString())
-				require.Error(t, err)
-				nf, ok := err.(interface{ NotFound() bool })
-				require.True(t, ok)
-				require.True(t, nf.NotFound())
-				require.Nil(t, got)
-				gotStream, err = ss.GetStream(ctx, randCid().KeyString())
-				require.Error(t, err)
-				nf, ok = err.(interface{ NotFound() bool })
-				require.True(t, ok)
-				require.True(t, nf.NotFound())
-				require.Nil(t, gotStream)
-			}
-
-			require.NoError(t, ss.Put(ctx, testCid2.KeyString(), testData2))
-
-			if tt.readDuringWrite {
-				got, err := ss.Get(ctx, testCid2.KeyString())
-				require.NoError(t, err)
-				require.Equal(t, testData2, got)
-				gotStream, err := ss.GetStream(ctx, testCid2.KeyString())
-				require.NoError(t, err)
-				got, err = io.ReadAll(gotStream)
-				require.NoError(t, err)
-				require.Equal(t, testData2, got)
-			}
-
-			require.NoError(t, ss.Close())
-
-			if tt.readAfterClose {
-				require.EqualError(t, ss.Put(ctx, randCid().KeyString(), testData1), "store closed")
-				has, err := ss.Has(ctx, randCid().KeyString())
-				require.EqualError(t, err, "store closed")
-				require.False(t, has)
-				got, err := ss.Get(ctx, randCid().KeyString())
-				require.EqualError(t, err, "store closed")
-				require.Nil(t, got)
-				gotStream, err := ss.GetStream(ctx, randCid().KeyString())
-				require.EqualError(t, err, "store closed")
-				require.Nil(t, gotStream)
-
-				has, err = ss.Has(ctx, testCid1.KeyString())
-				require.EqualError(t, err, "store closed")
-				require.False(t, has)
-				got, err = ss.Get(ctx, testCid1.KeyString())
-				require.EqualError(t, err, "store closed")
-				require.Nil(t, got)
-				gotStream, err = ss.GetStream(ctx, testCid1.KeyString())
-				require.EqualError(t, err, "store closed")
-				require.Nil(t, gotStream)
-			}
-
-			reader, err := carv2.NewBlockReader(&buf)
+			has, err := cw.Has(ctx, testCid3.KeyString())
 			require.NoError(t, err)
+			require.False(t, has)
 
-			require.Equal(t, []cid.Cid{testCid1}, reader.Roots)
-			require.Equal(t, uint64(1), reader.Version)
-
-			blk, err := reader.Next()
+			require.NoError(t, cw.Put(ctx, testCid1.KeyString(), testData1))
+			has, err = cw.Has(ctx, testCid1.KeyString())
 			require.NoError(t, err)
-			require.Equal(t, testCid1, blk.Cid())
-			require.Equal(t, testData1, blk.RawData())
-
-			blk, err = reader.Next()
+			require.True(t, has)
+			require.NoError(t, cw.Put(ctx, testCid2.KeyString(), testData2))
+			has, err = cw.Has(ctx, testCid1.KeyString())
 			require.NoError(t, err)
-			require.Equal(t, testCid2, blk.Cid())
-			require.Equal(t, testData2, blk.RawData())
+			require.True(t, has)
+			has, err = cw.Has(ctx, testCid2.KeyString())
+			require.NoError(t, err)
+			require.True(t, has)
+			has, err = cw.Has(ctx, testCid3.KeyString())
+			require.NoError(t, err)
+			require.False(t, has)
+
+			if tc == "path" {
+				stat, err := os.Stat(tmpFile)
+				require.NoError(t, err)
+				require.True(t, stat.Size() > int64(len(testData1)+len(testData2)))
+			} else {
+				require.True(t, buf.Len() > len(testData1)+len(testData2))
+			}
+
+			require.NoError(t, cw.Close())
+
+			var rdr *carv2.BlockReader
+			if tc == "path" {
+				r, err := os.Open(tmpFile)
+				require.NoError(t, err)
+				rdr, err = carv2.NewBlockReader(r)
+				require.NoError(t, err)
+			} else {
+				rdr, err = carv2.NewBlockReader(&buf)
+				require.NoError(t, err)
+			}
+
+			// compare CAR contents to what we wrote
+			require.Equal(t, rdr.Roots, []cid.Cid{testCid1})
+			require.Equal(t, rdr.Version, uint64(1))
+
+			blk, err := rdr.Next()
+			require.NoError(t, err)
+			require.Equal(t, blk.Cid(), testCid1)
+			require.Equal(t, blk.RawData(), testData1)
+
+			blk, err = rdr.Next()
+			require.NoError(t, err)
+			require.Equal(t, blk.Cid(), testCid2)
+			require.Equal(t, blk.RawData(), testData2)
+
+			_, err = rdr.Next()
+			require.ErrorIs(t, err, io.EOF)
 		})
 	}
+}
+
+func TestDeferredCarWriterPutCb(t *testing.T) {
+	ctx := context.Background()
+	testCid1, testData1 := randBlock()
+	testCid2, testData2 := randBlock()
+
+	var buf bytes.Buffer
+	cw := NewDeferredCarWriterForStream(testCid1, &buf)
+
+	var pc1 int
+	cw.OnPut(func(ii int) {
+		switch pc1 {
+		case 0:
+			require.Equal(t, len(testData1), ii)
+		case 1:
+			require.Equal(t, len(testData2), ii)
+		default:
+			require.Fail(t, "unexpected put callback")
+		}
+		pc1++
+	}, false)
+	var pc2 int
+	cw.OnPut(func(ii int) {
+		switch pc2 {
+		case 0:
+			require.Equal(t, len(testData1), ii)
+		case 1:
+			require.Equal(t, len(testData2), ii)
+		default:
+			require.Fail(t, "unexpected put callback")
+		}
+		pc2++
+	}, false)
+	var pc3 int
+	cw.OnPut(func(ii int) {
+		switch pc3 {
+		case 0:
+			require.Equal(t, len(testData1), ii)
+		default:
+			require.Fail(t, "unexpected put callback")
+		}
+		pc3++
+	}, true)
+
+	require.NoError(t, cw.Put(ctx, testCid1.KeyString(), testData1))
+	require.NoError(t, cw.Put(ctx, testCid2.KeyString(), testData2))
+	require.NoError(t, cw.Close())
+
+	require.Equal(t, 2, pc1)
+	require.Equal(t, 2, pc2)
+	require.Equal(t, 1, pc3)
 }
 
 func randBlock() (cid.Cid, []byte) {
@@ -169,9 +207,4 @@ func randBlock() (cid.Cid, []byte) {
 		panic(err)
 	}
 	return cid.NewCidV1(cid.Raw, h), data
-}
-
-func randCid() cid.Cid {
-	c, _ := randBlock()
-	return c
 }
