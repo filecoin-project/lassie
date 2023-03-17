@@ -2,7 +2,6 @@ package host
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -40,19 +39,6 @@ func yamuxTransport() network.Multiplexer {
 	tpt := *yamux.DefaultTransport
 	tpt.AcceptBacklog = 512
 	return &tpt
-}
-
-func listenAddresses(addresses []string) ([]multiaddr.Multiaddr, error) {
-	listen := make([]multiaddr.Multiaddr, len(addresses))
-	for i, addr := range addresses {
-		maddr, err := multiaddr.NewMultiaddr(addr)
-		if err != nil {
-			return nil, fmt.Errorf("failure to parse config.Addresses.Swarm: %s", addresses)
-		}
-		listen[i] = maddr
-	}
-
-	return listen, nil
 }
 
 // Host is a type alias for libp2p host
