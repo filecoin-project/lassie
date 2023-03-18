@@ -18,11 +18,13 @@ func NewProtocolSplitter(protocols []multicodec.Code) types.CandidateSplitter[mu
 }
 
 func (ps *ProtocolSplitter) SplitRetrievalRequest(ctx context.Context, request types.RetrievalRequest, events func(types.RetrievalEvent)) types.RetrievalSplitter[multicodec.Code] {
-	return &retrievalProtocolSplitter{ps}
+
+	return &retrievalProtocolSplitter{ps, request.GetSupportedProtocols(ps.protocols)}
 }
 
 type retrievalProtocolSplitter struct {
 	*ProtocolSplitter
+	protocols []multicodec.Code
 }
 
 func (rps *retrievalProtocolSplitter) SplitCandidates(candidates []types.RetrievalCandidate) (map[multicodec.Code][]types.RetrievalCandidate, error) {

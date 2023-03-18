@@ -15,6 +15,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/streamingstore"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
+	"github.com/multiformats/go-multicodec"
 )
 
 func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.ResponseWriter, *http.Request) {
@@ -120,6 +121,17 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			}
 		}
 
+		var protocols []multicodec.Code
+		if req.URL.Query().Has("protocols") {
+			var err error
+			protocols, err = types.ParseProtocolsString(req.URL.Query().Get("protocols"))
+			if err != nil {
+				logger.logStatus(http.StatusBadRequest, "Invalid protocols parameter")
+				res.WriteHeader(http.StatusBadRequest)
+				return
+			}
+		}
+
 		// for setting Content-Disposition header based on filename url parameter
 		var filename string
 		if req.URL.Query().Has("filename") {
@@ -196,7 +208,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			store = limitstore.NewLimitStore(store, cfg.MaxBlocksPerRequest)
 		}
 
-		request, err := types.NewRequestForPath(store, rootCid, unixfsPath, fullFetch)
+		request, err := types.NewRequestForPath(store, rootCid, unixfsPath, fullFetch, protocols)
 		if err != nil {
 			msg := fmt.Sprintf("Failed to create request: %s", err.Error())
 			logger.logStatus(http.StatusInternalServerError, msg)
