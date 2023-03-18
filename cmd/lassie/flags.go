@@ -1,6 +1,12 @@
 package main
 
-import "github.com/urfave/cli/v2"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/multiformats/go-multicodec"
+	"github.com/urfave/cli/v2"
+)
 
 // IsVerbose is a global var signaling if the CLI is running in
 // verbose mode or not (default: false).
@@ -82,9 +88,25 @@ var FlagMetricsPort = &cli.UintFlag{
 	EnvVars:     []string{"LASSIE_METRICS_PORT"},
 }
 
-// FlagDisableGraphsync turns off all retrievals over the graphsync protocol
-var FlagDisableGraphsync = &cli.BoolFlag{
-	Name:    "disable-graphsync",
-	Usage:   "turn off graphsync retrievals",
-	EnvVars: []string{"LASSIE_DISABLE_GRAPHSYNC"},
+var protocols []multicodec.Code
+var FlagProtocols = &cli.StringFlag{
+	Name:        "protocols",
+	DefaultText: "bitswap,graphsync",
+	Usage:       "List of retrieval protocols to use, seperated by a comma",
+	Action: func(cctx *cli.Context, v string) error {
+		vs := strings.Split(v, ",")
+		for _, v := range vs {
+			var protocol multicodec.Code
+			switch v {
+			case "bitswap":
+				protocol = multicodec.TransportBitswap
+			case "graphsync":
+				protocol = multicodec.TransportGraphsyncFilecoinv1
+			default:
+				return fmt.Errorf("unrecognized protocol: %s", v)
+			}
+			protocols = append(protocols, protocol)
+		}
+		return nil
+	},
 }

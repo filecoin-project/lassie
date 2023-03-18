@@ -12,6 +12,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/internal/testutil"
 	"github.com/filecoin-project/lassie/pkg/retriever"
+	"github.com/filecoin-project/lassie/pkg/session"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
@@ -21,14 +22,23 @@ import (
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipni/index-provider/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multicodec"
 	"github.com/stretchr/testify/require"
 )
 
 func TestRetrieverStart(t *testing.T) {
-	config := retriever.RetrieverConfig{}
+	config := session.Config{}
 	candidateFinder := &testutil.MockCandidateFinder{}
 	client := &testutil.MockClient{}
-	ret, err := retriever.NewRetriever(context.Background(), config, client, candidateFinder, nil)
+	session := session.NewSession(config, true)
+	gsretriever := &retriever.GraphSyncRetriever{
+		GetStorageProviderTimeout: session.GetStorageProviderTimeout,
+		IsAcceptableQueryResponse: session.IsAcceptableQueryResponse,
+		Client:                    client,
+	}
+	ret, err := retriever.NewRetriever(context.Background(), session, candidateFinder, map[multicodec.Code]types.CandidateRetriever{
+		multicodec.TransportGraphsyncFilecoinv1: gsretriever,
+	})
 	require.NoError(t, err)
 
 	// --- run ---
@@ -53,7 +63,7 @@ func TestRetriever(t *testing.T) {
 
 	tc := []struct {
 		name               string
-		setup              func(*retriever.RetrieverConfig)
+		setup              func(*session.Config)
 		candidates         []types.RetrievalCandidate
 		returns_queries    map[string]testutil.DelayedQueryReturn
 		returns_retrievals map[string]testutil.DelayedRetrievalReturn
@@ -267,7 +277,7 @@ func TestRetriever(t *testing.T) {
 
 		{
 			name: "two candidates, first times out retrieval",
-			setup: func(rc *retriever.RetrieverConfig) {
+			setup: func(rc *session.Config) {
 				rc.DefaultMinerConfig.RetrievalTimeout = time.Millisecond * 200
 			},
 			candidates: []types.RetrievalCandidate{
@@ -323,7 +333,7 @@ func TestRetriever(t *testing.T) {
 		},
 		{
 			name: "no candidates",
-			setup: func(rc *retriever.RetrieverConfig) {
+			setup: func(rc *session.Config) {
 				rc.DefaultMinerConfig.RetrievalTimeout = time.Millisecond * 100
 			},
 			candidates:         []types.RetrievalCandidate{},
@@ -340,7 +350,7 @@ func TestRetriever(t *testing.T) {
 		},
 		{
 			name: "no acceptable candidates",
-			setup: func(rc *retriever.RetrieverConfig) {
+			setup: func(rc *session.Config) {
 				rc.DefaultMinerConfig.RetrievalTimeout = time.Millisecond * 100
 			},
 			candidates: []types.RetrievalCandidate{
@@ -369,15 +379,22 @@ func TestRetriever(t *testing.T) {
 			candidateFinder := &testutil.MockCandidateFinder{Candidates: map[cid.Cid][]types.RetrievalCandidate{cid1: tc.candidates}}
 			client := testutil.NewMockClient(tc.returns_queries, tc.returns_retrievals)
 			subscriber := testutil.NewCollectingEventsListener()
-			config := retriever.RetrieverConfig{
+			config := session.Config{
 				MinerBlacklist: map[peer.ID]bool{blacklistedPeer: true},
 			}
 			if tc.setup != nil {
 				tc.setup(&config)
 			}
-
+			session := session.NewSession(config, true)
+			gsretriever := &retriever.GraphSyncRetriever{
+				GetStorageProviderTimeout: session.GetStorageProviderTimeout,
+				IsAcceptableQueryResponse: session.IsAcceptableQueryResponse,
+				Client:                    client,
+			}
 			// --- create ---
-			ret, err := retriever.NewRetriever(context.Background(), config, client, candidateFinder, nil)
+			ret, err := retriever.NewRetriever(context.Background(), session, candidateFinder, map[multicodec.Code]types.CandidateRetriever{
+				multicodec.TransportGraphsyncFilecoinv1: gsretriever,
+			})
 			require.NoError(t, err)
 			ret.RegisterSubscriber(subscriber.Collect)
 
@@ -467,10 +484,17 @@ func TestLinkSystemPerRequest(t *testing.T) {
 	candidateFinder := &testutil.MockCandidateFinder{Candidates: map[cid.Cid][]types.RetrievalCandidate{cid1: candidates}}
 	client := testutil.NewMockClient(returnsQueries, returnsRetrievals)
 	subscriber := testutil.NewCollectingEventsListener()
-	config := retriever.RetrieverConfig{}
-
+	config := session.Config{}
+	session := session.NewSession(config, true)
+	gsretriever := &retriever.GraphSyncRetriever{
+		GetStorageProviderTimeout: session.GetStorageProviderTimeout,
+		IsAcceptableQueryResponse: session.IsAcceptableQueryResponse,
+		Client:                    client,
+	}
 	// --- create ---
-	ret, err := retriever.NewRetriever(context.Background(), config, client, candidateFinder, nil)
+	ret, err := retriever.NewRetriever(context.Background(), session, candidateFinder, map[multicodec.Code]types.CandidateRetriever{
+		multicodec.TransportGraphsyncFilecoinv1: gsretriever,
+	})
 	require.NoError(t, err)
 	ret.RegisterSubscriber(subscriber.Collect)
 
