@@ -380,7 +380,7 @@ func TestRetriever(t *testing.T) {
 			client := testutil.NewMockClient(tc.returns_queries, tc.returns_retrievals)
 			subscriber := testutil.NewCollectingEventsListener()
 			config := session.Config{
-				MinerBlacklist: map[peer.ID]bool{blacklistedPeer: true},
+				ProviderBlockList: map[peer.ID]bool{blacklistedPeer: true},
 			}
 			if tc.setup != nil {
 				tc.setup(&config)

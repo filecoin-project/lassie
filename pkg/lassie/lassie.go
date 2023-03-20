@@ -13,6 +13,7 @@ import (
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
 )
 
@@ -31,6 +32,8 @@ type LassieConfig struct {
 	GlobalTimeout          time.Duration
 	Libp2pOptions          []libp2p.Option
 	Protocols              []multicodec.Code
+	ProviderBlockList      map[peer.ID]bool
+	ProviderAllowList      map[peer.ID]bool
 }
 
 type LassieOption func(cfg *LassieConfig)
@@ -70,6 +73,8 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 	}
 
 	sessionConfig := session.Config{
+		ProviderBlockList: cfg.ProviderBlockList,
+		ProviderAllowList: cfg.ProviderAllowList,
 		DefaultMinerConfig: session.MinerConfig{
 			RetrievalTimeout:        cfg.ProviderTimeout,
 			MaxConcurrentRetrievals: cfg.ConcurrentSPRetrievals,
@@ -166,6 +171,18 @@ func WithConcurrentSPRetrievals(maxConcurrentSPRtreievals uint) LassieOption {
 func WithProtocols(protocols []multicodec.Code) LassieOption {
 	return func(cfg *LassieConfig) {
 		cfg.Protocols = protocols
+	}
+}
+
+func WithProviderBlockList(providerBlockList map[peer.ID]bool) LassieOption {
+	return func(cfg *LassieConfig) {
+		cfg.ProviderBlockList = providerBlockList
+	}
+}
+
+func WithProviderAllowList(providerAllowList map[peer.ID]bool) LassieOption {
+	return func(cfg *LassieConfig) {
+		cfg.ProviderAllowList = providerAllowList
 	}
 }
 

@@ -75,12 +75,12 @@ func (s *Session) FilterIndexerCandidate(candidate types.RetrievalCandidate) (bo
 
 func (s *Session) isAcceptableGraphsyncCandidate(storageProviderId peer.ID) bool {
 	// Skip blacklist
-	if s.config.MinerBlacklist[storageProviderId] {
+	if s.config.ProviderBlockList[storageProviderId] {
 		return false
 	}
 
 	// Skip non-whitelist IF the whitelist isn't empty
-	if len(s.config.MinerWhitelist) > 0 && !s.config.MinerWhitelist[storageProviderId] {
+	if len(s.config.ProviderAllowList) > 0 && !s.config.ProviderAllowList[storageProviderId] {
 		return false
 	}
 
@@ -103,12 +103,12 @@ func (s *Session) isAcceptableGraphsyncCandidate(storageProviderId peer.ID) bool
 
 func (state *Session) isAcceptableBitswapCandidate(storageProviderId peer.ID) bool {
 	// Skip blacklist
-	if state.config.MinerBlacklist[storageProviderId] {
+	if state.config.ProviderBlockList[storageProviderId] {
 		return false
 	}
 
 	// Skip non-whitelist IF the whitelist isn't empty
-	if len(state.config.MinerWhitelist) > 0 && !state.config.MinerWhitelist[storageProviderId] {
+	if len(state.config.ProviderAllowList) > 0 && !state.config.ProviderAllowList[storageProviderId] {
 		return false
 	}
 
