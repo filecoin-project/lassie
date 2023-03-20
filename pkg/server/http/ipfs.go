@@ -208,7 +208,8 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			store = limitstore.NewLimitStore(store, cfg.MaxBlocksPerRequest)
 		}
 
-		request, err := types.NewRequestForPath(store, rootCid, unixfsPath, fullFetch, protocols)
+		request, err := types.NewRequestForPath(store, rootCid, unixfsPath, fullFetch)
+		request.Protocols = protocols
 		if err != nil {
 			msg := fmt.Sprintf("Failed to create request: %s", err.Error())
 			logger.logStatus(http.StatusInternalServerError, msg)

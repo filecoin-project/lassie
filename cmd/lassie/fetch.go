@@ -197,7 +197,7 @@ func Fetch(c *cli.Context) error {
 	}
 
 	store := cmdinternal.NewPutCbStore(parentOpener, putCb)
-	request, err := types.NewRequestForPath(store, rootCid, path, !c.Bool("shallow"), nil)
+	request, err := types.NewRequestForPath(store, rootCid, path, !c.Bool("shallow"))
 	if err != nil {
 		return err
 	}

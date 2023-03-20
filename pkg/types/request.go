@@ -58,7 +58,7 @@ type RetrievalRequest struct {
 // and writing and it is explicitly set to be trusted (i.e. it will not
 // check CIDs match bytes). If the storage is not truested,
 // request.LinkSystem.TrustedStore should be set to false after this call.
-func NewRequestForPath(store ReadableWritableStorage, cid cid.Cid, path string, full bool, protocols []multicodec.Code) (RetrievalRequest, error) {
+func NewRequestForPath(store ReadableWritableStorage, cid cid.Cid, path string, full bool) (RetrievalRequest, error) {
 	retrievalId, err := NewRetrievalID()
 	if err != nil {
 		return RetrievalRequest{}, err
@@ -82,7 +82,6 @@ func NewRequestForPath(store ReadableWritableStorage, cid cid.Cid, path string, 
 		Cid:         cid,
 		Selector:    selector,
 		LinkSystem:  linkSystem,
-		Protocols:   protocols,
 	}, nil
 }
 
