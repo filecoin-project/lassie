@@ -208,3 +208,8 @@ func randBlock() (cid.Cid, []byte) {
 	}
 	return cid.NewCidV1(cid.Raw, h), data
 }
+
+func randCid() cid.Cid {
+	c, _ := randBlock()
+	return c
+}
