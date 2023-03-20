@@ -121,7 +121,8 @@ func TestBitswapRetriever(t *testing.T) {
 				cid1: {types.StartedCode, types.FirstByteCode, types.SuccessCode},
 				cid2: {types.StartedCode, types.FirstByteCode, types.SuccessCode},
 			},
-			expectedCids: allCids,
+			// only expect to bitswap fetch the blocks we don't have
+			expectedCids: append(append(tbc1Cids[50:100], tbc2Cids[25:45]...), tbc2Cids[75:100]...),
 			expectedStats: map[cid.Cid]*types.RetrievalStats{
 				cid1: {
 					RootCid:      cid1,
@@ -535,6 +536,7 @@ type correctedMemStore struct {
 func (cms *correctedMemStore) Get(ctx context.Context, key string) ([]byte, error) {
 	data, err := cms.Store.Get(ctx, key)
 	if err != nil && err.Error() == "404" {
+		// fmt.Println("corectedMemStore Get 404")
 		err = format.ErrNotFound{}
 	}
 	return data, err
@@ -543,6 +545,7 @@ func (cms *correctedMemStore) Get(ctx context.Context, key string) ([]byte, erro
 func (cms *correctedMemStore) GetStream(ctx context.Context, key string) (io.ReadCloser, error) {
 	rc, err := cms.Store.GetStream(ctx, key)
 	if err != nil && err.Error() == "404" {
+		// fmt.Println("corectedMemStore GetStream 404")
 		err = format.ErrNotFound{}
 	}
 	return rc, err

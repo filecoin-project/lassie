@@ -13,6 +13,7 @@ import (
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/retriever/bitswaphelpers"
+	"github.com/filecoin-project/lassie/pkg/storage"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-cid"
@@ -70,6 +71,8 @@ const shortenedDelay = 4 * time.Millisecond
 // BitswapConfig contains configurable parameters for bitswap fetching
 type BitswapConfig struct {
 	BlockTimeout time.Duration
+	TempDir      string
+	Concurrency  int
 }
 
 // NewBitswapRetrieverFromHost constructs a new bitswap retriever for the given libp2p host
@@ -174,8 +177,6 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 			br.routing.AddProviders(br.request.RetrievalID, nextCandidates)
 		}
 	}()
-	// setup providers linksystem for this retrieval
-	br.bstore.AddLinkSystem(br.request.RetrievalID, bitswaphelpers.NewByteCountingLinkSystem(&br.request.LinkSystem, cb))
 
 	loader := loaderForSession(br.request.RetrievalID, br.inProgressCids, br.bsGetter)
 	// TODO: configurable tmpdir
@@ -186,19 +187,38 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	// custom caching they need. Currently we're wrapping streamingstore in
 	// preloadstorage which means we have two temporary CARs, one of which is
 	// never read from.
-	storage, err := bitswaphelpers.NewPreloadStorage(loader, os.TempDir(), 5)
+	tmpDir := br.BitswapRetriever.cfg.TempDir
+	if tmpDir == "" {
+		tmpDir = os.TempDir()
+	}
+	concurrency := br.BitswapRetriever.cfg.Concurrency
+	if concurrency <= 0 {
+		concurrency = 6
+	}
+	cacheStorage := br.request.PreloadCache
+	if cacheStorage == nil {
+		cacheStorage = storage.NewDeferredCarStorage(tmpDir)
+	}
+	storage, err := bitswaphelpers.NewPreloadCachingStorage(
+		br.request.LinkSystem,
+		cacheStorage,
+		loader,
+		concurrency,
+	)
 	if err != nil {
 		cancel()
 		return nil, err
 	}
 	storage.Start(ctx)
 
-	// copy the link system
-	wrappedLsys := br.request.LinkSystem
-	// replace the opener with a blockservice wrapper (we still want any known adls + reifiers, hence the copy)
-	wrappedLsys.StorageReadOpener = storage.Loader
+	// setup providers linksystem for this retrieval
+	br.bstore.AddLinkSystem(
+		br.request.RetrievalID,
+		bitswaphelpers.NewByteCountingLinkSystem(storage.BitswapLinkSystem, cb),
+	)
+
 	// run the retrieval
-	err = easyTraverse(ctx, cidlink.Link{Cid: br.request.Cid}, selector, &wrappedLsys, storage.Preloader)
+	err = easyTraverse(ctx, cidlink.Link{Cid: br.request.Cid}, selector, storage.TraversalLinkSystem, storage.Preloader)
 	storage.Stop()
 	cancel()
 
@@ -249,13 +269,11 @@ func loaderForSession(retrievalID types.RetrievalID, inProgressCids InProgressCi
 			return nil, lctx.Ctx.Err()
 		default:
 		}
-		fmt.Println("bs.GetBlock()", cidLink.Cid.String(), retrievalID)
 		blk, err := bs.GetBlock(lctx.Ctx, cidLink.Cid)
 		inProgressCids.Dec(cidLink.Cid, retrievalID)
 		if err != nil {
 			return nil, err
 		}
-		fmt.Println("bs.GetBlock() done", cidLink.Cid.String(), retrievalID)
 		return bytes.NewReader(blk.RawData()), nil
 	}
 }

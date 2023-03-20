@@ -56,5 +56,4 @@ func TestLimitStore(t *testing.T) {
 	// put block over limit
 	err = limitStore.Put(ctx, "yogurt", testutil.RandomBytes(1000))
 	req.EqualError(err, limitstore.ErrExceededLimit{Limit: 5}.Error())
-
 }

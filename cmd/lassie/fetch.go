@@ -3,21 +3,17 @@ package main
 import (
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/dustin/go-humanize"
-	cmdinternal "github.com/filecoin-project/lassie/cmd/lassie/internal"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/lassie"
 	"github.com/filecoin-project/lassie/pkg/net/host"
 	"github.com/filecoin-project/lassie/pkg/retriever"
-	"github.com/filecoin-project/lassie/pkg/streamingstore"
+	"github.com/filecoin-project/lassie/pkg/storage"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
-	carv2 "github.com/ipld/go-car/v2"
-	carstore "github.com/ipld/go-car/v2/storage"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/urfave/cli/v2"
@@ -152,51 +148,27 @@ func Fetch(c *cli.Context) error {
 	if c.IsSet("output") {
 		outfile = c.String("output")
 	}
-	var openedFile *os.File
-	defer func() {
-		if openedFile != nil {
-			openedFile.Close()
-		}
-	}()
 
-	// TODO: unfortunately errors from here have to propagate through graphsync
-	// then data-transfer and all the way back up to retrieval; we should
-	// probably have a way to cancel the retrieval and return an error
-	// immediately if this fails.
-	var parentOpener = func() (cmdinternal.ReadableWritableStorage, error) {
-		if outfile == "-" {
-			getWriter := func() (io.Writer, error) {
-				return &onlyWriter{c.App.Writer}, nil
-			}
-			errorCb := func(err error) {}
-			return streamingstore.NewStreamingStore(c.Context, []cid.Cid{rootCid}, "", getWriter, errorCb), nil
-		}
-
-		var err error
-		// always Create, truncating and making a new store - can't resume here
-		// because our headers (roots) won't match
-		// TODO: option to resume existing CAR and ignore mismatching header? it
-		// could just append blocks and leave the header as it is
-		openedFile, err = os.Create(outfile)
-		if err != nil {
-			return nil, err
-		}
-		return carstore.NewReadableWritable(openedFile, []cid.Cid{rootCid}, carv2.WriteAsCarV1(true))
+	var store *storage.DeferredCarWriter
+	if outfile == "-" { // stdout
+		store = storage.NewDeferredCarWriterForStream(rootCid, &onlyWriter{c.App.Writer})
+	} else {
+		store = storage.NewDeferredCarWriterForPath(rootCid, outfile)
 	}
+	defer store.Close()
 
 	var blockCount int
 	var byteLength uint64
-	putCb := func(putCount int, putBytes int) {
-		blockCount += putCount
+	store.OnPut(func(putBytes int) {
+		blockCount++
 		byteLength += uint64(putBytes)
 		if !progress {
-			fmt.Fprint(c.App.ErrWriter, strings.Repeat(".", putCount))
+			fmt.Fprint(c.App.ErrWriter, ".")
 		} else {
 			fmt.Fprintf(c.App.ErrWriter, "\rReceived %d blocks / %s...", blockCount, humanize.IBytes(byteLength))
 		}
-	}
+	}, false)
 
-	store := cmdinternal.NewPutCbStore(parentOpener, putCb)
 	request, err := types.NewRequestForPath(store, rootCid, path, !c.Bool("shallow"))
 	if err != nil {
 		return err

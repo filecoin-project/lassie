@@ -3,6 +3,7 @@ package limitstore
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/ipld/go-ipld-prime/storage"
 )
@@ -15,22 +16,18 @@ func (e ErrExceededLimit) Error() string {
 	return fmt.Sprintf("cannot write - exceeded block limit: %d", e.Limit)
 }
 
-type Storage interface {
-	storage.ReadableStorage
-	storage.WritableStorage
-	storage.StreamingReadableStorage
-}
+var _ io.Closer = (*LimitStore)(nil)
 
 type LimitStore struct {
-	Storage
+	storage.WritableStorage
 	counter uint64
 	limit   uint64
 }
 
-func NewLimitStore(storage Storage, limit uint64) *LimitStore {
+func NewLimitStore(storage storage.WritableStorage, limit uint64) *LimitStore {
 	return &LimitStore{
-		Storage: storage,
-		limit:   limit,
+		WritableStorage: storage,
+		limit:           limit,
 	}
 }
 
@@ -38,7 +35,7 @@ func (ls *LimitStore) Put(ctx context.Context, key string, data []byte) error {
 	if ls.counter >= ls.limit {
 		return ErrExceededLimit{ls.limit}
 	}
-	has, err := ls.Storage.Has(ctx, key)
+	has, err := ls.WritableStorage.Has(ctx, key)
 	if err != nil {
 		return err
 	}
@@ -46,5 +43,12 @@ func (ls *LimitStore) Put(ctx context.Context, key string, data []byte) error {
 		return nil
 	}
 	ls.counter++
-	return ls.Storage.Put(ctx, key, data)
+	return ls.WritableStorage.Put(ctx, key, data)
+}
+
+func (ls *LimitStore) Close() error {
+	if closer, ok := ls.WritableStorage.(io.Closer); ok {
+		return closer.Close()
+	}
+	return nil
 }

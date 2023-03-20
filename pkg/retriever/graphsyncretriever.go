@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/events"
+	"github.com/filecoin-project/lassie/pkg/storage"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/codec/dagjson"
@@ -65,6 +67,7 @@ type GraphSyncRetriever struct {
 	GetStorageProviderTimeout GetStorageProviderTimeout
 	Client                    RetrievalClient
 	Clock                     clock.Clock
+	TempDir                   string
 }
 
 func NewGraphsyncRetriever(getStorageProviderTimeout GetStorageProviderTimeout, client RetrievalClient) *GraphSyncRetriever {
@@ -134,6 +137,21 @@ func (r *graphsyncRetrieval) RetrieveFromAsyncCandidates(asyncCandidates types.I
 		finishChan: make(chan struct{}),
 		waitQueue:  prioritywaitqueue.New(candidateCompare),
 	}
+
+	tmpDir := r.GraphSyncRetriever.TempDir
+	if tmpDir == "" {
+		tmpDir = os.TempDir()
+	}
+	store := storage.NewTeeingTempReadWrite(r.request.LinkSystem.StorageWriteOpener, tmpDir)
+	linkSystem := r.request.LinkSystem
+	linkSystem.SetReadStorage(store)
+	linkSystem.SetWriteStorage(store)
+	defer func() {
+		if err := store.Close(); err != nil {
+			log.Errorf("error closing temp store: %s", err)
+		}
+	}()
+
 	// start retrievals
 	phaseStartTime := r.Clock.Now()
 	var waitGroup sync.WaitGroup
@@ -150,7 +168,7 @@ func (r *graphsyncRetrieval) RetrieveFromAsyncCandidates(asyncCandidates types.I
 				waitGroup.Add(1)
 				go func() {
 					defer waitGroup.Done()
-					runRetrievalCandidate(ctx, r.GraphSyncRetriever, r.request, r.Client, retrieval, phaseStartTime, candidate)
+					runRetrievalCandidate(ctx, r.GraphSyncRetriever, r.request, r.Client, linkSystem, retrieval, phaseStartTime, candidate)
 				}()
 			}
 		}
@@ -213,6 +231,7 @@ func runRetrievalCandidate(
 	cfg *GraphSyncRetriever,
 	req types.RetrievalRequest,
 	client RetrievalClient,
+	linkSystem ipld.LinkSystem,
 	retrieval *graphsyncCandidateRetrieval,
 	phaseStartTime time.Time,
 	candidate types.RetrievalCandidate,
@@ -277,8 +296,8 @@ func runRetrievalCandidate(
 			stats, retrievalErr = retrievalPhase(
 				ctx,
 				cfg,
-				req.LinkSystem,
 				client,
+				linkSystem,
 				timeout,
 				candidate,
 				req.GetSelector(),
@@ -361,8 +380,8 @@ func (retrieval *graphsyncCandidateRetrieval) sendEvent(event types.RetrievalEve
 func retrievalPhase(
 	ctx context.Context,
 	cfg *GraphSyncRetriever,
-	linkSystem ipld.LinkSystem,
 	client RetrievalClient,
+	linkSystem ipld.LinkSystem,
 	timeout time.Duration,
 	candidate types.RetrievalCandidate,
 	selector ipld.Node,

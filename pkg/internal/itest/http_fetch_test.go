@@ -592,6 +592,7 @@ func TestHttpFetch(t *testing.T) {
 						path = testCase.paths[i]
 					}
 					addr := fmt.Sprintf("http://%s/ipfs/%s%s", httpServer.Addr(), srcData[i].Root.String(), path)
+					fmt.Println("TEST GET", testCase.name, i, addr)
 					getReq, err := http.NewRequest("GET", addr, nil)
 					req.NoError(err)
 					getReq.Header.Add("Accept", "application/vnd.ipld.car")
