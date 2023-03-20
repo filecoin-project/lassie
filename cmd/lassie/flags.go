@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
 	"github.com/urfave/cli/v2"
 )
@@ -86,6 +87,27 @@ var FlagMetricsPort = &cli.UintFlag{
 	Value:       0,
 	DefaultText: "random",
 	EnvVars:     []string{"LASSIE_METRICS_PORT"},
+}
+
+var providerBlockList map[peer.ID]bool
+
+var FlagExcludeProviders = &cli.StringFlag{
+	Name:        "exclude-providers",
+	DefaultText: "All providers allowed",
+	Usage:       "Provider peer IDs, seperated by a comma. Example: 12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4",
+	EnvVars:     []string{"LASSIE_EXCLUDE_PROVIDERS"},
+	Action: func(cctx *cli.Context, v string) error {
+		providerBlockList = make(map[peer.ID]bool)
+		vs := strings.Split(v, ",")
+		for _, v := range vs {
+			peerID, err := peer.Decode(v)
+			if err != nil {
+				return err
+			}
+			providerBlockList[peerID] = true
+		}
+		return nil
+	},
 }
 
 var protocols []multicodec.Code

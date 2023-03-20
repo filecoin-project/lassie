@@ -92,6 +92,7 @@ var daemonFlags = []cli.Flag{
 	FlagVerbose,
 	FlagVeryVerbose,
 	FlagProtocols,
+	FlagExcludeProviders,
 }
 
 var daemonCmd = &cli.Command{
@@ -134,6 +135,10 @@ func daemonCommand(cctx *cli.Context) error {
 	if len(protocols) > 0 {
 		lassieOpts = append(lassieOpts, lassie.WithProtocols(protocols))
 	}
+	if len(providerBlockList) > 0 {
+		lassieOpts = append(lassieOpts, lassie.WithProviderBlockList(providerBlockList))
+	}
+
 	// create a lassie instance
 	lassie, err := lassie.NewLassie(cctx.Context, lassieOpts...)
 	if err != nil {

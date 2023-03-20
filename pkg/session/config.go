@@ -13,8 +13,8 @@ type MinerConfig struct {
 
 // All config values should be safe to leave uninitialized
 type Config struct {
-	MinerBlacklist     map[peer.ID]bool
-	MinerWhitelist     map[peer.ID]bool
+	ProviderBlockList  map[peer.ID]bool
+	ProviderAllowList  map[peer.ID]bool
 	DefaultMinerConfig MinerConfig
 	MinerConfigs       map[peer.ID]MinerConfig
 	PaidRetrievals     bool

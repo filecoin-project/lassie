@@ -83,6 +83,7 @@ var fetchCmd = &cli.Command{
 		FlagVerbose,
 		FlagVeryVerbose,
 		FlagProtocols,
+		FlagExcludeProviders,
 	},
 }
 
@@ -113,6 +114,10 @@ func Fetch(c *cli.Context) error {
 	if len(fetchProviderAddrInfos) > 0 {
 		finderOpt := lassie.WithFinder(retriever.NewDirectCandidateFinder(host, fetchProviderAddrInfos))
 		opts = append(opts, finderOpt)
+	}
+
+	if len(providerBlockList) > 0 {
+		opts = append(opts, lassie.WithProviderBlockList(providerBlockList))
 	}
 
 	if len(protocols) > 0 {
