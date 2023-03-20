@@ -34,6 +34,8 @@ type LassieConfig struct {
 	Protocols              []multicodec.Code
 	ProviderBlockList      map[peer.ID]bool
 	ProviderAllowList      map[peer.ID]bool
+	TempDir                string
+	BitswapConcurrency     int
 }
 
 type LassieOption func(cfg *LassieConfig)
@@ -102,6 +104,8 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 		case multicodec.TransportBitswap:
 			protocolRetrievers[protocol] = retriever.NewBitswapRetrieverFromHost(ctx, cfg.Host, retriever.BitswapConfig{
 				BlockTimeout: cfg.ProviderTimeout,
+				TempDir:      cfg.TempDir,
+				Concurrency:  cfg.BitswapConcurrency,
 			})
 		}
 	}
@@ -158,27 +162,52 @@ func WithLibp2pOpts(libp2pOptions ...libp2p.Option) LassieOption {
 	}
 }
 
+// WithConcurrentSPRetrievals allows you to specify a custom number of
+// concurrent retrievals from a single storage provider.
 func WithConcurrentSPRetrievals(maxConcurrentSPRtreievals uint) LassieOption {
 	return func(cfg *LassieConfig) {
 		cfg.ConcurrentSPRetrievals = maxConcurrentSPRtreievals
 	}
 }
 
+// WithProtocols allows you to specify a custom set of protocols to use for
+// retrieval.
 func WithProtocols(protocols []multicodec.Code) LassieOption {
 	return func(cfg *LassieConfig) {
 		cfg.Protocols = protocols
 	}
 }
 
+// WithProviderBlockList allows you to specify a custom provider block list.
 func WithProviderBlockList(providerBlockList map[peer.ID]bool) LassieOption {
 	return func(cfg *LassieConfig) {
 		cfg.ProviderBlockList = providerBlockList
 	}
 }
 
+// WithProviderAllowList allows you to specify a custom set of providers to
+// allow fetching from. If this is not set, all providers will be allowed unless
+// they are in the block list.
 func WithProviderAllowList(providerAllowList map[peer.ID]bool) LassieOption {
 	return func(cfg *LassieConfig) {
 		cfg.ProviderAllowList = providerAllowList
+	}
+}
+
+// WithTempDir allows you to specify a custom temp directory for bitswap
+// retrievals, used for a temporary block store for the preloader. The default
+// is the system temp directory.
+func WithTempDir(tempDir string) LassieOption {
+	return func(cfg *LassieConfig) {
+		cfg.TempDir = tempDir
+	}
+}
+
+// WithBitswapConcurrency allows you to specify a custom concurrency for bitswap
+// retrievals, applied using a preloader during traversals. The default is 6.
+func WithBitswapConcurrency(concurrency int) LassieOption {
+	return func(cfg *LassieConfig) {
+		cfg.BitswapConcurrency = concurrency
 	}
 }
 

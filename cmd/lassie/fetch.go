@@ -82,36 +82,47 @@ var fetchCmd = &cli.Command{
 		FlagVeryVerbose,
 		FlagProtocols,
 		FlagExcludeProviders,
+		FlagTempDir,
+		FlagBitswapConcurrency,
 	},
 }
 
-func Fetch(c *cli.Context) error {
-	if c.Args().Len() != 1 {
+func Fetch(cctx *cli.Context) error {
+	if cctx.Args().Len() != 1 {
 		return fmt.Errorf("usage: lassie fetch [-o <CAR file>] [-t <timeout>] <CID>[/path/to/content]")
 	}
-	progress := c.Bool("progress")
 
-	cpath := c.Args().Get(0)
-	cstr := strings.Split(cpath, "/")[0]
-	path := strings.TrimPrefix(cpath, cstr)
-	rootCid, err := cid.Parse(cstr)
+	ctx := cctx.Context
+	msgWriter := cctx.App.ErrWriter
+	dataWriter := cctx.App.Writer
+
+	progress := cctx.Bool("progress")
+	providerTimeout := cctx.Duration("provider-timeout")
+	globalTimeout := cctx.Duration("global-timeout")
+	shallow := cctx.Bool("shallow")
+	tempDir := cctx.String("tempdir")
+	bitswapConcurrency := cctx.Int("bitswap-concurrency")
+	eventRecorderURL := cctx.String("event-recorder-url")
+	authToken := cctx.String("event-recorder-auth")
+	instanceID := cctx.String("event-recorder-instance-id")
+
+	rootCid, path, err := parseCidPath(cctx.Args().Get(0))
 	if err != nil {
 		return err
 	}
 
-	providerTimeout := c.Duration("provider-timeout")
 	providerTimeoutOpt := lassie.WithProviderTimeout(providerTimeout)
 
-	host, err := host.InitHost(c.Context, []libp2p.Option{})
+	host, err := host.InitHost(ctx, []libp2p.Option{})
 	if err != nil {
 		return err
 	}
 	hostOpt := lassie.WithHost(host)
-	var opts = []lassie.LassieOption{providerTimeoutOpt, hostOpt}
+	var lassieOpts = []lassie.LassieOption{providerTimeoutOpt, hostOpt}
 
 	if len(fetchProviderAddrInfos) > 0 {
 		finderOpt := lassie.WithFinder(retriever.NewDirectCandidateFinder(host, fetchProviderAddrInfos))
-		opts = append(opts, finderOpt)
+		lassieOpts = append(lassieOpts, finderOpt)
 	}
 
 	if len(providerBlockList) > 0 {
@@ -119,45 +130,54 @@ func Fetch(c *cli.Context) error {
 	}
 
 	if len(protocols) > 0 {
-		opts = append(opts, lassie.WithProtocols(protocols))
+		lassieOpts = append(lassieOpts, lassie.WithProtocols(protocols))
 	}
 
-	globalTimeout := c.Duration("global-timeout")
 	if globalTimeout > 0 {
-		opts = append(opts, lassie.WithGlobalTimeout(globalTimeout))
+		lassieOpts = append(lassieOpts, lassie.WithGlobalTimeout(globalTimeout))
 	}
 
-	lassie, err := lassie.NewLassie(c.Context, opts...)
+	if tempDir != "" {
+		lassieOpts = append(lassieOpts, lassie.WithTempDir(tempDir))
+	} else {
+		tempDir = os.TempDir()
+	}
+
+	if bitswapConcurrency > 0 {
+		lassieOpts = append(lassieOpts, lassie.WithBitswapConcurrency(bitswapConcurrency))
+	}
+
+	lassie, err := lassie.NewLassie(ctx, lassieOpts...)
 	if err != nil {
 		return err
 	}
 
 	// create and subscribe an event recorder API if configured
-	setupLassieEventRecorder(c, lassie)
+	setupLassieEventRecorder(ctx, eventRecorderURL, authToken, instanceID, lassie)
 
 	if len(fetchProviderAddrInfos) == 0 {
-		fmt.Fprintf(c.App.ErrWriter, "Fetching %s", rootCid.String()+path)
+		fmt.Fprintf(msgWriter, "Fetching %s", rootCid.String()+path)
 	} else {
-		fmt.Fprintf(c.App.ErrWriter, "Fetching %s from %v", rootCid.String()+path, fetchProviderAddrInfos)
+		fmt.Fprintf(msgWriter, "Fetching %s from %v", rootCid.String()+path, fetchProviderAddrInfos)
 	}
 	if progress {
-		fmt.Fprintln(c.App.ErrWriter)
-		pp := &progressPrinter{writer: c.App.ErrWriter}
+		fmt.Fprintln(msgWriter)
+		pp := &progressPrinter{writer: msgWriter}
 		lassie.RegisterSubscriber(pp.subscriber)
 	}
 
 	outfile := fmt.Sprintf("%s.car", rootCid)
-	if c.IsSet("output") {
-		outfile = c.String("output")
+	if cctx.IsSet("output") {
+		outfile = cctx.String("output")
 	}
 
 	var carWriter *storage.DeferredCarWriter
 	if outfile == "-" { // stdout
-		carWriter = storage.NewDeferredCarWriterForStream(rootCid, &onlyWriter{c.App.Writer})
+		carWriter = storage.NewDeferredCarWriterForStream(rootCid, &onlyWriter{dataWriter})
 	} else {
 		carWriter = storage.NewDeferredCarWriterForPath(rootCid, outfile)
 	}
-	carStore := storage.NewTeeingTempReadWrite(carWriter.BlockWriteOpener(), os.TempDir())
+	carStore := storage.NewTeeingTempReadWrite(carWriter.BlockWriteOpener(), tempDir)
 	defer carStore.Close()
 
 	var blockCount int
@@ -166,13 +186,13 @@ func Fetch(c *cli.Context) error {
 		blockCount++
 		byteLength += uint64(putBytes)
 		if !progress {
-			fmt.Fprint(c.App.ErrWriter, ".")
+			fmt.Fprint(msgWriter, ".")
 		} else {
-			fmt.Fprintf(c.App.ErrWriter, "\rReceived %d blocks / %s...", blockCount, humanize.IBytes(byteLength))
+			fmt.Fprintf(msgWriter, "\rReceived %d blocks / %s...", blockCount, humanize.IBytes(byteLength))
 		}
 	}, false)
 
-	request, err := types.NewRequestForPath(carStore, rootCid, path, !c.Bool("shallow"))
+	request, err := types.NewRequestForPath(carStore, rootCid, path, !shallow)
 	if err != nil {
 		return err
 	}
@@ -183,12 +203,12 @@ func Fetch(c *cli.Context) error {
 	request.PreloadLinkSystem.SetReadStorage(preloadStore)
 	request.PreloadLinkSystem.SetWriteStorage(preloadStore)
 
-	stats, err := lassie.Fetch(c.Context, request)
+	stats, err := lassie.Fetch(ctx, request)
 	if err != nil {
-		fmt.Fprintln(c.App.ErrWriter)
+		fmt.Fprintln(msgWriter)
 		return err
 	}
-	fmt.Fprintf(c.App.ErrWriter, "\nFetched [%s] from [%s]:\n"+
+	fmt.Fprintf(msgWriter, "\nFetched [%s] from [%s]:\n"+
 		"\tDuration: %s\n"+
 		"\t  Blocks: %d\n"+
 		"\t   Bytes: %s\n",
@@ -200,6 +220,16 @@ func Fetch(c *cli.Context) error {
 	)
 
 	return nil
+}
+
+func parseCidPath(cpath string) (cid.Cid, string, error) {
+	cstr := strings.Split(cpath, "/")[0]
+	path := strings.TrimPrefix(cpath, cstr)
+	rootCid, err := cid.Parse(cstr)
+	if err != nil {
+		return cid.Undef, "", err
+	}
+	return rootCid, path, nil
 }
 
 type progressPrinter struct {

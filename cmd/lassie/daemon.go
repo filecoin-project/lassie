@@ -29,14 +29,6 @@ var daemonFlags = []cli.Flag{
 		DefaultText: "random",
 		EnvVars:     []string{"LASSIE_PORT"},
 	},
-	&cli.StringFlag{
-		Name:        "tempdir",
-		Aliases:     []string{"td"},
-		Usage:       "directory to store temporary files while downloading",
-		Value:       "",
-		DefaultText: "os temp directory",
-		EnvVars:     []string{"LASSIE_TEMP_DIRECTORY"},
-	},
 	&cli.Uint64Flag{
 		Name:        "maxblocks",
 		Aliases:     []string{"mb"},
@@ -93,6 +85,8 @@ var daemonFlags = []cli.Flag{
 	FlagVeryVerbose,
 	FlagProtocols,
 	FlagExcludeProviders,
+	FlagTempDir,
+	FlagBitswapConcurrency,
 }
 
 var daemonCmd = &cli.Command{
@@ -104,6 +98,8 @@ var daemonCmd = &cli.Command{
 }
 
 func daemonCommand(cctx *cli.Context) error {
+	ctx := cctx.Context
+
 	address := cctx.String("address")
 	port := cctx.Uint("port")
 	tempDir := cctx.String("tempdir")
@@ -116,6 +112,10 @@ func daemonCommand(cctx *cli.Context) error {
 	concurrentSPRetrievals := cctx.Uint("concurrent-sp-retrievals")
 	providerTimeout := cctx.Duration("provider-timeout")
 	globalTimeout := cctx.Duration("global-timeout")
+	bitswapConcurrency := cctx.Int("bitswap-concurrency")
+	eventRecorderURL := cctx.String("event-recorder-url")
+	authToken := cctx.String("event-recorder-auth")
+	instanceID := cctx.String("event-recorder-instance-id")
 
 	lassieOpts := []lassie.LassieOption{lassie.WithProviderTimeout(providerTimeout)}
 	if globalTimeout > 0 {
@@ -138,17 +138,22 @@ func daemonCommand(cctx *cli.Context) error {
 	if len(providerBlockList) > 0 {
 		lassieOpts = append(lassieOpts, lassie.WithProviderBlockList(providerBlockList))
 	}
-
+	if tempDir != "" {
+		lassieOpts = append(lassieOpts, lassie.WithTempDir(tempDir))
+	}
+	if bitswapConcurrency > 0 {
+		lassieOpts = append(lassieOpts, lassie.WithBitswapConcurrency(bitswapConcurrency))
+	}
 	// create a lassie instance
-	lassie, err := lassie.NewLassie(cctx.Context, lassieOpts...)
+	lassie, err := lassie.NewLassie(ctx, lassieOpts...)
 	if err != nil {
 		return err
 	}
 
 	// create and subscribe an event recorder API if configured
-	setupLassieEventRecorder(cctx, lassie)
+	setupLassieEventRecorder(ctx, eventRecorderURL, authToken, instanceID, lassie)
 
-	httpServer, err := httpserver.NewHttpServer(cctx.Context, lassie, httpserver.HttpServerConfig{
+	httpServer, err := httpserver.NewHttpServer(ctx, lassie, httpserver.HttpServerConfig{
 		Address:             address,
 		Port:                port,
 		TempDir:             tempDir,
@@ -170,7 +175,7 @@ func daemonCommand(cctx *cli.Context) error {
 
 	var metricsServer *metrics.MetricsServer
 	if exposeMetrics {
-		metricsServer, err = metrics.NewHttpServer(cctx.Context, metricsAddress, metricsPort)
+		metricsServer, err = metrics.NewHttpServer(ctx, metricsAddress, metricsPort)
 
 		if err != nil {
 			log.Errorw("failed to create metrics server", "err", err)

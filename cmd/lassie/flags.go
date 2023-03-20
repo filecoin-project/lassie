@@ -122,3 +122,19 @@ var FlagProtocols = &cli.StringFlag{
 		return err
 	},
 }
+
+var FlagTempDir = &cli.StringFlag{
+	Name:        "tempdir",
+	Aliases:     []string{"td"},
+	Usage:       "directory to store temporary files while downloading",
+	Value:       "",
+	DefaultText: "os temp directory",
+	EnvVars:     []string{"LASSIE_TEMP_DIRECTORY"},
+}
+
+var FlagBitswapConcurrency = &cli.IntFlag{
+	Name:    "bitswap-concurrency",
+	Usage:   "maximum number of concurrent bitswap requests per retrieval",
+	Value:   6,
+	EnvVars: []string{"LASSIE_BITSWAP_CONCURRENCY"},
+}
