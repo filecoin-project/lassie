@@ -14,15 +14,15 @@ require (
 	github.com/ipfs/go-cid v0.3.2
 	github.com/ipfs/go-datastore v0.6.0
 	github.com/ipfs/go-graphsync v0.14.3
-	github.com/ipfs/go-ipfs-blockstore v1.2.0
+	github.com/ipfs/go-ipfs-blockstore v1.3.0
 	github.com/ipfs/go-ipfs-blocksutil v0.0.1
 	github.com/ipfs/go-ipfs-delay v0.0.1
 	github.com/ipfs/go-ipfs-exchange-interface v0.2.0
 	github.com/ipfs/go-ipld-format v0.4.0
-	github.com/ipfs/go-libipfs v0.6.0
+	github.com/ipfs/go-libipfs v0.6.1
 	github.com/ipfs/go-log/v2 v2.5.1
-	github.com/ipfs/go-unixfsnode v1.5.3-0.20230309062929-51109f599b35
-	github.com/ipld/go-car/v2 v2.8.0
+	github.com/ipfs/go-unixfsnode v1.6.0
+	github.com/ipld/go-car/v2 v2.8.3-0.20230320044239-794f22231c05
 	github.com/ipld/go-codec-dagpb v1.6.0
 	github.com/ipld/go-ipld-prime v0.20.1-0.20230311031110-6b0c355a3954
 	github.com/ipni/index-provider v0.10.2
