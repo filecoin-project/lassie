@@ -83,11 +83,14 @@ func before(cctx *cli.Context) error {
 }
 
 // setupLassieEventRecorder creates and subscribes an EventRecorder if an event recorder URL is given
-func setupLassieEventRecorder(cctx *cli.Context, lassie *lassie.Lassie) {
-	eventRecorderURL := cctx.String("event-recorder-url")
+func setupLassieEventRecorder(
+	ctx context.Context,
+	eventRecorderURL string,
+	authToken string,
+	instanceID string,
+	lassie *lassie.Lassie,
+) {
 	if eventRecorderURL != "" {
-		authToken := cctx.String("event-recorder-auth")
-		instanceID := cctx.String("event-recorder-instance-id")
 		if instanceID == "" {
 			uuid, err := uuid.NewRandom()
 			if err != nil {
@@ -96,7 +99,7 @@ func setupLassieEventRecorder(cctx *cli.Context, lassie *lassie.Lassie) {
 			instanceID = uuid.String() // returns "" if uuid is invalid
 		}
 
-		eventRecorder := eventrecorder.NewEventRecorder(cctx.Context, eventrecorder.EventRecorderConfig{
+		eventRecorder := eventrecorder.NewEventRecorder(ctx, eventrecorder.EventRecorderConfig{
 			InstanceID:            instanceID,
 			EndpointURL:           eventRecorderURL,
 			EndpointAuthorization: authToken,
