@@ -84,6 +84,7 @@ func (mbs *MultiBlockstore) Get(ctx context.Context, c cid.Cid) (blocks.Block, e
 	}
 	r, err := lsys.StorageReadOpener(linking.LinkContext{Ctx: ctx}, cidlink.Link{Cid: c})
 	if err != nil {
+		// fmt.Println("MultiBlockstore#Get lsys.StorageReadOpener err", err.Error(), c.String())
 		if nf, ok := err.(interface{ NotFound() bool }); ok && nf.NotFound() {
 			return nil, format.ErrNotFound{Cid: c}
 		}
@@ -114,7 +115,6 @@ func (mbs *MultiBlockstore) Put(ctx context.Context, blk blocks.Block) error {
 func (mbs *MultiBlockstore) PutMany(ctx context.Context, blks []blocks.Block) error {
 	id, err := types.RetrievalIDFromContext(ctx)
 	if err != nil {
-
 		return err
 	}
 	mbs.linkSystemsLk.RLock()

@@ -25,7 +25,6 @@ import (
 	"github.com/filecoin-project/lassie/pkg/types"
 
 	"github.com/ipfs/go-datastore"
-	format "github.com/ipfs/go-ipld-format"
 
 	graphsync "github.com/ipfs/go-graphsync/impl"
 	gsnetwork "github.com/ipfs/go-graphsync/network"
@@ -345,7 +344,7 @@ awaitfinished:
 	// Confirm that we actually ended up with the root block we wanted, failure
 	// here indicates a data transfer error that was not properly reported
 	if _, err := linkSystem.StorageReadOpener(ipld.LinkContext{}, cidlink.Link{Cid: rootCid}); err != nil {
-		if !errors.Is(err, format.ErrNotFound{}) { // may or may not get a go-ipld-format/ErrNotFound for not-found
+		if nf, ok := err.(interface{ NotFound() bool }); !ok || !nf.NotFound() {
 			log.Errorf("could not query block store: %w", err)
 		}
 		return nil, errors.New("data transfer failed: unconfirmed block transfer")

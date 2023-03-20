@@ -3,7 +3,6 @@ package httpserver
 import (
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -13,14 +12,16 @@ import (
 	"github.com/filecoin-project/lassie/pkg/internal/limitstore"
 	lassie "github.com/filecoin-project/lassie/pkg/lassie"
 	"github.com/filecoin-project/lassie/pkg/retriever"
-	"github.com/filecoin-project/lassie/pkg/streamingstore"
+	"github.com/filecoin-project/lassie/pkg/storage"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
+	ipldstorage "github.com/ipld/go-ipld-prime/storage"
 	"github.com/multiformats/go-multicodec"
 )
 
 func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
+		fmt.Println("REQUEST: ", req.Method, req.URL.Path)
 		logger := newRequestLogger(req.Method, req.URL.Path)
 		logger.logPath()
 
@@ -160,9 +161,36 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			log.Debugw("Corrolating provided request ID with retrieval ID", "request_id", requestId, "retrieval_id", retrievalId)
 		}
 
+		// bytesWritten will be closed once we've started writing CAR content to
+		// the response writer. Once closed, no other content should be written.
 		bytesWritten := make(chan struct{}, 1)
-		// called once we start writing blocks into the CAR (on the first Put())
-		getWriter := func() (io.Writer, error) {
+
+		carWriter := storage.NewDeferredCarWriterForStream(rootCid, res)
+		defer func() {
+			fmt.Println("ipfsHandler deferred Close()")
+			if err := carWriter.Close(); err != nil {
+				log.Errorw("failed to close CAR streamafter retrieval", "retrievalId", retrievalId, "err", err)
+			}
+		}()
+		var store ipldstorage.WritableStorage = carWriter
+
+		// extract block limit from query param as needed
+		var blockLimit uint64
+		if req.URL.Query().Has("blockLimit") {
+			if parsedBlockLimit, err := strconv.ParseUint(req.URL.Query().Get("blockLimit"), 10, 64); err == nil {
+				blockLimit = parsedBlockLimit
+			}
+		}
+		if cfg.MaxBlocksPerRequest > 0 || blockLimit > 0 {
+			// use the lowest non-zero value for block limit
+			if blockLimit == 0 || (cfg.MaxBlocksPerRequest > 0 && blockLimit > cfg.MaxBlocksPerRequest) {
+				blockLimit = cfg.MaxBlocksPerRequest
+			}
+			store = limitstore.NewLimitStore(carWriter, blockLimit)
+		}
+
+		carWriter.OnPut(func(int) {
+			// called once we start writing blocks into the CAR (on the first Put())
 			res.Header().Set("Content-Disposition", "attachment; filename="+filename)
 			res.Header().Set("Accept-Ranges", "none")
 			res.Header().Set("Cache-Control", "public, max-age=29030400, immutable")
@@ -172,53 +200,10 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			res.Header().Set("X-Ipfs-Path", req.URL.Path)
 			// TODO: set X-Ipfs-Roots header when we support root+path
 			// see https://github.com/ipfs/kubo/pull/8720
-
 			res.Header().Set("X-Trace-Id", requestId)
-
 			logger.logStatus(200, "OK")
 			close(bytesWritten)
-			return res, nil
-		}
-
-		// called when the store errors from any of its operations; only log the
-		// first error and assume that the error will propagate through to
-		// lassie.Fetch
-		var errored bool
-		errorCb := func(err error) {
-			if !errored {
-				errored = true
-				msg := fmt.Sprintf("Failed to write to CAR: %s", err.Error())
-				select {
-				case <-bytesWritten:
-					return
-				default:
-				}
-				logger.logStatus(http.StatusInternalServerError, msg)
-				http.Error(res, msg, http.StatusInternalServerError)
-			}
-		}
-
-		streamingStore := streamingstore.NewStreamingStore(req.Context(), []cid.Cid{rootCid}, cfg.TempDir, getWriter, errorCb)
-		defer func() {
-			if err := streamingStore.Close(); err != nil {
-				log.Errorw("failed to close streaming store after retrieval", "retrievalId", retrievalId, "err", err)
-			}
-		}()
-		// extract block limit from query param as needed
-		var blockLimit uint64
-		if req.URL.Query().Has("blockLimit") {
-			if parsedBlockLimit, err := strconv.ParseUint(req.URL.Query().Get("blockLimit"), 10, 64); err == nil {
-				blockLimit = parsedBlockLimit
-			}
-		}
-		var store limitstore.Storage = streamingStore
-		if cfg.MaxBlocksPerRequest > 0 || blockLimit > 0 {
-			// use the lowest non-zero value for block limit
-			if blockLimit == 0 || (cfg.MaxBlocksPerRequest > 0 && blockLimit > cfg.MaxBlocksPerRequest) {
-				blockLimit = cfg.MaxBlocksPerRequest
-			}
-			store = limitstore.NewLimitStore(store, blockLimit)
-		}
+		}, true)
 
 		request, err := types.NewRequestForPath(store, rootCid, unixfsPath, fullFetch)
 		request.Protocols = protocols

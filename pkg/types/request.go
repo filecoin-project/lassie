@@ -9,14 +9,15 @@ import (
 	"github.com/ipfs/go-unixfsnode"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	"github.com/ipld/go-ipld-prime/storage"
+	ipldstorage "github.com/ipld/go-ipld-prime/storage"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/multiformats/go-multicodec"
 )
 
 type ReadableWritableStorage interface {
-	storage.ReadableStorage
-	storage.WritableStorage
+	ipldstorage.ReadableStorage
+	ipldstorage.WritableStorage
+	ipldstorage.StreamingReadableStorage
 }
 
 type RetrievalID uuid.UUID
@@ -44,11 +45,12 @@ func (id *RetrievalID) UnmarshalText(data []byte) error {
 // RetrievalRequest is the top level parameters for a request --
 // this should be left unchanged as you move down a retriever tree
 type RetrievalRequest struct {
-	RetrievalID RetrievalID
-	Cid         cid.Cid
-	LinkSystem  ipld.LinkSystem
-	Selector    ipld.Node
-	Protocols   []multicodec.Code
+	RetrievalID  RetrievalID
+	Cid          cid.Cid
+	LinkSystem   ipld.LinkSystem
+	Selector     ipld.Node
+	Protocols    []multicodec.Code
+	PreloadCache ReadableWritableStorage
 }
 
 // NewRequestForPath creates a new RetrievalRequest from the provided parameters
@@ -58,7 +60,7 @@ type RetrievalRequest struct {
 // and writing and it is explicitly set to be trusted (i.e. it will not
 // check CIDs match bytes). If the storage is not truested,
 // request.LinkSystem.TrustedStore should be set to false after this call.
-func NewRequestForPath(store ReadableWritableStorage, cid cid.Cid, path string, full bool) (RetrievalRequest, error) {
+func NewRequestForPath(store ipldstorage.WritableStorage, cid cid.Cid, path string, full bool) (RetrievalRequest, error) {
 	retrievalId, err := NewRetrievalID()
 	if err != nil {
 		return RetrievalRequest{}, err
@@ -72,8 +74,10 @@ func NewRequestForPath(store ReadableWritableStorage, cid cid.Cid, path string, 
 	selector := unixfsnode.UnixFSPathSelectorBuilder(path, targetSelector, false)
 
 	linkSystem := cidlink.DefaultLinkSystem()
-	linkSystem.SetReadStorage(store)
 	linkSystem.SetWriteStorage(store)
+	if read, ok := store.(ipldstorage.ReadableStorage); ok {
+		linkSystem.SetReadStorage(read)
+	}
 	linkSystem.TrustedStorage = true
 	unixfsnode.AddUnixFSReificationToLinkSystem(&linkSystem)
 

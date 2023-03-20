@@ -1,4 +1,4 @@
-package streamingstore_test
+package storage_test
 
 import (
 	"bytes"
@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/filecoin-project/lassie/pkg/streamingstore"
+	"github.com/filecoin-project/lassie/pkg/storage"
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
 	mh "github.com/multiformats/go-multihash"
@@ -17,7 +17,7 @@ import (
 
 var rng = rand.New(rand.NewSource(3333))
 
-func TestStreamingStoreWritesCARv1(t *testing.T) {
+func TestDeferredCarWriterWritesCARv1(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -52,23 +52,9 @@ func TestStreamingStoreWritesCARv1(t *testing.T) {
 			testCid1, testData1 := randBlock()
 			testCid2, testData2 := randBlock()
 
-			expectError := ""
-			var errCbCount int
-			errorCb := func(err error) {
-				if expectError == "" {
-					t.Errorf("unexpected error: %s", err)
-				} else {
-					require.EqualError(t, err, expectError)
-				}
-				errCbCount++
-			}
-
 			var buf bytes.Buffer
-			getWriter := func() (io.Writer, error) {
-				return &buf, nil
-			}
-
-			ss := streamingstore.NewStreamingStore(context.TODO(), []cid.Cid{testCid1}, "", getWriter, errorCb)
+			cw := storage.NewDeferredCarWriterForStream(testCid1, &buf)
+			ss := storage.NewTeeingTempReadWrite(cw.BlockWriteOpener(), "")
 			t.Cleanup(func() { ss.Close() })
 
 			if tt.readBeforeWrite {
@@ -134,29 +120,26 @@ func TestStreamingStoreWritesCARv1(t *testing.T) {
 			require.NoError(t, ss.Close())
 
 			if tt.readAfterClose {
-				expectError = "streaming store closed"
-				require.EqualError(t, ss.Put(ctx, randCid().KeyString(), testData1), "streaming store closed")
+				require.EqualError(t, ss.Put(ctx, randCid().KeyString(), testData1), "store closed")
 				has, err := ss.Has(ctx, randCid().KeyString())
-				require.EqualError(t, err, "streaming store closed")
+				require.EqualError(t, err, "store closed")
 				require.False(t, has)
 				got, err := ss.Get(ctx, randCid().KeyString())
-				require.EqualError(t, err, "streaming store closed")
+				require.EqualError(t, err, "store closed")
 				require.Nil(t, got)
 				gotStream, err := ss.GetStream(ctx, randCid().KeyString())
-				require.EqualError(t, err, "streaming store closed")
+				require.EqualError(t, err, "store closed")
 				require.Nil(t, gotStream)
 
 				has, err = ss.Has(ctx, testCid1.KeyString())
-				require.EqualError(t, err, "streaming store closed")
+				require.EqualError(t, err, "store closed")
 				require.False(t, has)
 				got, err = ss.Get(ctx, testCid1.KeyString())
-				require.EqualError(t, err, "streaming store closed")
+				require.EqualError(t, err, "store closed")
 				require.Nil(t, got)
 				gotStream, err = ss.GetStream(ctx, testCid1.KeyString())
-				require.EqualError(t, err, "streaming store closed")
+				require.EqualError(t, err, "store closed")
 				require.Nil(t, gotStream)
-
-				require.Equal(t, 7, errCbCount)
 			}
 
 			reader, err := carv2.NewBlockReader(&buf)
