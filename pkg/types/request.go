@@ -1,6 +1,9 @@
 package types
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-unixfsnode"
@@ -8,6 +11,7 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/storage"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
+	"github.com/multiformats/go-multicodec"
 )
 
 type ReadableWritableStorage interface {
@@ -44,6 +48,7 @@ type RetrievalRequest struct {
 	Cid         cid.Cid
 	LinkSystem  ipld.LinkSystem
 	Selector    ipld.Node
+	Protocols   []multicodec.Code
 }
 
 // NewRequestForPath creates a new RetrievalRequest from the provided parameters
@@ -87,4 +92,42 @@ func (r RetrievalRequest) GetSelector() ipld.Node {
 		return r.Selector
 	}
 	return selectorparse.CommonSelector_ExploreAllRecursively
+}
+
+// GetSupportedProtocols will safely return the supported protocols for a specific request.
+// It takes a list of all supported protocols, and
+// -- if the request has protocols, it will return all the request protocols that are in the supported list
+// -- if the request has no protocols, it will return the entire supported protocol list
+func (r RetrievalRequest) GetSupportedProtocols(allSupportedProtocols []multicodec.Code) []multicodec.Code {
+	if len(r.Protocols) == 0 {
+		return allSupportedProtocols
+	}
+	supportedProtocols := make([]multicodec.Code, 0, len(r.Protocols))
+	for _, protocol := range r.Protocols {
+		for _, supportedProtocol := range allSupportedProtocols {
+			if protocol == supportedProtocol {
+				supportedProtocols = append(supportedProtocols, protocol)
+				break
+			}
+		}
+	}
+	return supportedProtocols
+}
+
+func ParseProtocolsString(v string) ([]multicodec.Code, error) {
+	vs := strings.Split(v, ",")
+	protocols := make([]multicodec.Code, 0, len(vs))
+	for _, v := range vs {
+		var protocol multicodec.Code
+		switch v {
+		case "bitswap":
+			protocol = multicodec.TransportBitswap
+		case "graphsync":
+			protocol = multicodec.TransportGraphsyncFilecoinv1
+		default:
+			return nil, fmt.Errorf("unrecognized protocol: %s", v)
+		}
+		protocols = append(protocols, protocol)
+	}
+	return protocols, nil
 }

@@ -1,9 +1,9 @@
 package main
 
 import (
-	"fmt"
 	"strings"
 
+	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
 	"github.com/urfave/cli/v2"
@@ -116,19 +116,8 @@ var FlagProtocols = &cli.StringFlag{
 	DefaultText: "bitswap,graphsync",
 	Usage:       "List of retrieval protocols to use, seperated by a comma",
 	Action: func(cctx *cli.Context, v string) error {
-		vs := strings.Split(v, ",")
-		for _, v := range vs {
-			var protocol multicodec.Code
-			switch v {
-			case "bitswap":
-				protocol = multicodec.TransportBitswap
-			case "graphsync":
-				protocol = multicodec.TransportGraphsyncFilecoinv1
-			default:
-				return fmt.Errorf("unrecognized protocol: %s", v)
-			}
-			protocols = append(protocols, protocol)
-		}
-		return nil
+		var err error
+		protocols, err = types.ParseProtocolsString(v)
+		return err
 	},
 }
