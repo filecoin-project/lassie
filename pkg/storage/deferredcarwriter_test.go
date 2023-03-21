@@ -45,6 +45,7 @@ func TestDeferredCarWriterForPath(t *testing.T) {
 
 	r, err := os.Open(tmpFile)
 	require.NoError(t, err)
+	t.Cleanup(func() { r.Close() })
 	carv2, err := carv2.NewBlockReader(r)
 	require.NoError(t, err)
 
@@ -124,6 +125,7 @@ func TestDeferredCarWriterForStream(t *testing.T) {
 				require.NoError(t, err)
 				rdr, err = carv2.NewBlockReader(r)
 				require.NoError(t, err)
+				t.Cleanup(func() { r.Close() })
 			} else {
 				rdr, err = carv2.NewBlockReader(&buf)
 				require.NoError(t, err)

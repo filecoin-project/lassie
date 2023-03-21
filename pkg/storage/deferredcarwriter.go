@@ -134,6 +134,7 @@ func (dcw *DeferredCarWriter) Close() error {
 	defer dcw.lk.Unlock()
 
 	if dcw.f != nil {
+		defer func() { dcw.f = nil }()
 		return dcw.f.Close()
 	}
 	return nil
