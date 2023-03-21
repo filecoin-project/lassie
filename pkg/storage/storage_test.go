@@ -155,6 +155,9 @@ func TestPreloadStore(t *testing.T) {
 		}, nil
 	}
 	mainStore := NewTeeingTempReadWrite(bwo, t.TempDir())
+	t.Cleanup(func() {
+		require.NoError(t, mainStore.Close())
+	})
 	preload := mainStore.PreloadStore()
 
 	checkNotHas := func(blks []blk, stores ...types.ReadableWritableStorage) {
