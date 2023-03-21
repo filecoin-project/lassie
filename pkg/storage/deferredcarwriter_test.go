@@ -6,6 +6,7 @@ import (
 	"io"
 	"math/rand"
 	"os"
+	"sync"
 	"testing"
 
 	"github.com/ipfs/go-cid"
@@ -15,6 +16,7 @@ import (
 )
 
 var rng = rand.New(rand.NewSource(3333))
+var rngLk sync.Mutex
 
 func TestDeferredCarWriterForPath(t *testing.T) {
 	ctx := context.Background()
@@ -201,7 +203,9 @@ func TestDeferredCarWriterPutCb(t *testing.T) {
 
 func randBlock() (cid.Cid, []byte) {
 	data := make([]byte, 1024)
+	rngLk.Lock()
 	rng.Read(data)
+	rngLk.Unlock()
 	h, err := mh.Sum(data, mh.SHA2_512, -1)
 	if err != nil {
 		panic(err)
