@@ -200,14 +200,14 @@ func TestPreloadStore(t *testing.T) {
 	checkNotHas(td, preload)
 	checkNotHas(td[1:], mainStore)
 	checkHas(td[:1], mainStore)
-	for _, d := range td[1:5] {
-		preload.Put(ctx, d.cid.KeyString(), d.data)
+	for i := 5; i >= 1; i-- { // out of order, partial preload
+		preload.Put(ctx, td[i].cid.KeyString(), td[i].data)
 	}
 	checkNotHas(td[1:], mainStore)
 	checkNotHas(td[:1], preload)
-	checkHas(td[1:5], preload)
-	checkNotHas(td[5:], preload)
-	for _, d := range td[1:] {
+	checkHas(td[1:6], preload)
+	checkNotHas(td[6:], preload)
+	for _, d := range td[1:] { // in order, complete
 		mainStore.Put(ctx, d.cid.KeyString(), d.data)
 	}
 	checkHas(td, mainStore)

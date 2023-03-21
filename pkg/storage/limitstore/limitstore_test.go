@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/filecoin-project/lassie/pkg/internal/limitstore"
 	"github.com/filecoin-project/lassie/pkg/internal/testutil"
+	"github.com/filecoin-project/lassie/pkg/storage/limitstore"
 	"github.com/ipld/go-ipld-prime/storage/memstore"
 	"github.com/stretchr/testify/require"
 )

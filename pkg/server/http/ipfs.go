@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/filecoin-project/lassie/pkg/internal/limitstore"
 	lassie "github.com/filecoin-project/lassie/pkg/lassie"
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/storage"
+	"github.com/filecoin-project/lassie/pkg/storage/limitstore"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
