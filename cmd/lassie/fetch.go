@@ -126,7 +126,7 @@ func Fetch(cctx *cli.Context) error {
 	}
 
 	if len(providerBlockList) > 0 {
-		opts = append(opts, lassie.WithProviderBlockList(providerBlockList))
+		lassieOpts = append(lassieOpts, lassie.WithProviderBlockList(providerBlockList))
 	}
 
 	if len(protocols) > 0 {
