@@ -15,6 +15,7 @@ type (
 		httpClientTimeout      time.Duration
 		httpUserAgent          string
 		ipfsDhtCascade         bool
+		legacyCascade          bool
 	}
 )
 
@@ -26,6 +27,7 @@ func newOptions(o ...Option) (*options, error) {
 		httpClientTimeout:      time.Minute,
 		httpUserAgent:          "lassie",
 		ipfsDhtCascade:         true,
+		legacyCascade:          true,
 	}
 	for _, apply := range o {
 		if err := apply(&opts); err != nil {
@@ -97,6 +99,15 @@ func WithAsyncResultsChanBuffer(i int) Option {
 func WithIpfsDhtCascade(b bool) Option {
 	return func(o *options) error {
 		o.ipfsDhtCascade = b
+		return nil
+	}
+}
+
+// WithLegacyCascade sets weather to cascade finds legacy providers connecting only over bitswap
+// Enabled by default if unspecified.
+func WithLegacyCascade(b bool) Option {
+	return func(o *options) error {
+		o.legacyCascade = b
 		return nil
 	}
 }
