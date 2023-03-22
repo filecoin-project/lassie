@@ -27,6 +27,7 @@ func newOptions(o ...Option) (*options, error) {
 		httpClientTimeout:      time.Minute,
 		httpUserAgent:          "lassie",
 		ipfsDhtCascade:         true,
+		legacyCascade:          true,
 	}
 	for _, apply := range o {
 		if err := apply(&opts); err != nil {
