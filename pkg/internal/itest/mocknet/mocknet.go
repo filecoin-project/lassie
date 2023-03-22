@@ -143,7 +143,7 @@ func SetupQuery(t *testing.T, remote testpeer.TestPeer, expectCid cid.Cid, qr re
 
 func SetupRetrieval(t *testing.T, remote testpeer.TestPeer) chan []datatransfer.Event {
 	// Register DealProposal voucher type with automatic Pull acceptance
-	remoteDealValidator := &mockDealValidator{acceptPull: true}
+	remoteDealValidator := &mockDealValidator{t: t, acceptPull: true}
 	require.NoError(t, remote.DatatransferServer.RegisterVoucherType(retrievaltypes.DealProposalType, remoteDealValidator))
 
 	remoteEvents := make([]datatransfer.Event, 0)
@@ -237,6 +237,7 @@ func (mcf *mockCandidateFinder) FindCandidatesAsync(ctx context.Context, cid cid
 var _ datatransfer.RequestValidator = (*mockDealValidator)(nil)
 
 type mockDealValidator struct {
+	t          *testing.T
 	acceptPull bool
 }
 
@@ -257,6 +258,30 @@ func (mdv *mockDealValidator) ValidatePull(
 	baseCid cid.Cid,
 	selector datamodel.Node,
 ) (datatransfer.ValidationResult, error) {
+	if voucher.Kind() != datamodel.Kind_Map {
+		mdv.t.Logf("rejecting pull, bad voucher (!map)")
+		return datatransfer.ValidationResult{Accepted: false}, nil
+	}
+	pcn, err := voucher.LookupByString("PayloadCID")
+	if err != nil || pcn.Kind() != datamodel.Kind_Link {
+		mdv.t.Logf("rejecting pull, bad voucher PayloadCID")
+		return datatransfer.ValidationResult{Accepted: false}, nil
+	}
+	pcl, err := pcn.AsLink()
+	if err != nil || !baseCid.Equals(pcl.(cidlink.Link).Cid) {
+		mdv.t.Logf("rejecting pull, bad voucher PayloadCID (doesn't match)")
+		return datatransfer.ValidationResult{Accepted: false}, nil
+	}
+	pn, err := voucher.LookupByString("Params")
+	if err != nil || pn.Kind() != datamodel.Kind_Map {
+		mdv.t.Logf("rejecting pull, bad voucher Params")
+		return datatransfer.ValidationResult{Accepted: false}, nil
+	}
+	sn, err := pn.LookupByString("Selector")
+	if err != nil || !ipld.DeepEqual(sn, selector) {
+		mdv.t.Logf("rejecting pull, bad voucher Selector")
+		return datatransfer.ValidationResult{Accepted: false}, nil
+	}
 	return datatransfer.ValidationResult{Accepted: mdv.acceptPull}, nil
 }
 

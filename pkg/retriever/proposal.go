@@ -7,7 +7,6 @@ import (
 	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
-	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 )
 
 var dealIdGen = NewTimeCounter()
@@ -27,16 +26,12 @@ func (tc *TimeCounter) Next() uint64 {
 	return counter
 }
 
-func RetrievalProposalForAsk(ask *retrievaltypes.QueryResponse, c cid.Cid, optionalSelector ipld.Node) (*retrievaltypes.DealProposal, error) {
-	if optionalSelector == nil {
-		optionalSelector = selectorparse.CommonSelector_ExploreAllRecursively
-	}
-
+func RetrievalProposalForAsk(ask *retrievaltypes.QueryResponse, c cid.Cid, selector ipld.Node) (*retrievaltypes.DealProposal, error) {
 	params, err := retrievaltypes.NewParamsV1(
 		ask.MinPricePerByte,
 		ask.MaxPaymentInterval,
 		ask.MaxPaymentIntervalIncrease,
-		optionalSelector,
+		selector,
 		nil,
 		ask.UnsealPrice,
 	)

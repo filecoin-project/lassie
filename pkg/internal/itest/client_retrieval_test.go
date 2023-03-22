@@ -119,6 +119,7 @@ func runRetrieval(t *testing.T, ctx context.Context, mrn *mocknet.MockRetrievalN
 		Params: retrievaltypes.Params{
 			PricePerByte: big.Zero(),
 			UnsealPrice:  big.Zero(),
+			Selector:     retrievaltypes.CborGenCompatibleNode{Node: selectorparse.CommonSelector_ExploreAllRecursively},
 		},
 	}
 	paymentAddress := address.TestAddress2

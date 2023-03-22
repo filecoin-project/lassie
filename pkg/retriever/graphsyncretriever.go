@@ -452,7 +452,7 @@ func retrievalPhase(
 		ss,
 	)
 
-	proposal, err := RetrievalProposalForAsk(queryResponse, candidate.RootCid, nil)
+	proposal, err := RetrievalProposalForAsk(queryResponse, candidate.RootCid, selector)
 	if err != nil {
 		return nil, multierr.Append(multierr.Append(ErrRetrievalFailed, ErrProposalCreationFailed), err)
 	}
