@@ -18,7 +18,7 @@ func TestRetrievalProposalForAsk(t *testing.T) {
 		MaxPaymentIntervalIncrease: 3,
 		UnsealPrice:                abi.NewTokenAmount(4),
 	}
-	proposal, err := RetrievalProposalForAsk(ask, cid1, nil)
+	proposal, err := RetrievalProposalForAsk(ask, cid1, selectorparse.CommonSelector_ExploreAllRecursively)
 	require.NoError(t, err)
 	require.NotZero(t, proposal.ID)
 	require.Equal(t, cid1, proposal.PayloadCID)
