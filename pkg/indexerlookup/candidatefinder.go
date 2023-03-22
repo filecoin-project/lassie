@@ -151,6 +151,11 @@ func (idxf *IndexerCandidateFinder) newFindHttpRequest(ctx context.Context, c ci
 		query.Add("cascade", "ipfs-dht")
 		req.URL.RawQuery = query.Encode()
 	}
+	if idxf.legacyCascade {
+		query := req.URL.Query()
+		query.Add("cascade", "legacy")
+		req.URL.RawQuery = query.Encode()
+	}
 	return req, nil
 }
 
