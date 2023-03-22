@@ -107,7 +107,6 @@ func TestAggregateEventRecorder(t *testing.T) {
 				"test-instance",
 				fmt.Sprintf("%s/test-path/here", ts.URL),
 				authHeaderValue,
-				false,
 			).RetrievalEventSubscriber()
 			id, err := types.NewRetrievalID()
 			require.NoError(t, err)
@@ -180,7 +179,6 @@ func BenchmarkAggregateEventRecorderSubscriber(b *testing.B) {
 		"test-instance",
 		fmt.Sprintf("%s/test-path/here", ts.URL),
 		authHeaderValue,
-		false,
 	).RetrievalEventSubscriber()
 	id, _ := types.NewRetrievalID()
 	fetchStartTime := time.Now()
