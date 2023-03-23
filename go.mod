@@ -6,10 +6,8 @@ require (
 	contrib.go.opencensus.io/exporter/prometheus v0.4.2
 	github.com/benbjohnson/clock v1.3.0
 	github.com/dustin/go-humanize v1.0.1
-	github.com/filecoin-project/go-address v1.1.0
 	github.com/filecoin-project/go-data-transfer/v2 v2.0.0-rc5
 	github.com/filecoin-project/go-state-types v0.10.0
-	github.com/google/go-cmp v0.5.9
 	github.com/google/uuid v1.3.0
 	github.com/hannahhoward/go-pubsub v1.0.0
 	github.com/ipfs/go-blockservice v0.5.0
@@ -46,7 +44,10 @@ require (
 	golang.org/x/net v0.7.0
 )
 
-require github.com/libp2p/go-mplex v0.7.0 // indirect
+require (
+	github.com/filecoin-project/go-address v1.1.0 // indirect
+	github.com/libp2p/go-mplex v0.7.0 // indirect
+)
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
