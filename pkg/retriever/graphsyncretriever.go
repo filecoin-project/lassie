@@ -96,10 +96,9 @@ type graphsyncRetrieval struct {
 }
 
 type graphsyncCandidateRetrieval struct {
-	waitQueue          prioritywaitqueue.PriorityWaitQueue[connectCandidate]
-	retrievalStartTime time.Time
-	resultChan         chan retrievalResult
-	finishChan         chan struct{}
+	waitQueue  prioritywaitqueue.PriorityWaitQueue[connectCandidate]
+	resultChan chan retrievalResult
+	finishChan chan struct{}
 }
 
 // RetrieveFromCandidates performs a retrieval for a given CID by querying the indexer, then
@@ -356,10 +355,6 @@ func (retrieval *graphsyncCandidateRetrieval) sendResult(result retrievalResult)
 
 func (retrieval *graphsyncCandidateRetrieval) sendEvent(event types.RetrievalEvent) {
 	retrieval.sendResult(retrievalResult{PeerID: event.StorageProviderId(), Event: &event})
-}
-
-func totalCost(qres *retrievaltypes.QueryResponse) big.Int {
-	return big.Add(big.Mul(qres.MinPricePerByte, big.NewIntUnsigned(qres.Size)), qres.UnsealPrice)
 }
 
 func retrievalPhase(
