@@ -114,6 +114,27 @@ func TestHttpFetch(t *testing.T) {
 			}},
 		},
 		{
+			name:             "graphsync max block limit in request",
+			graphsyncRemotes: 1,
+			modifyQueries: []queryModifier{
+				func(values url.Values) {
+					values.Add("blockLimit", "3")
+				},
+			},
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				return []unixfs.DirEntry{unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20)}
+			},
+			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
+				// 3 blocks max, start at the root and then two blocks into the sharded data
+				wantCids := []cid.Cid{
+					srcData.Root,
+					srcData.SelfCids[0],
+					srcData.SelfCids[1],
+				}
+				validateCarBody(t, body, srcData.Root, wantCids, true)
+			}},
+		},
+		{
 			name:           "bitswap max block limit",
 			bitswapRemotes: 1,
 			modifyHttpConfig: func(cfg httpserver.HttpServerConfig) httpserver.HttpServerConfig {
