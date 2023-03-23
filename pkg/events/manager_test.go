@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/types"
@@ -37,15 +36,14 @@ func TestEventManager(t *testing.T) {
 	unregister1 := em.RegisterSubscriber(subscriber1)
 	unregister2 := em.RegisterSubscriber(subscriber2)
 
-	em.DispatchEvent(events.Started(id, indexerStart, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid}))
-	em.DispatchEvent(events.CandidatesFound(id, indexerStart, cid, []types.RetrievalCandidate{{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid}, {MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, {MinerPeer: peer.AddrInfo{ID: peerC}, RootCid: cid}}))
-	em.DispatchEvent(events.CandidatesFiltered(id, indexerStart, cid, []types.RetrievalCandidate{{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid}, {MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, {MinerPeer: peer.AddrInfo{ID: peerC}, RootCid: cid}}))
-	em.DispatchEvent(events.Started(id, queryStart, types.QueryPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid}))
-	em.DispatchEvent(events.Failed(id, queryStart, types.QueryPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid}, "error @ query failure"))
-	em.DispatchEvent(events.QueryAsked(id, queryStart, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseError, Size: 100, Message: "error @ response"}))
-	em.DispatchEvent(events.Started(id, retrievalStart, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}))
-	em.DispatchEvent(events.Success(id, retrievalStart, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, 100, 200, time.Second*300, big.NewInt(400)))
-	em.DispatchEvent(events.Failed(id, retrievalStart, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, "error @ retrieval failure"))
+	em.DispatchEvent(events.Started(time.Now(), id, indexerStart, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid}))
+	em.DispatchEvent(events.CandidatesFound(time.Now(), id, indexerStart, cid, []types.RetrievalCandidate{{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid}, {MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, {MinerPeer: peer.AddrInfo{ID: peerC}, RootCid: cid}}))
+	em.DispatchEvent(events.CandidatesFiltered(time.Now(), id, indexerStart, cid, []types.RetrievalCandidate{{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid}, {MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, {MinerPeer: peer.AddrInfo{ID: peerC}, RootCid: cid}}))
+	em.DispatchEvent(events.Started(time.Now(), id, queryStart, types.QueryPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid}))
+	em.DispatchEvent(events.Failed(time.Now(), id, queryStart, types.QueryPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid}, "error @ query failure"))
+	em.DispatchEvent(events.Started(time.Now(), id, retrievalStart, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}))
+	em.DispatchEvent(events.Success(time.Now(), id, retrievalStart, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, 100, 200, time.Second*300, big.NewInt(400)))
+	em.DispatchEvent(events.Failed(time.Now(), id, retrievalStart, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, "error @ retrieval failure"))
 
 	time.Sleep(50 * time.Millisecond)
 
@@ -53,15 +51,14 @@ func TestEventManager(t *testing.T) {
 	unregister2()
 
 	// these should go nowhere and not be counted
-	em.DispatchEvent(events.Started(id, indexerStart, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid}))
-	em.DispatchEvent(events.CandidatesFound(id, indexerStart, cid, []types.RetrievalCandidate{{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid}, {MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, {MinerPeer: peer.AddrInfo{ID: peerC}, RootCid: cid}}))
-	em.DispatchEvent(events.CandidatesFiltered(id, indexerStart, cid, []types.RetrievalCandidate{{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid}, {MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, {MinerPeer: peer.AddrInfo{ID: peerC}, RootCid: cid}}))
-	em.DispatchEvent(events.Started(id, queryStart, types.QueryPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid}))
-	em.DispatchEvent(events.Failed(id, queryStart, types.QueryPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid}, "error @ query failure"))
-	em.DispatchEvent(events.QueryAsked(id, queryStart, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseError, Size: 100, Message: "error @ response"}))
-	em.DispatchEvent(events.Started(id, indexerStart, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}))
-	em.DispatchEvent(events.Success(id, retrievalStart, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, 100, 200, time.Second*300, big.NewInt(400)))
-	em.DispatchEvent(events.Failed(id, retrievalStart, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, "error @ retrieval failure"))
+	em.DispatchEvent(events.Started(time.Now(), id, indexerStart, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid}))
+	em.DispatchEvent(events.CandidatesFound(time.Now(), id, indexerStart, cid, []types.RetrievalCandidate{{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid}, {MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, {MinerPeer: peer.AddrInfo{ID: peerC}, RootCid: cid}}))
+	em.DispatchEvent(events.CandidatesFiltered(time.Now(), id, indexerStart, cid, []types.RetrievalCandidate{{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid}, {MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, {MinerPeer: peer.AddrInfo{ID: peerC}, RootCid: cid}}))
+	em.DispatchEvent(events.Started(time.Now(), id, queryStart, types.QueryPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid}))
+	em.DispatchEvent(events.Failed(time.Now(), id, queryStart, types.QueryPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid}, "error @ query failure"))
+	em.DispatchEvent(events.Started(time.Now(), id, indexerStart, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}))
+	em.DispatchEvent(events.Success(time.Now(), id, retrievalStart, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, 100, 200, time.Second*300, big.NewInt(400)))
+	em.DispatchEvent(events.Failed(time.Now(), id, retrievalStart, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, "error @ retrieval failure"))
 
 	select {
 	case <-em.Stop():
@@ -127,44 +124,6 @@ func TestEventManager(t *testing.T) {
 	}
 	verifyEvent(gotEvents1, types.CandidatesFilteredCode, types.IndexerPhase, verifyIndexerCandidatesFiltered)
 	verifyEvent(gotEvents2, types.CandidatesFilteredCode, types.IndexerPhase, verifyIndexerCandidatesFiltered)
-
-	verifyQueryStarted := func(event types.RetrievalEvent) {
-		require.IsType(t, events.RetrievalEventStarted{}, event)
-		require.Equal(t, id, event.RetrievalId())
-		require.Equal(t, cid, event.PayloadCid())
-		require.Equal(t, queryStart, event.PhaseStartTime())
-		require.Equal(t, types.QueryPhase, event.Phase())
-		require.Equal(t, types.StartedCode, event.Code())
-		require.Equal(t, peerA, event.(events.RetrievalEventStarted).StorageProviderId())
-	}
-	verifyEvent(gotEvents1, types.StartedCode, types.QueryPhase, verifyQueryStarted)
-	verifyEvent(gotEvents2, types.StartedCode, types.QueryPhase, verifyQueryStarted)
-
-	verifyQueryFailure := func(event types.RetrievalEvent) {
-		require.IsType(t, events.RetrievalEventFailed{}, event)
-		require.Equal(t, id, event.RetrievalId())
-		require.Equal(t, cid, event.PayloadCid())
-		require.Equal(t, queryStart, event.PhaseStartTime())
-		require.Equal(t, types.QueryPhase, event.Phase())
-		require.Equal(t, peerA, event.(events.RetrievalEventFailed).StorageProviderId())
-		require.Equal(t, "error @ query failure", event.(events.RetrievalEventFailed).ErrorMessage())
-	}
-	verifyEvent(gotEvents1, types.FailedCode, types.QueryPhase, verifyQueryFailure)
-	verifyEvent(gotEvents2, types.FailedCode, types.QueryPhase, verifyQueryFailure)
-
-	verifyQuerySuccess := func(event types.RetrievalEvent) {
-		require.IsType(t, events.RetrievalEventQueryAsked{}, event)
-		require.Equal(t, id, event.RetrievalId())
-		require.Equal(t, cid, event.PayloadCid())
-		require.Equal(t, queryStart, event.PhaseStartTime())
-		require.Equal(t, types.QueryPhase, event.Phase())
-		require.Equal(t, peerB, event.(events.RetrievalEventQueryAsked).StorageProviderId())
-		require.Equal(t, retrievaltypes.QueryResponseError, event.(events.RetrievalEventQueryAsked).QueryResponse().Status)
-		require.Equal(t, uint64(100), event.(events.RetrievalEventQueryAsked).QueryResponse().Size)
-		require.Equal(t, "error @ response", event.(events.RetrievalEventQueryAsked).QueryResponse().Message)
-	}
-	verifyEvent(gotEvents1, types.QueryAskedCode, types.QueryPhase, verifyQuerySuccess)
-	verifyEvent(gotEvents2, types.QueryAskedCode, types.QueryPhase, verifyQuerySuccess)
 
 	verifyRetrievalStarted := func(event types.RetrievalEvent) {
 		require.IsType(t, events.RetrievalEventStarted{}, event)

@@ -123,7 +123,7 @@ func TestAssignableCandidateFinder(t *testing.T) {
 				}
 				allCandidateResults[c] = candidateResults
 			}
-			candidateFinder := &testutil.MockCandidateFinder{Error: testCase.candidateError, Candidates: allCandidateResults}
+			candidateFinder := testutil.NewMockCandidateFinder(testCase.candidateError, allCandidateResults)
 			isAcceptableStorageProvider := func(candidate types.RetrievalCandidate) (bool, types.RetrievalCandidate) {
 				for _, filteredPeer := range testCase.filteredPeers {
 					if candidate.MinerPeer.ID == peer.ID(filteredPeer) {

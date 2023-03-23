@@ -63,9 +63,10 @@ func (cs candidateSender) sendError(err error) error {
 
 // FindCandidatesAsync finds supported protocols for each peer
 // TODO: Cache the results?
-func (d *DirectCandidateFinder) FindCandidatesAsync(ctx context.Context, c cid.Cid) (<-chan types.FindCandidatesResult, error) {
+func (d *DirectCandidateFinder) FindCandidatesAsync(ctx context.Context, c cid.Cid, cb func(types.RetrievalCandidate)) error {
 	candidateResults := make(chan types.FindCandidatesResult)
 	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	cs := candidateSender{ctx, cancel, c, candidateResults}
 	var wg sync.WaitGroup
 	for _, provider := range d.providers {
@@ -98,7 +99,20 @@ func (d *DirectCandidateFinder) FindCandidatesAsync(ctx context.Context, c cid.C
 		wg.Wait()
 		close(candidateResults)
 	}()
-	return candidateResults, nil
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case result, ok := <-candidateResults:
+			if !ok {
+				return nil
+			}
+			if result.Err != nil {
+				return result.Err
+			}
+			cb(result.Candidate)
+		}
+	}
 }
 
 func (d *DirectCandidateFinder) retrievalCandidatesFromProtocolProbing(ctx context.Context, provider peer.AddrInfo, cs candidateSender) {
@@ -159,22 +173,11 @@ func (d *DirectCandidateFinder) retrievalCandidatesFromTransportsProtocol(ctx co
 
 func (d *DirectCandidateFinder) FindCandidates(ctx context.Context, c cid.Cid) ([]types.RetrievalCandidate, error) {
 	var candidates []types.RetrievalCandidate
-	candidatesResults, err := d.FindCandidatesAsync(ctx, c)
+	err := d.FindCandidatesAsync(ctx, c, func(nextCandidate types.RetrievalCandidate) {
+		candidates = append(candidates, nextCandidate)
+	})
 	if err != nil {
 		return nil, err
 	}
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case candidateResult, ok := <-candidatesResults:
-			if !ok {
-				return candidates, nil
-			}
-			if candidateResult.Err != nil {
-				return nil, candidateResult.Err
-			}
-			candidates = append(candidates, candidateResult.Candidate)
-		}
-	}
+	return candidates, nil
 }

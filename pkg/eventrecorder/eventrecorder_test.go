@@ -8,9 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/filecoin-project/go-address"
-	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
-	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/eventrecorder"
 	"github.com/filecoin-project/lassie/pkg/events"
@@ -47,60 +44,9 @@ func TestEventRecorder(t *testing.T) {
 		exec func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID)
 	}{
 		{
-			name: "QuerySuccess",
-			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
-				qr := retrievaltypes.QueryResponse{
-					Status:                     retrievaltypes.QueryResponseUnavailable,
-					Size:                       10101,
-					MinPricePerByte:            abi.NewTokenAmount(202020),
-					UnsealPrice:                abi.NewTokenAmount(0),
-					Message:                    "yo!",
-					PieceCIDFound:              1,
-					MaxPaymentInterval:         3030,
-					MaxPaymentIntervalIncrease: 99,
-					PaymentAddress:             address.TestAddress,
-				}
-				er.RecordEvent(events.QueryAsked(id, ptime, types.NewRetrievalCandidate(spid, testCid1), qr))
-
-				select {
-				case <-ctx.Done():
-					t.Fatal(ctx.Err())
-				case <-receivedChan:
-				}
-
-				require.Equal(t, int64(1), req.Length())
-				eventList := verifyListNode(t, req, "events", 1)
-				event := verifyListElement(t, eventList, 0)
-				require.Equal(t, int64(9), event.Length())
-				verifyStringNode(t, event, "retrievalId", id.String())
-				verifyStringNode(t, event, "instanceId", "test-instance")
-				verifyStringNode(t, event, "cid", testCid1.String())
-				verifyStringNode(t, event, "storageProviderId", spid.String())
-				verifyStringNode(t, event, "phase", "query")
-				verifyStringNode(t, event, "phaseStartTime", ptime.Format(time.RFC3339Nano))
-				verifyStringNode(t, event, "eventName", "query-asked")
-				atime, err := time.Parse(time.RFC3339Nano, nodeToString(t, event, "eventTime"))
-				require.NoError(t, err)
-				require.Less(t, etime.Sub(atime), 50*time.Millisecond)
-
-				detailsNode, err := event.LookupByString("eventDetails")
-				require.NoError(t, err)
-				require.Equal(t, int64(9), detailsNode.Length())
-				verifyIntNode(t, detailsNode, "Status", 1)
-				verifyIntNode(t, detailsNode, "Size", 10101)
-				verifyIntNode(t, detailsNode, "MaxPaymentInterval", 3030)
-				verifyIntNode(t, detailsNode, "MaxPaymentIntervalIncrease", 99)
-				verifyIntNode(t, detailsNode, "PieceCIDFound", 1)
-				verifyStringNode(t, detailsNode, "UnsealPrice", "0")
-				verifyStringNode(t, detailsNode, "MinPricePerByte", "202020")
-				verifyStringNode(t, detailsNode, "PaymentAddress", address.TestAddress.String())
-				verifyStringNode(t, detailsNode, "Message", "yo!")
-			},
-		},
-		{
 			name: "RetrievalSuccess",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
-				er.RecordEvent(events.Success(id, ptime, types.NewRetrievalCandidate(spid, testCid1), uint64(2020), 3030, 4*time.Second, big.Zero()))
+				er.RecordEvent(events.Success(time.Now(), id, ptime, types.NewRetrievalCandidate(spid, testCid1), uint64(2020), 3030, 4*time.Second, big.Zero()))
 
 				select {
 				case <-ctx.Done():
@@ -134,7 +80,7 @@ func TestEventRecorder(t *testing.T) {
 		{
 			name: "RetrievalSuccess, bitswap",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
-				er.RecordEvent(events.Success(id, ptime, types.NewRetrievalCandidate(peer.ID(""), testCid1, metadata.Bitswap{}), uint64(2020), 3030, 4*time.Second, big.Zero()))
+				er.RecordEvent(events.Success(time.Now(), id, ptime, types.NewRetrievalCandidate(peer.ID(""), testCid1, metadata.Bitswap{}), uint64(2020), 3030, 4*time.Second, big.Zero()))
 
 				select {
 				case <-ctx.Done():
@@ -166,40 +112,9 @@ func TestEventRecorder(t *testing.T) {
 			},
 		},
 		{
-			name: "QueryFailure",
-			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
-				er.RecordEvent(events.Failed(id, ptime, types.QueryPhase, types.NewRetrievalCandidate(spid, testCid1), "ha ha no"))
-
-				select {
-				case <-ctx.Done():
-					t.Fatal(ctx.Err())
-				case <-receivedChan:
-				}
-				require.Equal(t, int64(1), req.Length())
-				eventList := verifyListNode(t, req, "events", 1)
-				event := verifyListElement(t, eventList, 0)
-				require.Equal(t, int64(9), event.Length())
-				verifyStringNode(t, event, "retrievalId", id.String())
-				verifyStringNode(t, event, "instanceId", "test-instance")
-				verifyStringNode(t, event, "cid", testCid1.String())
-				verifyStringNode(t, event, "storageProviderId", spid.String())
-				verifyStringNode(t, event, "phase", "query")
-				verifyStringNode(t, event, "phaseStartTime", ptime.Format(time.RFC3339Nano))
-				verifyStringNode(t, event, "eventName", "failure")
-				atime, err := time.Parse(time.RFC3339Nano, nodeToString(t, event, "eventTime"))
-				require.NoError(t, err)
-				require.Less(t, etime.Sub(atime), 50*time.Millisecond)
-
-				detailsNode, err := event.LookupByString("eventDetails")
-				require.NoError(t, err)
-				require.Equal(t, int64(1), detailsNode.Length())
-				verifyStringNode(t, detailsNode, "error", "ha ha no")
-			},
-		},
-		{
 			name: "RetrievalFailure",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
-				er.RecordEvent(events.Failed(id, ptime, types.RetrievalPhase, types.NewRetrievalCandidate(spid, testCid1), "ha ha no, silly silly"))
+				er.RecordEvent(events.Failed(time.Now(), id, ptime, types.RetrievalPhase, types.NewRetrievalCandidate(spid, testCid1), "ha ha no, silly silly"))
 
 				select {
 				case <-ctx.Done():
@@ -231,7 +146,7 @@ func TestEventRecorder(t *testing.T) {
 		{
 			name: "RetrievalFailure, bitswap",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
-				er.RecordEvent(events.Failed(id, ptime, types.RetrievalPhase, types.NewRetrievalCandidate(peer.ID(""), testCid1, metadata.Bitswap{}), "ha ha no, silly silly"))
+				er.RecordEvent(events.Failed(time.Now(), id, ptime, types.RetrievalPhase, types.NewRetrievalCandidate(peer.ID(""), testCid1, metadata.Bitswap{}), "ha ha no, silly silly"))
 
 				select {
 				case <-ctx.Done():
@@ -261,9 +176,9 @@ func TestEventRecorder(t *testing.T) {
 			},
 		},
 		{
-			name: "QueryProgress",
+			name: "Connected",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
-				er.RecordEvent(events.Connected(id, ptime, types.QueryPhase, types.NewRetrievalCandidate(spid, testCid1)))
+				er.RecordEvent(events.Connected(time.Now(), id, ptime, types.RetrievalPhase, types.NewRetrievalCandidate(spid, testCid1)))
 
 				select {
 				case <-ctx.Done():
@@ -279,7 +194,7 @@ func TestEventRecorder(t *testing.T) {
 				verifyStringNode(t, event, "instanceId", "test-instance")
 				verifyStringNode(t, event, "cid", testCid1.String())
 				verifyStringNode(t, event, "storageProviderId", spid.String())
-				verifyStringNode(t, event, "phase", "query")
+				verifyStringNode(t, event, "phase", "retrieval")
 				verifyStringNode(t, event, "phaseStartTime", ptime.Format(time.RFC3339Nano))
 				verifyStringNode(t, event, "eventName", "connected")
 				atime, err := time.Parse(time.RFC3339Nano, nodeToString(t, event, "eventTime"))
@@ -290,7 +205,7 @@ func TestEventRecorder(t *testing.T) {
 		{
 			name: "RetrievalProgress",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
-				er.RecordEvent(events.FirstByte(id, ptime, types.NewRetrievalCandidate(spid, testCid1)))
+				er.RecordEvent(events.FirstByte(time.Now(), id, ptime, types.NewRetrievalCandidate(spid, testCid1)))
 
 				select {
 				case <-ctx.Done():
@@ -317,7 +232,7 @@ func TestEventRecorder(t *testing.T) {
 		{
 			name: "CandidatesFound",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
-				er.RecordEvent(events.CandidatesFound(id, ptime, testCid1, []types.RetrievalCandidate{
+				er.RecordEvent(events.CandidatesFound(time.Now(), id, ptime, testCid1, []types.RetrievalCandidate{
 					types.NewRetrievalCandidate(spid, testCid1, metadata.Bitswap{}),
 				}))
 
@@ -358,7 +273,7 @@ func TestEventRecorder(t *testing.T) {
 		{
 			name: "CandidatesFiltered",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
-				er.RecordEvent(events.CandidatesFiltered(id, ptime, testCid1, []types.RetrievalCandidate{
+				er.RecordEvent(events.CandidatesFiltered(time.Now(), id, ptime, testCid1, []types.RetrievalCandidate{
 					types.NewRetrievalCandidate(spid, testCid1, metadata.Bitswap{}),
 				}))
 
@@ -507,7 +422,7 @@ func TestEventRecorderSlowPost(t *testing.T) {
 		requestWg.Add(1)
 		go func() {
 			defer wg.Done()
-			er.RecordEvent(events.FirstByte(id, ptime, types.NewRetrievalCandidate(spid, testCid1)))
+			er.RecordEvent(events.FirstByte(time.Now(), id, ptime, types.NewRetrievalCandidate(spid, testCid1)))
 		}()
 	}
 	if !waitGroupWait(ctx, &wg) {

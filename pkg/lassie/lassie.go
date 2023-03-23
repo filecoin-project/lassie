@@ -90,7 +90,7 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 	for _, protocol := range cfg.Protocols {
 		switch protocol {
 		case multicodec.TransportGraphsyncFilecoinv1:
-			retrievalClient, err := client.NewClient(ctx, datastore, cfg.Host, nil)
+			retrievalClient, err := client.NewClient(ctx, datastore, cfg.Host)
 			if err != nil {
 				return nil, err
 			}
@@ -98,11 +98,7 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 			if err := retrievalClient.AwaitReady(); err != nil { // wait for dt setup
 				return nil, err
 			}
-			protocolRetrievers[protocol] = &retriever.GraphSyncRetriever{
-				GetStorageProviderTimeout: session.GetStorageProviderTimeout,
-				IsAcceptableQueryResponse: session.IsAcceptableQueryResponse,
-				Client:                    retrievalClient,
-			}
+			protocolRetrievers[protocol] = retriever.NewGraphsyncRetriever(session.GetStorageProviderTimeout, retrievalClient)
 		case multicodec.TransportBitswap:
 			protocolRetrievers[protocol] = retriever.NewBitswapRetrieverFromHost(ctx, cfg.Host, retriever.BitswapConfig{
 				BlockTimeout: cfg.ProviderTimeout,

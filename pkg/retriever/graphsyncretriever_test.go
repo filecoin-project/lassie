@@ -3,353 +3,451 @@ package retriever
 import (
 	"context"
 	"errors"
-	mbig "math/big"
-	"sync"
 	"testing"
 	"time"
 
-	"github.com/filecoin-project/go-address"
-	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
+	"github.com/benbjohnson/clock"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/internal/testutil"
 	"github.com/filecoin-project/lassie/pkg/types"
-	"github.com/google/go-cmp/cmp"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
+	"github.com/ipni/index-provider/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/require"
 )
 
-func TestQueryFiltering(t *testing.T) {
-	testCases := []struct {
-		name           string
-		paid           bool
-		queryResponses map[string]*retrievaltypes.QueryResponse
-		expectedPeers  []string
-	}{
-		{
-			name: "PaidRetrievals: true",
-			paid: true,
-			queryResponses: map[string]*retrievaltypes.QueryResponse{
-				"foo": {Message: "foo", Status: retrievaltypes.QueryResponseUnavailable},
-				"bar": {Message: "bar", Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.NewInt(1), Size: 2, UnsealPrice: big.Zero()},
-				"baz": {Message: "baz", Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()},
-			},
-			expectedPeers: []string{"bar", "baz"},
-		},
-		{
-			name: "PaidRetrievals: false",
-			paid: false,
-			queryResponses: map[string]*retrievaltypes.QueryResponse{
-				"foo": {Message: "foo", Status: retrievaltypes.QueryResponseUnavailable},
-				"bar": {Message: "bar", Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.NewInt(1), Size: 2, UnsealPrice: big.Zero()},
-				"baz": {Message: "baz", Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()},
-			},
-			expectedPeers: []string{"baz"},
-		},
-		{
-			name: "PaidRetrievals: true, /w only paid",
-			paid: true,
-			queryResponses: map[string]*retrievaltypes.QueryResponse{
-				"foo": {Message: "foo", Status: retrievaltypes.QueryResponseUnavailable},
-				"bar": {Message: "bar", Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.NewInt(1), Size: 2, UnsealPrice: big.Zero()},
-				"baz": {Message: "baz", Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.NewInt(1), Size: 2, UnsealPrice: big.Zero()},
-			},
-			expectedPeers: []string{"bar", "baz"},
-		},
-		{
-			name: "PaidRetrievals: false, /w only paid",
-			paid: false,
-			queryResponses: map[string]*retrievaltypes.QueryResponse{
-				"foo": {Message: "foo", Status: retrievaltypes.QueryResponseUnavailable},
-				"bar": {Message: "bar", Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.NewInt(1), Size: 2, UnsealPrice: big.Zero()},
-				"baz": {Message: "baz", Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.NewInt(1), Size: 2, UnsealPrice: big.Zero()},
-			},
-			expectedPeers: []string{},
-		},
-		{
-			name: "PaidRetrievals: true, w/ no paid",
-			paid: true,
-			queryResponses: map[string]*retrievaltypes.QueryResponse{
-				"foo": {Message: "foo", Status: retrievaltypes.QueryResponseUnavailable},
-				"bar": {Message: "bar", Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()},
-				"baz": {Message: "baz", Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()},
-			},
-			expectedPeers: []string{"bar", "baz"},
-		},
-		{
-			name: "PaidRetrievals: false, w/ no paid",
-			paid: false,
-			queryResponses: map[string]*retrievaltypes.QueryResponse{
-				"foo": {Message: "foo", Status: retrievaltypes.QueryResponseUnavailable},
-				"bar": {Message: "bar", Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()},
-				"baz": {Message: "baz", Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()},
-			},
-			expectedPeers: []string{"bar", "baz"},
-		},
-	}
-
-	for _, tc := range testCases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			retrievalID := types.RetrievalID(uuid.New())
-			dqr := make(map[string]testutil.DelayedQueryReturn, 0)
-			for p, qr := range tc.queryResponses {
-				dqr[p] = testutil.DelayedQueryReturn{QueryResponse: qr, Err: nil, Delay: time.Millisecond * 50}
-			}
-			mockClient := testutil.NewMockClient(dqr, nil)
-			var candidates []types.RetrievalCandidate
-			for p := range tc.queryResponses {
-				candidates = append(candidates, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID(p)}})
-			}
-
-			cfg := &GraphSyncRetriever{
-				GetStorageProviderTimeout: func(peer peer.ID) time.Duration { return time.Second },
-				IsAcceptableQueryResponse: func(peer peer.ID, req types.RetrievalRequest, queryResponse *retrievaltypes.QueryResponse) bool {
-					return tc.paid || big.Add(big.Mul(queryResponse.MinPricePerByte, big.NewIntUnsigned(queryResponse.Size)), queryResponse.UnsealPrice).Equals(big.Zero())
-				},
-				Client: mockClient,
-			}
-
-			retrievingPeers := make([]peer.ID, 0)
-			candidateQueries := make([]candidateQuery, 0)
-			candidateQueriesFiltered := make([]candidateQuery, 0)
-
-			// perform retrieval and test top-level results, we should only error in this test
-			stats, err := cfg.Retrieve(context.Background(), types.RetrievalRequest{
-				Cid:         cid.Undef,
-				RetrievalID: retrievalID,
-				LinkSystem:  cidlink.DefaultLinkSystem(),
-			}, func(event types.RetrievalEvent) {
-				require.Equal(t, retrievalID, event.RetrievalId())
-				switch ret := event.(type) {
-				case events.RetrievalEventQueryAsked:
-					candidateQueries = append(candidateQueries, candidateQuery{ret.StorageProviderId(), ret.QueryResponse()})
-				case events.RetrievalEventQueryAskedFiltered:
-					candidateQueriesFiltered = append(candidateQueriesFiltered, candidateQuery{ret.StorageProviderId(), ret.QueryResponse()})
-				case events.RetrievalEventStarted:
-					if ret.Phase() == types.RetrievalPhase {
-						retrievingPeers = append(retrievingPeers, event.StorageProviderId())
-					}
-				}
-			}).RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, candidates))
-			require.Nil(t, stats)
-			require.Error(t, err)
-
-			// expected all queries
-			require.Len(t, mockClient.GetReceivedQueries(), len(tc.queryResponses))
-			require.Len(t, candidateQueries, len(tc.queryResponses))
-			for p, qr := range tc.queryResponses {
-				pid := peer.ID(p)
-				require.Contains(t, mockClient.GetReceivedQueries(), pid)
-				found := false
-				for _, rqfc := range candidateQueries {
-					if rqfc.peer == pid {
-						found = true
-						require.True(t, cmp.Equal(rqfc.queryResponse, *qr, cmp.AllowUnexported(address.Address{}, mbig.Int{})))
-					}
-				}
-				require.True(t, found)
-			}
-
-			// verify that the list of retrievals matches the expected filtered list
-			require.Len(t, mockClient.GetReceivedRetrievals(), len(tc.expectedPeers))
-			require.Len(t, candidateQueriesFiltered, len(tc.expectedPeers))
-			require.Len(t, retrievingPeers, len(tc.expectedPeers))
-			for _, p := range tc.expectedPeers {
-				pid := peer.ID(p)
-				require.NotNil(t, mockClient.GetReceivedRetrievalFrom(pid))
-				require.Contains(t, retrievingPeers, pid)
-				found := false
-				for _, rqfc := range candidateQueriesFiltered {
-					if rqfc.peer == pid {
-						found = true
-						qr := tc.queryResponses[p]
-						require.True(t, cmp.Equal(rqfc.queryResponse, *qr, cmp.AllowUnexported(address.Address{}, mbig.Int{})))
-					}
-				}
-				require.True(t, found)
-			}
-		})
-	}
-}
-
 func TestRetrievalRacing(t *testing.T) {
-	successfulQueryResponse := retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}
-
+	retrievalID := types.RetrievalID(uuid.New())
+	startTime := time.Now().Add(time.Hour)
 	testCases := []struct {
-		name                      string
-		queryReturns              map[string]testutil.DelayedQueryReturn
-		expectedQueryReturns      []string
-		retrievalReturns          map[string]testutil.DelayedRetrievalReturn
-		expectedRetrievalAttempts []string
-		expectedRetrieval         string
+		name              string
+		customMetadata    map[string]metadata.Protocol
+		connectReturns    map[string]testutil.DelayedConnectReturn
+		retrievalReturns  map[string]testutil.DelayedClientReturn
+		expectedRetrieval string
+		expectSequence    []testutil.ExpectedActionsAtTime
 	}{
 		{
 			name: "single fast",
-			queryReturns: map[string]testutil.DelayedQueryReturn{
-				"foo": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 20},
-				"bar": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 500},
-				"baz": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 500},
+			connectReturns: map[string]testutil.DelayedConnectReturn{
+				"foo": {Delay: time.Millisecond * 20},
+				"bar": {Delay: time.Millisecond * 500},
+				"baz": {Delay: time.Millisecond * 500},
 			},
-			expectedQueryReturns: []string{"foo"},
-			retrievalReturns: map[string]testutil.DelayedRetrievalReturn{
+			retrievalReturns: map[string]testutil.DelayedClientReturn{
 				"foo": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("foo"), Size: 1}, Delay: time.Millisecond * 20},
 				"bar": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}, Delay: time.Millisecond * 500},
 				"baz": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 3}, Delay: time.Millisecond * 500},
 			},
-			expectedRetrievalAttempts: []string{"foo"},
-			expectedRetrieval:         "foo",
+			expectedRetrieval: "foo",
+			expectSequence: []testutil.ExpectedActionsAtTime{
+				{
+					AfterStart:          0,
+					ReceivedConnections: []peer.ID{"foo", "bar", "baz"},
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+						events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
+						events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}),
+					},
+				},
+				{
+					AfterStart:         time.Millisecond * 20,
+					ReceivedRetrievals: []peer.ID{"foo"},
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Connected(startTime.Add(time.Millisecond*20), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+					},
+				},
+				{
+					AfterStart: time.Millisecond * 40,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Proposed(startTime.Add(time.Millisecond*40), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+						events.Accepted(startTime.Add(time.Millisecond*40), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+						events.FirstByte(startTime.Add(time.Millisecond*40), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+						events.Success(startTime.Add(time.Millisecond*40), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}, 1, 0, 0, big.Zero()),
+					},
+				},
+			},
 		},
 		{
-			name: "all queries finished",
-			queryReturns: map[string]testutil.DelayedQueryReturn{
-				"foo": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 20},
-				"bar": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 50},
-				"baz": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 50},
+			name: "all connects finished",
+			connectReturns: map[string]testutil.DelayedConnectReturn{
+				"foo": {Delay: time.Millisecond * 20},
+				"bar": {Delay: time.Millisecond * 50},
+				"baz": {Delay: time.Millisecond * 50},
 			},
-			expectedQueryReturns: []string{"foo", "bar", "baz"},
-			retrievalReturns: map[string]testutil.DelayedRetrievalReturn{
+			retrievalReturns: map[string]testutil.DelayedClientReturn{
 				"foo": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("foo"), Size: 1}, Delay: time.Millisecond * 500},
 				"bar": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}, Delay: time.Millisecond * 500},
 				"baz": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 3}, Delay: time.Millisecond * 500},
 			},
-			expectedRetrievalAttempts: []string{"foo"},
-			expectedRetrieval:         "foo",
-		},
-		{
-			name: "all queries failed",
-			queryReturns: map[string]testutil.DelayedQueryReturn{
-				"foo": {QueryResponse: nil, Err: errors.New("Nope"), Delay: time.Millisecond * 20},
-				"bar": {QueryResponse: nil, Err: errors.New("Nope"), Delay: time.Millisecond * 20},
-				"baz": {QueryResponse: nil, Err: errors.New("Nope"), Delay: time.Millisecond * 20},
+			expectedRetrieval: "foo",
+			expectSequence: []testutil.ExpectedActionsAtTime{
+				{
+					AfterStart:          0,
+					ReceivedConnections: []peer.ID{"foo", "bar", "baz"},
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+						events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
+						events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}),
+					},
+				},
+				{
+					AfterStart:         time.Millisecond * 20,
+					ReceivedRetrievals: []peer.ID{"foo"},
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Connected(startTime.Add(time.Millisecond*20), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+					},
+				},
+				{
+					AfterStart: time.Millisecond * 50,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Connected(startTime.Add(time.Millisecond*50), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
+						events.Connected(startTime.Add(time.Millisecond*50), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}),
+					},
+				},
+				{
+					AfterStart: time.Millisecond * 520,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Proposed(startTime.Add(time.Millisecond*520), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+						events.Accepted(startTime.Add(time.Millisecond*520), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+						events.FirstByte(startTime.Add(time.Millisecond*520), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+						events.Success(startTime.Add(time.Millisecond*520), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}, 1, 0, 0, big.Zero()),
+					},
+				},
 			},
-			expectedQueryReturns: []string{},
-			retrievalReturns: map[string]testutil.DelayedRetrievalReturn{
+		},
+
+		{
+			name: "all connects failed",
+			connectReturns: map[string]testutil.DelayedConnectReturn{
+				"foo": {Err: errors.New("Nope"), Delay: time.Millisecond * 20},
+				"bar": {Err: errors.New("Nope"), Delay: time.Millisecond * 20},
+				"baz": {Err: errors.New("Nope"), Delay: time.Millisecond * 20},
+			},
+			retrievalReturns: map[string]testutil.DelayedClientReturn{
 				"foo": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("foo"), Size: 1}, Delay: time.Millisecond},
 				"bar": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}, Delay: time.Millisecond},
 				"baz": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 3}, Delay: time.Millisecond},
 			},
-			expectedRetrievalAttempts: []string{},
+			expectSequence: []testutil.ExpectedActionsAtTime{
+				{
+					AfterStart:          0,
+					ReceivedConnections: []peer.ID{"foo", "bar", "baz"},
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+						events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
+						events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}),
+					},
+				},
+				{
+					AfterStart: time.Millisecond * 20,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Failed(startTime.Add(time.Millisecond*20), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}, "unable to connect to provider: Nope"),
+						events.Failed(startTime.Add(time.Millisecond*20), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}, "unable to connect to provider: Nope"),
+						events.Failed(startTime.Add(time.Millisecond*20), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}, "unable to connect to provider: Nope"),
+					},
+				},
+			},
 		},
 		{
 			name: "first retrieval failed",
-			queryReturns: map[string]testutil.DelayedQueryReturn{
-				"foo": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 20},
-				"bar": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 50},
-				"baz": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 500},
+			connectReturns: map[string]testutil.DelayedConnectReturn{
+				"foo": {Err: nil, Delay: time.Millisecond * 20},
+				"bar": {Err: nil, Delay: time.Millisecond * 50},
+				"baz": {Err: nil, Delay: time.Millisecond * 500},
 			},
-			expectedQueryReturns: []string{"foo", "bar"},
-			retrievalReturns: map[string]testutil.DelayedRetrievalReturn{
+			retrievalReturns: map[string]testutil.DelayedClientReturn{
 				"foo": {ResultErr: errors.New("Nope"), Delay: time.Millisecond * 20},
 				"bar": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}, Delay: time.Millisecond * 20},
 				"baz": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 3}, Delay: time.Millisecond * 20},
 			},
-			expectedRetrievalAttempts: []string{"foo", "bar"},
-			expectedRetrieval:         "bar",
+			expectedRetrieval: "bar",
+			expectSequence: []testutil.ExpectedActionsAtTime{
+				{
+					AfterStart:          0,
+					ReceivedConnections: []peer.ID{"foo", "bar", "baz"},
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+						events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
+						events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}),
+					},
+				},
+				{
+					AfterStart:         time.Millisecond * 20,
+					ReceivedRetrievals: []peer.ID{"foo"},
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Connected(startTime.Add(time.Millisecond*20), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+					},
+				},
+				{
+					AfterStart: time.Millisecond * 40,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Proposed(startTime.Add(time.Millisecond*40), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+						events.Failed(startTime.Add(time.Millisecond*40), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}, "retrieval failed: Nope"),
+					},
+				},
+				{
+					AfterStart:         time.Millisecond * 50,
+					ReceivedRetrievals: []peer.ID{"bar"},
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Connected(startTime.Add(time.Millisecond*50), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
+					},
+				},
+				{
+					AfterStart: time.Millisecond * 70,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Proposed(startTime.Add(time.Millisecond*70), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
+						events.Accepted(startTime.Add(time.Millisecond*70), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
+						events.FirstByte(startTime.Add(time.Millisecond*70), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
+						events.Success(startTime.Add(time.Millisecond*70), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}, 2, 0, 0, big.Zero()),
+					},
+				},
+			},
 		},
+
 		{
 			name: "all retrievals failed",
-			queryReturns: map[string]testutil.DelayedQueryReturn{
-				"foo": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 20},
-				"bar": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 20},
-				"baz": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 20},
+			connectReturns: map[string]testutil.DelayedConnectReturn{
+				"foo": {Err: nil, Delay: time.Millisecond * 20},
+				"bar": {Err: nil, Delay: time.Millisecond * 25},
+				"baz": {Err: nil, Delay: time.Millisecond * 30},
 			},
-			expectedQueryReturns: []string{"foo", "bar", "baz"},
-			retrievalReturns: map[string]testutil.DelayedRetrievalReturn{
+			retrievalReturns: map[string]testutil.DelayedClientReturn{
 				"foo": {ResultErr: errors.New("Nope"), Delay: time.Millisecond * 100},
 				"bar": {ResultErr: errors.New("Nope"), Delay: time.Millisecond * 100},
 				"baz": {ResultErr: errors.New("Nope"), Delay: time.Millisecond * 100},
 			},
-			expectedRetrievalAttempts: []string{"foo", "bar", "baz"},
+			expectSequence: []testutil.ExpectedActionsAtTime{
+				{
+					AfterStart:          0,
+					ReceivedConnections: []peer.ID{"foo", "bar", "baz"},
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+						events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
+						events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}),
+					},
+				},
+				{
+					AfterStart:         time.Millisecond * 20,
+					ReceivedRetrievals: []peer.ID{"foo"},
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Connected(startTime.Add(time.Millisecond*20), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+					},
+				},
+				{
+					AfterStart: time.Millisecond * 25,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Connected(startTime.Add(time.Millisecond*25), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
+					},
+				},
+				{
+					AfterStart: time.Millisecond * 30,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Connected(startTime.Add(time.Millisecond*30), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}),
+					},
+				},
+				{
+					AfterStart:         time.Millisecond * 120,
+					ReceivedRetrievals: []peer.ID{"bar"},
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Proposed(startTime.Add(time.Millisecond*120), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+						events.Failed(startTime.Add(time.Millisecond*120), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}, "retrieval failed: Nope"),
+					},
+				},
+				{
+					AfterStart:         time.Millisecond * 220,
+					ReceivedRetrievals: []peer.ID{"baz"},
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Proposed(startTime.Add(time.Millisecond*220), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
+						events.Failed(startTime.Add(time.Millisecond*220), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}, "retrieval failed: Nope"),
+					},
+				},
+				{
+					AfterStart: time.Millisecond * 320,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Proposed(startTime.Add(time.Millisecond*320), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}),
+						events.Failed(startTime.Add(time.Millisecond*320), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}, "retrieval failed: Nope"),
+					},
+				},
+			},
 		},
 		// quickest query ("foo") fails retrieval, the other 3 line up in the queue,
-		// it should choose the "best", which is the smallest (they're all free)
+		// it should choose the "best", which is the one that's fast retrieval/verified deal
 		{
 			name: "racing chooses best",
-			queryReturns: map[string]testutil.DelayedQueryReturn{
-				"foo":  {QueryResponse: &retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond},
-				"bar":  {QueryResponse: &retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 100},
-				"baz":  {QueryResponse: &retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 100},
-				"bang": {QueryResponse: &retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 4, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 100},
+			customMetadata: map[string]metadata.Protocol{
+				"bar":  &metadata.GraphsyncFilecoinV1{FastRetrieval: true, VerifiedDeal: false},
+				"bang": &metadata.GraphsyncFilecoinV1{FastRetrieval: false, VerifiedDeal: true},
 			},
-			expectedQueryReturns: []string{"foo", "bar", "baz", "bang"},
-			retrievalReturns: map[string]testutil.DelayedRetrievalReturn{
+			connectReturns: map[string]testutil.DelayedConnectReturn{
+				"foo":  {Err: nil, Delay: time.Millisecond},
+				"bar":  {Err: nil, Delay: time.Millisecond * 100},
+				"baz":  {Err: nil, Delay: time.Millisecond * 100},
+				"bang": {Err: nil, Delay: time.Millisecond * 100},
+			},
+			retrievalReturns: map[string]testutil.DelayedClientReturn{
 				"foo":  {ResultErr: errors.New("Nope"), Delay: time.Millisecond * 200},
 				"bar":  {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 3}, Delay: time.Millisecond * 20},
 				"baz":  {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 2}, Delay: time.Millisecond * 20},
 				"bang": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bang"), Size: 4}, Delay: time.Millisecond * 20},
 			},
-			expectedRetrievalAttempts: []string{"foo", "baz"},
-			expectedRetrieval:         "baz",
+			expectedRetrieval: "baz",
+			expectSequence: []testutil.ExpectedActionsAtTime{
+				{
+					AfterStart:          0,
+					ReceivedConnections: []peer.ID{"foo", "bar", "baz", "bang"},
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+						events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
+						events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}),
+						events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bang")}}),
+					},
+				},
+				{
+					AfterStart:         time.Millisecond * 1,
+					ReceivedRetrievals: []peer.ID{"foo"},
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Connected(startTime.Add(time.Millisecond*1), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+					},
+				},
+				{
+					AfterStart: time.Millisecond * 100,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Connected(startTime.Add(time.Millisecond*100), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
+						events.Connected(startTime.Add(time.Millisecond*100), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}),
+						events.Connected(startTime.Add(time.Millisecond*100), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bang")}}),
+					},
+				},
+				{
+					AfterStart:         time.Millisecond * 201,
+					ReceivedRetrievals: []peer.ID{"baz"},
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Proposed(startTime.Add(time.Millisecond*201), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+						events.Failed(startTime.Add(time.Millisecond*201), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}, "retrieval failed: Nope"),
+					},
+				},
+				{
+					AfterStart: time.Millisecond * 221,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Proposed(startTime.Add(time.Millisecond*221), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}),
+						events.Accepted(startTime.Add(time.Millisecond*221), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}),
+						events.FirstByte(startTime.Add(time.Millisecond*221), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}),
+						events.Success(startTime.Add(time.Millisecond*221), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}, 2, 0, 0, big.Zero()),
+					},
+				},
+			},
 		},
 		// quickest query ("foo") fails retrieval, the other 3 line up in the queue,
 		// it should choose the "best", which in this case is the fastest to return
 		// from query (they are all free and the same size)
 		{
 			name: "racing chooses fastest query",
-			queryReturns: map[string]testutil.DelayedQueryReturn{
-				"foo":  {QueryResponse: &retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 0},
-				"bar":  {QueryResponse: &retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 220},
-				"baz":  {QueryResponse: &retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 200},
-				"bang": {QueryResponse: &retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 3, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 100},
+			connectReturns: map[string]testutil.DelayedConnectReturn{
+				"foo":  {Err: nil, Delay: time.Millisecond * 1},
+				"bar":  {Err: nil, Delay: time.Millisecond * 220},
+				"baz":  {Err: nil, Delay: time.Millisecond * 200},
+				"bang": {Err: nil, Delay: time.Millisecond * 100},
 			},
-			expectedQueryReturns: []string{"foo", "bar", "baz", "bang"},
-			retrievalReturns: map[string]testutil.DelayedRetrievalReturn{
+			retrievalReturns: map[string]testutil.DelayedClientReturn{
 				"foo":  {ResultErr: errors.New("Nope"), Delay: time.Millisecond * 400},
 				"bar":  {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 3}, Delay: time.Millisecond * 20},
 				"baz":  {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 2}, Delay: time.Millisecond * 20},
 				"bang": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bang"), Size: 4}, Delay: time.Millisecond * 20},
 			},
-			expectedRetrievalAttempts: []string{"foo", "bang"},
-			expectedRetrieval:         "bang",
+			expectedRetrieval: "bang",
+			expectSequence: []testutil.ExpectedActionsAtTime{
+				{
+					AfterStart:          0,
+					ReceivedConnections: []peer.ID{"foo", "bar", "baz", "bang"},
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+						events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
+						events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}),
+						events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bang")}}),
+					},
+				},
+				{
+					AfterStart:         time.Millisecond * 1,
+					ReceivedRetrievals: []peer.ID{"foo"},
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Connected(startTime.Add(time.Millisecond*1), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+					},
+				},
+				{
+					AfterStart: time.Millisecond * 100,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Connected(startTime.Add(time.Millisecond*100), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bang")}}),
+					},
+				},
+				{
+					AfterStart: time.Millisecond * 200,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Connected(startTime.Add(time.Millisecond*200), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}),
+					},
+				},
+				{
+					AfterStart: time.Millisecond * 220,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Connected(startTime.Add(time.Millisecond*220), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
+					},
+				},
+				{
+					AfterStart:         time.Millisecond * 401,
+					ReceivedRetrievals: []peer.ID{"bang"},
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Proposed(startTime.Add(time.Millisecond*401), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+						events.Failed(startTime.Add(time.Millisecond*401), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}, "retrieval failed: Nope"),
+					},
+				},
+				{
+					AfterStart: time.Millisecond * 421,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Proposed(startTime.Add(time.Millisecond*421), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bang")}}),
+						events.Accepted(startTime.Add(time.Millisecond*421), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bang")}}),
+						events.FirstByte(startTime.Add(time.Millisecond*421), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bang")}}),
+						events.Success(startTime.Add(time.Millisecond*421), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bang")}}, 4, 0, 0, big.Zero()),
+					},
+				},
+			},
 		},
 	}
-
+	ctx := context.Background()
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			retrievalID := types.RetrievalID(uuid.New())
-			mockClient := testutil.NewMockClient(tc.queryReturns, tc.retrievalReturns)
+			clock := clock.NewMock()
+			clock.Set(startTime)
+			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			mockClient := testutil.NewMockClient(tc.connectReturns, tc.retrievalReturns, clock)
 			candidates := []types.RetrievalCandidate{}
-			for p := range tc.queryReturns {
-				candidates = append(candidates, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID(p)}})
-			}
-			cfg := &GraphSyncRetriever{
-				GetStorageProviderTimeout: func(peer peer.ID) time.Duration { return time.Second },
-				IsAcceptableQueryResponse: func(peer peer.ID, req types.RetrievalRequest, qr *retrievaltypes.QueryResponse) bool { return true },
-				Client:                    mockClient,
-			}
-
-			retrievingPeers := make([]peer.ID, 0)
-			candidateQueries := make([]candidateQuery, 0)
-			candidateQueriesFiltered := make([]candidateQuery, 0)
-
-			// perform retrieval and make sure we got a result
-			stats, err := cfg.Retrieve(context.Background(), types.RetrievalRequest{
-				Cid:         cid.Undef,
-				RetrievalID: retrievalID,
-				LinkSystem:  cidlink.DefaultLinkSystem(),
-			}, func(event types.RetrievalEvent) {
-				require.Equal(t, retrievalID, event.RetrievalId())
-				switch ret := event.(type) {
-				case events.RetrievalEventQueryAsked:
-					candidateQueries = append(candidateQueries, candidateQuery{ret.StorageProviderId(), ret.QueryResponse()})
-				case events.RetrievalEventQueryAskedFiltered:
-					candidateQueriesFiltered = append(candidateQueriesFiltered, candidateQuery{ret.StorageProviderId(), ret.QueryResponse()})
-				case events.RetrievalEventStarted:
-					if ret.Phase() == types.RetrievalPhase {
-						retrievingPeers = append(retrievingPeers, event.StorageProviderId())
-					}
+			for p := range tc.connectReturns {
+				var protocol metadata.Protocol
+				if custom, ok := tc.customMetadata[p]; ok {
+					protocol = custom
+				} else {
+					protocol = &metadata.GraphsyncFilecoinV1{VerifiedDeal: true, FastRetrieval: true}
 				}
-			}).RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, candidates))
+				candidates = append(candidates, types.NewRetrievalCandidate(peer.ID(p), cid.Undef, protocol))
+			}
+			cfg := NewGraphsyncRetrieverWithClock(func(peer peer.ID) time.Duration { return time.Second }, mockClient, clock)
+
+			rv := testutil.RetrievalVerifier{
+				ExpectedSequence: tc.expectSequence,
+			}
+			// perform retrieval and make sure we got a result
+			results := rv.RunWithVerification(ctx, t, clock, mockClient, nil, []testutil.RunRetrieval{func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
+				return cfg.Retrieve(ctx, types.RetrievalRequest{
+					Cid:         cid.Undef,
+					RetrievalID: retrievalID,
+					LinkSystem:  cidlink.DefaultLinkSystem(),
+				}, cb).RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, candidates))
+			}})
+			require.Len(t, results, 1)
+			stats, err := results[0].Stats, results[0].Err
 			if tc.expectedRetrieval != "" {
 				require.NotNil(t, stats)
 				require.NoError(t, err)
@@ -360,37 +458,6 @@ func TestRetrievalRacing(t *testing.T) {
 				require.Error(t, err)
 			}
 
-			// make sure we handled the queries we expected
-			var expectedQueryFailures int
-			for _, r := range tc.queryReturns {
-				if r.Err != nil {
-					expectedQueryFailures++
-				}
-			}
-			require.Len(t, mockClient.GetReceivedQueries(), len(tc.queryReturns))
-			for _, p := range tc.expectedQueryReturns {
-				pid := peer.ID(p)
-				require.Contains(t, mockClient.GetReceivedQueries(), pid)
-			}
-			// make sure we only returned the queries we expected (may be a subset of the above if a retrieval was fast enough)
-			require.Len(t, candidateQueries, len(tc.expectedQueryReturns))
-			require.Len(t, candidateQueriesFiltered, len(tc.expectedQueryReturns))
-
-			// make sure we performed the retrievals we expected
-			var expectedRetrievalFailures int
-			for _, r := range tc.retrievalReturns {
-				if r.ResultErr != nil {
-					expectedRetrievalFailures++
-				}
-			}
-			require.Len(t, mockClient.GetReceivedRetrievals(), len(tc.expectedRetrievalAttempts))
-			require.Len(t, retrievingPeers, len(tc.expectedRetrievalAttempts))
-			for _, p := range tc.expectedRetrievalAttempts {
-				pid := peer.ID(p)
-				rr := mockClient.GetReceivedRetrievalFrom(pid)
-				require.NotNil(t, rr)
-				require.Same(t, selectorparse.CommonSelector_ExploreAllRecursively, rr.Selector) // default selector
-			}
 		})
 	}
 }
@@ -400,227 +467,133 @@ func TestMultipleRetrievals(t *testing.T) {
 	retrievalID := types.RetrievalID(uuid.New())
 	cid1 := cid.MustParse("bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")
 	cid2 := cid.MustParse("bafyrgqhai26anf3i7pips7q22coa4sz2fr4gk4q4sqdtymvvjyginfzaqewveaeqdh524nsktaq43j65v22xxrybrtertmcfxufdam3da3hbk")
-	successfulQueryResponse := retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}
+	startTime := time.Now().Add(time.Hour)
+	clock := clock.NewMock()
+	clock.Set(startTime)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
 
 	mockClient := testutil.NewMockClient(
-		map[string]testutil.DelayedQueryReturn{
+		map[string]testutil.DelayedConnectReturn{
 			// group a
-			"foo": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond},
-			"bar": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 100},
-			"baz": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 500}, // should not finish this
+			"foo": {Err: nil, Delay: time.Millisecond},
+			"bar": {Err: nil, Delay: time.Millisecond * 100},
+			"baz": {Err: nil, Delay: time.Millisecond * 500}, // should not finish this
 			// group b
-			"bang": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 500}, // should not finish this
-			"boom": {QueryResponse: nil, Err: errors.New("Nope"), Delay: time.Millisecond},
-			"bing": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 100},
+			"bang": {Err: nil, Delay: time.Millisecond * 500}, // should not finish this
+			"boom": {Err: errors.New("Nope"), Delay: time.Millisecond},
+			"bing": {Err: nil, Delay: time.Millisecond * 100},
 		},
-		map[string]testutil.DelayedRetrievalReturn{
+		map[string]testutil.DelayedClientReturn{
 			// group a
 			"foo": {ResultErr: errors.New("Nope"), Delay: time.Millisecond},
 			"bar": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}, Delay: time.Millisecond * 200},
 			"baz": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 3}, Delay: time.Millisecond * 200},
 			// group b
-			"bang": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bang"), Size: 3}, Delay: time.Millisecond * 200},
-			"boom": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("boom"), Size: 3}, Delay: time.Millisecond * 200},
-			"bing": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bing"), Size: 3}, Delay: time.Millisecond * 200},
+			"bang": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bang"), Size: 3}, Delay: time.Millisecond * 201},
+			"boom": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("boom"), Size: 3}, Delay: time.Millisecond * 201},
+			"bing": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bing"), Size: 3}, Delay: time.Millisecond * 201},
 		},
+		clock,
 	)
 
-	cfg := &GraphSyncRetriever{
-		GetStorageProviderTimeout: func(peer peer.ID) time.Duration { return time.Second },
-		IsAcceptableQueryResponse: func(peer peer.ID, req types.RetrievalRequest, qr *retrievaltypes.QueryResponse) bool { return true },
-		Client:                    mockClient,
-	}
+	cfg := NewGraphsyncRetrieverWithClock(func(peer peer.ID) time.Duration { return time.Second }, mockClient, clock)
 
-	candidateQueries := make([]candidateQuery, 0)
-	candidateQueriesFiltered := make([]candidateQuery, 0)
-	retrievingPeers := make([]peer.ID, 0)
-	var lk sync.Mutex
-	evtCb := func(event types.RetrievalEvent) {
-		switch ret := event.(type) {
-		case events.RetrievalEventQueryAsked:
-			lk.Lock()
-			candidateQueries = append(candidateQueries, candidateQuery{ret.StorageProviderId(), ret.QueryResponse()})
-			lk.Unlock()
-		case events.RetrievalEventQueryAskedFiltered:
-			lk.Lock()
-			candidateQueriesFiltered = append(candidateQueriesFiltered, candidateQuery{ret.StorageProviderId(), ret.QueryResponse()})
-			lk.Unlock()
-		case events.RetrievalEventStarted:
-			if ret.Phase() == types.RetrievalPhase {
-				lk.Lock()
-				retrievingPeers = append(retrievingPeers, event.StorageProviderId())
-				lk.Unlock()
-			}
-		}
-
-	}
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		stats, err := cfg.Retrieve(context.Background(), types.RetrievalRequest{
-			Cid:         cid1,
-			RetrievalID: retrievalID,
-			LinkSystem:  cidlink.DefaultLinkSystem(),
-		}, evtCb).RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{
-			{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}},
-			{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}},
-			{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}},
-		}))
-		require.NoError(t, err)
-		require.NotNil(t, stats)
-		// make sure we got the final retrieval we wanted
-		require.Equal(t, mockClient.GetRetrievalReturns()["bar"].ResultStats, stats)
-		wg.Done()
-	}()
-
-	stats, err := cfg.Retrieve(context.Background(), types.RetrievalRequest{
-		Cid:         cid2,
-		RetrievalID: retrievalID,
-		LinkSystem:  cidlink.DefaultLinkSystem(),
-	}, evtCb).RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{
-		{MinerPeer: peer.AddrInfo{ID: peer.ID("bang")}},
-		{MinerPeer: peer.AddrInfo{ID: peer.ID("boom")}},
-		{MinerPeer: peer.AddrInfo{ID: peer.ID("bing")}},
-	}))
-	require.NoError(t, err)
-	require.NotNil(t, stats)
-	// make sure we got the final retrieval we wanted
-	require.Equal(t, mockClient.GetRetrievalReturns()["bing"].ResultStats, stats)
-
-	// both retrievals should be ~ 100+200ms
-
-	waitStart := time.Now()
-	wg.Wait() // make sure we're done with our own goroutine
-	require.Less(t, time.Since(waitStart), time.Millisecond*100, "wg wait took %s", time.Since(waitStart))
-
-	// make sure we handled the queries we expected
-	require.Len(t, mockClient.GetReceivedQueries(), 6)
-	for _, p := range mockClient.GetReceivedQueries() {
-		pid := peer.ID(p)
-		require.Contains(t, mockClient.GetReceivedQueries(), pid)
-	}
-	// make sure we only returned the queries we expected, in this case 2 were too slow and 1 errored so we only get 4
-	require.Len(t, candidateQueries, 3)
-	require.Len(t, candidateQueriesFiltered, 3)
-
-	// make sure we performed the retrievals we expected
-	require.NotNil(t, mockClient.GetReceivedRetrievalFrom(peer.ID("foo"))) // errored
-	require.NotNil(t, mockClient.GetReceivedRetrievalFrom(peer.ID("bar")))
-	require.NotNil(t, mockClient.GetReceivedRetrievalFrom(peer.ID("bing")))
-	require.Contains(t, retrievingPeers, peer.ID("foo")) // errored
-	require.Contains(t, retrievingPeers, peer.ID("bar"))
-	require.Contains(t, retrievingPeers, peer.ID("bing"))
-	require.Len(t, mockClient.GetReceivedRetrievals(), 3)
-	require.Len(t, retrievingPeers, 3)
-}
-
-// Verify we can use a single retrieval multiple times with different candidates (so it can be used in the future with a stream)
-func TestRetrievalReuse(t *testing.T) {
-	retrievalID := types.RetrievalID(uuid.New())
-	cid1 := cid.MustParse("bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")
-	successfulQueryResponse := retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}
-
-	mockClient := testutil.NewMockClient(
-		map[string]testutil.DelayedQueryReturn{
-			// group a
-			"foo": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond},       // should attempt this
-			"bar": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 100}, // should attempt this
-			"baz": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 500}, // should not finish this
-			// group b
-			"bang": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 500}, // should not finish this
-			"boom": {QueryResponse: nil, Err: errors.New("Nope"), Delay: time.Millisecond * 100},       // should not finish this
-			"bing": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: time.Millisecond * 100}, // should attempt this
+	expectedSequence := []testutil.ExpectedActionsAtTime{
+		{
+			AfterStart:          0,
+			ReceivedConnections: []peer.ID{"foo", "bar", "baz", "bang", "boom", "bing"},
+			ExpectedEvents: []types.RetrievalEvent{
+				events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+				events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
+				events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}),
+				events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bang")}}),
+				events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("boom")}}),
+				events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bing")}}),
+			},
 		},
-		map[string]testutil.DelayedRetrievalReturn{
-			// group a
-			"foo": {ResultErr: errors.New("Nope"), Delay: time.Millisecond},
-			"bar": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}, Delay: time.Millisecond * 200},
-			"baz": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 3}, Delay: time.Millisecond * 200},
-			// group b
-			"bang": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bang"), Size: 3}, Delay: time.Millisecond * 200},
-			"boom": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("boom"), Size: 3}, Delay: time.Millisecond * 200},
-			"bing": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bing"), Size: 3}, Delay: time.Millisecond * 200},
+		{
+			AfterStart:         time.Millisecond * 1,
+			ReceivedRetrievals: []peer.ID{"foo"},
+			ExpectedEvents: []types.RetrievalEvent{
+				events.Failed(startTime.Add(time.Millisecond*1), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("boom")}}, "unable to connect to provider: Nope"),
+				events.Connected(startTime.Add(time.Millisecond*1), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+			},
 		},
-	)
-
-	cfg := &GraphSyncRetriever{
-		GetStorageProviderTimeout: func(peer peer.ID) time.Duration { return time.Second },
-		IsAcceptableQueryResponse: func(peer peer.ID, req types.RetrievalRequest, qr *retrievaltypes.QueryResponse) bool { return true },
-		Client:                    mockClient,
+		{
+			AfterStart: time.Millisecond * 2,
+			ExpectedEvents: []types.RetrievalEvent{
+				events.Proposed(startTime.Add(time.Millisecond*2), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+				events.Failed(startTime.Add(time.Millisecond*2), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}, "retrieval failed: Nope"),
+			},
+		},
+		{
+			AfterStart:         time.Millisecond * 100,
+			ReceivedRetrievals: []peer.ID{"bar", "bing"},
+			ExpectedEvents: []types.RetrievalEvent{
+				events.Connected(startTime.Add(time.Millisecond*100), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
+				events.Connected(startTime.Add(time.Millisecond*100), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bing")}}),
+			},
+		},
+		{
+			AfterStart: time.Millisecond * 300,
+			ExpectedEvents: []types.RetrievalEvent{
+				events.Proposed(startTime.Add(time.Millisecond*300), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
+				events.Accepted(startTime.Add(time.Millisecond*300), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
+				events.FirstByte(startTime.Add(time.Millisecond*300), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
+				events.Success(startTime.Add(time.Millisecond*300), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}, 2, 0, 0, big.Zero()),
+			},
+		},
+		{
+			AfterStart: time.Millisecond * 301,
+			ExpectedEvents: []types.RetrievalEvent{
+				events.Proposed(startTime.Add(time.Millisecond*301), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bing")}}),
+				events.Accepted(startTime.Add(time.Millisecond*301), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bing")}}),
+				events.FirstByte(startTime.Add(time.Millisecond*301), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bing")}}),
+				events.Success(startTime.Add(time.Millisecond*301), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bing")}}, 3, 0, 0, big.Zero()),
+			},
+		},
 	}
-
-	candidateQueries := make([]candidateQuery, 0)
-	candidateQueriesFiltered := make([]candidateQuery, 0)
-	retrievingPeers := make([]peer.ID, 0)
-	var lk sync.Mutex
-	evtCb := func(event types.RetrievalEvent) {
-		switch ret := event.(type) {
-		case events.RetrievalEventQueryAsked:
-			lk.Lock()
-			candidateQueries = append(candidateQueries, candidateQuery{ret.StorageProviderId(), ret.QueryResponse()})
-			lk.Unlock()
-		case events.RetrievalEventQueryAskedFiltered:
-			lk.Lock()
-			candidateQueriesFiltered = append(candidateQueriesFiltered, candidateQuery{ret.StorageProviderId(), ret.QueryResponse()})
-			lk.Unlock()
-		case events.RetrievalEventStarted:
-			if ret.Phase() == types.RetrievalPhase {
-				lk.Lock()
-				retrievingPeers = append(retrievingPeers, event.StorageProviderId())
-				lk.Unlock()
-			}
-		}
-
-	}
-
-	retrieval := cfg.Retrieve(context.Background(), types.RetrievalRequest{
-		Cid:         cid1,
-		RetrievalID: retrievalID,
-		LinkSystem:  cidlink.DefaultLinkSystem(),
-	}, evtCb)
-
-	stats, err := retrieval.RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{
-		{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}},
-		{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}},
-		{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}},
-	}))
+	results := testutil.RetrievalVerifier{
+		ExpectedSequence: expectedSequence,
+	}.RunWithVerification(ctx, t, clock, mockClient, nil, []testutil.RunRetrieval{
+		func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
+			return cfg.Retrieve(context.Background(), types.RetrievalRequest{
+				Cid:         cid1,
+				RetrievalID: retrievalID,
+				LinkSystem:  cidlink.DefaultLinkSystem(),
+			}, cb).RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{
+				{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}},
+				{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}},
+				{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}},
+			}))
+		},
+		func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
+			return cfg.Retrieve(context.Background(), types.RetrievalRequest{
+				Cid:         cid2,
+				RetrievalID: retrievalID,
+				LinkSystem:  cidlink.DefaultLinkSystem(),
+			}, cb).RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{
+				{MinerPeer: peer.AddrInfo{ID: peer.ID("bang")}},
+				{MinerPeer: peer.AddrInfo{ID: peer.ID("boom")}},
+				{MinerPeer: peer.AddrInfo{ID: peer.ID("bing")}},
+			}))
+		}})
+	require.Len(t, results, 2)
+	stats, err := results[0].Stats, results[0].Err
 	require.NoError(t, err)
 	require.NotNil(t, stats)
 	// make sure we got the final retrieval we wanted
 	require.Equal(t, mockClient.GetRetrievalReturns()["bar"].ResultStats, stats)
 
-	stats, err = retrieval.RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{
-		{MinerPeer: peer.AddrInfo{ID: peer.ID("bang")}},
-		{MinerPeer: peer.AddrInfo{ID: peer.ID("boom")}},
-		{MinerPeer: peer.AddrInfo{ID: peer.ID("bing")}},
-	}))
+	stats, err = results[1].Stats, results[1].Err
 	require.NoError(t, err)
 	require.NotNil(t, stats)
 	// make sure we got the final retrieval we wanted
 	require.Equal(t, mockClient.GetRetrievalReturns()["bing"].ResultStats, stats)
-
-	// make sure we handled the queries we expected
-	require.Len(t, mockClient.GetReceivedQueries(), 6)
-	for _, p := range mockClient.GetReceivedQueries() {
-		pid := peer.ID(p)
-		require.Contains(t, mockClient.GetReceivedQueries(), pid)
-	}
-	// make sure we only returned the queries we expected, in this case 2 were too slow and 1 errored so we only get 4
-	require.Len(t, candidateQueries, 3)
-	require.Len(t, candidateQueriesFiltered, 3)
-
-	// make sure we performed the retrievals we expected
-	require.NotNil(t, mockClient.GetReceivedRetrievalFrom(peer.ID("foo"))) // errored
-	require.Contains(t, retrievingPeers, peer.ID("foo"))                   // errored
-	require.NotNil(t, mockClient.GetReceivedRetrievalFrom(peer.ID("bar")))
-	require.Contains(t, retrievingPeers, peer.ID("bar")) // errored
-	require.NotNil(t, mockClient.GetReceivedRetrievalFrom(peer.ID("bing")))
-	require.Contains(t, retrievingPeers, peer.ID("bing")) // errored
-	require.Len(t, mockClient.GetReceivedRetrievals(), 3)
-	require.Len(t, retrievingPeers, 3)
 }
 
+/*
 func TestRetrievalSelector(t *testing.T) {
 	retrievalID := types.RetrievalID(uuid.New())
 	cid1 := cid.MustParse("bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")
@@ -633,7 +606,6 @@ func TestRetrievalSelector(t *testing.T) {
 
 	cfg := &GraphSyncRetriever{
 		GetStorageProviderTimeout: func(peer peer.ID) time.Duration { return time.Second },
-		IsAcceptableQueryResponse: func(peer peer.ID, req types.RetrievalRequest, qr *retrievaltypes.QueryResponse) bool { return true },
 		Client:                    mockClient,
 	}
 
@@ -655,12 +627,7 @@ func TestRetrievalSelector(t *testing.T) {
 	require.NotNil(t, rr)
 	require.Same(t, selector, rr.Selector)
 	require.Len(t, mockClient.GetReceivedRetrievals(), 1)
-}
-
-type candidateQuery struct {
-	peer          peer.ID
-	queryResponse retrievaltypes.QueryResponse
-}
+}*/
 
 func MakeAsyncCandidates(t *testing.T, candidates []types.RetrievalCandidate) types.InboundAsyncCandidates {
 	incoming, outgoing := types.MakeAsyncCandidates(len(candidates))

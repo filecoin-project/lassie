@@ -3,6 +3,7 @@ package types
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/filecoin-project/go-state-types/abi"
@@ -190,6 +191,7 @@ const (
 )
 
 type RetrievalEvent interface {
+	fmt.Stringer
 	// Time returns the time that the event occurred
 	Time() time.Time
 	// RetrievalId returns the unique ID for this retrieval

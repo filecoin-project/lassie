@@ -15,15 +15,9 @@ import (
 	"github.com/ipfs/go-cid"
 	bsnet "github.com/ipfs/go-libipfs/bitswap/network"
 	bssrv "github.com/ipfs/go-libipfs/bitswap/server"
-	"github.com/ipld/go-ipld-prime"
-	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/datamodel"
-	"github.com/ipld/go-ipld-prime/fluent/qp"
-	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipni/index-provider/metadata"
 	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	lpmock "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/stretchr/testify/require"
@@ -82,65 +76,6 @@ func (mrn *MockRetrievalNet) AddGraphsyncPeers(n int) {
 		mrn.FinishedChan = append(mrn.FinishedChan, make(chan struct{}, 1))
 	}
 }
-
-func SetupQuery(t *testing.T, remote testpeer.TestPeer, expectCid cid.Cid, qr retrievaltypes.QueryResponse) {
-	remote.Host.SetStreamHandler("/fil/retrieval/qry/1.0.0", func(s network.Stream) {
-		// we're doing some manual IPLD work here to exercise other parts of the
-		// messaging stack to make sure we're communicating according to spec
-
-		na := basicnode.Prototype.Any.NewBuilder()
-		// IPLD normally doesn't allow non-EOF delimited data, but we can cheat
-		decoder := dagcbor.DecodeOptions{AllowLinks: true, DontParseBeyondEnd: true}
-		require.NoError(t, decoder.Decode(na, s))
-		query := na.Build()
-		require.Equal(t, datamodel.Kind_Map, query.Kind())
-		pcidn, err := query.LookupByString("PayloadCID")
-		require.NoError(t, err)
-		require.Equal(t, datamodel.Kind_Link, pcidn.Kind())
-		pcidl, err := pcidn.AsLink()
-		require.NoError(t, err)
-		pcid := pcidl.(cidlink.Link).Cid
-
-		if pcid.Equals(QueryErrorTriggerCid) {
-			// premature end, should cause error
-			require.NoError(t, s.Close())
-			return
-		}
-
-		// build and send a QueryResponse
-		queryResponse, err := qp.BuildMap(basicnode.Prototype.Map.NewBuilder().Prototype(), 0, func(ma datamodel.MapAssembler) {
-			if expectCid.Equals(pcid) {
-				qp.MapEntry(ma, "Status", qp.Int(int64(qr.Status)))
-				qp.MapEntry(ma, "PieceCIDFound", qp.Int(int64(qr.PieceCIDFound)))
-				qp.MapEntry(ma, "Size", qp.Int(int64(qr.Size)))
-				qp.MapEntry(ma, "PaymentAddress", qp.Bytes(qr.PaymentAddress.Bytes()))
-				priceBytes, err := qr.MinPricePerByte.Bytes()
-				require.NoError(t, err)
-				qp.MapEntry(ma, "MinPricePerByte", qp.Bytes(priceBytes))
-				qp.MapEntry(ma, "MaxPaymentInterval", qp.Int(int64(qr.MaxPaymentInterval)))
-				qp.MapEntry(ma, "MaxPaymentIntervalIncrease", qp.Int(int64(qr.MaxPaymentIntervalIncrease)))
-				qp.MapEntry(ma, "Message", qp.String(qr.Message))
-				priceBytes, err = qr.UnsealPrice.Bytes()
-				require.NoError(t, err)
-				qp.MapEntry(ma, "UnsealPrice", qp.Bytes(priceBytes))
-			} else {
-				qp.MapEntry(ma, "Status", qp.Int(int64(retrievaltypes.QueryResponseUnavailable)))
-				qp.MapEntry(ma, "PieceCIDFound", qp.Int(int64(retrievaltypes.QueryItemUnavailable)))
-				qp.MapEntry(ma, "Size", qp.Int(0))
-				qp.MapEntry(ma, "PaymentAddress", qp.Bytes([]byte{}))
-				qp.MapEntry(ma, "MinPricePerByte", qp.Bytes([]byte{}))
-				qp.MapEntry(ma, "MaxPaymentInterval", qp.Int(0))
-				qp.MapEntry(ma, "MaxPaymentIntervalIncrease", qp.Int(0))
-				qp.MapEntry(ma, "Message", qp.String(""))
-				qp.MapEntry(ma, "UnsealPrice", qp.Bytes([]byte{}))
-			}
-		})
-		require.NoError(t, err)
-		require.NoError(t, ipld.EncodeStreaming(s, queryResponse, dagcbor.Encode))
-		require.NoError(t, s.Close())
-	})
-}
-
 func SetupRetrieval(t *testing.T, remote testpeer.TestPeer) chan []datatransfer.Event {
 	// Register DealProposal voucher type with automatic Pull acceptance
 	remoteDealValidator := &mockDealValidator{t: t, acceptPull: true}
@@ -218,20 +153,18 @@ func (mcf *mockCandidateFinder) FindCandidates(ctx context.Context, cid cid.Cid)
 	return candidates, nil
 }
 
-func (mcf *mockCandidateFinder) FindCandidatesAsync(ctx context.Context, cid cid.Cid) (<-chan types.FindCandidatesResult, error) {
-	ch := make(chan types.FindCandidatesResult)
-	go func() {
-		defer close(ch)
-		cand, _ := mcf.FindCandidates(ctx, cid)
-		for _, c := range cand {
-			select {
-			case ch <- types.FindCandidatesResult{Candidate: c, Err: nil}:
-			case <-ctx.Done():
-				return
-			}
+func (mcf *mockCandidateFinder) FindCandidatesAsync(ctx context.Context, cid cid.Cid, cb func(types.RetrievalCandidate)) error {
+
+	cand, _ := mcf.FindCandidates(ctx, cid)
+	for _, c := range cand {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
 		}
-	}()
-	return ch, nil
+		cb(c)
+	}
+	return nil
 }
 
 var _ datatransfer.RequestValidator = (*mockDealValidator)(nil)
