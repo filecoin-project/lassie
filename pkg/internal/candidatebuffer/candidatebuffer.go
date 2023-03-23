@@ -60,42 +60,38 @@ func (c *CandidateBuffer) BufferStream(ctx context.Context, queueCandidates func
 	defer func() {
 		wg.Wait()
 	}()
-	errChan := make(chan error, 1)
-	go func() {
-		err := queueCandidates(ctx, func(candidate types.RetrievalCandidate) {
-			var timerCtx context.Context
-			c.lk.Lock()
-			c.currentCandidates = append(c.currentCandidates, candidate)
-			if c.timerCancel != nil {
-				c.lk.Unlock()
-				return
-			}
-			timerCtx, c.timerCancel = context.WithCancel(ctx)
+	err := queueCandidates(ctx, func(candidate types.RetrievalCandidate) {
+		var timerCtx context.Context
+		c.lk.Lock()
+		c.currentCandidates = append(c.currentCandidates, candidate)
+		if c.timerCancel != nil {
 			c.lk.Unlock()
-			timer := c.clock.Timer(bufferingTime)
-			if c.afterEach != nil {
-				c.afterEach <- struct{}{}
-			}
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				select {
-				case <-timerCtx.Done():
-					if !timer.Stop() {
-						<-timer.C
-					}
-				case <-timer.C:
-					c.emit()
+			return
+		}
+		timerCtx, c.timerCancel = context.WithCancel(ctx)
+		c.lk.Unlock()
+		timer := c.clock.Timer(bufferingTime)
+		if c.afterEach != nil {
+			c.afterEach <- struct{}{}
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			select {
+			case <-timerCtx.Done():
+				if !timer.Stop() {
+					<-timer.C
 				}
-			}()
-		})
-		errChan <- err
-	}()
+			case <-timer.C:
+				c.emit()
+			}
+		}()
+	})
 	select {
 	case <-ctx.Done():
 		c.clear()
 		return ctx.Err()
-	case err := <-errChan:
+	default:
 		c.emit()
 		return err
 	}
