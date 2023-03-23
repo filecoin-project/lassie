@@ -304,7 +304,8 @@ func runRetrievalCandidate(
 				)
 			}
 		} // else we didn't get to retrieval phase because we were cancelled
-	} // else we did't get to the retrieval phase cause query failed
+	}
+
 	if retrieval.canSendResult() {
 		// as long as collectResults is still running, we need to increment finishedCount by
 		// sending a retrievalResult, so each path here sends one in some form
