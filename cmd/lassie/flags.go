@@ -115,6 +115,7 @@ var FlagProtocols = &cli.StringFlag{
 	Name:        "protocols",
 	DefaultText: "bitswap,graphsync",
 	Usage:       "List of retrieval protocols to use, seperated by a comma",
+	EnvVars:     []string{"LASSIE_SUPPORTED_PROTOCOLS"},
 	Action: func(cctx *cli.Context, v string) error {
 		var err error
 		protocols, err = types.ParseProtocolsString(v)
