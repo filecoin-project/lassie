@@ -16,7 +16,10 @@ import (
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
+	"github.com/ipld/go-ipld-prime/datamodel"
+	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipni/index-provider/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
@@ -592,8 +595,12 @@ func TestRetriever(t *testing.T) {
 	}
 }
 
-/*
 func TestLinkSystemPerRequest(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	startTime := time.Now().Add(5 * time.Hour)
+	clock := clock.NewMock()
+	clock.Set(startTime)
 	rid := types.RetrievalID(uuid.New())
 	cid1 := cid.MustParse("bafkqaalb")
 	peerA := peer.ID("A")
@@ -603,11 +610,11 @@ func TestLinkSystemPerRequest(t *testing.T) {
 		{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
 		{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
 	}
-	returnsQueries := map[string]testutil.DelayedQueryReturn{
-		string(peerA): {QueryResponse: &retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 5},
-		string(peerB): {QueryResponse: &retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 500},
+	returnsConnected := map[string]testutil.DelayedConnectReturn{
+		string(peerA): {Err: nil, Delay: time.Millisecond * 5},
+		string(peerB): {Err: nil, Delay: time.Millisecond * 500},
 	}
-	returnsRetrievals := map[string]testutil.DelayedRetrievalReturn{
+	returnsRetrievals := map[string]testutil.DelayedClientReturn{
 		string(peerA): {ResultStats: &types.RetrievalStats{
 			StorageProviderId: peerA,
 			Size:              1,
@@ -628,22 +635,17 @@ func TestLinkSystemPerRequest(t *testing.T) {
 		}, Delay: time.Millisecond * 5},
 	}
 
-	candidateFinder := &testutil.MockCandidateFinder{Candidates: map[cid.Cid][]types.RetrievalCandidate{cid1: candidates}}
-	client := testutil.NewMockClient(returnsQueries, returnsRetrievals)
-	subscriber := testutil.NewCollectingEventsListener()
+	candidateFinder := testutil.NewMockCandidateFinder(nil, map[cid.Cid][]types.RetrievalCandidate{cid1: candidates})
+	client := testutil.NewMockClient(returnsConnected, returnsRetrievals, clock)
 	config := session.Config{}
 	session := session.NewSession(config, true)
-	gsretriever := &retriever.GraphSyncRetriever{
-		GetStorageProviderTimeout: session.GetStorageProviderTimeout,
-		IsAcceptableQueryResponse: session.IsAcceptableQueryResponse,
-		Client:                    client,
-	}
+	gsretriever := retriever.NewGraphsyncRetrieverWithClock(session.GetStorageProviderTimeout, client, clock)
+
 	// --- create ---
-	ret, err := retriever.NewRetriever(context.Background(), session, candidateFinder, map[multicodec.Code]types.CandidateRetriever{
+	ret, err := retriever.NewRetrieverWithClock(context.Background(), session, candidateFinder, map[multicodec.Code]types.CandidateRetriever{
 		multicodec.TransportGraphsyncFilecoinv1: gsretriever,
-	})
+	}, clock)
 	require.NoError(t, err)
-	ret.RegisterSubscriber(subscriber.Collect)
 
 	// --- start ---
 	ret.Start()
@@ -657,36 +659,124 @@ func TestLinkSystemPerRequest(t *testing.T) {
 	lsB.NodeReifier = func(lc linking.LinkContext, n datamodel.Node, ls *linking.LinkSystem) (datamodel.Node, error) {
 		return basicnode.NewString("linkSystem B"), nil
 	}
-	result, err := ret.Retrieve(context.Background(), types.RetrievalRequest{
-		LinkSystem:  lsA,
-		RetrievalID: rid,
-		Cid:         cid1,
-	}, func(types.RetrievalEvent) {})
+	results := testutil.RetrievalVerifier{
+		ExpectedSequence: []testutil.ExpectedActionsAtTime{
+			{
+				AfterStart: 0,
+				CandidatesDiscovered: []testutil.DiscoveredCandidate{
+					{
+						Cid:       cid1,
+						Candidate: types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
+					},
+					{
+						Cid:       cid1,
+						Candidate: types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
+					},
+				},
+				ReceivedConnections: []peer.ID{peerA, peerB},
+				ExpectedEvents: []types.RetrievalEvent{
+					events.Started(startTime, rid, startTime, types.FetchPhase, types.RetrievalCandidate{RootCid: cid1}),
+					events.Started(startTime, rid, startTime, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid1}),
+					events.CandidatesFound(startTime, rid, startTime, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, cid1), types.NewRetrievalCandidate(peerB, cid1)}),
+					events.CandidatesFiltered(startTime, rid, startTime, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, cid1), types.NewRetrievalCandidate(peerB, cid1)}),
+					events.Started(startTime, rid, startTime, types.RetrievalPhase, types.NewRetrievalCandidate(peerA, cid1)),
+					events.Started(startTime, rid, startTime, types.RetrievalPhase, types.NewRetrievalCandidate(peerB, cid1)),
+				},
+			},
+			{
+				AfterStart:         5 * time.Millisecond,
+				ReceivedRetrievals: []peer.ID{peerA},
+				ExpectedEvents: []types.RetrievalEvent{
+					events.Connected(startTime.Add(5*time.Millisecond), rid, startTime, types.RetrievalPhase, types.NewRetrievalCandidate(peerA, cid1)),
+				},
+			},
+			{
+				AfterStart: 10 * time.Millisecond,
+				ExpectedEvents: []types.RetrievalEvent{
+					events.Proposed(startTime.Add(10*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerA, cid1)),
+					events.Accepted(startTime.Add(10*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerA, cid1)),
+					events.FirstByte(startTime.Add(10*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerA, cid1)),
+					events.Success(startTime.Add(10*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerA, cid1), 1, 2, 3*time.Second, big.Zero()),
+					events.Finished(startTime.Add(10*time.Millisecond), rid, startTime, types.RetrievalCandidate{RootCid: cid1})},
+			},
+		},
+	}.RunWithVerification(ctx, t, clock, client, candidateFinder, []testutil.RunRetrieval{
+		func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
+			return ret.Retrieve(context.Background(), types.RetrievalRequest{
+				LinkSystem:  lsA,
+				RetrievalID: rid,
+				Cid:         cid1,
+			}, cb)
+		},
+	})
+	require.Len(t, results, 1)
+	result, err := results[0].Stats, results[0].Err
 	require.NoError(t, err)
 	require.Equal(t, returnsRetrievals[string(peerA)].ResultStats, result)
 
 	// switch them around
-	returnsQueries = map[string]testutil.DelayedQueryReturn{
-		string(peerA): {QueryResponse: &retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 500},
-		string(peerB): {QueryResponse: &retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}, Err: nil, Delay: time.Millisecond * 5},
+	returnsConnected = map[string]testutil.DelayedConnectReturn{
+		string(peerA): {Err: nil, Delay: time.Millisecond * 500},
+		string(peerB): {Err: nil, Delay: time.Millisecond * 5},
 	}
-	client.SetQueryReturns(returnsQueries)
+	client.SetConnectReturns(returnsConnected)
 
 	// --- retrieve ---
-	result, err = ret.Retrieve(context.Background(), types.RetrievalRequest{
-		LinkSystem:  lsB,
-		RetrievalID: rid,
-		Cid:         cid1,
-	}, func(types.RetrievalEvent) {})
+	results = testutil.RetrievalVerifier{
+		ExpectedSequence: []testutil.ExpectedActionsAtTime{
+			{
+				AfterStart: 0,
+				CandidatesDiscovered: []testutil.DiscoveredCandidate{
+					{
+						Cid:       cid1,
+						Candidate: types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
+					},
+					{
+						Cid:       cid1,
+						Candidate: types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
+					},
+				},
+				ReceivedConnections: []peer.ID{peerA, peerB},
+				ExpectedEvents: []types.RetrievalEvent{
+					events.Started(startTime.Add(10*time.Millisecond), rid, startTime.Add(10*time.Millisecond), types.FetchPhase, types.RetrievalCandidate{RootCid: cid1}),
+					events.Started(startTime.Add(10*time.Millisecond), rid, startTime.Add(10*time.Millisecond), types.IndexerPhase, types.RetrievalCandidate{RootCid: cid1}),
+					events.CandidatesFound(startTime.Add(10*time.Millisecond), rid, startTime.Add(10*time.Millisecond), cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, cid1), types.NewRetrievalCandidate(peerB, cid1)}),
+					events.CandidatesFiltered(startTime.Add(10*time.Millisecond), rid, startTime.Add(10*time.Millisecond), cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, cid1), types.NewRetrievalCandidate(peerB, cid1)}),
+					events.Started(startTime.Add(10*time.Millisecond), rid, startTime.Add(10*time.Millisecond), types.RetrievalPhase, types.NewRetrievalCandidate(peerA, cid1)),
+					events.Started(startTime.Add(10*time.Millisecond), rid, startTime.Add(10*time.Millisecond), types.RetrievalPhase, types.NewRetrievalCandidate(peerB, cid1)),
+				},
+			},
+			{
+				AfterStart:         5 * time.Millisecond,
+				ReceivedRetrievals: []peer.ID{peerB},
+				ExpectedEvents: []types.RetrievalEvent{
+					events.Connected(startTime.Add(15*time.Millisecond), rid, startTime.Add(10*time.Millisecond), types.RetrievalPhase, types.NewRetrievalCandidate(peerB, cid1)),
+				},
+			},
+			{
+				AfterStart: 10 * time.Millisecond,
+				ExpectedEvents: []types.RetrievalEvent{
+					events.Proposed(startTime.Add(20*time.Millisecond), rid, startTime.Add(10*time.Millisecond), types.NewRetrievalCandidate(peerB, cid1)),
+					events.Accepted(startTime.Add(20*time.Millisecond), rid, startTime.Add(10*time.Millisecond), types.NewRetrievalCandidate(peerB, cid1)),
+					events.FirstByte(startTime.Add(20*time.Millisecond), rid, startTime.Add(10*time.Millisecond), types.NewRetrievalCandidate(peerB, cid1)),
+					events.Success(startTime.Add(20*time.Millisecond), rid, startTime.Add(10*time.Millisecond), types.NewRetrievalCandidate(peerB, cid1), 10, 11, 12*time.Second, big.Zero()),
+					events.Finished(startTime.Add(20*time.Millisecond), rid, startTime.Add(10*time.Millisecond), types.RetrievalCandidate{RootCid: cid1})},
+			},
+		},
+	}.RunWithVerification(ctx, t, clock, client, candidateFinder, []testutil.RunRetrieval{
+		func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
+			return ret.Retrieve(context.Background(), types.RetrievalRequest{
+				LinkSystem:  lsB,
+				RetrievalID: rid,
+				Cid:         cid1,
+			}, cb)
+		},
+	})
+	require.Len(t, results, 1)
+	result, err = results[0].Stats, results[0].Err
+
 	require.NoError(t, err)
 	require.Equal(t, returnsRetrievals[string(peerB)].ResultStats, result)
-	// --- stop ---
-	time.Sleep(time.Millisecond * 5) // sleep to allow events to flush
-	select {
-	case <-ret.Stop():
-	case <-time.After(time.Millisecond * 50):
-		require.Fail(t, "timed out waiting for retriever to stop")
-	}
 
 	// --- verify ---
 	// two different linksystems for the different calls, in the order that we
@@ -703,4 +793,3 @@ func TestLinkSystemPerRequest(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "linkSystem B", str)
 }
-*/

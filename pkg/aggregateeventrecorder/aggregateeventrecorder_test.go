@@ -48,9 +48,8 @@ func TestAggregateEventRecorder(t *testing.T) {
 
 				subscriber(events.Started(time.Now(), id, fetchPhaseStartTime, types.FetchPhase, types.RetrievalCandidate{RootCid: testCid1}))
 				subscriber(events.FirstByte(time.Now(), id, ptime, types.RetrievalCandidate{RootCid: testCid1}))
-				time.Sleep(50 * time.Millisecond) // Add artificial wait to get
-				subscriber(events.Success(time.Now(), id, ptime, types.NewRetrievalCandidate(spid, testCid1), uint64(2020), 3030, 4*time.Second, big.Zero()))
-				subscriber(events.Finished(time.Now(), id, fetchPhaseStartTime, types.RetrievalCandidate{RootCid: testCid1}))
+				subscriber(events.Success(time.Now().Add(50*time.Millisecond), id, ptime, types.NewRetrievalCandidate(spid, testCid1), uint64(2020), 3030, 4*time.Second, big.Zero()))
+				subscriber(events.Finished(time.Now().Add(50*time.Millisecond), id, fetchPhaseStartTime, types.RetrievalCandidate{RootCid: testCid1}))
 
 				select {
 				case <-ctx.Done():
