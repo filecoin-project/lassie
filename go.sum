@@ -336,8 +336,8 @@ github.com/ipfs/go-cid v0.0.6-0.20200501230655-7c82f3b81c00/go.mod h1:plgt+Y5MnO
 github.com/ipfs/go-cid v0.0.6/go.mod h1:6Ux9z5e+HpkQdckYoX1PG/6xqKspzlEIR5SDmgqgC/I=
 github.com/ipfs/go-cid v0.0.7/go.mod h1:6Ux9z5e+HpkQdckYoX1PG/6xqKspzlEIR5SDmgqgC/I=
 github.com/ipfs/go-cid v0.2.0/go.mod h1:P+HXFDF4CVhaVayiEb4wkAy7zBHxBwsJyt0Y5U6MLro=
-github.com/ipfs/go-cid v0.3.2 h1:OGgOd+JCFM+y1DjWPmVH+2/4POtpDzwcr7VgnB7mZXc=
-github.com/ipfs/go-cid v0.3.2/go.mod h1:gQ8pKqT/sUxGY+tIwy1RPpAojYu7jAyCp5Tz1svoupw=
+github.com/ipfs/go-cid v0.4.0 h1:a4pdZq0sx6ZSxbCizebnKiMCx/xI/aBBFlB73IgH4rA=
+github.com/ipfs/go-cid v0.4.0/go.mod h1:uQHwDeX4c6CtyrFwdqyhpNcxVewur1M7l7fNU7LKwZk=
 github.com/ipfs/go-datastore v0.1.1/go.mod h1:w38XXW9kVFNp57Zj5knbKWM2T+KOZCGDRVNdgPHtbHw=
 github.com/ipfs/go-datastore v0.5.0/go.mod h1:9zhEApYMTl17C8YDp7JmU7sQZi2/wqiYh73hakZ90Bk=
 github.com/ipfs/go-datastore v0.5.1/go.mod h1:9zhEApYMTl17C8YDp7JmU7sQZi2/wqiYh73hakZ90Bk=
@@ -412,8 +412,8 @@ github.com/ipld/go-car/v2 v2.8.3-0.20230320044239-794f22231c05/go.mod h1:UeIST4b
 github.com/ipld/go-codec-dagpb v1.6.0 h1:9nYazfyu9B1p3NAgfVdpRco3Fs2nFC72DqVsMj6rOcc=
 github.com/ipld/go-codec-dagpb v1.6.0/go.mod h1:ANzFhfP2uMJxRBr8CE+WQWs5UsNa0pYtmKZ+agnUw9s=
 github.com/ipld/go-ipld-prime v0.9.1-0.20210324083106-dc342a9917db/go.mod h1:KvBLMr4PX1gWptgkzRjVZCrLmSGcZCb/jioOQwCqZN8=
-github.com/ipld/go-ipld-prime v0.20.1-0.20230311031110-6b0c355a3954 h1:xcAO2oqdczqC3fFR+hbxWVCMc0CziKdLcF9xIcKGacw=
-github.com/ipld/go-ipld-prime v0.20.1-0.20230311031110-6b0c355a3954/go.mod h1:/6qSzgFPfdq7Y1TmdtIwMBZzgFXPg156k/pFgzGiq+w=
+github.com/ipld/go-ipld-prime v0.20.1-0.20230328031804-d013fc0ada25 h1:hbf/5vIFKw3eplVcP0mKydghqAH9MttKYjEgZ4qENlw=
+github.com/ipld/go-ipld-prime v0.20.1-0.20230328031804-d013fc0ada25/go.mod h1:wmOtdy70ajP48iZITH8uLsGJVMqA4EJM61/bSfYYGhs=
 github.com/ipld/go-ipld-prime/storage/bsadapter v0.0.0-20230102063945-1a409dc236dd h1:gMlw/MhNr2Wtp5RwGdsW23cs+yCuj9k2ON7i9MiJlRo=
 github.com/ipni/index-provider v0.10.2 h1:BR3pjSIOXoVBHXikL4jpp9nAGhzeJU9WvRoUFwwKVWU=
 github.com/ipni/index-provider v0.10.2/go.mod h1:X1IcMyAsFW+j8/ZEQOaewHck0fA2+SdlxHZlXv2XZrY=

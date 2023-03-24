@@ -80,55 +80,58 @@ func NewPreloadCachingStorage(
 	return cs, nil
 }
 
-func (cs *PreloadCachingStorage) Preloader(preloadCtx preload.PreloadContext, links []preload.Link) {
+func (cs *PreloadCachingStorage) Preloader(preloadCtx preload.PreloadContext, link preload.Link) {
 	cs.preloadsLk.Lock()
 	defer cs.preloadsLk.Unlock()
 
-	for _, link := range links {
-		// check not found list
-		if _, nf := cs.notFound[string(link.Link.(cidlink.Link).Cid.Hash())]; nf {
-			continue
-		}
+	// links coming in here aren't necessarily deduplicated and may be ones we've
+	// already attempted to load or are queued for loading, so we have to check
+	// all the places we might have seen this link before before queueing it up.
 
-		// check preload list
-		if pl, existing := cs.preloads[link.Link]; existing {
-			pl.refCnt++
-			continue
-		}
+	// check not found list
+	if _, nf := cs.notFound[string(link.Link.(cidlink.Link).Cid.Hash())]; nf {
+		return
+	}
 
-		linkCtx := linking.LinkContext{
-			Ctx:        preloadCtx.Ctx,
-			LinkPath:   preloadCtx.BasePath.AppendSegment(link.Segment),
-			LinkNode:   link.LinkNode,
-			ParentNode: preloadCtx.ParentNode,
-		}
+	// check preload list
+	if pl, existing := cs.preloads[link.Link]; existing {
+		pl.refCnt++
+		return
+	}
 
-		// check parent
-		if has, err := linkSystemHas(cs.parentLinkSystem, linkCtx, link.Link); err != nil {
-			log.Errorf("parent LinkSystem block existence check failed: %s", err.Error())
-		} else if has {
-			continue
-		}
+	linkCtx := linking.LinkContext{
+		Ctx:        preloadCtx.Ctx,
+		LinkPath:   preloadCtx.BasePath.AppendSegment(link.Segment),
+		LinkNode:   link.LinkNode,
+		ParentNode: preloadCtx.ParentNode,
+	}
 
-		// check cache
-		if has, err := linkSystemHas(cs.cacheLinkSystem, linkCtx, link.Link); err != nil {
-			log.Errorf("cache LinkSystem block existence check failed: %s", err.Error())
-		} else if has {
-			continue
-		}
+	// check parent
+	if has, err := linkSystemHas(cs.parentLinkSystem, linkCtx, link.Link); err != nil {
+		log.Errorf("parent LinkSystem block existence check failed: %s", err.Error())
+	} else if has {
+		return
+	}
 
-		// haven't seen this link before, queue for preloading
-		cs.preloads[link.Link] = &preloadingLink{
-			loaded: make(chan struct{}),
-			refCnt: 1,
-		}
-		select {
-		case <-preloadCtx.Ctx.Done():
-		case cs.requests <- request{
-			linkCtx: linkCtx,
-			link:    link.Link,
-		}:
-		}
+	// check cache
+	if has, err := linkSystemHas(cs.cacheLinkSystem, linkCtx, link.Link); err != nil {
+		log.Errorf("cache LinkSystem block existence check failed: %s", err.Error())
+	} else if has {
+		return
+	}
+
+	// haven't seen this link before, queue for preloading
+	cs.preloads[link.Link] = &preloadingLink{
+		loaded: make(chan struct{}),
+		refCnt: 1,
+	}
+	req := request{
+		linkCtx: linkCtx,
+		link:    link.Link,
+	}
+	select {
+	case <-preloadCtx.Ctx.Done():
+	case cs.requests <- req:
 	}
 }
 
