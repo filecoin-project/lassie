@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/ipni/index-provider/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/require"
@@ -593,21 +594,19 @@ func TestMultipleRetrievals(t *testing.T) {
 	require.Equal(t, mockClient.GetRetrievalReturns()["bing"].ResultStats, stats)
 }
 
-/*
 func TestRetrievalSelector(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
 	retrievalID := types.RetrievalID(uuid.New())
 	cid1 := cid.MustParse("bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")
-	successfulQueryResponse := retrievaltypes.QueryResponse{Status: retrievaltypes.QueryResponseAvailable, MinPricePerByte: big.Zero(), Size: 2, UnsealPrice: big.Zero()}
-
+	clock := clock.New()
 	mockClient := testutil.NewMockClient(
-		map[string]testutil.DelayedQueryReturn{"foo": {QueryResponse: &successfulQueryResponse, Err: nil, Delay: 0}},
-		map[string]testutil.DelayedRetrievalReturn{"foo": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}, Delay: 0}},
+		map[string]testutil.DelayedConnectReturn{"foo": {Err: nil, Delay: 0}},
+		map[string]testutil.DelayedClientReturn{"foo": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}, Delay: 0}},
+		clock,
 	)
 
-	cfg := &GraphSyncRetriever{
-		GetStorageProviderTimeout: func(peer peer.ID) time.Duration { return time.Second },
-		Client:                    mockClient,
-	}
+	cfg := NewGraphsyncRetriever(func(peer peer.ID) time.Duration { return time.Second }, mockClient)
 
 	selector := selectorparse.CommonSelector_MatchPoint
 
@@ -623,11 +622,10 @@ func TestRetrievalSelector(t *testing.T) {
 	require.Equal(t, mockClient.GetRetrievalReturns()["foo"].ResultStats, stats)
 
 	// make sure we performed the retrievals we expected
-	rr := mockClient.GetReceivedRetrievalFrom(peer.ID("foo"))
+	rr := mockClient.VerifyReceivedRetrievalFrom(ctx, t, peer.ID("foo"))
 	require.NotNil(t, rr)
 	require.Same(t, selector, rr.Selector)
-	require.Len(t, mockClient.GetReceivedRetrievals(), 1)
-}*/
+}
 
 func MakeAsyncCandidates(t *testing.T, candidates []types.RetrievalCandidate) types.InboundAsyncCandidates {
 	incoming, outgoing := types.MakeAsyncCandidates(len(candidates))
