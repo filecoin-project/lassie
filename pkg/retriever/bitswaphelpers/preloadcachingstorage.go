@@ -291,14 +291,22 @@ func (cs *PreloadCachingStorage) run(ctx context.Context) {
 
 	for i := 0; i < cs.concurrency; i++ {
 		go func() {
-			for request := range feed {
-				cs.preloadsLk.RLock()
-				pl, ok := cs.preloads[request.link]
-				cs.preloadsLk.RUnlock()
-				if !ok {
-					continue
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case request, ok := <-feed:
+					if !ok {
+						return
+					}
+					cs.preloadsLk.RLock()
+					pl, ok := cs.preloads[request.link]
+					cs.preloadsLk.RUnlock()
+					if !ok {
+						continue
+					}
+					cs.preloadLink(pl, request.linkCtx, request.link)
 				}
-				cs.preloadLink(pl, request.linkCtx, request.link)
 			}
 		}()
 	}
