@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -203,9 +204,20 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 				log.Errorw("failed to close streaming store after retrieval", "retrievalId", retrievalId, "err", err)
 			}
 		}()
+		// extract block limit from query param as needed
+		var blockLimit uint64
+		if req.URL.Query().Has("blockLimit") {
+			if parsedBlockLimit, err := strconv.ParseUint(req.URL.Query().Get("blockLimit"), 10, 64); err == nil {
+				blockLimit = parsedBlockLimit
+			}
+		}
 		var store limitstore.Storage = streamingStore
-		if cfg.MaxBlocksPerRequest > 0 {
-			store = limitstore.NewLimitStore(store, cfg.MaxBlocksPerRequest)
+		if cfg.MaxBlocksPerRequest > 0 || blockLimit > 0 {
+			// use the lowest non-zero value for block limit
+			if blockLimit == 0 || (cfg.MaxBlocksPerRequest > 0 && blockLimit > cfg.MaxBlocksPerRequest) {
+				blockLimit = cfg.MaxBlocksPerRequest
+			}
+			store = limitstore.NewLimitStore(store, blockLimit)
 		}
 
 		request, err := types.NewRequestForPath(store, rootCid, unixfsPath, fullFetch)
