@@ -11,7 +11,7 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/hannahhoward/go-pubsub v1.0.0
 	github.com/ipfs/go-blockservice v0.5.0
-	github.com/ipfs/go-cid v0.3.2
+	github.com/ipfs/go-cid v0.4.0
 	github.com/ipfs/go-datastore v0.6.0
 	github.com/ipfs/go-graphsync v0.14.3
 	github.com/ipfs/go-ipfs-blockstore v1.3.0
@@ -24,7 +24,7 @@ require (
 	github.com/ipfs/go-unixfsnode v1.6.0
 	github.com/ipld/go-car/v2 v2.8.3-0.20230320044239-794f22231c05
 	github.com/ipld/go-codec-dagpb v1.6.0
-	github.com/ipld/go-ipld-prime v0.20.1-0.20230311031110-6b0c355a3954
+	github.com/ipld/go-ipld-prime v0.20.1-0.20230328031804-d013fc0ada25
 	github.com/ipni/index-provider v0.10.2
 	github.com/ipni/storetheindex v0.5.8
 	github.com/libp2p/go-libp2p v0.26.3
