@@ -161,13 +161,31 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		// we never received any candidates, so we give up on bitswap retrieval
 		return nil, nil
 	}
+
 	br.events(events.Started(br.clock.Now(), br.request.RetrievalID, phaseStartTime, types.RetrievalPhase, bitswapCandidate))
 
+	// set initial providers, then start a goroutine to add more as they come in
+	br.routing.AddProviders(br.request.RetrievalID, nextCandidates)
+	go func() {
+		for {
+			hasCandidates, nextCandidates, err := ayncCandidates.Next(ctx)
+			if !hasCandidates || err != nil {
+				if br.awaitReceivedCandidates != nil {
+					select {
+					case <-br.ctx.Done():
+					case br.awaitReceivedCandidates <- struct{}{}:
+					}
+				}
+				return
+			}
+			br.routing.AddProviders(br.request.RetrievalID, nextCandidates)
+		}
+	}()
+
+	// loader that can work with bitswap just for this session
 	loader := loaderForSession(br.request.RetrievalID, br.inProgressCids, br.bsGetter)
-	tmpDir := br.BitswapRetriever.cfg.TempDir
-	if tmpDir == "" {
-		tmpDir = os.TempDir()
-	}
+
+	// set up the storage system, including the preloader
 	concurrency := br.BitswapRetriever.cfg.Concurrency
 	if concurrency <= 0 {
 		concurrency = DefaultConcurrency
@@ -176,6 +194,10 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	if cacheLinkSys.StorageReadOpener == nil || cacheLinkSys.StorageWriteOpener == nil {
 		// an uninitialised LinkSystem that we can't actually use, so we'll create a
 		// new one
+		tmpDir := br.BitswapRetriever.cfg.TempDir
+		if tmpDir == "" {
+			tmpDir = os.TempDir()
+		}
 		cacheStore := storage.NewDeferredCarStorage(tmpDir)
 		cacheLinkSys = cidlink.DefaultLinkSystem()
 		cacheLinkSys.SetReadStorage(cacheStore)
@@ -199,22 +221,6 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		br.request.RetrievalID,
 		bitswaphelpers.NewByteCountingLinkSystem(storage.BitswapLinkSystem, cb),
 	)
-	br.routing.AddProviders(br.request.RetrievalID, nextCandidates)
-	go func() {
-		for {
-			hasCandidates, nextCandidates, err := ayncCandidates.Next(ctx)
-			if !hasCandidates || err != nil {
-				if br.awaitReceivedCandidates != nil {
-					select {
-					case <-br.ctx.Done():
-					case br.awaitReceivedCandidates <- struct{}{}:
-					}
-				}
-				return
-			}
-			br.routing.AddProviders(br.request.RetrievalID, nextCandidates)
-		}
-	}()
 
 	// run the retrieval
 	err = easyTraverse(ctx, cidlink.Link{Cid: br.request.Cid}, selector, storage.TraversalLinkSystem, storage.Preloader)
