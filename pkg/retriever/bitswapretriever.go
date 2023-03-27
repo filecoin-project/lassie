@@ -201,7 +201,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		if tmpDir == "" {
 			tmpDir = os.TempDir()
 		}
-		cacheStore := storage.NewDeferredCarStorage(tmpDir)
+		cacheStore := storage.NewDeferredStorageCar(tmpDir)
 		cacheLinkSys = cidlink.DefaultLinkSystem()
 		cacheLinkSys.SetReadStorage(cacheStore)
 		cacheLinkSys.SetWriteStorage(cacheStore)

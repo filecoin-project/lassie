@@ -14,35 +14,41 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 )
 
-var _ types.ReadableWritableStorage = (*TeeingTempReadWrite)(nil)
+var _ types.ReadableWritableStorage = (*CachingTempStore)(nil)
 var _ types.ReadableWritableStorage = (*preloadStore)(nil)
 
 var errClosed = errors.New("store closed")
 
-// TeeingTempReadWrite is storage wrapper that takes a write-only storage and
-// returns a read-write storage. It will only create the temporary read-write
-// storage when the first read or write operation is performed. This allows
-// the caller to defer the creation of the temporary storage until it is
-// actually needed—which may be never.
+// CachingTempStore is a ReadableWritableStorage that is intended for
+// temporary use. It uses DeferredStorageCar as a backing store, so the
+// underlying CAR file is lazily created on the first write (none will be
+// created if there are no writes).
 //
-// Put() operations will write to both storage systems, and will block until
-// both are written.
-type TeeingTempReadWrite struct {
-	store     *DeferredCarStorage
+// A provided BlockWriteOpener will receive blocks for each Put operation, this
+// is intended to be used to write a properly ordered CARv1 file.
+//
+// PreloadStore returns a secondary ReadableWritableStorage that can be used
+// by a traversal preloader to optimistically load blocks into the temporary
+// store. Blocks loaded via the PreloadStore will not be written to the
+// provided BlockWriteOpener until they appear in a Put operation on the parent
+// store. In this way, the BlockWriteOpener will receive blocks in the order
+// that they appear in the traversal.
+type CachingTempStore struct {
+	store     *DeferredStorageCar
 	outWriter linking.BlockWriteOpener
 
 	preloadKeys map[string]struct{}
 }
 
-func NewTeeingTempReadWrite(outWriter linking.BlockWriteOpener, tempDir string) *TeeingTempReadWrite {
-	return &TeeingTempReadWrite{
-		store:       NewDeferredCarStorage(tempDir),
+func NewCachingTempStore(outWriter linking.BlockWriteOpener, tempDir string) *CachingTempStore {
+	return &CachingTempStore{
+		store:       NewDeferredStorageCar(tempDir),
 		outWriter:   outWriter,
 		preloadKeys: make(map[string]struct{}),
 	}
 }
 
-func (ttrw *TeeingTempReadWrite) Has(ctx context.Context, key string) (bool, error) {
+func (ttrw *CachingTempStore) Has(ctx context.Context, key string) (bool, error) {
 	ttrw.store.lk.Lock()
 	defer ttrw.store.lk.Unlock()
 
@@ -58,7 +64,7 @@ func (ttrw *TeeingTempReadWrite) Has(ctx context.Context, key string) (bool, err
 	}
 }
 
-func (ttrw *TeeingTempReadWrite) Get(ctx context.Context, key string) ([]byte, error) {
+func (ttrw *CachingTempStore) Get(ctx context.Context, key string) ([]byte, error) {
 	ttrw.store.lk.Lock()
 	defer ttrw.store.lk.Unlock()
 
@@ -78,7 +84,7 @@ func (ttrw *TeeingTempReadWrite) Get(ctx context.Context, key string) ([]byte, e
 	}
 }
 
-func (ttrw *TeeingTempReadWrite) GetStream(ctx context.Context, key string) (io.ReadCloser, error) {
+func (ttrw *CachingTempStore) GetStream(ctx context.Context, key string) (io.ReadCloser, error) {
 	ttrw.store.lk.Lock()
 	defer ttrw.store.lk.Unlock()
 
@@ -100,7 +106,7 @@ func (ttrw *TeeingTempReadWrite) GetStream(ctx context.Context, key string) (io.
 
 // Put writes both to temporary readwrite caching storage (available for read
 // operations) and to the underlying write-only CARv1 output at the same time.
-func (ttrw *TeeingTempReadWrite) Put(ctx context.Context, key string, data []byte) error {
+func (ttrw *CachingTempStore) Put(ctx context.Context, key string, data []byte) error {
 	ttrw.store.lk.Lock()
 	defer ttrw.store.lk.Unlock()
 
@@ -114,11 +120,11 @@ func (ttrw *TeeingTempReadWrite) Put(ctx context.Context, key string, data []byt
 }
 
 // Close will clean up any temporary resources used by the storage.
-func (ttrw *TeeingTempReadWrite) Close() error {
+func (ttrw *CachingTempStore) Close() error {
 	return ttrw.store.Close()
 }
 
-func (ttrw *TeeingTempReadWrite) teePut(ctx context.Context, key string, data []byte) error {
+func (ttrw *CachingTempStore) teePut(ctx context.Context, key string, data []byte) error {
 	// use the store directly so we don't have lock contention
 	rw, err := ttrw.store.readWrite()
 	if err != nil {
@@ -162,12 +168,12 @@ func writeTo(ctx context.Context, outWriter linking.BlockWriteOpener, key string
 	return c(cidlink.Link{Cid: cid})
 }
 
-func (ttrw *TeeingTempReadWrite) PreloadStore() types.ReadableWritableStorage {
+func (ttrw *CachingTempStore) PreloadStore() types.ReadableWritableStorage {
 	return &preloadStore{ttrw: ttrw}
 }
 
 type preloadStore struct {
-	ttrw *TeeingTempReadWrite
+	ttrw *CachingTempStore
 }
 
 func (ps *preloadStore) Has(ctx context.Context, key string) (bool, error) {
