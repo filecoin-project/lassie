@@ -12,9 +12,14 @@ import (
 	carstorage "github.com/ipld/go-car/v2/storage"
 )
 
-var _ ReadableWritableStorage = (*DeferredCarStorage)(nil)
+var _ ReadableWritableStorage = (*DeferredStorageCar)(nil)
 
-type DeferredCarStorage struct {
+// DeferredStorageCar is a wrapper around
+// github.com/ipld/go-car/v2/storage.StorageCar that defers creating the CAR
+// until the first Put() operation. In this way it can be optimistically
+// instantiated and no file will be created if it is never written to (such as
+// in the case of an error).
+type DeferredStorageCar struct {
 	tempDir string
 
 	lk     sync.Mutex
@@ -23,14 +28,15 @@ type DeferredCarStorage struct {
 	rw     *carstorage.StorageCar
 }
 
-func NewDeferredCarStorage(tempDir string) *DeferredCarStorage {
-	return &DeferredCarStorage{
+// NewDeferredStorageCar creates a new DeferredStorageCar.
+func NewDeferredStorageCar(tempDir string) *DeferredStorageCar {
+	return &DeferredStorageCar{
 		tempDir: tempDir,
 	}
 }
 
 // Close will clean up any temporary resources used by the storage.
-func (dcs *DeferredCarStorage) Close() error {
+func (dcs *DeferredStorageCar) Close() error {
 	dcs.lk.Lock()
 	defer dcs.lk.Unlock()
 
@@ -49,7 +55,7 @@ func (dcs *DeferredCarStorage) Close() error {
 }
 
 // Has returns true if the underlying CARv1 has the key.
-func (dcs *DeferredCarStorage) Has(ctx context.Context, key string) (bool, error) {
+func (dcs *DeferredStorageCar) Has(ctx context.Context, key string) (bool, error) {
 	dcs.lk.Lock()
 	defer dcs.lk.Unlock()
 
@@ -65,7 +71,7 @@ func (dcs *DeferredCarStorage) Has(ctx context.Context, key string) (bool, error
 }
 
 // Get returns data from the underlying CARv1.
-func (dcs *DeferredCarStorage) Get(ctx context.Context, key string) ([]byte, error) {
+func (dcs *DeferredStorageCar) Get(ctx context.Context, key string) ([]byte, error) {
 	dcs.lk.Lock()
 	defer dcs.lk.Unlock()
 
@@ -85,7 +91,7 @@ func (dcs *DeferredCarStorage) Get(ctx context.Context, key string) ([]byte, err
 }
 
 // GetStream returns data from the underlying CARv1.
-func (dcs *DeferredCarStorage) GetStream(ctx context.Context, key string) (io.ReadCloser, error) {
+func (dcs *DeferredStorageCar) GetStream(ctx context.Context, key string) (io.ReadCloser, error) {
 	dcs.lk.Lock()
 	defer dcs.lk.Unlock()
 
@@ -106,7 +112,7 @@ func (dcs *DeferredCarStorage) GetStream(ctx context.Context, key string) (io.Re
 
 // Put writes data to the underlying CARv1 which will be initialised on the
 // first call to Put.
-func (dcs *DeferredCarStorage) Put(ctx context.Context, key string, data []byte) error {
+func (dcs *DeferredStorageCar) Put(ctx context.Context, key string, data []byte) error {
 	dcs.lk.Lock()
 	defer dcs.lk.Unlock()
 
@@ -121,7 +127,7 @@ func (dcs *DeferredCarStorage) Put(ctx context.Context, key string, data []byte)
 // is not synchronized so calls that need thread safety should be wrapped in a
 // mutex. This can be used to directly access the underlying CARv1 and cause it
 // to be initialised.
-func (dcs *DeferredCarStorage) readWrite() (ReadableWritableStorage, error) {
+func (dcs *DeferredStorageCar) readWrite() (ReadableWritableStorage, error) {
 	if dcs.closed {
 		return nil, errClosed
 	}

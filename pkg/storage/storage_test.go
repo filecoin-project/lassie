@@ -16,7 +16,7 @@ import (
 )
 
 func TestTempCarStorage(t *testing.T) {
-	// Testing both DeferredCarStorage and TeeingTempReadWrite here with just some
+	// Testing both DeferredCarStorage and CachingTempStore here with just some
 	// additional pieces of logic to make sure the teeing version is actually
 	// teeing.
 	for _, teeing := range []bool{true, false} {
@@ -40,9 +40,9 @@ func TestTempCarStorage(t *testing.T) {
 						return nil
 					}, nil
 				}
-				cw = NewTeeingTempReadWrite(bwo, tempDir)
+				cw = NewCachingTempStore(bwo, tempDir)
 			} else {
-				cw = NewDeferredCarStorage(tempDir)
+				cw = NewDeferredStorageCar(tempDir)
 			}
 
 			ents, err := os.ReadDir(tempDir)
@@ -154,7 +154,7 @@ func TestPreloadStore(t *testing.T) {
 			return nil
 		}, nil
 	}
-	mainStore := NewTeeingTempReadWrite(bwo, t.TempDir())
+	mainStore := NewCachingTempStore(bwo, t.TempDir())
 	t.Cleanup(func() {
 		require.NoError(t, mainStore.Close())
 	})
