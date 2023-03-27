@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"container/list"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -44,9 +45,61 @@ type PreloadCachingStorage struct {
 	preloads   map[ipld.Link]*preloadingLink
 	requests   chan request
 
+	loadCount      int
 	preloadedHits  int
 	preloadingHits int
 	preloadMisses  int
+}
+
+type PreloadStats struct {
+	// LoadCount is the number of times the Loader was called
+	LoadCount int
+	// ActivePreloads is the number of links currently being preloaded
+	ActivePreloads int // number of links currently being preloaded
+	// NotFound is the number of links that were a decisive "not found" (by the
+	// preloader)
+	NotFound int
+	// PreloadedHits is the number of times a link was loaded from the cache
+	// (already full preloaded)
+	PreloadedHits int
+	// PreloadingHits is the number of times a link was loaded that was in the
+	// process of being preloaded
+	PreloadingHits int
+	// PreloadMisses is the number of times a link was not found in the cache or
+	// in the process of being preloaded. This should only happen once per
+	// traversal (the root).
+	PreloadMisses int
+}
+
+func (s PreloadStats) PreloadedHitFraction() float64 {
+	return float64(s.PreloadedHits) / float64(s.LoadCount)
+}
+
+func (s PreloadStats) PreloadingHitFraction() float64 {
+	return float64(s.PreloadingHits) / float64(s.LoadCount)
+}
+
+func (s PreloadStats) Print() {
+	fmt.Println("PreloadCachingStorage stats:")
+	fmt.Printf("%25s: %v\n", "loadCount", s.LoadCount)
+	fmt.Printf("%25s: %v\n", "active preloads", s.ActivePreloads)
+	fmt.Printf("%25s: %v\n", "not found", s.NotFound)
+	fmt.Printf("%25s: %v\n", "preloaded hits", s.PreloadedHits)
+	fmt.Printf("%25s: %v\n", "preloading hits", s.PreloadingHits)
+	fmt.Printf("%25s: %v\n", "preload misses", s.PreloadMisses)
+	fmt.Printf("%25s: %v\n", "preloaded hit fraction", s.PreloadedHitFraction())
+	fmt.Printf("%25s: %v\n", "preloading hit fraction", s.PreloadingHitFraction())
+}
+
+func (cs *PreloadCachingStorage) GetStats() PreloadStats {
+	return PreloadStats{
+		LoadCount:      cs.loadCount,
+		ActivePreloads: len(cs.preloads),
+		NotFound:       len(cs.notFound),
+		PreloadedHits:  cs.preloadedHits,
+		PreloadingHits: cs.preloadingHits,
+		PreloadMisses:  cs.preloadMisses,
+	}
 }
 
 func NewPreloadCachingStorage(
@@ -136,6 +189,8 @@ func (cs *PreloadCachingStorage) Preloader(preloadCtx preload.PreloadContext, li
 }
 
 func (cs *PreloadCachingStorage) Loader(linkCtx linking.LinkContext, link ipld.Link) (io.Reader, error) {
+	cs.loadCount++
+
 	// check parent
 	if r, err := linkSystemGetStream(cs.parentLinkSystem, linkCtx, link); r != nil && err == nil {
 		return r, nil // found in parent, return
@@ -145,7 +200,7 @@ func (cs *PreloadCachingStorage) Loader(linkCtx linking.LinkContext, link ipld.L
 		}
 	} // else not found
 
-	// check parent
+	// check cache
 	if r, err := linkSystemGetStream(cs.cacheLinkSystem, linkCtx, link); r != nil && err == nil {
 		// have a preloaded block
 		cs.preloadedHits++
@@ -160,8 +215,6 @@ func (cs *PreloadCachingStorage) Loader(linkCtx linking.LinkContext, link ipld.L
 			return nil, err // real error
 		}
 	} // else not found
-
-	// defer cs.PrintStats()
 
 	// hit the preloader
 	cs.preloadsLk.Lock()
@@ -206,8 +259,11 @@ func (cs *PreloadCachingStorage) Loader(linkCtx linking.LinkContext, link ipld.L
 		if pl.err != nil {
 			return nil, pl.err
 		}
-		// TODO: delete from storage if/when possible?  if pl.refCnt <= 0 {}
-		// load from cache, write direct to parent and return
+		// TODO: if an abstracted form of this code is extracted from here, we
+		// should probably make affordance to allow a "delete" of the preload
+		// entry since it shouldn't be needed in the preloader anymore. For the
+		// Lassie case the underlying store is the same, so a delete would be a
+		// noop because we'll need it for the life of the traversal anyway.
 		r, err := linkSystemGetStream(cs.cacheLinkSystem, linkCtx, link)
 		if err != nil {
 			return nil, err
@@ -275,18 +331,19 @@ func (cs *PreloadCachingStorage) preloadLink(pl *preloadingLink, linkCtx linking
 	})
 }
 
-func (cs *PreloadCachingStorage) Start(ctx context.Context) {
+func (cs *PreloadCachingStorage) Start(ctx context.Context) error {
 	if cs.cancel != nil {
-		panic("already started")
+		return errors.New("already started")
 	}
 	ctx, cs.cancel = context.WithCancel(ctx)
 	go cs.run(ctx)
+	return nil
 }
 
 func (cs *PreloadCachingStorage) run(ctx context.Context) {
 	feed := make(chan *request)
 	defer func() {
-		//close(feed)
+		close(feed)
 	}()
 
 	for i := 0; i < cs.concurrency; i++ {
@@ -342,16 +399,6 @@ func (cs *PreloadCachingStorage) Stop() error {
 		cs.cancel = nil
 	}
 	return nil
-}
-
-// TODO: remove this and the stats it uses
-func (cs *PreloadCachingStorage) PrintStats() {
-	fmt.Println("PreloadCachingStorage stats:")
-	fmt.Println("  preloads:", len(cs.preloads))
-	fmt.Println("  not found:", len(cs.notFound))
-	fmt.Println("  preloaded hits:", cs.preloadedHits)
-	fmt.Println("  preloading hits:", cs.preloadingHits)
-	fmt.Println("  preload misses:", cs.preloadMisses)
 }
 
 func linkSystemHas(linkSys linking.LinkSystem, linkCtx linking.LinkContext, link ipld.Link) (bool, error) {
