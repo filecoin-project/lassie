@@ -156,7 +156,6 @@ func (mcf *mockCandidateFinder) FindCandidates(ctx context.Context, cid cid.Cid)
 }
 
 func (mcf *mockCandidateFinder) FindCandidatesAsync(ctx context.Context, cid cid.Cid, cb func(types.RetrievalCandidate)) error {
-
 	cand, _ := mcf.FindCandidates(ctx, cid)
 	for _, c := range cand {
 		select {
