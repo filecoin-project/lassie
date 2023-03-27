@@ -205,7 +205,7 @@ func (rc *RetrievalClient) RetrieveFromPeer(
 	paymentRequired := !proposal.PricePerByte.IsZero() || !proposal.UnsealPrice.IsZero()
 
 	if paymentRequired {
-		return nil, fmt.Errorf("not supported")
+		return nil, errors.New("paid retrieval is not supported")
 	}
 
 	// The next nonce (incrementing unique ID starting from 0) for the next voucher
