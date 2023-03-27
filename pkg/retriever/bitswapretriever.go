@@ -12,6 +12,7 @@ import (
 	"github.com/benbjohnson/clock"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/events"
+	"github.com/filecoin-project/lassie/pkg/metrics"
 	"github.com/filecoin-project/lassie/pkg/retriever/bitswaphelpers"
 	"github.com/filecoin-project/lassie/pkg/storage"
 	"github.com/filecoin-project/lassie/pkg/types"
@@ -30,6 +31,7 @@ import (
 	"github.com/ipni/index-provider/metadata"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"go.opencensus.io/stats"
 )
 
 const DefaultConcurrency = 6
@@ -192,8 +194,9 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	}
 	cacheLinkSys := br.request.PreloadLinkSystem
 	if cacheLinkSys.StorageReadOpener == nil || cacheLinkSys.StorageWriteOpener == nil {
-		// an uninitialised LinkSystem that we can't actually use, so we'll create a
-		// new one
+		// An uninitialised LinkSystem, i.e. likely the request didn't provide a
+		// PreloadLinkSystem. So we'll create a new one. This will result in a new
+		// temporary file being created for the retrieval.
 		tmpDir := br.BitswapRetriever.cfg.TempDir
 		if tmpDir == "" {
 			tmpDir = os.TempDir()
@@ -210,11 +213,13 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		loader,
 		concurrency,
 	)
+	if err == nil {
+		err = storage.Start(ctx)
+	}
 	if err != nil {
 		cancel()
 		return nil, err
 	}
-	storage.Start(ctx)
 
 	// setup providers linksystem for this retrieval
 	br.bstore.AddLinkSystem(
@@ -247,6 +252,8 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		blockCount.Load(),
 		duration,
 		big.Zero()))
+
+	stats.Record(ctx, metrics.BitswapPreloadedHitFraction.M(storage.GetStats().PreloadedHitFraction()))
 
 	// return stats
 	return &types.RetrievalStats{

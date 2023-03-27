@@ -63,22 +63,37 @@ type PreloadStats struct {
 	// (already full preloaded)
 	PreloadedHits int
 	// PreloadingHits is the number of times a link was loaded that was in the
-	// process of being preloaded
+	// queue to be preloaded but hadn't yet been fully loaded.
 	PreloadingHits int
 	// PreloadMisses is the number of times a link was not found in the cache or
-	// in the process of being preloaded. This should only happen once per
-	// traversal (the root).
+	// queued to be preloaded. This should only happen once per traversal (the
+	// root).
 	PreloadMisses int
 }
 
+// PreloadedHitFraction returns the fraction of loads that were hits in the
+// preloaded cache. This is a good indicator of how much of the traversal was
+// able to be satisfied by the preloaded cache, however it is not able to
+// capture the number of blocks that were actively being loaded when they were
+// requested.
 func (s PreloadStats) PreloadedHitFraction() float64 {
 	return float64(s.PreloadedHits) / float64(s.LoadCount)
 }
 
+// PreloadingHitFraction returns the fraction of loads that were hits in the
+// queue of links to be preloaded. This means that the block was flagged as
+// being needed by the preloader, but had not yet been preloaded, or was in the
+// process of being preloaded when it was required by the traversal.
+//
+// PreloadingHitFraction() + PreloadedHitFraction() should be close to a value
+// of 1.0 (not exactly as the first block will be a complete preloader miss),
+// together they provide a measure of the performance of the preloader for the
+// traversal.
 func (s PreloadStats) PreloadingHitFraction() float64 {
 	return float64(s.PreloadingHits) / float64(s.LoadCount)
 }
 
+// Print prints the stats to stdout
 func (s PreloadStats) Print() {
 	fmt.Println("PreloadCachingStorage stats:")
 	fmt.Printf("%25s: %v\n", "loadCount", s.LoadCount)
@@ -91,6 +106,7 @@ func (s PreloadStats) Print() {
 	fmt.Printf("%25s: %v\n", "preloading hit fraction", s.PreloadingHitFraction())
 }
 
+// GetStats returns the current stats for the PreloadCachingStorage.
 func (cs *PreloadCachingStorage) GetStats() PreloadStats {
 	return PreloadStats{
 		LoadCount:      cs.loadCount,
@@ -102,6 +118,24 @@ func (cs *PreloadCachingStorage) GetStats() PreloadStats {
 	}
 }
 
+// NewPreloadCachingStorage creates a new PreloadCachingStorage.
+//
+// The parentLinkSystem is used directly by the traversal for both reads
+// (existing blocks, or blocks already traversed and stored) and writes (new
+// blocks discovered during traversal). Writes will be properly ordered
+// according to the traversal.
+//
+// The cacheLinkSystem is used by the preloader as a temporary space for
+// preloaded blocks. Writes are not properly ordered, only according to the
+// preloader's ability to fetch blocks in its queue. When a block is requested
+// by the traversal and it is already in the cacheLinkSystem, it is copied to
+// the parentLinkSystem.
+//
+// The fetcher is used by both the preloader and the loader to fetch blocks. It
+// should be able to fetch blocks in a thread-safe manner.
+//
+// The concurrency parameter controls how many blocks can be preloaded at once
+// (the preloader will fetch up to this many blocks at once using the fetcher).
 func NewPreloadCachingStorage(
 	parentLinkSystem linking.LinkSystem,
 	cacheLinkSystem linking.LinkSystem,
@@ -133,6 +167,8 @@ func NewPreloadCachingStorage(
 	return cs, nil
 }
 
+// Preloader is compatible with go-ipld-prime's linking/preload.Loader and
+// should be provided to a traversal Config as the Preloader field.
 func (cs *PreloadCachingStorage) Preloader(preloadCtx preload.PreloadContext, link preload.Link) {
 	cs.preloadsLk.Lock()
 	defer cs.preloadsLk.Unlock()
@@ -188,6 +224,9 @@ func (cs *PreloadCachingStorage) Preloader(preloadCtx preload.PreloadContext, li
 	}
 }
 
+// Loader is compatible with go-ipld-prime's StorageReadOpener. It is not
+// intended to be used directly but is wired up as the StorageReadOpener for
+// the TraversalLinkSystem.
 func (cs *PreloadCachingStorage) Loader(linkCtx linking.LinkContext, link ipld.Link) (io.Reader, error) {
 	cs.loadCount++
 
@@ -276,6 +315,7 @@ func (cs *PreloadCachingStorage) Loader(linkCtx linking.LinkContext, link ipld.L
 	}
 }
 
+// Load a block from a reader and pipe it to multiple destinations block writers
 func loadTo(
 	reader io.Reader,
 	destination []linking.BlockWriteOpener,
@@ -331,6 +371,9 @@ func (cs *PreloadCachingStorage) preloadLink(pl *preloadingLink, linkCtx linking
 	})
 }
 
+// Start the preloader; this will start the background goroutines that will
+// fetch blocks from the fetcher and cache them as they are flagged by the
+// preloader. If you Start(), you should also Stop().
 func (cs *PreloadCachingStorage) Start(ctx context.Context) error {
 	if cs.cancel != nil {
 		return errors.New("already started")
@@ -393,14 +436,15 @@ func (cs *PreloadCachingStorage) run(ctx context.Context) {
 	}
 }
 
-func (cs *PreloadCachingStorage) Stop() error {
+// Stop the preloader; this will stop the background goroutines.
+func (cs *PreloadCachingStorage) Stop() {
 	if cs.cancel != nil {
 		cs.cancel()
 		cs.cancel = nil
 	}
-	return nil
 }
 
+// linkSystemHas is a Has() for a LinkSystem.
 func linkSystemHas(linkSys linking.LinkSystem, linkCtx linking.LinkContext, link ipld.Link) (bool, error) {
 	if linkSys.StorageReadOpener != nil {
 		if r, err := linkSys.StorageReadOpener(linkCtx, link); r != nil && err == nil {
