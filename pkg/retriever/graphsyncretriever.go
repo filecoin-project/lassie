@@ -292,7 +292,8 @@ func runRetrievalCandidate(
 				}
 				retrieval.sendEvent(events.Failed(cfg.Clock.Now(), req.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate, msg))
 			} else {
-				retrieval.sendEvent(events.Success(cfg.Clock.Now(),
+				retrieval.sendEvent(events.Success(
+					cfg.Clock.Now(),
 					req.RetrievalID,
 					phaseStartTime,
 					candidate,
