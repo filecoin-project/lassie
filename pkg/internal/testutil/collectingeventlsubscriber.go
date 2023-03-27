@@ -67,9 +67,6 @@ func VerifyCollectedEventTimings(t *testing.T, events []types.RetrievalEvent) {
 		prevEvent := events[i-1]
 		// verify that each event comes after the previous one, but allow some
 		// flexibility for overlapping event types
-		// note that this may need to be relaxed further or even removed entirely
-		// because it's a possible source of race conditions with different
-		// retrieval goroutines reporting events with different timings
 		if event.Code() != prevEvent.Code() {
 			require.True(t, event.Time() == prevEvent.Time() || event.Time().After(prevEvent.Time()), "event time order for %s/%s vs %s/%s", prevEvent.Code(), prevEvent.Phase(), event.Code(), event.Phase())
 		}
