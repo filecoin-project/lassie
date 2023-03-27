@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/filecoin-project/go-address"
 	datatransfer "github.com/filecoin-project/go-data-transfer/v2"
 	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
 	"github.com/filecoin-project/go-state-types/big"
@@ -94,7 +93,7 @@ func runRetrieval(t *testing.T, ctx context.Context, mrn *mocknet.MockRetrievalN
 	linkSystemLocal := storeutil.LinkSystemForBlockstore(bsLocal)
 
 	// New client
-	client, err := client.NewClient(ctx, dtDsLocal, mrn.Self, nil)
+	client, err := client.NewClient(ctx, dtDsLocal, mrn.Self)
 	req.NoError(err)
 	req.NoError(client.AwaitReady())
 
@@ -122,13 +121,11 @@ func runRetrieval(t *testing.T, ctx context.Context, mrn *mocknet.MockRetrievalN
 			Selector:     retrievaltypes.CborGenCompatibleNode{Node: selectorparse.CommonSelector_ExploreAllRecursively},
 		},
 	}
-	paymentAddress := address.TestAddress2
 	shutdown := make(chan struct{})
 	stats, err := client.RetrieveFromPeer(
 		ctx,
 		linkSystemLocal,
 		mrn.Remotes[0].Host.ID(),
-		paymentAddress,
 		proposal,
 		selectorparse.CommonSelector_ExploreAllRecursively,
 		subscriberLocal,

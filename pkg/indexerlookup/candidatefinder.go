@@ -113,27 +113,25 @@ func decodeMetadata(pr model.ProviderResult) (metadata.Metadata, error) {
 	return dtm, nil
 }
 
-func (idxf *IndexerCandidateFinder) FindCandidatesAsync(ctx context.Context, c cid.Cid) (<-chan types.FindCandidatesResult, error) {
+func (idxf *IndexerCandidateFinder) FindCandidatesAsync(ctx context.Context, c cid.Cid, cb func(types.RetrievalCandidate)) error {
 	req, err := idxf.newFindHttpRequest(ctx, c)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	req.Header.Set("Accept", "application/x-ndjson")
 	logger.Debugw("sending outgoing request", "url", req.URL, "accept", req.Header.Get("Accept"))
 	resp, err := idxf.httpClient.Do(req)
 	if err != nil {
 		logger.Debugw("Failed to perform streaming lookup", "err", err)
-		return nil, err
+		return err
 	}
 	switch resp.StatusCode {
 	case http.StatusOK:
-		return idxf.decodeProviderResultStream(ctx, c, resp.Body)
+		return idxf.decodeProviderResultStream(ctx, c, resp.Body, cb)
 	case http.StatusNotFound:
-		returned := make(chan types.FindCandidatesResult)
-		close(returned)
-		return returned, nil
+		return nil
 	default:
-		return nil, fmt.Errorf("batch find query failed: %v", http.StatusText(resp.StatusCode))
+		return fmt.Errorf("batch find query failed: %v", http.StatusText(resp.StatusCode))
 	}
 }
 
@@ -159,48 +157,39 @@ func (idxf *IndexerCandidateFinder) newFindHttpRequest(ctx context.Context, c ci
 	return req, nil
 }
 
-func (idxf *IndexerCandidateFinder) decodeProviderResultStream(ctx context.Context, c cid.Cid, from io.ReadCloser) (<-chan types.FindCandidatesResult, error) {
-	rch := make(chan types.FindCandidatesResult, idxf.asyncResultsChanBuffer)
-	go func() {
-		defer close(rch)
-		defer from.Close()
-		scanner := bufio.NewScanner(from)
-		for {
-			var r types.FindCandidatesResult
-			select {
-			case <-ctx.Done():
-				r.Err = ctx.Err()
-				rch <- r
-				return
-			default:
-				if scanner.Scan() {
-					line := scanner.Bytes()
-					if len(line) == 0 {
-						continue
-					}
-					var pr model.ProviderResult
-					if r.Err = json.Unmarshal(line, &pr); r.Err != nil {
-						rch <- r
-						return
-					}
-					// skip results without decodable metadata
-					if md, err := decodeMetadata(pr); err == nil {
-						r.Candidate.MinerPeer = pr.Provider
-						r.Candidate.RootCid = c
-						r.Candidate.Metadata = md
-						rch <- r
-					}
-				} else if r.Err = scanner.Err(); r.Err != nil {
-					rch <- r
-					return
-				} else {
-					// There are no more lines remaining to scan as we have reached EOF.
-					return
+func (idxf *IndexerCandidateFinder) decodeProviderResultStream(ctx context.Context, c cid.Cid, from io.ReadCloser, cb func(types.RetrievalCandidate)) error {
+	defer from.Close()
+	scanner := bufio.NewScanner(from)
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			if scanner.Scan() {
+				line := scanner.Bytes()
+				if len(line) == 0 {
+					continue
 				}
+				var pr model.ProviderResult
+				if err := json.Unmarshal(line, &pr); err != nil {
+					return err
+				}
+				// skip results without decodable metadata
+				if md, err := decodeMetadata(pr); err == nil {
+					var candidate types.RetrievalCandidate
+					candidate.MinerPeer = pr.Provider
+					candidate.RootCid = c
+					candidate.Metadata = md
+					cb(candidate)
+				}
+			} else if err := scanner.Err(); err != nil {
+				return err
+			} else {
+				// There are no more lines remaining to scan as we have reached EOF.
+				return nil
 			}
 		}
-	}()
-	return rch, nil
+	}
 }
 
 func (idxf *IndexerCandidateFinder) findByMultihashEndpoint(mh multihash.Multihash) string {

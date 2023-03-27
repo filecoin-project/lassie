@@ -132,9 +132,6 @@ func (er *EventRecorder) RecordEvent(event types.RetrievalEvent) {
 			Protocols:      toStrings(ret.Protocols()),
 		}
 	case events.RetrievalEventConnected:
-	case events.EventWithQueryResponse: // events.RetrievalEventQueryAsked, events.RetrievalEventQueryAskedFiltered:
-		qr := ret.QueryResponse()
-		evt.EventDetails = &qr
 	case events.RetrievalEventProposed:
 	case events.RetrievalEventAccepted:
 	case events.RetrievalEventFirstByte:

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/benbjohnson/clock"
 	datatransfer "github.com/filecoin-project/go-data-transfer/v2"
 	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
 	"github.com/filecoin-project/go-state-types/big"
@@ -15,7 +16,9 @@ import (
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/codec/dagjson"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
+	"github.com/ipni/index-provider/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multicodec"
 	"github.com/rvagg/go-prioritywaitqueue"
 	"go.uber.org/multierr"
 )
@@ -25,10 +28,9 @@ type CandidateCallback func(types.RetrievalCandidate) error
 type CandidateErrorCallback func(types.RetrievalCandidate, error)
 
 type GetStorageProviderTimeout func(peer peer.ID) time.Duration
-type IsAcceptableQueryResponse func(peer peer.ID, req types.RetrievalRequest, queryResponse *retrievaltypes.QueryResponse) bool
 
-type queryCandidate struct {
-	*retrievaltypes.QueryResponse
+type connectCandidate struct {
+	types.RetrievalCandidate
 	Duration time.Duration
 }
 
@@ -36,32 +38,45 @@ type queryCandidate struct {
 // preferable to the second. This is used for the PriorityWaitQueue that will
 // prioritise execution of retrievals if two queries are available to compare
 // at the same time.
-var queryCompare prioritywaitqueue.ComparePriority[*queryCandidate] = func(a, b *queryCandidate) bool {
-	// Always prefer unsealed to sealed, no matter what
-	if a.UnsealPrice.IsZero() && !b.UnsealPrice.IsZero() {
+var candidateCompare prioritywaitqueue.ComparePriority[connectCandidate] = func(a, b connectCandidate) bool {
+	mdA, ok := a.Metadata.Get(multicodec.TransportGraphsyncFilecoinv1).(*metadata.GraphsyncFilecoinV1)
+	if !ok {
+		return false
+	}
+	mdB, ok := b.Metadata.Get(multicodec.TransportGraphsyncFilecoinv1).(*metadata.GraphsyncFilecoinV1)
+	if !ok {
 		return true
 	}
 
-	// Select lower price, or continue if equal
-	aTotalCost := totalCost(a.QueryResponse)
-	bTotalCost := totalCost(b.QueryResponse)
-	if !aTotalCost.Equals(bTotalCost) {
-		return aTotalCost.LessThan(bTotalCost)
+	// prioritize verified deals over not verified deals
+	if mdA.VerifiedDeal != mdB.VerifiedDeal {
+		return mdA.VerifiedDeal
 	}
 
-	// Select smaller size, or continue if equal
-	if a.Size != b.Size {
-		return a.Size < b.Size
+	// prioritize fast retrievel over not fast retrieval
+	if mdA.FastRetrieval && !mdB.FastRetrieval {
+		return true
 	}
 
-	// Select the fastest to respond
 	return a.Duration < b.Duration
 }
 
 type GraphSyncRetriever struct {
 	GetStorageProviderTimeout GetStorageProviderTimeout
-	IsAcceptableQueryResponse IsAcceptableQueryResponse
 	Client                    RetrievalClient
+	Clock                     clock.Clock
+}
+
+func NewGraphsyncRetriever(getStorageProviderTimeout GetStorageProviderTimeout, client RetrievalClient) *GraphSyncRetriever {
+	return NewGraphsyncRetrieverWithClock(getStorageProviderTimeout, client, clock.New())
+}
+
+func NewGraphsyncRetrieverWithClock(getStorageProviderTimeout GetStorageProviderTimeout, client RetrievalClient, clock clock.Clock) *GraphSyncRetriever {
+	return &GraphSyncRetriever{
+		GetStorageProviderTimeout: getStorageProviderTimeout,
+		Client:                    client,
+		Clock:                     clock,
+	}
 }
 
 type retrievalResult struct {
@@ -81,10 +96,9 @@ type graphsyncRetrieval struct {
 }
 
 type graphsyncCandidateRetrieval struct {
-	waitQueue          prioritywaitqueue.PriorityWaitQueue[*queryCandidate]
-	retrievalStartTime time.Time
-	resultChan         chan retrievalResult
-	finishChan         chan struct{}
+	waitQueue  prioritywaitqueue.PriorityWaitQueue[connectCandidate]
+	resultChan chan retrievalResult
+	finishChan chan struct{}
 }
 
 // RetrieveFromCandidates performs a retrieval for a given CID by querying the indexer, then
@@ -118,10 +132,10 @@ func (r *graphsyncRetrieval) RetrieveFromAsyncCandidates(asyncCandidates types.I
 	retrieval := &graphsyncCandidateRetrieval{
 		resultChan: make(chan retrievalResult),
 		finishChan: make(chan struct{}),
-		waitQueue:  prioritywaitqueue.New(queryCompare),
+		waitQueue:  prioritywaitqueue.New(candidateCompare),
 	}
 	// start retrievals
-	queryStartTime := time.Now()
+	phaseStartTime := r.Clock.Now()
 	var waitGroup sync.WaitGroup
 	waitGroup.Add(1)
 	go func() {
@@ -136,7 +150,7 @@ func (r *graphsyncRetrieval) RetrieveFromAsyncCandidates(asyncCandidates types.I
 				waitGroup.Add(1)
 				go func() {
 					defer waitGroup.Done()
-					runRetrievalCandidate(ctx, r.GraphSyncRetriever, r.request, r.Client, retrieval, queryStartTime, candidate)
+					runRetrievalCandidate(ctx, r.GraphSyncRetriever, r.request, r.Client, retrieval, phaseStartTime, candidate)
 				}()
 			}
 		}
@@ -164,22 +178,15 @@ func (r *graphsyncRetrieval) RetrieveFromAsyncCandidates(asyncCandidates types.I
 // and retrieval results and aggregating into an appropriate return of either
 // a complete RetrievalStats or an bundled multi-error
 func collectResults(ctx context.Context, retrieval *graphsyncCandidateRetrieval, eventsCallback func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
-	var queryErrors error
 	var retrievalErrors error
-
 	for {
 		select {
 		case result, ok := <-retrieval.resultChan:
 			// have we got all responses but no success?
 			if !ok {
-				if retrievalErrors == nil {
-					// we failed, but didn't get any retrieval errors, so must have only got query errors
-					retrievalErrors = ErrAllQueriesFailed
-				} else {
-					// we failed, and got only retrieval errors
-					retrievalErrors = multierr.Append(retrievalErrors, ErrAllRetrievalsFailed)
-				}
-				return nil, multierr.Append(queryErrors, retrievalErrors)
+				// we failed, and got only retrieval errors
+				retrievalErrors = multierr.Append(retrievalErrors, ErrAllRetrievalsFailed)
+				return nil, retrievalErrors
 			}
 
 			if result.Event != nil {
@@ -187,11 +194,7 @@ func collectResults(ctx context.Context, retrieval *graphsyncCandidateRetrieval,
 				break
 			}
 			if result.Err != nil {
-				if errors.Is(result.Err, ErrQueryFailed) {
-					queryErrors = multierr.Append(queryErrors, result.Err)
-				} else if errors.Is(result.Err, ErrRetrievalFailed) {
-					retrievalErrors = multierr.Append(retrievalErrors, result.Err)
-				}
+				retrievalErrors = multierr.Append(retrievalErrors, result.Err)
 			}
 			if result.Stats != nil {
 				return result.Stats, nil
@@ -211,14 +214,9 @@ func runRetrievalCandidate(
 	req types.RetrievalRequest,
 	client RetrievalClient,
 	retrieval *graphsyncCandidateRetrieval,
-	queryStartTime time.Time,
+	phaseStartTime time.Time,
 	candidate types.RetrievalCandidate,
 ) {
-	// phaseStartTime starts off as the queryStartTime, based on the start of all queries,
-	// but is updated to the retrievalStartTime when the retrieval starts. By the time we
-	// are sending the results, phaseStartTime may be the retrievalStartTime, or it may
-	// remain the queryStartTime if we didn't get to retrieval for this candidate.
-	phaseStartTime := queryStartTime
 
 	var timeout time.Duration
 	if cfg.GetStorageProviderTimeout != nil {
@@ -229,51 +227,36 @@ func runRetrievalCandidate(
 	var retrievalErr error
 	var done func()
 
-	retrieval.sendEvent(events.Started(req.RetrievalID, phaseStartTime, types.QueryPhase, candidate))
-
-	// run the query phase
-	onConnected := func() {
-		retrieval.sendEvent(events.Connected(req.RetrievalID, phaseStartTime, types.QueryPhase, candidate))
-	}
-	queryResponse, queryErr := queryPhase(ctx, cfg, client, timeout, candidate, onConnected)
-	if queryErr != nil {
-		retrieval.sendEvent(events.Failed(req.RetrievalID, phaseStartTime, types.QueryPhase, candidate, queryErr.Error()))
+	retrieval.sendEvent(events.Started(cfg.Clock.Now(), req.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate))
+	connectCtx := ctx
+	if timeout != 0 {
+		var timeoutFunc func()
+		connectCtx, timeoutFunc = context.WithDeadline(ctx, time.Now().Add(timeout))
+		defer timeoutFunc()
 	}
 
-	// treat QueryResponseError as a failure
-	if queryResponse != nil && queryResponse.Status == retrievaltypes.QueryResponseError {
-		retrieval.sendEvent(events.Failed(req.RetrievalID, phaseStartTime, types.QueryPhase, candidate, queryResponse.Message))
-		queryResponse = nil
-	}
+	err := client.Connect(connectCtx, candidate.MinerPeer)
 
-	if queryResponse != nil {
-		retrieval.sendEvent(events.QueryAsked(req.RetrievalID, phaseStartTime, candidate, *queryResponse))
-		if queryResponse.Status != retrievaltypes.QueryResponseAvailable ||
-			(cfg.IsAcceptableQueryResponse != nil && !cfg.IsAcceptableQueryResponse(candidate.MinerPeer.ID, req, queryResponse)) {
-			queryResponse = nil
+	if err != nil {
+		if ctx.Err() == nil { // not cancelled, maybe timed out though
+			log.Warnf("Failed to connect to miner %s: %v", candidate.MinerPeer.ID, err)
+			retrievalErr = fmt.Errorf("%w: %v", ErrConnectFailed, err)
+			retrieval.sendEvent(events.Failed(cfg.Clock.Now(), req.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate, retrievalErr.Error()))
 		}
-	}
-
-	if queryResponse != nil {
-		retrieval.sendEvent(events.QueryAskedFiltered(req.RetrievalID, phaseStartTime, candidate, *queryResponse))
-
+	} else {
+		retrieval.sendEvent(events.Connected(cfg.Clock.Now(), req.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate))
 		// if query is successful, then wait for priority and execute retrieval
-		done = retrieval.waitQueue.Wait(&queryCandidate{queryResponse, time.Since(phaseStartTime)})
+		done = retrieval.waitQueue.Wait(connectCandidate{
+			Duration:           cfg.Clock.Now().Sub(phaseStartTime),
+			RetrievalCandidate: candidate,
+		})
 
 		if retrieval.canSendResult() { // move on to retrieval phase
-			// only one goroutine is allowed to execute past here at a time, so retrieval.retrievalStartTime
-			// doesn't need to be protected by a mutex, but it should mark the time the first retrieval
-			// starts
-			if retrieval.retrievalStartTime.IsZero() {
-				retrieval.retrievalStartTime = time.Now()
-			}
-			phaseStartTime = retrieval.retrievalStartTime
-
 			var receivedFirstByte bool
 			eventsCallback := func(event datatransfer.Event, channelState datatransfer.ChannelState) {
 				switch event.Code {
 				case datatransfer.Open:
-					retrieval.sendEvent(events.Proposed(req.RetrievalID, phaseStartTime, candidate))
+					retrieval.sendEvent(events.Proposed(cfg.Clock.Now(), req.RetrievalID, phaseStartTime, candidate))
 				case datatransfer.NewVoucherResult:
 					lastVoucher := channelState.LastVoucherResult()
 					resType, err := retrievaltypes.DealResponseFromNode(lastVoucher.Voucher)
@@ -281,17 +264,15 @@ func runRetrievalCandidate(
 						return
 					}
 					if resType.Status == retrievaltypes.DealStatusAccepted {
-						retrieval.sendEvent(events.Accepted(req.RetrievalID, phaseStartTime, candidate))
+						retrieval.sendEvent(events.Accepted(cfg.Clock.Now(), req.RetrievalID, phaseStartTime, candidate))
 					}
 				case datatransfer.DataReceivedProgress:
 					if !receivedFirstByte {
 						receivedFirstByte = true
-						retrieval.sendEvent(events.FirstByte(req.RetrievalID, phaseStartTime, candidate))
+						retrieval.sendEvent(events.FirstByte(cfg.Clock.Now(), req.RetrievalID, phaseStartTime, candidate))
 					}
 				}
 			}
-
-			retrieval.sendEvent(events.Started(req.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate))
 
 			stats, retrievalErr = retrievalPhase(
 				ctx,
@@ -300,7 +281,6 @@ func runRetrievalCandidate(
 				client,
 				timeout,
 				candidate,
-				queryResponse,
 				req.GetSelector(),
 				eventsCallback,
 			)
@@ -310,9 +290,10 @@ func runRetrievalCandidate(
 				if errors.Is(retrievalErr, ErrRetrievalTimedOut) {
 					msg = fmt.Sprintf("timeout after %s", timeout)
 				}
-				retrieval.sendEvent(events.Failed(req.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate, msg))
+				retrieval.sendEvent(events.Failed(cfg.Clock.Now(), req.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate, msg))
 			} else {
 				retrieval.sendEvent(events.Success(
+					cfg.Clock.Now(),
 					req.RetrievalID,
 					phaseStartTime,
 					candidate,
@@ -323,21 +304,17 @@ func runRetrievalCandidate(
 				)
 			}
 		} // else we didn't get to retrieval phase because we were cancelled
-	} // else we didn't get to retrieval phase because query failed
+	}
 
 	if retrieval.canSendResult() {
 		// as long as collectResults is still running, we need to increment finishedCount by
 		// sending a retrievalResult, so each path here sends one in some form
-		if queryErr != nil || retrievalErr != nil {
+		if retrievalErr != nil {
 			if ctx.Err() != nil { // cancelled, don't report the error
 				retrieval.sendResult(retrievalResult{PhaseStart: phaseStartTime, PeerID: candidate.MinerPeer.ID})
 			} else {
 				// an error of some kind to report
-				err := queryErr
-				if err == nil {
-					err = retrievalErr
-				}
-				retrieval.sendResult(retrievalResult{PhaseStart: phaseStartTime, PeerID: candidate.MinerPeer.ID, Err: err})
+				retrieval.sendResult(retrievalResult{PhaseStart: phaseStartTime, PeerID: candidate.MinerPeer.ID, Err: retrievalErr})
 			}
 		} else { // success, we have stats and no errors
 			retrieval.sendResult(retrievalResult{PhaseStart: phaseStartTime, PeerID: candidate.MinerPeer.ID, Stats: stats})
@@ -381,49 +358,6 @@ func (retrieval *graphsyncCandidateRetrieval) sendEvent(event types.RetrievalEve
 	retrieval.sendResult(retrievalResult{PeerID: event.StorageProviderId(), Event: &event})
 }
 
-func totalCost(qres *retrievaltypes.QueryResponse) big.Int {
-	return big.Add(big.Mul(qres.MinPricePerByte, big.NewIntUnsigned(qres.Size)), qres.UnsealPrice)
-}
-
-// retrieveCandidate performs the full retrieval flow for a single SP:CID
-// candidate, allowing for gating between query and retrieval using a
-// canProceed callback.
-
-func queryPhase(
-	ctx context.Context,
-	cfg *GraphSyncRetriever,
-	client RetrievalClient,
-	timeout time.Duration,
-	candidate types.RetrievalCandidate,
-	onConnected func(),
-) (*retrievaltypes.QueryResponse, error) {
-
-	queryCtx := ctx // separate context so we can capture cancellation vs timeout
-
-	if timeout != 0 {
-		var timeoutFunc func()
-		queryCtx, timeoutFunc = context.WithDeadline(ctx, time.Now().Add(timeout))
-		defer timeoutFunc()
-	}
-
-	queryResponse, err := client.RetrievalQueryToPeer(queryCtx, candidate.MinerPeer, candidate.RootCid, onConnected)
-	if err != nil {
-		if ctx.Err() == nil { // not cancelled, maybe timed out though
-			log.Warnf(
-				"Failed to query miner %s for %s: %v",
-				candidate.MinerPeer.ID,
-				candidate.RootCid,
-				err,
-			)
-			return nil, fmt.Errorf("%w: %v", ErrQueryFailed, err)
-		}
-		// don't register an error on cancel, this is normal on a successful retrieval on an alternative SP
-		return nil, nil
-	}
-
-	return queryResponse, nil
-}
-
 func retrievalPhase(
 	ctx context.Context,
 	cfg *GraphSyncRetriever,
@@ -431,7 +365,6 @@ func retrievalPhase(
 	client RetrievalClient,
 	timeout time.Duration,
 	candidate types.RetrievalCandidate,
-	queryResponse *retrievaltypes.QueryResponse,
 	selector ipld.Node,
 	eventsCallback datatransfer.Subscriber,
 ) (*types.RetrievalStats, error) {
@@ -452,9 +385,14 @@ func retrievalPhase(
 		ss,
 	)
 
-	proposal, err := RetrievalProposalForAsk(queryResponse, candidate.RootCid, selector)
+	params, err := retrievaltypes.NewParamsV1(big.Zero(), 0, 0, selector, nil, big.Zero())
 	if err != nil {
 		return nil, multierr.Append(multierr.Append(ErrRetrievalFailed, ErrProposalCreationFailed), err)
+	}
+	proposal := &retrievaltypes.DealProposal{
+		PayloadCID: candidate.RootCid,
+		ID:         retrievaltypes.DealID(dealIdGen.Next()),
+		Params:     params,
 	}
 
 	retrieveCtx, retrieveCancel := context.WithCancel(ctx)
@@ -463,20 +401,20 @@ func retrievalPhase(
 	var lastBytesReceived uint64
 	var doneLk sync.Mutex
 	var done, timedOut bool
-	var lastBytesReceivedTimer, gracefulShutdownTimer *time.Timer
+	var lastBytesReceivedTimer, gracefulShutdownTimer *clock.Timer
 
 	gracefulShutdownChan := make(chan struct{})
 
 	// Start the timeout tracker only if retrieval timeout isn't 0
 	if timeout != 0 {
-		lastBytesReceivedTimer = time.AfterFunc(timeout, func() {
+		lastBytesReceivedTimer = cfg.Clock.AfterFunc(timeout, func() {
 			doneLk.Lock()
 			done = true
 			timedOut = true
 			doneLk.Unlock()
 
 			gracefulShutdownChan <- struct{}{}
-			gracefulShutdownTimer = time.AfterFunc(1*time.Minute, retrieveCancel)
+			gracefulShutdownTimer = cfg.Clock.AfterFunc(1*time.Minute, retrieveCancel)
 		})
 	}
 
@@ -500,7 +438,6 @@ func retrievalPhase(
 		retrieveCtx,
 		linkSystem,
 		candidate.MinerPeer.ID,
-		queryResponse.PaymentAddress,
 		proposal,
 		selector,
 		eventsSubscriber,

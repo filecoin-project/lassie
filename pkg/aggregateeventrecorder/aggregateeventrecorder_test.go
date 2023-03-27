@@ -46,11 +46,10 @@ func TestAggregateEventRecorder(t *testing.T) {
 			exec: func(t *testing.T, ctx context.Context, subscriber types.RetrievalEventSubscriber, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
 				fetchPhaseStartTime := ptime.Add(-10 * time.Second)
 
-				subscriber(events.Started(id, fetchPhaseStartTime, types.FetchPhase, types.RetrievalCandidate{RootCid: testCid1}))
-				subscriber(events.FirstByte(id, ptime, types.RetrievalCandidate{RootCid: testCid1}))
-				time.Sleep(50 * time.Millisecond) // Add artificial wait to get
-				subscriber(events.Success(id, ptime, types.NewRetrievalCandidate(spid, testCid1), uint64(2020), 3030, 4*time.Second, big.Zero()))
-				subscriber(events.Finished(id, fetchPhaseStartTime, types.RetrievalCandidate{RootCid: testCid1}))
+				subscriber(events.Started(time.Now(), id, fetchPhaseStartTime, types.FetchPhase, types.RetrievalCandidate{RootCid: testCid1}))
+				subscriber(events.FirstByte(time.Now(), id, ptime, types.RetrievalCandidate{RootCid: testCid1}))
+				subscriber(events.Success(time.Now().Add(50*time.Millisecond), id, ptime, types.NewRetrievalCandidate(spid, testCid1), uint64(2020), 3030, 4*time.Second, big.Zero()))
+				subscriber(events.Finished(time.Now().Add(50*time.Millisecond), id, fetchPhaseStartTime, types.RetrievalCandidate{RootCid: testCid1}))
 
 				select {
 				case <-ctx.Done():
@@ -77,8 +76,8 @@ func TestAggregateEventRecorder(t *testing.T) {
 			exec: func(t *testing.T, ctx context.Context, subscriber types.RetrievalEventSubscriber, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
 				fetchPhaseStartTime := ptime.Add(-10 * time.Second)
 
-				subscriber(events.Started(id, fetchPhaseStartTime, types.FetchPhase, types.RetrievalCandidate{RootCid: testCid1}))
-				subscriber(events.Finished(id, fetchPhaseStartTime, types.RetrievalCandidate{RootCid: testCid1}))
+				subscriber(events.Started(time.Now(), id, fetchPhaseStartTime, types.FetchPhase, types.RetrievalCandidate{RootCid: testCid1}))
+				subscriber(events.Finished(time.Now(), id, fetchPhaseStartTime, types.RetrievalCandidate{RootCid: testCid1}))
 
 				select {
 				case <-ctx.Done():
@@ -192,10 +191,10 @@ func BenchmarkAggregateEventRecorderSubscriber(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		b.StartTimer()
-		subscriber(events.Started(id, fetchStartTime, types.FetchPhase, types.NewRetrievalCandidate(spid, testCid1)))
-		subscriber(events.FirstByte(id, ptime, types.NewRetrievalCandidate(spid, testCid1)))
-		subscriber(events.Success(id, ptime, types.NewRetrievalCandidate(spid, testCid1), uint64(2020), 3030, 4*time.Second, big.Zero()))
-		subscriber(events.Finished(id, fetchStartTime, types.RetrievalCandidate{RootCid: testCid1}))
+		subscriber(events.Started(time.Now(), id, fetchStartTime, types.FetchPhase, types.NewRetrievalCandidate(spid, testCid1)))
+		subscriber(events.FirstByte(time.Now(), id, ptime, types.NewRetrievalCandidate(spid, testCid1)))
+		subscriber(events.Success(time.Now(), id, ptime, types.NewRetrievalCandidate(spid, testCid1), uint64(2020), 3030, 4*time.Second, big.Zero()))
+		subscriber(events.Finished(time.Now(), id, fetchStartTime, types.RetrievalCandidate{RootCid: testCid1}))
 		b.StopTimer()
 
 		select {

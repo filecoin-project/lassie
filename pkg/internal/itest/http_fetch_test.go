@@ -15,7 +15,6 @@ import (
 	"time"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer/v2"
-	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/lassie/pkg/internal/itest/mocknet"
 	"github.com/filecoin-project/lassie/pkg/internal/itest/testpeer"
 	"github.com/filecoin-project/lassie/pkg/internal/itest/unixfs"
@@ -554,12 +553,6 @@ func TestHttpFetch(t *testing.T) {
 			require.NoError(t, mrn.MN.LinkAll())
 
 			srcData := testCase.generate(t, rndReader, mrn.Remotes)
-			// setup graphsync remotes to handle queries
-			for i := 0; i < testCase.graphsyncRemotes; i++ {
-				qr := testQueryResponse
-				qr.MinPricePerByte = abi.NewTokenAmount(0) // make it free so it's not filtered
-				mocknet.SetupQuery(t, mrn.Remotes[i], srcData[i].Root, qr)
-			}
 
 			// Setup a new lassie
 			req := require.New(t)

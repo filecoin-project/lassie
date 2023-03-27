@@ -267,10 +267,6 @@ func (pp *progressPrinter) subscriber(event types.RetrievalEvent) {
 		for _, candidate := range ret.Candidates() {
 			fmt.Fprintf(pp.writer, "\r\t%s, Protocols: %v\n", candidate.MinerPeer.ID, candidate.Metadata.Protocols())
 		}
-	case events.RetrievalEventQueryAsked:
-		fmt.Fprintf(pp.writer, "\rGot query response from [%s] (checking): size=%s, price-per-byte=%s, unseal-price=%s, message=%s\n", types.Identifier(ret), humanize.IBytes(ret.QueryResponse().Size), ret.QueryResponse().MinPricePerByte, ret.QueryResponse().UnsealPrice, ret.QueryResponse().Message)
-	case events.RetrievalEventQueryAskedFiltered:
-		fmt.Fprintf(pp.writer, "\rGot query response from [%s] (filtered): size=%s, price-per-byte=%s, unseal-price=%s, message=%s\n", types.Identifier(ret), humanize.IBytes(ret.QueryResponse().Size), ret.QueryResponse().MinPricePerByte, ret.QueryResponse().UnsealPrice, ret.QueryResponse().Message)
 	case events.RetrievalEventFailed:
 		if ret.Phase() == types.IndexerPhase {
 			fmt.Fprintf(pp.writer, "\rRetrieval failure from indexer: %s\n", ret.ErrorMessage())

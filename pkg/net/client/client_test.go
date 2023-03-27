@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/filecoin-project/go-address"
 	datatransfer "github.com/filecoin-project/go-data-transfer/v2"
 	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
 	"github.com/filecoin-project/go-state-types/big"
@@ -43,7 +42,6 @@ func TestClient(t *testing.T) {
 		return nil, nil
 	}
 	selector := selectorparse.CommonSelector_MatchPoint
-	minerWallet := address.Address{}
 	proposal := &retrievaltypes.DealProposal{
 		PayloadCID: cid.MustParse("bafyreibdoxfay27gf4ye3t5a7aa5h4z2azw7hhhz36qrbf5qleldj76qfa"),
 		Params: retrievaltypes.Params{
@@ -59,7 +57,6 @@ func TestClient(t *testing.T) {
 		ctx,
 		linkSys,
 		p,
-		minerWallet,
 		proposal,
 		selector,
 		eventsCb,
@@ -92,7 +89,6 @@ func TestClient_BadSelector(t *testing.T) {
 	p := peer.ID("testpeer")
 	linkSys := cidlink.DefaultLinkSystem()
 	selector := basicnode.NewFloat(100.2)
-	minerWallet := address.Address{}
 	proposal := &retrievaltypes.DealProposal{
 		PayloadCID: cid.MustParse("bafyreibdoxfay27gf4ye3t5a7aa5h4z2azw7hhhz36qrbf5qleldj76qfa"),
 		Params: retrievaltypes.Params{
@@ -108,7 +104,6 @@ func TestClient_BadSelector(t *testing.T) {
 		ctx,
 		linkSys,
 		p,
-		minerWallet,
 		proposal,
 		selector,
 		eventsCb,

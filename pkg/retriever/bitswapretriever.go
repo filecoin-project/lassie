@@ -131,7 +131,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	cb := func(bytesWritten uint64) {
 		// record first byte received
 		if totalWritten == 0 {
-			br.events(events.FirstByte(br.request.RetrievalID, phaseStartTime, bitswapCandidate))
+			br.events(events.FirstByte(br.clock.Now(), br.request.RetrievalID, phaseStartTime, bitswapCandidate))
 		}
 		atomic.AddUint64(&totalWritten, bytesWritten)
 		atomic.AddUint64(&blockCount, 1)
@@ -148,7 +148,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		// we never received any candidates, so we give up on bitswap retrieval
 		return nil, nil
 	}
-	br.events(events.Started(br.request.RetrievalID, phaseStartTime, types.RetrievalPhase, bitswapCandidate))
+	br.events(events.Started(br.clock.Now(), br.request.RetrievalID, phaseStartTime, types.RetrievalPhase, bitswapCandidate))
 
 	br.routing.AddProviders(br.request.RetrievalID, nextCandidates)
 	go func() {
@@ -182,14 +182,14 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	br.bstore.RemoveLinkSystem(br.request.RetrievalID)
 	if err != nil {
 		// record failure
-		br.events(events.Failed(br.request.RetrievalID, phaseStartTime, types.RetrievalPhase, bitswapCandidate, err.Error()))
+		br.events(events.Failed(br.clock.Now(), br.request.RetrievalID, phaseStartTime, types.RetrievalPhase, bitswapCandidate, err.Error()))
 		return nil, err
 	}
 	duration := br.clock.Since(phaseStartTime)
 	speed := uint64(float64(totalWritten) / duration.Seconds())
 
 	// record success
-	br.events(events.Success(
+	br.events(events.Success(br.clock.Now(),
 		br.request.RetrievalID,
 		phaseStartTime,
 		bitswapCandidate,

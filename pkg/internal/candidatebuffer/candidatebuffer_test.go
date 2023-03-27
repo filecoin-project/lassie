@@ -191,32 +191,30 @@ func TestCandidateBuffer(t *testing.T) {
 			var receivedCandidatesLk sync.Mutex
 			var receivedCandidates [][]types.RetrievalCandidate
 			clock := clock.NewMock()
-			after := make(chan struct{})
-			candididateBuffer := candidatebuffer.NewCandidateBufferWithSync(func(next []types.RetrievalCandidate) {
+			candididateBuffer := candidatebuffer.NewCandidateBuffer(func(next []types.RetrievalCandidate) {
 				receivedCandidatesLk.Lock()
 				receivedCandidates = append(receivedCandidates, next)
 				receivedCandidatesLk.Unlock()
-			}, clock, after)
-			incoming := make(chan types.FindCandidatesResult)
-			go func() {
-				defer close(incoming)
+			}, clock)
+			queueCandidates := func(ctx context.Context, onNextCandidate candidatebuffer.OnNextCandidate) error {
 				for _, nextCandidateResultAt := range testCase.incomingResults {
 					clock.Add(nextCandidateResultAt.timeDelta)
 					if nextCandidateResultAt.cancel {
 						cancel()
-						return
+						return context.Canceled
 					}
 					select {
 					case <-ctx.Done():
-					case incoming <- nextCandidateResultAt.result:
-						select {
-						case <-ctx.Done():
-						case <-after:
-						}
+					default:
 					}
+					if nextCandidateResultAt.result.Err != nil {
+						return nextCandidateResultAt.result.Err
+					}
+					onNextCandidate(nextCandidateResultAt.result.Candidate)
 				}
-			}()
-			err := candididateBuffer.BufferStream(ctx, incoming, testCase.bufferingTime)
+				return nil
+			}
+			err := candididateBuffer.BufferStream(ctx, queueCandidates, testCase.bufferingTime)
 			if testCase.expectedErr != nil {
 				req.EqualError(err, testCase.expectedErr.Error())
 			} else {

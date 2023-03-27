@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
@@ -16,8 +15,6 @@ var (
 	_ types.RetrievalEvent = RetrievalEventCandidatesFound{}
 	_ types.RetrievalEvent = RetrievalEventCandidatesFiltered{}
 	_ types.RetrievalEvent = RetrievalEventConnected{}
-	_ types.RetrievalEvent = RetrievalEventQueryAsked{}
-	_ types.RetrievalEvent = RetrievalEventQueryAskedFiltered{}
 	_ types.RetrievalEvent = RetrievalEventProposed{}
 	_ types.RetrievalEvent = RetrievalEventAccepted{}
 	_ types.RetrievalEvent = RetrievalEventFirstByte{}
@@ -29,11 +26,6 @@ var (
 type EventWithCandidates interface {
 	types.RetrievalEvent
 	Candidates() []types.RetrievalCandidate
-}
-
-type EventWithQueryResponse interface {
-	types.RetrievalEvent
-	QueryResponse() retrievaltypes.QueryResponse
 }
 
 type baseEvent struct {
@@ -76,20 +68,20 @@ func collectProtocols(candidates []types.RetrievalCandidate) []multicodec.Code {
 	return allProtocolsArr
 }
 
-func CandidatesFound(retrievalId types.RetrievalID, phaseStartTime time.Time, payloadCid cid.Cid, candidates []types.RetrievalCandidate) RetrievalEventCandidatesFound {
+func CandidatesFound(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.Time, payloadCid cid.Cid, candidates []types.RetrievalCandidate) RetrievalEventCandidatesFound {
 	c := make([]types.RetrievalCandidate, len(candidates))
 	copy(c, candidates)
-	return RetrievalEventCandidatesFound{indexerEvent{baseEvent{time.Now(), retrievalId, phaseStartTime, payloadCid, collectProtocols(candidates)}, c}}
+	return RetrievalEventCandidatesFound{indexerEvent{baseEvent{at, retrievalId, phaseStartTime, payloadCid, collectProtocols(candidates)}, c}}
 }
 
 type RetrievalEventCandidatesFiltered struct {
 	indexerEvent
 }
 
-func CandidatesFiltered(retrievalId types.RetrievalID, phaseStartTime time.Time, payloadCid cid.Cid, candidates []types.RetrievalCandidate) RetrievalEventCandidatesFiltered {
+func CandidatesFiltered(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.Time, payloadCid cid.Cid, candidates []types.RetrievalCandidate) RetrievalEventCandidatesFiltered {
 	c := make([]types.RetrievalCandidate, len(candidates))
 	copy(c, candidates)
-	return RetrievalEventCandidatesFiltered{indexerEvent{baseEvent{time.Now(), retrievalId, phaseStartTime, payloadCid, collectProtocols(candidates)}, c}}
+	return RetrievalEventCandidatesFiltered{indexerEvent{baseEvent{at, retrievalId, phaseStartTime, payloadCid, collectProtocols(candidates)}, c}}
 }
 
 type spBaseEvent struct {
@@ -104,29 +96,9 @@ type RetrievalEventConnected struct {
 
 func (r spBaseEvent) StorageProviderId() peer.ID { return r.storageProviderId }
 
-func Connected(retrievalId types.RetrievalID, phaseStartTime time.Time, phase types.Phase, candidate types.RetrievalCandidate) RetrievalEventConnected {
+func Connected(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.Time, phase types.Phase, candidate types.RetrievalCandidate) RetrievalEventConnected {
 	candidate.Metadata.Protocols()
-	return RetrievalEventConnected{spBaseEvent{baseEvent{time.Now(), retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}, phase}
-}
-
-// RetrievalEventQueryAsked describes when the query-ask returned during the QueryPhase
-type RetrievalEventQueryAsked struct {
-	spBaseEvent
-	queryResponse retrievaltypes.QueryResponse
-}
-
-func QueryAsked(retrievalId types.RetrievalID, phaseStartTime time.Time, candidate types.RetrievalCandidate, queryResponse retrievaltypes.QueryResponse) RetrievalEventQueryAsked {
-	return RetrievalEventQueryAsked{spBaseEvent{baseEvent{time.Now(), retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}, queryResponse}
-}
-
-// RetrievalEventQueryAskedFiltered describes when the query-ask was filtered during the QueryPhase
-type RetrievalEventQueryAskedFiltered struct {
-	spBaseEvent
-	queryResponse retrievaltypes.QueryResponse
-}
-
-func QueryAskedFiltered(retrievalId types.RetrievalID, phaseStartTime time.Time, candidate types.RetrievalCandidate, queryResponse retrievaltypes.QueryResponse) RetrievalEventQueryAskedFiltered {
-	return RetrievalEventQueryAskedFiltered{spBaseEvent{baseEvent{time.Now(), retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}, queryResponse}
+	return RetrievalEventConnected{spBaseEvent{baseEvent{at, retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}, phase}
 }
 
 // RetrievalEventProposed describes when the proposal took place during the RetrievalPhase
@@ -134,8 +106,8 @@ type RetrievalEventProposed struct {
 	spBaseEvent
 }
 
-func Proposed(retrievalId types.RetrievalID, phaseStartTime time.Time, candidate types.RetrievalCandidate) RetrievalEventProposed {
-	return RetrievalEventProposed{spBaseEvent{baseEvent{time.Now(), retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}}
+func Proposed(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.Time, candidate types.RetrievalCandidate) RetrievalEventProposed {
+	return RetrievalEventProposed{spBaseEvent{baseEvent{at, retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}}
 }
 
 // RetrievalEventStarted describes when a phase starts
@@ -144,8 +116,8 @@ type RetrievalEventStarted struct {
 	phase types.Phase
 }
 
-func Started(retrievalId types.RetrievalID, phaseStartTime time.Time, phase types.Phase, candidate types.RetrievalCandidate) RetrievalEventStarted {
-	return RetrievalEventStarted{spBaseEvent{baseEvent{time.Now(), retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}, phase}
+func Started(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.Time, phase types.Phase, candidate types.RetrievalCandidate) RetrievalEventStarted {
+	return RetrievalEventStarted{spBaseEvent{baseEvent{at, retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}, phase}
 }
 
 // RetrievalEventFirstByte describes when the first byte of data was received during the RetrievalPhase
@@ -153,8 +125,8 @@ type RetrievalEventAccepted struct {
 	spBaseEvent
 }
 
-func Accepted(retrievalId types.RetrievalID, phaseStartTime time.Time, candidate types.RetrievalCandidate) RetrievalEventAccepted {
-	return RetrievalEventAccepted{spBaseEvent{baseEvent{time.Now(), retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}}
+func Accepted(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.Time, candidate types.RetrievalCandidate) RetrievalEventAccepted {
+	return RetrievalEventAccepted{spBaseEvent{baseEvent{at, retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}}
 }
 
 // RetrievalEventFirstByte describes when the first byte of data was received during the RetrievalPhase
@@ -162,8 +134,8 @@ type RetrievalEventFirstByte struct {
 	spBaseEvent
 }
 
-func FirstByte(retrievalId types.RetrievalID, phaseStartTime time.Time, candidate types.RetrievalCandidate) RetrievalEventFirstByte {
-	return RetrievalEventFirstByte{spBaseEvent{baseEvent{time.Now(), retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}}
+func FirstByte(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.Time, candidate types.RetrievalCandidate) RetrievalEventFirstByte {
+	return RetrievalEventFirstByte{spBaseEvent{baseEvent{at, retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}}
 }
 
 // RetrievalEventFailed describes a phase agnostic failure
@@ -173,8 +145,8 @@ type RetrievalEventFailed struct {
 	errorMessage string
 }
 
-func Failed(retrievalId types.RetrievalID, phaseStartTime time.Time, phase types.Phase, candidate types.RetrievalCandidate, errorMessage string) RetrievalEventFailed {
-	return RetrievalEventFailed{spBaseEvent{baseEvent{time.Now(), retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}, phase, errorMessage}
+func Failed(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.Time, phase types.Phase, candidate types.RetrievalCandidate, errorMessage string) RetrievalEventFailed {
+	return RetrievalEventFailed{spBaseEvent{baseEvent{at, retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}, phase, errorMessage}
 }
 
 // RetrievalEventSuccess describes a successful retrieval of data during the RetrievalPhase
@@ -186,8 +158,8 @@ type RetrievalEventSuccess struct {
 	totalPayment big.Int
 }
 
-func Success(retrievalId types.RetrievalID, phaseStartTime time.Time, candidate types.RetrievalCandidate, receivedSize uint64, receivedCids uint64, duration time.Duration, totalPayment big.Int) RetrievalEventSuccess {
-	return RetrievalEventSuccess{spBaseEvent{baseEvent{time.Now(), retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}, receivedSize, receivedCids, duration, totalPayment}
+func Success(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.Time, candidate types.RetrievalCandidate, receivedSize uint64, receivedCids uint64, duration time.Duration, totalPayment big.Int) RetrievalEventSuccess {
+	return RetrievalEventSuccess{spBaseEvent{baseEvent{at, retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}, receivedSize, receivedCids, duration, totalPayment}
 }
 
 // RetrievalEventFinished describes when an entire fetch finishes
@@ -195,8 +167,8 @@ type RetrievalEventFinished struct {
 	spBaseEvent
 }
 
-func Finished(retrievalId types.RetrievalID, phaseStartTime time.Time, candidate types.RetrievalCandidate) RetrievalEventFinished {
-	return RetrievalEventFinished{spBaseEvent{baseEvent{time.Now(), retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}}
+func Finished(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.Time, candidate types.RetrievalCandidate) RetrievalEventFinished {
+	return RetrievalEventFinished{spBaseEvent{baseEvent{at, retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}}
 }
 
 func (r RetrievalEventCandidatesFound) Code() types.EventCode { return types.CandidatesFoundCode }
@@ -218,22 +190,6 @@ func (r RetrievalEventConnected) Code() types.EventCode { return types.Connected
 func (r RetrievalEventConnected) Phase() types.Phase    { return r.phase }
 func (r RetrievalEventConnected) String() string {
 	return fmt.Sprintf("ConnectedEvent<%s, %s, %s, %s, %s, %v>", r.phase, r.eventTime, r.retrievalId, r.payloadCid, r.storageProviderId, r.protocols)
-}
-func (r RetrievalEventQueryAsked) Code() types.EventCode { return types.QueryAskedCode }
-func (r RetrievalEventQueryAsked) Phase() types.Phase    { return types.QueryPhase }
-func (r RetrievalEventQueryAsked) QueryResponse() retrievaltypes.QueryResponse {
-	return r.queryResponse
-}
-func (r RetrievalEventQueryAsked) String() string {
-	return fmt.Sprintf("QueryAsked<%s, %s, %s, %s, %v, {%d, %d, %s, %d, %d}>", r.eventTime, r.retrievalId, r.payloadCid, r.storageProviderId, r.protocols, r.queryResponse.Status, r.queryResponse.Size, r.queryResponse.MinPricePerByte, r.queryResponse.MaxPaymentInterval, r.queryResponse.MaxPaymentIntervalIncrease)
-}
-func (r RetrievalEventQueryAskedFiltered) Code() types.EventCode { return types.QueryAskedFilteredCode }
-func (r RetrievalEventQueryAskedFiltered) Phase() types.Phase    { return types.QueryPhase }
-func (r RetrievalEventQueryAskedFiltered) QueryResponse() retrievaltypes.QueryResponse {
-	return r.queryResponse
-} // QueryResponse returns the response from a storage provider to a query-ask
-func (r RetrievalEventQueryAskedFiltered) String() string {
-	return fmt.Sprintf("QueryAskedFiltered<%s, %s, %s, %s, %v, {%d, %d, %s, %d, %d}>", r.eventTime, r.retrievalId, r.payloadCid, r.storageProviderId, r.protocols, r.queryResponse.Status, r.queryResponse.Size, r.queryResponse.MinPricePerByte, r.queryResponse.MaxPaymentInterval, r.queryResponse.MaxPaymentIntervalIncrease)
 }
 func (r RetrievalEventProposed) Code() types.EventCode { return types.ProposedCode }
 func (r RetrievalEventProposed) Phase() types.Phase    { return types.RetrievalPhase }

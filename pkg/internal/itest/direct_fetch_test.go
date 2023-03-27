@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/lassie/pkg/internal/itest/mocknet"
 	"github.com/filecoin-project/lassie/pkg/internal/itest/unixfs"
 	"github.com/filecoin-project/lassie/pkg/internal/lp2ptransports"
@@ -74,9 +73,6 @@ func TestDirectFetch(t *testing.T) {
 			graphsyncMAs, err := peer.AddrInfoToP2pAddrs(mrn.Remotes[0].AddrInfo())
 			req.NoError(err)
 			srcData1 := unixfs.GenerateFile(t, &mrn.Remotes[0].LinkSystem, rndReader, 4<<20)
-			qr := testQueryResponse
-			qr.MinPricePerByte = abi.NewTokenAmount(0) // make it free so it's not filtered
-			mocknet.SetupQuery(t, mrn.Remotes[0], srcData1.Root, qr)
 			mocknet.SetupRetrieval(t, mrn.Remotes[0])
 
 			// bitswap peer (1)

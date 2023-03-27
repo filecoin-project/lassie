@@ -103,34 +103,22 @@ func TestCandidateFinder(t *testing.T) {
 					syncCandidates = []types.RetrievalCandidate{}
 				}
 				req.Equal(expectedReturns, syncCandidates)
-				asyncCandidatesChan := make(chan (<-chan types.FindCandidatesResult), 1)
+				gatheredCandidates := []types.RetrievalCandidate{}
+				asyncCandidatesErr := make(chan error, 1)
 				go func() {
-					asyncCandidates, err := candidateFinder.FindCandidatesAsync(ctx, cid)
-					req.NoError(err)
-					asyncCandidatesChan <- asyncCandidates
+					asyncCandidatesErr <- candidateFinder.FindCandidatesAsync(ctx, cid, func(candidate types.RetrievalCandidate) {
+						gatheredCandidates = append(gatheredCandidates, candidate)
+					})
+
 				}()
 				for range expectedReturns {
 					clock.Add(time.Minute)
 				}
-				var asyncCandidates <-chan types.FindCandidatesResult
 				select {
 				case <-ctx.Done():
 					req.FailNow("did not receive results")
-				case asyncCandidates = <-asyncCandidatesChan:
-				}
-				gatheredCandidates := []types.RetrievalCandidate{}
-			gatherCandidates:
-				for {
-					select {
-					case <-ctx.Done():
-						req.FailNow("did not receive async candidates")
-					case next, ok := <-asyncCandidates:
-						if !ok {
-							break gatherCandidates
-						}
-						req.NoError(next.Err)
-						gatheredCandidates = append(gatheredCandidates, next.Candidate)
-					}
+				case err = <-asyncCandidatesErr:
+					require.NoError(t, err)
 				}
 				req.Equal(expectedReturns, gatheredCandidates)
 			}

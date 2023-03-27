@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
+	"github.com/benbjohnson/clock"
 	"github.com/dustin/go-humanize"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/metrics"
@@ -29,7 +29,7 @@ var (
 	ErrRetrievalRegistrationFailed = errors.New("retrieval registration failed")
 	ErrRetrievalFailed             = errors.New("retrieval failed")
 	ErrAllRetrievalsFailed         = errors.New("all retrievals failed")
-	ErrQueryFailed                 = errors.New("query failed")
+	ErrConnectFailed               = errors.New("unable to connect to provider")
 	ErrAllQueriesFailed            = errors.New("all queries failed")
 	ErrRetrievalTimedOut           = errors.New("retrieval timed out")
 	ErrRetrievalAlreadyRunning     = errors.New("retrieval already running for CID")
@@ -48,11 +48,12 @@ type Retriever struct {
 	executor     types.Retriever
 	eventManager *events.EventManager
 	session      Session
+	clock        clock.Clock
 }
 
 type CandidateFinder interface {
 	FindCandidates(context.Context, cid.Cid) ([]types.RetrievalCandidate, error)
-	FindCandidatesAsync(context.Context, cid.Cid) (<-chan types.FindCandidatesResult, error)
+	FindCandidatesAsync(context.Context, cid.Cid, func(types.RetrievalCandidate)) error
 }
 
 type eventStats struct {
@@ -67,16 +68,27 @@ func NewRetriever(
 	candidateFinder CandidateFinder,
 	protocolRetrievers map[multicodec.Code]types.CandidateRetriever,
 ) (*Retriever, error) {
+	return NewRetrieverWithClock(ctx, session, candidateFinder, protocolRetrievers, clock.New())
+}
+
+func NewRetrieverWithClock(
+	ctx context.Context,
+	session Session,
+	candidateFinder CandidateFinder,
+	protocolRetrievers map[multicodec.Code]types.CandidateRetriever,
+	clock clock.Clock,
+) (*Retriever, error) {
 	retriever := &Retriever{
 		eventManager: events.NewEventManager(ctx),
 		session:      session,
+		clock:        clock,
 	}
 	protocols := []multicodec.Code{}
 	for protocol := range protocolRetrievers {
 		protocols = append(protocols, protocol)
 	}
 	retriever.executor = combinators.RetrieverWithCandidateFinder{
-		CandidateFinder: NewAssignableCandidateFinder(candidateFinder, session.FilterIndexerCandidate),
+		CandidateFinder: NewAssignableCandidateFinderWithClock(candidateFinder, session.FilterIndexerCandidate, clock),
 		CandidateRetriever: combinators.SplitRetriever[multicodec.Code]{
 			AsyncCandidateSplitter: combinators.NewAsyncCandidateSplitter(protocols, NewProtocolSplitter),
 			CandidateRetrievers:    protocolRetrievers,
@@ -112,7 +124,7 @@ func (retriever *Retriever) Retrieve(
 	request types.RetrievalRequest,
 	eventsCB func(types.RetrievalEvent),
 ) (*types.RetrievalStats, error) {
-	startTime := time.Now()
+	startTime := retriever.clock.Now()
 
 	ctx = types.RegisterRetrievalIDToContext(ctx, request.RetrievalID)
 	if !retriever.eventManager.IsStarted() {
@@ -139,7 +151,7 @@ func (retriever *Retriever) Retrieve(
 	)
 
 	// Emit a Started event denoting that the entire fetch phase has started
-	onRetrievalEvent(events.Started(request.RetrievalID, startTime, types.FetchPhase, types.RetrievalCandidate{RootCid: request.Cid}))
+	onRetrievalEvent(events.Started(retriever.clock.Now(), request.RetrievalID, startTime, types.FetchPhase, types.RetrievalCandidate{RootCid: request.Cid}))
 
 	// retrieve, note that we could get a successful retrieval
 	// (retrievalStats!=nil) _and_ also an error return because there may be
@@ -152,7 +164,7 @@ func (retriever *Retriever) Retrieve(
 	)
 
 	// Emit a Finished event denoting that the entire fetch phase has finished
-	onRetrievalEvent(events.Finished(request.RetrievalID, startTime, types.RetrievalCandidate{RootCid: request.Cid}))
+	onRetrievalEvent(events.Finished(retriever.clock.Now(), request.RetrievalID, startTime, types.RetrievalCandidate{RootCid: request.Cid}))
 
 	if err != nil && retrievalStats == nil {
 		return nil, err
@@ -207,34 +219,11 @@ func makeOnRetrievalEvent(
 			handleStartedEvent(ret)
 		case events.RetrievalEventFailed:
 			handleFailureEvent(ctx, session, retrievalId, eventStats, ret)
-		case events.RetrievalEventQueryAsked: // query-ask success
-			handleQueryAskEvent(ctx, eventStats, ret)
-		case events.RetrievalEventQueryAskedFiltered:
-			handleQueryAskFilteredEvent(eventStats)
 		}
-
 		eventManager.DispatchEvent(event)
 		if eventsCb != nil {
 			eventsCb(event)
 		}
-	}
-}
-
-func handleQueryAskFilteredEvent(eventStats *eventStats) {
-	eventStats.filteredQueryCount++
-	if eventStats.filteredQueryCount == 1 {
-		stats.Record(context.Background(), metrics.RequestWithSuccessfulQueriesFilteredCount.M(1))
-	}
-}
-
-func handleQueryAskEvent(
-	ctx context.Context,
-	eventStats *eventStats,
-	event events.RetrievalEventQueryAsked,
-) {
-	eventStats.queryCount++
-	if eventStats.queryCount == 1 {
-		stats.Record(context.Background(), metrics.RequestWithSuccessfulQueriesCount.M(1))
 	}
 }
 
@@ -341,16 +330,6 @@ func logEvent(event types.RetrievalEvent) {
 		"payloadCid", event.PayloadCid(),
 		"storageProviderId", event.StorageProviderId())
 	switch tevent := event.(type) {
-	case events.EventWithQueryResponse:
-		logadd("queryResponse:Status", tevent.QueryResponse().Status,
-			"queryResponse:PieceCIDFound", tevent.QueryResponse().PieceCIDFound,
-			"queryResponse:Size", tevent.QueryResponse().Size,
-			"queryResponse:PaymentAddress", tevent.QueryResponse().PaymentAddress,
-			"queryResponse:MinPricePerByte", tevent.QueryResponse().MinPricePerByte,
-			"queryResponse:MaxPaymentInterval", tevent.QueryResponse().MaxPaymentInterval,
-			"queryResponse:MaxPaymentIntervalIncrease", tevent.QueryResponse().MaxPaymentIntervalIncrease,
-			"queryResponse:Message", tevent.QueryResponse().Message,
-			"queryResponse:UnsealPrice", tevent.QueryResponse().UnsealPrice)
 	case events.EventWithCandidates:
 		var cands = strings.Builder{}
 		for i, c := range tevent.Candidates() {
