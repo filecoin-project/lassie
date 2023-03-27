@@ -11,6 +11,7 @@ var (
 	BitswapRequestCount                = stats.Int64("bitswap_request_total", "The number of bitswap requests received", stats.UnitDimensionless)
 	BitswapResponseCount               = stats.Int64("bitswap_response_total", "The number of bitswap responses", stats.UnitDimensionless)
 	BitswapRetrieverRequestCount       = stats.Int64("bitswap_retriever_request_total", "The number of bitswap messages that required a retriever lookup", stats.UnitDimensionless)
+	BitswapPreloadedHitFraction        = stats.Float64("bitswap_preloaded_hit_fraction", "The fraction of blocks that were already preloaded before they were required", stats.UnitDimensionless)
 	BlockstoreCacheHitCount            = stats.Int64("blockstore_cache_hit_total", "The number of blocks from the local blockstore served to peers", stats.UnitDimensionless)
 	BytesTransferredTotal              = stats.Int64("data_transferred_bytes_total", "The number of bytes transferred from storage providers to retrieval clients", stats.UnitBytes)
 	RetrievalDealCost                  = stats.Int64("retrieval_deal_cost_fil", "The cost in FIL of a retrieval deal with a storage provider", stats.UnitDimensionless)
@@ -103,6 +104,10 @@ var (
 	bitswapRetreiverRequestView = &view.View{
 		Measure:     BitswapRetrieverRequestCount,
 		Aggregation: view.Count(),
+	}
+	bitswapPreloadedHitFractionView = &view.View{
+		Measure:     BitswapPreloadedHitFraction,
+		Aggregation: view.Distribution(0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1),
 	}
 	blockstoreCacheHitView = &view.View{
 		Measure:     BlockstoreCacheHitCount,
@@ -242,6 +247,7 @@ var DefaultViews = []*view.View{
 	bitswapRequestView,
 	bitswapResponseView,
 	bitswapRetreiverRequestView,
+	bitswapPreloadedHitFractionView,
 	blockstoreCacheHitView,
 	bytesTransferredView,
 	failedRetrievalsPerRequestView,
