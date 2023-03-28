@@ -202,6 +202,7 @@ func Fetch(cctx *cli.Context) error {
 	preloadStore := carStore.PreloadStore()
 	request.PreloadLinkSystem.SetReadStorage(preloadStore)
 	request.PreloadLinkSystem.SetWriteStorage(preloadStore)
+	request.PreloadLinkSystem.TrustedStorage = true
 
 	stats, err := lassie.Fetch(ctx, request)
 	if err != nil {
