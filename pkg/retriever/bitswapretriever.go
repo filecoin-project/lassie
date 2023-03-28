@@ -205,6 +205,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		cacheLinkSys = cidlink.DefaultLinkSystem()
 		cacheLinkSys.SetReadStorage(cacheStore)
 		cacheLinkSys.SetWriteStorage(cacheStore)
+		cacheLinkSys.TrustedStorage = true
 		defer cacheStore.Close()
 	}
 	storage, err := bitswaphelpers.NewPreloadCachingStorage(

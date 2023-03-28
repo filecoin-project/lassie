@@ -219,6 +219,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		preloadStore := carStore.PreloadStore()
 		request.PreloadLinkSystem.SetReadStorage(preloadStore)
 		request.PreloadLinkSystem.SetWriteStorage(preloadStore)
+		request.PreloadLinkSystem.TrustedStorage = true
 
 		log.Debugw("fetching CID", "retrievalId", retrievalId, "CID", rootCid.String(), "path", unixfsPath, "fullFetch", fullFetch)
 		stats, err := lassie.Fetch(req.Context(), request)
