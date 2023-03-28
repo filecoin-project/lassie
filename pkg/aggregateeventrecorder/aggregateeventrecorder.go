@@ -20,6 +20,9 @@ const parallelPosters = 5
 
 type tempData struct {
 	startTime            time.Time
+	candidatesFound      int
+	candidatesFoundTime  time.Time
+	candidatesFiltered   int
 	firstByteTime        time.Time
 	ttfb                 int64
 	success              bool
@@ -44,9 +47,9 @@ type AggregateEvent struct {
 	StartTime         time.Time `json:"startTime"`                   // The time the retrieval started
 	EndTime           time.Time `json:"endTime"`                     // The time the retrieval ended
 
-	TimeToFirstIndexerResult  int64              `json:"timeToFirstIndexerResult,omitempty"` // Time we received our first "CandidateFound" event
-	IndexerCandidatesReceived uint64             `json:"indexerCandidatesReceived"`          // The number of candidates received from the indexer
-	IndexerCandidatesFiltered uint64             `json:"indexerCandidatesFiltered"`          // The number of candidates that made it through the filtering stage
+	TimeToFirstIndexerResult  time.Time          `json:"timeToFirstIndexerResult,omitempty"` // Time we received our first "CandidateFound" event
+	IndexerCandidatesReceived int                `json:"indexerCandidatesReceived"`          // The number of candidates received from the indexer
+	IndexerCandidatesFiltered int                `json:"indexerCandidatesFiltered"`          // The number of candidates that made it through the filtering stage
 	ProtocolsAllowed          []string           `json:"protocolsAllowed,omitempty"`         // The available protocols that could be used for this retrieval
 	ProtocolsAttempted        []string           `json:"protocolsAttempted,omitempty"`       // The protocols that were used to attempt this retrieval
 	RetrievalAttempts         []RetrievalAttempt `json:"retrievalAttempts,omitempty"`        // All of the retrieval attempts
@@ -120,6 +123,8 @@ func (a *aggregateEventRecorder) ingestEvents() {
 					// Initialize the temp data for tracking retrieval stats
 					a.eventTempMap[id] = tempData{
 						startTime:            event.Time(),
+						candidatesFound:      0,
+						candidatesFiltered:   0,
 						firstByteTime:        time.Time{},
 						spId:                 "",
 						success:              false,
@@ -140,13 +145,25 @@ func (a *aggregateEventRecorder) ingestEvents() {
 					retrievalAttemptMap := tempData.retrievalAttemptMap
 					retrievalAttemptMap[spid] = attempt
 					tempData.retrievalAttemptMap = retrievalAttemptMap
-					a.eventTempMap[id] = tempData
 
 					// Add any event protocols to the set of attempted protocols
 					for _, protocol := range event.(events.RetrievalEventStarted).Protocols() {
 						tempData.attemptedProtocolSet[protocol.String()] = struct{}{}
 					}
+
+					a.eventTempMap[id] = tempData
 				}
+
+			case types.CandidatesFoundCode:
+				tempData := a.eventTempMap[id]
+				tempData.candidatesFoundTime = event.Time()
+				tempData.candidatesFound = len(event.(events.RetrievalEventCandidatesFound).Candidates())
+				a.eventTempMap[id] = tempData
+
+			case types.CandidatesFilteredCode:
+				tempData := a.eventTempMap[id]
+				tempData.candidatesFiltered = len(event.(events.RetrievalEventCandidatesFiltered).Candidates())
+				a.eventTempMap[id] = tempData
 
 			case types.FirstByteCode:
 				// Calculate time to first byte
@@ -215,9 +232,9 @@ func (a *aggregateEventRecorder) ingestEvents() {
 					StartTime:         tempData.startTime,
 					EndTime:           event.Time(),
 
-					TimeToFirstIndexerResult:  0,
-					IndexerCandidatesReceived: 0,
-					IndexerCandidatesFiltered: 0,
+					TimeToFirstIndexerResult:  tempData.candidatesFoundTime,
+					IndexerCandidatesReceived: tempData.candidatesFound,
+					IndexerCandidatesFiltered: tempData.candidatesFiltered,
 					ProtocolsAllowed:          make([]string, 0),
 					ProtocolsAttempted:        protocolsAttempted,
 					RetrievalAttempts:         retrievalAttempts,
