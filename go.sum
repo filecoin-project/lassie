@@ -407,13 +407,13 @@ github.com/ipfs/go-unixfsnode v1.6.0 h1:JOSA02yaLylRNi2rlB4ldPr5VcZhcnaIVj5zNLcO
 github.com/ipfs/go-unixfsnode v1.6.0/go.mod h1:PVfoyZkX1B34qzT3vJO4nsLUpRCyhnMuHBznRcXirlk=
 github.com/ipfs/go-verifcid v0.0.2 h1:XPnUv0XmdH+ZIhLGKg6U2vaPaRDXb9urMyNVCE7uvTs=
 github.com/ipfs/go-verifcid v0.0.2/go.mod h1:40cD9x1y4OWnFXbLNJYRe7MpNvWlMn3LZAG5Wb4xnPU=
-github.com/ipld/go-car/v2 v2.8.3-0.20230320044239-794f22231c05 h1:r5pBW3E1fusXPdnoau+D6tbGrqmx5E9wmmb67HMPU38=
-github.com/ipld/go-car/v2 v2.8.3-0.20230320044239-794f22231c05/go.mod h1:UeIST4b5Je6LEx8GjFysgeCYwxAHKtAcsWxmF6PupNQ=
+github.com/ipld/go-car/v2 v2.9.0 h1:mkMSfh9NpnfdFe30xBFTQiKZ6+LY+mwOPrq6r56xsPo=
+github.com/ipld/go-car/v2 v2.9.0/go.mod h1:UeIST4b5Je6LEx8GjFysgeCYwxAHKtAcsWxmF6PupNQ=
 github.com/ipld/go-codec-dagpb v1.6.0 h1:9nYazfyu9B1p3NAgfVdpRco3Fs2nFC72DqVsMj6rOcc=
 github.com/ipld/go-codec-dagpb v1.6.0/go.mod h1:ANzFhfP2uMJxRBr8CE+WQWs5UsNa0pYtmKZ+agnUw9s=
 github.com/ipld/go-ipld-prime v0.9.1-0.20210324083106-dc342a9917db/go.mod h1:KvBLMr4PX1gWptgkzRjVZCrLmSGcZCb/jioOQwCqZN8=
-github.com/ipld/go-ipld-prime v0.20.1-0.20230328031804-d013fc0ada25 h1:hbf/5vIFKw3eplVcP0mKydghqAH9MttKYjEgZ4qENlw=
-github.com/ipld/go-ipld-prime v0.20.1-0.20230328031804-d013fc0ada25/go.mod h1:wmOtdy70ajP48iZITH8uLsGJVMqA4EJM61/bSfYYGhs=
+github.com/ipld/go-ipld-prime v0.20.1-0.20230329011551-5056175565b0 h1:iJTl9tx5DEsnKpppX5PmfdoQ3ITuBmkh3yyEpHWY2SI=
+github.com/ipld/go-ipld-prime v0.20.1-0.20230329011551-5056175565b0/go.mod h1:wmOtdy70ajP48iZITH8uLsGJVMqA4EJM61/bSfYYGhs=
 github.com/ipld/go-ipld-prime/storage/bsadapter v0.0.0-20230102063945-1a409dc236dd h1:gMlw/MhNr2Wtp5RwGdsW23cs+yCuj9k2ON7i9MiJlRo=
 github.com/ipni/index-provider v0.10.2 h1:BR3pjSIOXoVBHXikL4jpp9nAGhzeJU9WvRoUFwwKVWU=
 github.com/ipni/index-provider v0.10.2/go.mod h1:X1IcMyAsFW+j8/ZEQOaewHck0fA2+SdlxHZlXv2XZrY=
