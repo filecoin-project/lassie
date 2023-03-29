@@ -22,9 +22,9 @@ require (
 	github.com/ipfs/go-libipfs v0.6.1
 	github.com/ipfs/go-log/v2 v2.5.1
 	github.com/ipfs/go-unixfsnode v1.6.0
-	github.com/ipld/go-car/v2 v2.8.3-0.20230320044239-794f22231c05
+	github.com/ipld/go-car/v2 v2.9.0
 	github.com/ipld/go-codec-dagpb v1.6.0
-	github.com/ipld/go-ipld-prime v0.20.1-0.20230328031804-d013fc0ada25
+	github.com/ipld/go-ipld-prime v0.20.1-0.20230329011551-5056175565b0
 	github.com/ipni/index-provider v0.10.2
 	github.com/ipni/storetheindex v0.5.8
 	github.com/libp2p/go-libp2p v0.26.3
