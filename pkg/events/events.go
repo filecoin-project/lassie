@@ -152,14 +152,15 @@ func Failed(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.Tim
 // RetrievalEventSuccess describes a successful retrieval of data during the RetrievalPhase
 type RetrievalEventSuccess struct {
 	spBaseEvent
-	receivedSize uint64
-	receivedCids uint64
-	duration     time.Duration
-	totalPayment big.Int
+	receivedSize            uint64
+	receivedCids            uint64
+	duration                time.Duration
+	totalPayment            big.Int
+	bitswapPreloadedPercent uint64
 }
 
-func Success(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.Time, candidate types.RetrievalCandidate, receivedSize uint64, receivedCids uint64, duration time.Duration, totalPayment big.Int) RetrievalEventSuccess {
-	return RetrievalEventSuccess{spBaseEvent{baseEvent{at, retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}, receivedSize, receivedCids, duration, totalPayment}
+func Success(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.Time, candidate types.RetrievalCandidate, receivedSize uint64, receivedCids uint64, duration time.Duration, totalPayment big.Int, bitswapPreloadedPercent uint64) RetrievalEventSuccess {
+	return RetrievalEventSuccess{spBaseEvent{baseEvent{at, retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}, receivedSize, receivedCids, duration, totalPayment, bitswapPreloadedPercent}
 }
 
 // RetrievalEventFinished describes when an entire fetch finishes
@@ -215,10 +216,11 @@ func (r RetrievalEventFailed) ErrorMessage() string { return r.errorMessage }
 func (r RetrievalEventFailed) String() string {
 	return fmt.Sprintf("FailedEvent<%s, %s, %s, %s, %v, %s>", r.eventTime, r.retrievalId, r.payloadCid, r.storageProviderId, r.protocols, r.errorMessage)
 }
-func (r RetrievalEventSuccess) Code() types.EventCode   { return types.SuccessCode }
-func (r RetrievalEventSuccess) Phase() types.Phase      { return types.RetrievalPhase }
-func (r RetrievalEventSuccess) Duration() time.Duration { return r.duration }
-func (r RetrievalEventSuccess) TotalPayment() big.Int   { return r.totalPayment }
+func (r RetrievalEventSuccess) Code() types.EventCode           { return types.SuccessCode }
+func (r RetrievalEventSuccess) Phase() types.Phase              { return types.RetrievalPhase }
+func (r RetrievalEventSuccess) Duration() time.Duration         { return r.duration }
+func (r RetrievalEventSuccess) TotalPayment() big.Int           { return r.totalPayment }
+func (r RetrievalEventSuccess) BitswapPreloadedPercent() uint64 { return r.bitswapPreloadedPercent }
 
 // ReceivedSize returns the number of bytes received
 func (r RetrievalEventSuccess) ReceivedSize() uint64 { return r.receivedSize }

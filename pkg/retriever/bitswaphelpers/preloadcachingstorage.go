@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"sync"
 
 	carstorage "github.com/ipld/go-car/v2/storage"
@@ -71,26 +72,26 @@ type PreloadStats struct {
 	PreloadMisses int
 }
 
-// PreloadedHitFraction returns the fraction of loads that were hits in the
+// PreloadedPercent returns the percentage of loads that were hits in the
 // preloaded cache. This is a good indicator of how much of the traversal was
 // able to be satisfied by the preloaded cache, however it is not able to
 // capture the number of blocks that were actively being loaded when they were
 // requested.
-func (s PreloadStats) PreloadedHitFraction() float64 {
-	return float64(s.PreloadedHits) / float64(s.LoadCount)
+func (s PreloadStats) PreloadedPercent() uint64 {
+	return uint64(math.Round(float64(s.PreloadedHits) / float64(s.LoadCount) * 100))
 }
 
-// PreloadingHitFraction returns the fraction of loads that were hits in the
+// PreloadingHitRate returns the fraction of loads that were hits in the
 // queue of links to be preloaded. This means that the block was flagged as
 // being needed by the preloader, but had not yet been preloaded, or was in the
 // process of being preloaded when it was required by the traversal.
 //
-// PreloadingHitFraction() + PreloadedHitFraction() should be close to a value
+// PreloadingHitRate() + PreloadedHitRate() should be close to a value
 // of 1.0 (not exactly as the first block will be a complete preloader miss),
 // together they provide a measure of the performance of the preloader for the
 // traversal.
-func (s PreloadStats) PreloadingHitFraction() float64 {
-	return float64(s.PreloadingHits) / float64(s.LoadCount)
+func (s PreloadStats) PreloadingPercent() uint64 {
+	return uint64(math.Round(float64(s.PreloadingHits) / float64(s.LoadCount) * 100))
 }
 
 // Print prints the stats to stdout
@@ -102,8 +103,8 @@ func (s PreloadStats) Print() {
 	fmt.Printf("%25s: %v\n", "preloaded hits", s.PreloadedHits)
 	fmt.Printf("%25s: %v\n", "preloading hits", s.PreloadingHits)
 	fmt.Printf("%25s: %v\n", "preload misses", s.PreloadMisses)
-	fmt.Printf("%25s: %v\n", "preloaded hit fraction", s.PreloadedHitFraction())
-	fmt.Printf("%25s: %v\n", "preloading hit fraction", s.PreloadingHitFraction())
+	fmt.Printf("%25s: %v%%\n", "preloaded hit percent", s.PreloadedPercent())
+	fmt.Printf("%25s: %v%%\n", "preloading hit percent", s.PreloadingPercent())
 }
 
 // GetStats returns the current stats for the PreloadCachingStorage.

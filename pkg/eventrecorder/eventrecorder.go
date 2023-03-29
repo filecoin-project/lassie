@@ -74,9 +74,10 @@ type eventReport struct {
 // eventDetailsSuccess is for the EventDetails in the case of a retrieval
 // success
 type EventDetailsSuccess struct {
-	ReceivedSize uint64 `json:"receivedSize"`
-	ReceivedCids uint64 `json:"receivedCids"`
-	Duration     uint64 `json:"durationMs"`
+	ReceivedSize            uint64 `json:"receivedSize"`
+	ReceivedCids            uint64 `json:"receivedCids"`
+	Duration                uint64 `json:"durationMs"`
+	BitswapPreloadedPercent uint64 `json:"bitswapPreloadedPercent"`
 }
 
 // eventDetailsError is for the EventDetails in the case of a query or retrieval
@@ -138,7 +139,7 @@ func (er *EventRecorder) RecordEvent(event types.RetrievalEvent) {
 	case events.RetrievalEventFailed:
 		evt.EventDetails = &EventDetailsError{ret.ErrorMessage()}
 	case events.RetrievalEventSuccess:
-		evt.EventDetails = &EventDetailsSuccess{ret.ReceivedSize(), ret.ReceivedCids(), uint64(ret.Duration().Milliseconds())}
+		evt.EventDetails = &EventDetailsSuccess{ret.ReceivedSize(), ret.ReceivedCids(), uint64(ret.Duration().Milliseconds()), ret.BitswapPreloadedPercent()}
 	}
 
 	er.recordEvent(reflect.TypeOf(event).Name(), evt)

@@ -243,18 +243,22 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	}
 	duration := br.clock.Since(phaseStartTime)
 	speed := uint64(float64(totalWritten.Load()) / duration.Seconds())
+	preloadedPercent := storage.GetStats().PreloadedPercent()
 
 	// record success
-	br.events(events.Success(br.clock.Now(),
+	br.events(events.Success(
+		br.clock.Now(),
 		br.request.RetrievalID,
 		phaseStartTime,
 		bitswapCandidate,
 		totalWritten.Load(),
 		blockCount.Load(),
 		duration,
-		big.Zero()))
+		big.Zero(),
+		preloadedPercent,
+	))
 
-	stats.Record(ctx, metrics.BitswapPreloadedHitFraction.M(storage.GetStats().PreloadedHitFraction()))
+	stats.Record(ctx, metrics.BitswapPreloadedPercent.M(int64(preloadedPercent)))
 
 	// return stats
 	return &types.RetrievalStats{

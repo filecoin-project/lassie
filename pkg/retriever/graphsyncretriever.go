@@ -303,7 +303,9 @@ func runRetrievalCandidate(
 					stats.Size,
 					stats.Blocks,
 					stats.Duration,
-					stats.TotalPayment),
+					stats.TotalPayment,
+					0,
+				),
 				)
 			}
 		} // else we didn't get to retrieval phase because we were cancelled
