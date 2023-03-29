@@ -42,7 +42,7 @@ func TestEventManager(t *testing.T) {
 	em.DispatchEvent(events.Started(time.Now(), id, queryStart, types.QueryPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid}))
 	em.DispatchEvent(events.Failed(time.Now(), id, queryStart, types.QueryPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid}, "error @ query failure"))
 	em.DispatchEvent(events.Started(time.Now(), id, retrievalStart, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}))
-	em.DispatchEvent(events.Success(time.Now(), id, retrievalStart, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, 100, 200, time.Second*300, big.NewInt(400)))
+	em.DispatchEvent(events.Success(time.Now(), id, retrievalStart, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, 100, 200, time.Second*300, big.NewInt(400), 55))
 	em.DispatchEvent(events.Failed(time.Now(), id, retrievalStart, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, "error @ retrieval failure"))
 
 	time.Sleep(50 * time.Millisecond)
@@ -57,7 +57,7 @@ func TestEventManager(t *testing.T) {
 	em.DispatchEvent(events.Started(time.Now(), id, queryStart, types.QueryPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid}))
 	em.DispatchEvent(events.Failed(time.Now(), id, queryStart, types.QueryPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid}, "error @ query failure"))
 	em.DispatchEvent(events.Started(time.Now(), id, indexerStart, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}))
-	em.DispatchEvent(events.Success(time.Now(), id, retrievalStart, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, 100, 200, time.Second*300, big.NewInt(400)))
+	em.DispatchEvent(events.Success(time.Now(), id, retrievalStart, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, 100, 200, time.Second*300, big.NewInt(400), 55))
 	em.DispatchEvent(events.Failed(time.Now(), id, retrievalStart, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, "error @ retrieval failure"))
 
 	select {

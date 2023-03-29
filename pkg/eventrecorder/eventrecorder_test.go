@@ -46,7 +46,7 @@ func TestEventRecorder(t *testing.T) {
 		{
 			name: "RetrievalSuccess",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
-				er.RecordEvent(events.Success(time.Now(), id, ptime, types.NewRetrievalCandidate(spid, testCid1), uint64(2020), 3030, 4*time.Second, big.Zero()))
+				er.RecordEvent(events.Success(time.Now(), id, ptime, types.NewRetrievalCandidate(spid, testCid1), uint64(2020), 3030, 4*time.Second, big.Zero(), 50))
 
 				select {
 				case <-ctx.Done():
@@ -71,16 +71,17 @@ func TestEventRecorder(t *testing.T) {
 
 				detailsNode, err := event.LookupByString("eventDetails")
 				require.NoError(t, err)
-				require.Equal(t, int64(3), detailsNode.Length())
+				require.Equal(t, int64(4), detailsNode.Length())
 				verifyIntNode(t, detailsNode, "receivedSize", 2020)
 				verifyIntNode(t, detailsNode, "receivedCids", 3030)
 				verifyIntNode(t, detailsNode, "durationMs", 4000)
+				verifyIntNode(t, detailsNode, "bitswapPreloadedPercent", 50)
 			},
 		},
 		{
 			name: "RetrievalSuccess, bitswap",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
-				er.RecordEvent(events.Success(time.Now(), id, ptime, types.NewRetrievalCandidate(peer.ID(""), testCid1, metadata.Bitswap{}), uint64(2020), 3030, 4*time.Second, big.Zero()))
+				er.RecordEvent(events.Success(time.Now(), id, ptime, types.NewRetrievalCandidate(peer.ID(""), testCid1, metadata.Bitswap{}), uint64(2020), 3030, 4*time.Second, big.Zero(), 50))
 
 				select {
 				case <-ctx.Done():
@@ -105,10 +106,11 @@ func TestEventRecorder(t *testing.T) {
 
 				detailsNode, err := event.LookupByString("eventDetails")
 				require.NoError(t, err)
-				require.Equal(t, int64(3), detailsNode.Length())
+				require.Equal(t, int64(4), detailsNode.Length())
 				verifyIntNode(t, detailsNode, "receivedSize", 2020)
 				verifyIntNode(t, detailsNode, "receivedCids", 3030)
 				verifyIntNode(t, detailsNode, "durationMs", 4000)
+				verifyIntNode(t, detailsNode, "bitswapPreloadedPercent", 50)
 			},
 		},
 		{

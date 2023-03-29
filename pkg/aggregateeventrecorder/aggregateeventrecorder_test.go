@@ -48,7 +48,7 @@ func TestAggregateEventRecorder(t *testing.T) {
 
 				subscriber(events.Started(time.Now(), id, fetchPhaseStartTime, types.FetchPhase, types.RetrievalCandidate{RootCid: testCid1}))
 				subscriber(events.FirstByte(time.Now(), id, ptime, types.RetrievalCandidate{RootCid: testCid1}))
-				subscriber(events.Success(time.Now().Add(50*time.Millisecond), id, ptime, types.NewRetrievalCandidate(spid, testCid1), uint64(2020), 3030, 4*time.Second, big.Zero()))
+				subscriber(events.Success(time.Now().Add(50*time.Millisecond), id, ptime, types.NewRetrievalCandidate(spid, testCid1), uint64(2020), 3030, 4*time.Second, big.Zero(), 55))
 				subscriber(events.Finished(time.Now().Add(50*time.Millisecond), id, fetchPhaseStartTime, types.RetrievalCandidate{RootCid: testCid1}))
 
 				select {
@@ -193,7 +193,7 @@ func BenchmarkAggregateEventRecorderSubscriber(b *testing.B) {
 		b.StartTimer()
 		subscriber(events.Started(time.Now(), id, fetchStartTime, types.FetchPhase, types.NewRetrievalCandidate(spid, testCid1)))
 		subscriber(events.FirstByte(time.Now(), id, ptime, types.NewRetrievalCandidate(spid, testCid1)))
-		subscriber(events.Success(time.Now(), id, ptime, types.NewRetrievalCandidate(spid, testCid1), uint64(2020), 3030, 4*time.Second, big.Zero()))
+		subscriber(events.Success(time.Now(), id, ptime, types.NewRetrievalCandidate(spid, testCid1), uint64(2020), 3030, 4*time.Second, big.Zero(), 55))
 		subscriber(events.Finished(time.Now(), id, fetchStartTime, types.RetrievalCandidate{RootCid: testCid1}))
 		b.StopTimer()
 
