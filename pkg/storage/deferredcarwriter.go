@@ -54,9 +54,9 @@ func NewDeferredCarWriterForStream(root cid.Cid, outStream io.Writer) *DeferredC
 	return &DeferredCarWriter{root: root, outStream: outStream}
 }
 
-// OnPut will return a channel that will be written to when each Put() operation
-// is started. The argument to the callback is the number of bytes in being
-// written. If once is true, the callback will be removed after the first call.
+// OnPut will call a callback when each Put() operation is started. The argument
+// to the callback is the number of bytes being written. If once is true, the
+// callback will be removed after the first call.
 func (dcw *DeferredCarWriter) OnPut(cb func(int), once bool) {
 	if dcw.putCb == nil {
 		dcw.putCb = make([]putCb, 0)
