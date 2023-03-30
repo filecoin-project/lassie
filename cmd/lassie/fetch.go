@@ -173,6 +173,9 @@ func Fetch(cctx *cli.Context) error {
 
 	var carWriter *storage.DeferredCarWriter
 	if outfile == "-" { // stdout
+		// we need the onlyWriter because stdout is presented as an os.File, and
+		// therefore pretend to support seeks, so feature-checking in go-car
+		// will make bad assumptions about capabilities unless we hide it
 		carWriter = storage.NewDeferredCarWriterForStream(rootCid, &onlyWriter{dataWriter})
 	} else {
 		carWriter = storage.NewDeferredCarWriterForPath(rootCid, outfile)
