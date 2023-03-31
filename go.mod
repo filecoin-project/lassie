@@ -25,7 +25,7 @@ require (
 	github.com/ipld/go-car/v2 v2.9.0
 	github.com/ipld/go-codec-dagpb v1.6.0
 	github.com/ipld/go-ipld-prime v0.20.1-0.20230329011551-5056175565b0
-	github.com/ipni/go-libipni v0.0.3
+	github.com/ipni/go-libipni v0.0.4
 	github.com/libp2p/go-libp2p v0.26.4
 	github.com/libp2p/go-libp2p-routing-helpers v0.6.1
 	github.com/libp2p/go-libp2p-testing v0.12.0

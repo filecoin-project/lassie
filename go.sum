@@ -416,8 +416,8 @@ github.com/ipld/go-ipld-prime v0.9.1-0.20210324083106-dc342a9917db/go.mod h1:KvB
 github.com/ipld/go-ipld-prime v0.20.1-0.20230329011551-5056175565b0 h1:iJTl9tx5DEsnKpppX5PmfdoQ3ITuBmkh3yyEpHWY2SI=
 github.com/ipld/go-ipld-prime v0.20.1-0.20230329011551-5056175565b0/go.mod h1:wmOtdy70ajP48iZITH8uLsGJVMqA4EJM61/bSfYYGhs=
 github.com/ipld/go-ipld-prime/storage/bsadapter v0.0.0-20230102063945-1a409dc236dd h1:gMlw/MhNr2Wtp5RwGdsW23cs+yCuj9k2ON7i9MiJlRo=
-github.com/ipni/go-libipni v0.0.3 h1:MXLxWRmEi8aE1n9njeSTzTiVl1izNEoRZ/28j7mUBfw=
-github.com/ipni/go-libipni v0.0.3/go.mod h1:pb6m1WNvCCP0NEf9WCar4b+EfC3M6oJvGFn9RZyw2EU=
+github.com/ipni/go-libipni v0.0.4 h1:wWpt59uwpXEaJzjuCtfAYxG8Lsl2Ykjp67TsoL8Dm80=
+github.com/ipni/go-libipni v0.0.4/go.mod h1:SuUNOKOjqPSA1w3dPopNOzDxDCUndwa8jPCDsG8W/yQ=
 github.com/ipsn/go-secp256k1 v0.0.0-20180726113642-9d62b9f0bc52 h1:QG4CGBqCeuBo6aZlGAamSkxWdgWfZGeE49eUOWJPA4c=
 github.com/ipsn/go-secp256k1 v0.0.0-20180726113642-9d62b9f0bc52/go.mod h1:fdg+/X9Gg4AsAIzWpEHwnqd+QY3b7lajxyjE1m4hkq4=
 github.com/jackpal/go-nat-pmp v1.0.2 h1:KzKSgb7qkJvOUTqYl9/Hg/me3pWgBmERKrTGD7BdWus=
