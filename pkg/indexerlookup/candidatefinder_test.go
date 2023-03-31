@@ -12,7 +12,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/internal/testutil"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
-	"github.com/ipni/storetheindex/api/v0/finder/model"
+	"github.com/ipni/go-libipni/find/model"
 	"github.com/stretchr/testify/require"
 )
 
@@ -43,24 +43,24 @@ func TestCandidateFinder(t *testing.T) {
 					{
 						Metadata:  binaryMetadata[cids[0]][0],
 						ContextID: testutil.RandomBytes(100),
-						Provider:  candidates[cids[0]][0].MinerPeer,
+						Provider:  &candidates[cids[0]][0].MinerPeer,
 					},
 					{
 						Metadata:  binaryMetadata[cids[0]][1],
 						ContextID: testutil.RandomBytes(100),
-						Provider:  candidates[cids[0]][1].MinerPeer,
+						Provider:  &candidates[cids[0]][1].MinerPeer,
 					},
 				},
 				cids[1]: {
 					{
 						Metadata:  binaryMetadata[cids[1]][0],
 						ContextID: testutil.RandomBytes(100),
-						Provider:  candidates[cids[1]][0].MinerPeer,
+						Provider:  &candidates[cids[1]][0].MinerPeer,
 					},
 					{
 						Metadata:  binaryMetadata[cids[1]][1],
 						ContextID: testutil.RandomBytes(100),
-						Provider:  candidates[cids[1]][1].MinerPeer,
+						Provider:  &candidates[cids[1]][1].MinerPeer,
 					},
 				},
 			},
