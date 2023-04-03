@@ -10,7 +10,7 @@ import (
 	"github.com/ipfs/go-cid"
 	gsnet "github.com/ipfs/go-graphsync/network"
 	bsnet "github.com/ipfs/go-libipfs/bitswap/network"
-	"github.com/ipni/index-provider/metadata"
+	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 )

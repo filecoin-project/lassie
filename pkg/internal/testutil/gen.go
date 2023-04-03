@@ -9,7 +9,7 @@ import (
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
 	"github.com/ipfs/go-libipfs/blocks"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	"github.com/ipni/index-provider/metadata"
+	"github.com/ipni/go-libipni/metadata"
 	crypto "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/require"

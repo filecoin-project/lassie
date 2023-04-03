@@ -13,7 +13,7 @@ require (
 	github.com/ipfs/go-blockservice v0.5.0
 	github.com/ipfs/go-cid v0.4.0
 	github.com/ipfs/go-datastore v0.6.0
-	github.com/ipfs/go-graphsync v0.14.3
+	github.com/ipfs/go-graphsync v0.14.4
 	github.com/ipfs/go-ipfs-blockstore v1.3.0
 	github.com/ipfs/go-ipfs-blocksutil v0.0.1
 	github.com/ipfs/go-ipfs-delay v0.0.1
@@ -25,9 +25,8 @@ require (
 	github.com/ipld/go-car/v2 v2.9.0
 	github.com/ipld/go-codec-dagpb v1.6.0
 	github.com/ipld/go-ipld-prime v0.20.1-0.20230329011551-5056175565b0
-	github.com/ipni/index-provider v0.10.2
-	github.com/ipni/storetheindex v0.5.8
-	github.com/libp2p/go-libp2p v0.26.3
+	github.com/ipni/go-libipni v0.0.4
+	github.com/libp2p/go-libp2p v0.26.4
 	github.com/libp2p/go-libp2p-routing-helpers v0.6.1
 	github.com/libp2p/go-libp2p-testing v0.12.0
 	github.com/multiformats/go-multiaddr v0.8.0
@@ -46,6 +45,8 @@ require (
 
 require (
 	github.com/filecoin-project/go-address v1.1.0 // indirect
+	github.com/gopherjs/gopherjs v1.17.2 // indirect
+	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/libp2p/go-mplex v0.7.0 // indirect
 )
 
@@ -163,7 +164,7 @@ require (
 	github.com/whyrusleeping/cbor-gen v0.0.0-20230126041949-52956bd4c9aa // indirect
 	github.com/whyrusleeping/chunker v0.0.0-20181014151217-fe64bd25879f // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
-	go.opentelemetry.io/otel/sdk v1.10.0 // indirect
+	go.opentelemetry.io/otel/sdk v1.11.1 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/dig v1.16.1 // indirect
 	go.uber.org/fx v1.19.2 // indirect

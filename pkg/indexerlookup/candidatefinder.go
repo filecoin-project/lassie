@@ -16,8 +16,8 @@ import (
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-log/v2"
-	"github.com/ipni/index-provider/metadata"
-	"github.com/ipni/storetheindex/api/v0/finder/model"
+	"github.com/ipni/go-libipni/find/model"
+	"github.com/ipni/go-libipni/metadata"
 	"github.com/multiformats/go-multihash"
 )
 
@@ -87,11 +87,14 @@ func (idxf *IndexerCandidateFinder) FindCandidates(ctx context.Context, cid cid.
 		for _, val := range multihashResult.ProviderResults {
 			// skip results without decodable metadata
 			if md, err := decodeMetadata(val); err == nil {
-				matches = append(matches, types.RetrievalCandidate{
-					RootCid:   cid,
-					MinerPeer: val.Provider,
-					Metadata:  md,
-				})
+				candidate := types.RetrievalCandidate{
+					RootCid:  cid,
+					Metadata: md,
+				}
+				if val.Provider != nil {
+					candidate.MinerPeer = *val.Provider
+				}
+				matches = append(matches, candidate)
 			}
 		}
 	}
@@ -177,7 +180,9 @@ func (idxf *IndexerCandidateFinder) decodeProviderResultStream(ctx context.Conte
 				// skip results without decodable metadata
 				if md, err := decodeMetadata(pr); err == nil {
 					var candidate types.RetrievalCandidate
-					candidate.MinerPeer = pr.Provider
+					if pr.Provider != nil {
+						candidate.MinerPeer = *pr.Provider
+					}
 					candidate.RootCid = c
 					candidate.Metadata = md
 					cb(candidate)
