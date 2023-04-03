@@ -61,12 +61,11 @@ type batchedEvents struct {
 
 type aggregateEventRecorder struct {
 	ctx                   context.Context
-	instanceID            string                         // The ID of the instance generating the event
-	endpointURL           string                         // The URL to POST the events to
-	endpointAuthorization string                         // The key to use in an Authorization header
-	ingestChan            chan types.RetrievalEvent      // A channel for incoming events
-	postChan              chan []AggregateEvent          // A channel for posting events
-	eventTempMap          map[types.RetrievalID]tempData // Holds data about multiple events for aggregation
+	instanceID            string                    // The ID of the instance generating the event
+	endpointURL           string                    // The URL to POST the events to
+	endpointAuthorization string                    // The key to use in an Authorization header
+	ingestChan            chan types.RetrievalEvent // A channel for incoming events
+	postChan              chan []AggregateEvent     // A channel for posting events
 }
 
 func NewAggregateEventRecorder(ctx context.Context, instanceID string, endpointURL string, endpointAuthorization string) *aggregateEventRecorder {
@@ -77,7 +76,6 @@ func NewAggregateEventRecorder(ctx context.Context, instanceID string, endpointU
 		endpointAuthorization: endpointAuthorization,
 		ingestChan:            make(chan types.RetrievalEvent),
 		postChan:              make(chan []AggregateEvent),
-		eventTempMap:          make(map[types.RetrievalID]tempData),
 	}
 
 	go recorder.ingestEvents()
@@ -105,6 +103,7 @@ func (a *aggregateEventRecorder) RetrievalEventSubscriber() types.RetrievalEvent
 func (a *aggregateEventRecorder) ingestEvents() {
 	var batchedData []AggregateEvent
 	var emptyGaurdChan chan []AggregateEvent = nil
+	eventTempMap := make(map[types.RetrievalID]tempData)
 
 	for {
 		select {
@@ -121,7 +120,7 @@ func (a *aggregateEventRecorder) ingestEvents() {
 				switch event.Phase() {
 				case types.FetchPhase:
 					// Initialize the temp data for tracking retrieval stats
-					a.eventTempMap[id] = tempData{
+					eventTempMap[id] = tempData{
 						startTime:            event.Time(),
 						candidatesFound:      0,
 						candidatesFiltered:   0,
@@ -141,7 +140,7 @@ func (a *aggregateEventRecorder) ingestEvents() {
 					attempt.StorageProviderID = spid
 
 					// Save the retrieval attempt
-					tempData := a.eventTempMap[id]
+					tempData := eventTempMap[id]
 					retrievalAttemptMap := tempData.retrievalAttemptMap
 					retrievalAttemptMap[spid] = attempt
 					tempData.retrievalAttemptMap = retrievalAttemptMap
@@ -151,29 +150,29 @@ func (a *aggregateEventRecorder) ingestEvents() {
 						tempData.attemptedProtocolSet[protocol.String()] = struct{}{}
 					}
 
-					a.eventTempMap[id] = tempData
+					eventTempMap[id] = tempData
 				}
 
 			case types.CandidatesFoundCode:
-				tempData := a.eventTempMap[id]
+				tempData := eventTempMap[id]
 				tempData.candidatesFoundTime = event.Time()
 				tempData.candidatesFound = len(event.(events.RetrievalEventCandidatesFound).Candidates())
-				a.eventTempMap[id] = tempData
+				eventTempMap[id] = tempData
 
 			case types.CandidatesFilteredCode:
-				tempData := a.eventTempMap[id]
+				tempData := eventTempMap[id]
 				tempData.candidatesFiltered = len(event.(events.RetrievalEventCandidatesFiltered).Candidates())
-				a.eventTempMap[id] = tempData
+				eventTempMap[id] = tempData
 
 			case types.FirstByteCode:
 				// Calculate time to first byte
-				tempData := a.eventTempMap[id]
+				tempData := eventTempMap[id]
 				tempData.firstByteTime = event.Time()
 				tempData.ttfb = event.Time().Sub(tempData.startTime).Milliseconds()
-				a.eventTempMap[id] = tempData
+				eventTempMap[id] = tempData
 
 			case types.FailedCode:
-				tempData := a.eventTempMap[id]
+				tempData := eventTempMap[id]
 				spid := event.(events.RetrievalEventFailed).StorageProviderId().String()
 				errorMsg := event.(events.RetrievalEventFailed).ErrorMessage()
 
@@ -186,10 +185,10 @@ func (a *aggregateEventRecorder) ingestEvents() {
 				retrievalAttemptMap[spid] = attempt
 				tempData.retrievalAttemptMap = retrievalAttemptMap
 
-				a.eventTempMap[id] = tempData
+				eventTempMap[id] = tempData
 
 			case types.SuccessCode:
-				tempData := a.eventTempMap[id]
+				tempData := eventTempMap[id]
 				tempData.success = true
 				tempData.spId = event.(events.RetrievalEventSuccess).StorageProviderId().String()
 
@@ -200,10 +199,10 @@ func (a *aggregateEventRecorder) ingestEvents() {
 					tempData.bandwidth = uint64(float64(receivedSize) / duration)
 				}
 
-				a.eventTempMap[id] = tempData
+				eventTempMap[id] = tempData
 
 			case types.FinishedCode:
-				tempData, ok := a.eventTempMap[id]
+				tempData, ok := eventTempMap[id]
 				if !ok {
 					logging.Errorf("Received Finished event but can't find aggregate data. Skipping creation of aggregate event.")
 					continue
@@ -241,7 +240,7 @@ func (a *aggregateEventRecorder) ingestEvents() {
 				}
 
 				// Delete the key when we're done with the data
-				delete(a.eventTempMap, id)
+				delete(eventTempMap, id)
 
 				batchedData = append(batchedData, aggregatedEvent)
 				if emptyGaurdChan == nil {

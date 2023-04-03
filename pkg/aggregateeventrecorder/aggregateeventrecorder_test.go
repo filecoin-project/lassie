@@ -88,7 +88,7 @@ func TestAggregateEventRecorder(t *testing.T) {
 				require.Equal(t, int64(1), req.Length())
 				eventList := verifyListNode(t, req, "events", 1)
 				event := verifyListElement(t, eventList, 0)
-				require.Equal(t, int64(5), event.Length())
+				require.Equal(t, int64(8), event.Length())
 				verifyStringNode(t, event, "instanceId", "test-instance")
 				verifyStringNode(t, event, "retrievalId", id.String())
 				verifyBoolNode(t, event, "success", false)
