@@ -65,18 +65,15 @@ type GraphSyncRetriever struct {
 	GetStorageProviderTimeout GetStorageProviderTimeout
 	Client                    RetrievalClient
 	Clock                     clock.Clock
-	TempDir                   string
+	QueueInitialPause         time.Duration
 }
 
 func NewGraphsyncRetriever(getStorageProviderTimeout GetStorageProviderTimeout, client RetrievalClient) *GraphSyncRetriever {
-	return NewGraphsyncRetrieverWithClock(getStorageProviderTimeout, client, clock.New())
-}
-
-func NewGraphsyncRetrieverWithClock(getStorageProviderTimeout GetStorageProviderTimeout, client RetrievalClient, clock clock.Clock) *GraphSyncRetriever {
 	return &GraphSyncRetriever{
 		GetStorageProviderTimeout: getStorageProviderTimeout,
 		Client:                    client,
-		Clock:                     clock,
+		Clock:                     clock.New(),
+		QueueInitialPause:         2 * time.Millisecond,
 	}
 }
 
@@ -133,7 +130,11 @@ func (r *graphsyncRetrieval) RetrieveFromAsyncCandidates(asyncCandidates types.I
 	retrieval := &graphsyncCandidateRetrieval{
 		resultChan: make(chan retrievalResult),
 		finishChan: make(chan struct{}),
-		waitQueue:  prioritywaitqueue.New(candidateCompare),
+		waitQueue: prioritywaitqueue.New(
+			candidateCompare,
+			prioritywaitqueue.WithInitialPause[connectCandidate](r.QueueInitialPause),
+			prioritywaitqueue.WithClock[connectCandidate](r.Clock),
+		),
 	}
 
 	// start retrievals

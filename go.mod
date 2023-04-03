@@ -33,7 +33,7 @@ require (
 	github.com/multiformats/go-multicodec v0.8.1
 	github.com/multiformats/go-multihash v0.2.1
 	github.com/prometheus/client_golang v1.14.0
-	github.com/rvagg/go-prioritywaitqueue v1.0.3
+	github.com/rvagg/go-prioritywaitqueue v1.0.4-0.20230403104805-d1352dc1a6ed
 	github.com/stretchr/testify v1.8.2
 	github.com/urfave/cli/v2 v2.24.4
 	go.opencensus.io v0.24.0
