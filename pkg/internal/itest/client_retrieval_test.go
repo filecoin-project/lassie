@@ -128,6 +128,7 @@ func runRetrieval(t *testing.T, ctx context.Context, mrn *mocknet.MockRetrievalN
 		mrn.Remotes[0].Host.ID(),
 		proposal,
 		selectorparse.CommonSelector_ExploreAllRecursively,
+		0,
 		subscriberLocal,
 		shutdown,
 	)

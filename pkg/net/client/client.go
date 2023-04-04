@@ -182,6 +182,7 @@ func (rc *RetrievalClient) RetrieveFromPeer(
 	peerID peer.ID,
 	proposal *retrievaltypes.DealProposal,
 	sel ipld.Node,
+	maxBlocks uint64,
 	eventsCallback datatransfer.Subscriber,
 	gracefulShutdownRequested <-chan struct{},
 ) (*types.RetrievalStats, error) {
@@ -309,7 +310,10 @@ func (rc *RetrievalClient) RetrieveFromPeer(
 		proposal.PayloadCID,
 		sel,
 		datatransfer.WithSubscriber(eventsCb),
-		datatransfer.WithTransportOptions(dttransport.UseStore(linkSystem)),
+		datatransfer.WithTransportOptions(
+			dttransport.UseStore(linkSystem),
+			dttransport.MaxLinks(maxBlocks),
+		),
 	)
 	if err != nil {
 		// We could fail before a successful proposal

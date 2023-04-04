@@ -169,6 +169,7 @@ func (mc *MockClient) RetrieveFromPeer(
 	peerID peer.ID,
 	proposal *retrievaltypes.DealProposal,
 	selector ipld.Node,
+	maxBlocks uint64,
 	eventsCallback datatransfer.Subscriber,
 	gracefulShutdownRequested <-chan struct{},
 ) (*types.RetrievalStats, error) {

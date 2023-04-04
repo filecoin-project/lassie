@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"sync/atomic"
 	"time"
@@ -229,7 +230,14 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	)
 
 	// run the retrieval
-	err = easyTraverse(ctx, cidlink.Link{Cid: br.request.Cid}, selector, storage.TraversalLinkSystem, storage.Preloader)
+	err = easyTraverse(
+		ctx,
+		cidlink.Link{Cid: br.request.Cid},
+		selector,
+		storage.TraversalLinkSystem,
+		storage.Preloader,
+		br.request.MaxBlocks,
+	)
 	storage.Stop()
 	cancel()
 
@@ -301,6 +309,7 @@ func easyTraverse(
 	traverseSelector datamodel.Node,
 	lsys *linking.LinkSystem,
 	preloader preload.Loader,
+	maxBlocks uint64,
 ) error {
 
 	protoChooser := dagpb.AddSupportToChooser(basicnode.Chooser)
@@ -322,6 +331,12 @@ func easyTraverse(
 			LinkTargetNodePrototypeChooser: protoChooser,
 			Preloader:                      preloader,
 		},
+	}
+	if maxBlocks > 0 {
+		progress.Budget = &traversal.Budget{
+			LinkBudget: int64(maxBlocks) - 1, // first block is already loaded
+			NodeBudget: math.MaxInt64,
+		}
 	}
 	progress.LastBlock.Link = root
 	compiledSelector, err := selector.ParseSelector(traverseSelector)
