@@ -18,6 +18,7 @@ type RetrievalClient interface {
 		peerID peer.ID,
 		proposal *retrievaltypes.DealProposal,
 		selector ipld.Node,
+		maxLinks uint64,
 		eventsCallback datatransfer.Subscriber,
 		gracefulShutdownRequested <-chan struct{},
 	) (*types.RetrievalStats, error)

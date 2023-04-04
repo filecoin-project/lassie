@@ -12,7 +12,6 @@ import (
 	lassie "github.com/filecoin-project/lassie/pkg/lassie"
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/storage"
-	"github.com/filecoin-project/lassie/pkg/storage/limitstore"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -173,21 +172,6 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		}()
 		var store types.ReadableWritableStorage = carStore
 
-		// extract block limit from query param as needed
-		var blockLimit uint64
-		if req.URL.Query().Has("blockLimit") {
-			if parsedBlockLimit, err := strconv.ParseUint(req.URL.Query().Get("blockLimit"), 10, 64); err == nil {
-				blockLimit = parsedBlockLimit
-			}
-		}
-		if cfg.MaxBlocksPerRequest > 0 || blockLimit > 0 {
-			// use the lowest non-zero value for block limit
-			if blockLimit == 0 || (cfg.MaxBlocksPerRequest > 0 && blockLimit > cfg.MaxBlocksPerRequest) {
-				blockLimit = cfg.MaxBlocksPerRequest
-			}
-			store = limitstore.NewLimitStore(carStore, blockLimit)
-		}
-
 		carWriter.OnPut(func(int) {
 			// called once we start writing blocks into the CAR (on the first Put())
 			res.Header().Set("Content-Disposition", "attachment; filename="+filename)
@@ -220,6 +204,22 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		request.PreloadLinkSystem.SetReadStorage(preloadStore)
 		request.PreloadLinkSystem.SetWriteStorage(preloadStore)
 		request.PreloadLinkSystem.TrustedStorage = true
+
+		// extract block limit from query param as needed
+		var blockLimit uint64
+		if req.URL.Query().Has("blockLimit") {
+			if parsedBlockLimit, err := strconv.ParseUint(req.URL.Query().Get("blockLimit"), 10, 64); err == nil {
+				blockLimit = parsedBlockLimit
+			}
+		}
+		if cfg.MaxBlocksPerRequest > 0 || blockLimit > 0 {
+			// use the lowest non-zero value for block limit
+			if blockLimit == 0 || (cfg.MaxBlocksPerRequest > 0 && blockLimit > cfg.MaxBlocksPerRequest) {
+				blockLimit = cfg.MaxBlocksPerRequest
+			}
+			// TODO: remove limit store store = limitstore.NewLimitStore(carStore, blockLimit)
+			request.MaxBlocks = blockLimit
+		}
 
 		log.Debugw("fetching CID", "retrievalId", retrievalId, "CID", rootCid.String(), "path", unixfsPath, "fullFetch", fullFetch)
 		stats, err := lassie.Fetch(req.Context(), request)

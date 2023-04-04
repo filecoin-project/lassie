@@ -678,6 +678,7 @@ func validateCarBody(t *testing.T, body []byte, root cid.Cid, wantCids []cid.Cid
 		}
 		gotCids = append(gotCids, blk.Cid())
 	}
+	t.Logf("gotCids: %v", len(gotCids))
 	for _, cw := range wantCids {
 		var found bool
 		for _, cg := range gotCids {

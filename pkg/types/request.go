@@ -51,6 +51,7 @@ type RetrievalRequest struct {
 	Selector          ipld.Node
 	Protocols         []multicodec.Code
 	PreloadLinkSystem ipld.LinkSystem
+	MaxBlocks         uint64
 }
 
 // NewRequestForPath creates a new RetrievalRequest from the provided parameters

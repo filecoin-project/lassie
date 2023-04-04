@@ -285,6 +285,7 @@ func runRetrievalCandidate(
 				timeout,
 				candidate,
 				req.GetSelector(),
+				req.MaxBlocks,
 				eventsCallback,
 			)
 
@@ -371,6 +372,7 @@ func retrievalPhase(
 	timeout time.Duration,
 	candidate types.RetrievalCandidate,
 	selector ipld.Node,
+	maxBlocks uint64,
 	eventsCallback datatransfer.Subscriber,
 ) (*types.RetrievalStats, error) {
 
@@ -445,6 +447,7 @@ func retrievalPhase(
 		candidate.MinerPeer.ID,
 		proposal,
 		selector,
+		uint64(maxBlocks),
 		eventsSubscriber,
 		gracefulShutdownChan,
 	)
