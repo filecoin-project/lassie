@@ -654,9 +654,9 @@ func TestMultipleRetrievals(t *testing.T) {
 				RetrievalID: retrievalID,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
 			}, cb).RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{
-				{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}},
-				{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}},
-				{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}},
+				types.NewRetrievalCandidate(peer.ID("foo"), cid.Undef, &metadata.GraphsyncFilecoinV1{}),
+				types.NewRetrievalCandidate(peer.ID("bar"), cid.Undef, &metadata.GraphsyncFilecoinV1{}),
+				types.NewRetrievalCandidate(peer.ID("baz"), cid.Undef, &metadata.GraphsyncFilecoinV1{}),
 			}))
 		},
 		func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
@@ -665,9 +665,9 @@ func TestMultipleRetrievals(t *testing.T) {
 				RetrievalID: retrievalID,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
 			}, cb).RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{
-				{MinerPeer: peer.AddrInfo{ID: peer.ID("bang")}},
-				{MinerPeer: peer.AddrInfo{ID: peer.ID("boom")}},
-				{MinerPeer: peer.AddrInfo{ID: peer.ID("bing")}},
+				types.NewRetrievalCandidate(peer.ID("bang"), cid.Undef, &metadata.GraphsyncFilecoinV1{}),
+				types.NewRetrievalCandidate(peer.ID("boom"), cid.Undef, &metadata.GraphsyncFilecoinV1{}),
+				types.NewRetrievalCandidate(peer.ID("bing"), cid.Undef, &metadata.GraphsyncFilecoinV1{}),
 			}))
 		}})
 	require.Len(t, results, 2)
@@ -706,7 +706,7 @@ func TestRetrievalSelector(t *testing.T) {
 		LinkSystem:  cidlink.DefaultLinkSystem(),
 		Selector:    selector,
 	}, nil)
-	stats, err := retrieval.RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}}))
+	stats, err := retrieval.RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{types.NewRetrievalCandidate(peer.ID("foo"), cid.Undef, &metadata.GraphsyncFilecoinV1{})}))
 	require.NoError(t, err)
 	require.NotNil(t, stats)
 	require.Equal(t, mockClient.GetRetrievalReturns()["foo"].ResultStats, stats)
