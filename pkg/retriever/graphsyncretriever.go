@@ -29,38 +29,6 @@ type CandidateErrorCallback func(types.RetrievalCandidate, error)
 
 type GetStorageProviderTimeout func(peer peer.ID) time.Duration
 
-type connectCandidate struct {
-	types.RetrievalCandidate
-	Duration time.Duration
-}
-
-// queryCompare compares two QueryResponses and returns true if the first is
-// preferable to the second. This is used for the PriorityWaitQueue that will
-// prioritise execution of retrievals if two queries are available to compare
-// at the same time.
-var candidateCompare prioritywaitqueue.ComparePriority[connectCandidate] = func(a, b connectCandidate) bool {
-	mdA, ok := a.Metadata.Get(multicodec.TransportGraphsyncFilecoinv1).(*metadata.GraphsyncFilecoinV1)
-	if !ok {
-		return false
-	}
-	mdB, ok := b.Metadata.Get(multicodec.TransportGraphsyncFilecoinv1).(*metadata.GraphsyncFilecoinV1)
-	if !ok {
-		return true
-	}
-
-	// prioritize verified deals over not verified deals
-	if mdA.VerifiedDeal != mdB.VerifiedDeal {
-		return mdA.VerifiedDeal
-	}
-
-	// prioritize fast retrievel over not fast retrieval
-	if mdA.FastRetrieval && !mdB.FastRetrieval {
-		return true
-	}
-
-	return a.Duration < b.Duration
-}
-
 type GraphSyncRetriever struct {
 	GetStorageProviderTimeout GetStorageProviderTimeout
 	Client                    RetrievalClient
@@ -80,6 +48,21 @@ func NewGraphsyncRetrieverWithClock(getStorageProviderTimeout GetStorageProvider
 	}
 }
 
+// metadataCompare compares two metadata.GraphsyncFilecoinV1s and returns true if the first is preferable to the second.
+func metadataCompare(a, b *metadata.GraphsyncFilecoinV1) bool {
+	// prioritize verified deals over not verified deals
+	if a.VerifiedDeal != b.VerifiedDeal {
+		return a.VerifiedDeal
+	}
+
+	// prioritize fast retrievel over not fast retrieval
+	if a.FastRetrieval && !b.FastRetrieval {
+		return true
+	}
+
+	return false
+}
+
 type retrievalResult struct {
 	PeerID     peer.ID
 	PhaseStart time.Time
@@ -91,9 +74,16 @@ type retrievalResult struct {
 // retrieval handles state on a per-retrieval (across multiple candidates) basis
 type graphsyncRetrieval struct {
 	*GraphSyncRetriever
-	ctx            context.Context
-	request        types.RetrievalRequest
-	eventsCallback func(types.RetrievalEvent)
+	ctx                 context.Context
+	request             types.RetrievalRequest
+	eventsCallback      func(types.RetrievalEvent)
+	candidateMetadata   map[peer.ID]*metadata.GraphsyncFilecoinV1
+	candidateMetdataMut *sync.RWMutex
+}
+
+type connectCandidate struct {
+	PeerID   peer.ID
+	Duration time.Duration
 }
 
 type graphsyncCandidateRetrieval struct {
@@ -120,11 +110,39 @@ func (cfg *GraphSyncRetriever) Retrieve(
 
 	// state local to this CID's retrieval
 	return &graphsyncRetrieval{
-		GraphSyncRetriever: cfg,
-		ctx:                ctx,
-		request:            retrievalRequest,
-		eventsCallback:     eventsCallback,
+		GraphSyncRetriever:  cfg,
+		ctx:                 ctx,
+		request:             retrievalRequest,
+		eventsCallback:      eventsCallback,
+		candidateMetadata:   make(map[peer.ID]*metadata.GraphsyncFilecoinV1),
+		candidateMetdataMut: &sync.RWMutex{},
 	}
+}
+
+// candidateCompare compares two connectCandidates and returns true if the first is
+// preferable to the second. This is used for the PriorityWaitQueue that will
+// prioritise execution of retrievals if two candidates are available to compare
+// at the same time.
+func (r *graphsyncRetrieval) candidateCompare(a, b connectCandidate) bool {
+	r.candidateMetdataMut.RLock()
+	mdA, ok := r.candidateMetadata[a.PeerID]
+	if !ok {
+		r.candidateMetdataMut.RUnlock()
+		return false
+	}
+
+	mdB, ok := r.candidateMetadata[b.PeerID]
+	if !ok {
+		r.candidateMetdataMut.RUnlock()
+		return true
+	}
+	r.candidateMetdataMut.RUnlock()
+
+	if metadataCompare(mdA, mdB) {
+		return true
+	}
+
+	return a.Duration < b.Duration
 }
 
 func (r *graphsyncRetrieval) RetrieveFromAsyncCandidates(asyncCandidates types.InboundAsyncCandidates) (*types.RetrievalStats, error) {
@@ -133,7 +151,7 @@ func (r *graphsyncRetrieval) RetrieveFromAsyncCandidates(asyncCandidates types.I
 	retrieval := &graphsyncCandidateRetrieval{
 		resultChan: make(chan retrievalResult),
 		finishChan: make(chan struct{}),
-		waitQueue:  prioritywaitqueue.New(candidateCompare),
+		waitQueue:  prioritywaitqueue.New(r.candidateCompare),
 	}
 
 	// start retrievals
@@ -148,12 +166,32 @@ func (r *graphsyncRetrieval) RetrieveFromAsyncCandidates(asyncCandidates types.I
 				return
 			}
 			for _, candidate := range candidates {
-				candidate := candidate
-				waitGroup.Add(1)
-				go func() {
-					defer waitGroup.Done()
-					runRetrievalCandidate(ctx, r.GraphSyncRetriever, r.request, r.Client, r.request.LinkSystem, retrieval, phaseStartTime, candidate)
-				}()
+				// Check if we already started a retrieval for this candidate
+				r.candidateMetdataMut.RLock()
+				currMetadata, seenCandidate := r.candidateMetadata[candidate.MinerPeer.ID]
+				r.candidateMetdataMut.RUnlock()
+				if seenCandidate {
+					// Don't start a new retrieval, but update the metadata if it's more favorable
+					newMetadata := candidate.Metadata.Get(multicodec.TransportGraphsyncFilecoinv1).(*metadata.GraphsyncFilecoinV1)
+					if metadataCompare(newMetadata, currMetadata) {
+						r.candidateMetdataMut.Lock()
+						r.candidateMetadata[candidate.MinerPeer.ID] = newMetadata
+						r.candidateMetdataMut.Unlock()
+					}
+				} else {
+					// Track the candidate metadata
+					r.candidateMetdataMut.Lock()
+					r.candidateMetadata[candidate.MinerPeer.ID] = candidate.Metadata.Get(multicodec.TransportGraphsyncFilecoinv1).(*metadata.GraphsyncFilecoinV1)
+					r.candidateMetdataMut.Unlock()
+
+					// Start the retrieval with the candidate
+					candidate := candidate
+					waitGroup.Add(1)
+					go func() {
+						defer waitGroup.Done()
+						runRetrievalCandidate(ctx, r.GraphSyncRetriever, r.request, r.Client, r.request.LinkSystem, retrieval, phaseStartTime, candidate)
+					}()
+				}
 			}
 		}
 	}()
@@ -250,8 +288,8 @@ func runRetrievalCandidate(
 		retrieval.sendEvent(events.Connected(cfg.Clock.Now(), req.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate))
 		// if query is successful, then wait for priority and execute retrieval
 		done = retrieval.waitQueue.Wait(connectCandidate{
-			Duration:           cfg.Clock.Now().Sub(phaseStartTime),
-			RetrievalCandidate: candidate,
+			PeerID:   candidate.MinerPeer.ID,
+			Duration: cfg.Clock.Now().Sub(phaseStartTime),
 		})
 
 		if retrieval.canSendResult() { // move on to retrieval phase
