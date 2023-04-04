@@ -13,7 +13,6 @@ import (
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/internal/testutil"
 	"github.com/filecoin-project/lassie/pkg/types"
-	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/codec/dagjson"
 	"github.com/ipld/go-ipld-prime/datamodel"
@@ -215,14 +214,6 @@ func verifyIntNode(t *testing.T, node datamodel.Node, key string, expected int64
 	ii, err := subNode.AsInt()
 	require.NoError(t, err)
 	require.Equal(t, expected, ii)
-}
-
-func mustCid(cstr string) cid.Cid {
-	c, err := cid.Decode(cstr)
-	if err != nil {
-		panic(err)
-	}
-	return c
 }
 
 var result bool
