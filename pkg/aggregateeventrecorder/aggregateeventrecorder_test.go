@@ -69,7 +69,9 @@ func TestAggregateEventRecorder(t *testing.T) {
 				clock.Add(20 * time.Millisecond)
 				subscriber(events.FirstByte(clock.Now(), id, bitswapCandidateStartTime, bitswapPeer))
 				subscriber(events.Failed(clock.Now(), id, graphsyncCandidateStartTime, types.RetrievalPhase, graphsyncCandidates[0], "failed to dial"))
-				clock.Add(50 * time.Millisecond)
+				clock.Add(20 * time.Millisecond)
+				subscriber(events.FirstByte(clock.Now(), id, graphsyncCandidateStartTime, graphsyncCandidates[1]))
+				clock.Add(30 * time.Millisecond)
 				subscriber(events.Success(clock.Now(), id, bitswapCandidateStartTime, bitswapPeer, uint64(10000), 3030, 4*time.Second, big.Zero(), 55))
 				subscriber(events.Finished(clock.Now(), id, fetchPhaseStartTime, bitswapPeer))
 
@@ -108,10 +110,13 @@ func TestAggregateEventRecorder(t *testing.T) {
 				verifyStringNode(t, sp1Attempt, "error", "failed to dial")
 				sp2Attempt, err := retrievalAttempts.LookupByString(graphsyncCandidates[1].MinerPeer.ID.String())
 				require.NoError(t, err)
-				require.Equal(t, int64(0), sp2Attempt.Length())
+				require.Equal(t, int64(1), sp2Attempt.Length())
+				verifyStringNode(t, sp2Attempt, "timeToFirstByte", "60ms")
 				bitswapAttempt, err := retrievalAttempts.LookupByString(types.BitswapIndentifier)
 				require.NoError(t, err)
-				require.Equal(t, int64(0), bitswapAttempt.Length())
+				require.Equal(t, int64(1), bitswapAttempt.Length())
+				verifyStringNode(t, bitswapAttempt, "timeToFirstByte", "40ms")
+
 			},
 		},
 		{

@@ -34,7 +34,8 @@ type tempData struct {
 }
 
 type RetrievalAttempt struct {
-	Error string `json:"error,omitempty"`
+	Error           string `json:"error,omitempty"`
+	TimeToFirstByte string `json:"timeToFirstByte,omitempty"`
 }
 
 type AggregateEvent struct {
@@ -52,7 +53,7 @@ type AggregateEvent struct {
 	IndexerCandidatesFiltered int                          `json:"indexerCandidatesFiltered"`          // The number of candidates that made it through the filtering stage
 	ProtocolsAllowed          []string                     `json:"protocolsAllowed,omitempty"`         // The available protocols that could be used for this retrieval
 	ProtocolsAttempted        []string                     `json:"protocolsAttempted,omitempty"`       // The protocols that were used to attempt this retrieval
-	RetrievalAttempts         map[string]*RetrievalAttempt `json:"retrievalAttempts,omitempty"`        // All of the retrieval attempts
+	RetrievalAttempts         map[string]*RetrievalAttempt `json:"retrievalAttempts,omitempty"`        // All of the retrieval attempts, indexed by their SP ID
 }
 
 type batchedEvents struct {
@@ -169,8 +170,13 @@ func (a *aggregateEventRecorder) ingestEvents() {
 			case types.FirstByteCode:
 				// Calculate time to first byte
 				tempData := eventTempMap[id]
-				tempData.firstByteTime = event.Time()
-				tempData.ttfb = event.Time().Sub(tempData.startTime).String()
+				spid := types.Identifier(event)
+				timeToFirstByte := event.Time().Sub(tempData.startTime).String()
+				tempData.retrievalAttempts[spid].TimeToFirstByte = timeToFirstByte
+				if tempData.ttfb == "" {
+					tempData.firstByteTime = event.Time()
+					tempData.ttfb = timeToFirstByte
+				}
 			case types.FailedCode:
 				tempData := eventTempMap[id]
 				spid := types.Identifier(event)
