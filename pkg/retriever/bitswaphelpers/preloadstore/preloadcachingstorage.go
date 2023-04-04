@@ -1,4 +1,4 @@
-package bitswaphelpers
+package preloadstore
 
 import (
 	"bytes"
@@ -10,6 +10,7 @@ import (
 	"math"
 	"sync"
 
+	logging "github.com/ipfs/go-log/v2"
 	carstorage "github.com/ipld/go-car/v2/storage"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/linking"
@@ -17,6 +18,8 @@ import (
 	"github.com/ipld/go-ipld-prime/linking/preload"
 	"go.uber.org/multierr"
 )
+
+var log = logging.Logger("lassie/preloadstore")
 
 type preloadingLink struct {
 	refCnt     uint64
@@ -34,6 +37,7 @@ type PreloadCachingStorage struct {
 	parentLinkSystem linking.LinkSystem
 	fetcher          linking.BlockReadOpener
 	concurrency      int
+	maxBlocks        uint64
 
 	cacheLinkSystem linking.LinkSystem
 	cancel          context.CancelFunc
@@ -119,6 +123,16 @@ func (cs *PreloadCachingStorage) GetStats() PreloadStats {
 	}
 }
 
+type Option func(*PreloadCachingStorage)
+
+// WithMaxBlocks sets the a prelodaer block load budget that will operate
+// separately from the traversal link budget.
+func WithMaxBlocks(maxBlocks uint64) Option {
+	return func(cs *PreloadCachingStorage) {
+		cs.maxBlocks = maxBlocks
+	}
+}
+
 // NewPreloadCachingStorage creates a new PreloadCachingStorage.
 //
 // The parentLinkSystem is used directly by the traversal for both reads
@@ -142,6 +156,7 @@ func NewPreloadCachingStorage(
 	cacheLinkSystem linking.LinkSystem,
 	fetcher linking.BlockReadOpener,
 	concurrency int,
+	opts ...Option,
 ) (*PreloadCachingStorage, error) {
 	cs := &PreloadCachingStorage{
 		fetcher:          fetcher,
@@ -151,7 +166,13 @@ func NewPreloadCachingStorage(
 		notFound:         make(map[string]struct{}),
 		preloads:         make(map[ipld.Link]*preloadingLink),
 		requests:         make(chan request),
+		maxBlocks:        math.MaxUint64,
 	}
+
+	for _, opt := range opts {
+		opt(cs)
+	}
+
 	// LinkSystem for traversal is a copy of the parent but with the read
 	// operation replaced with our multi-functional loader
 	tls := parentLinkSystem
@@ -173,6 +194,11 @@ func NewPreloadCachingStorage(
 func (cs *PreloadCachingStorage) Preloader(preloadCtx preload.PreloadContext, link preload.Link) {
 	cs.preloadsLk.Lock()
 	defer cs.preloadsLk.Unlock()
+
+	// check if we've maxed out our link budget
+	if cs.maxBlocks == 0 {
+		return
+	}
 
 	// links coming in here aren't necessarily deduplicated and may be ones we've
 	// already attempted to load or are queued for loading, so we have to check
@@ -215,6 +241,7 @@ func (cs *PreloadCachingStorage) Preloader(preloadCtx preload.PreloadContext, li
 		loaded: make(chan struct{}),
 		refCnt: 1,
 	}
+	cs.maxBlocks--
 	req := request{
 		linkCtx: linkCtx,
 		link:    link.Link,

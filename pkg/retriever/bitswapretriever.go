@@ -15,6 +15,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/metrics"
 	"github.com/filecoin-project/lassie/pkg/retriever/bitswaphelpers"
+	"github.com/filecoin-project/lassie/pkg/retriever/bitswaphelpers/preloadstore"
 	"github.com/filecoin-project/lassie/pkg/storage"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-blockservice"
@@ -209,11 +210,17 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		cacheLinkSys.TrustedStorage = true
 		defer cacheStore.Close()
 	}
-	storage, err := bitswaphelpers.NewPreloadCachingStorage(
+	opts := []preloadstore.Option{}
+	if br.request.MaxBlocks > 0 {
+		opts = append(opts, preloadstore.WithMaxBlocks(br.request.MaxBlocks-1))
+	}
+
+	storage, err := preloadstore.NewPreloadCachingStorage(
 		br.request.LinkSystem,
 		cacheLinkSys,
 		loader,
 		concurrency,
+		opts...,
 	)
 	if err == nil {
 		err = storage.Start(ctx)
