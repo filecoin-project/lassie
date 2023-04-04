@@ -19,40 +19,40 @@ const httpTimeout = 5 * time.Second
 const parallelPosters = 5
 
 type tempData struct {
-	startTime            time.Time
-	candidatesFound      int
-	candidatesFoundTime  time.Time
-	candidatesFiltered   int
-	firstByteTime        time.Time
-	ttfb                 int64
-	success              bool
-	spId                 string
-	bandwidth            uint64
-	attemptedProtocolSet map[string]struct{}
-	retrievalAttemptMap  map[string]RetrievalAttempt
+	startTime                time.Time
+	candidatesFound          int
+	timeToFirstIndexerResult string
+	candidatesFiltered       int
+	firstByteTime            time.Time
+	ttfb                     string
+	success                  bool
+	spId                     string
+	bandwidth                uint64
+	allowedProtocols         []string
+	attemptedProtocolSet     map[string]struct{}
+	retrievalAttempts        map[string]*RetrievalAttempt
 }
 
 type RetrievalAttempt struct {
-	StorageProviderID string `json:"storageProviderId,omitempty"`
-	Error             string `json:"error"`
+	Error string `json:"error,omitempty"`
 }
 
 type AggregateEvent struct {
 	InstanceID        string    `json:"instanceId"`                  // The ID of the Lassie instance generating the event
 	RetrievalID       string    `json:"retrievalId"`                 // The unique ID of the retrieval
 	StorageProviderID string    `json:"storageProviderId,omitempty"` // The ID of the storage provider that served the retrieval content
-	TimeToFirstByte   int64     `json:"timeToFirstByte,omitempty"`   // The time it took to receive the first byte in milliseconds
+	TimeToFirstByte   string    `json:"timeToFirstByte,omitempty"`   // The time it took to receive the first byte in milliseconds
 	Bandwidth         uint64    `json:"bandwidth,omitempty"`         // The bandwidth of the retrieval in bytes per second
 	Success           bool      `json:"success"`                     // Wether or not the retreival ended with a success event
 	StartTime         time.Time `json:"startTime"`                   // The time the retrieval started
 	EndTime           time.Time `json:"endTime"`                     // The time the retrieval ended
 
-	TimeToFirstIndexerResult  time.Time          `json:"timeToFirstIndexerResult,omitempty"` // Time we received our first "CandidateFound" event
-	IndexerCandidatesReceived int                `json:"indexerCandidatesReceived"`          // The number of candidates received from the indexer
-	IndexerCandidatesFiltered int                `json:"indexerCandidatesFiltered"`          // The number of candidates that made it through the filtering stage
-	ProtocolsAllowed          []string           `json:"protocolsAllowed,omitempty"`         // The available protocols that could be used for this retrieval
-	ProtocolsAttempted        []string           `json:"protocolsAttempted,omitempty"`       // The protocols that were used to attempt this retrieval
-	RetrievalAttempts         []RetrievalAttempt `json:"retrievalAttempts,omitempty"`        // All of the retrieval attempts
+	TimeToFirstIndexerResult  string                       `json:"timeToFirstIndexerResult,omitempty"` // time it took to receive our first "CandidateFound" event
+	IndexerCandidatesReceived int                          `json:"indexerCandidatesReceived"`          // The number of candidates received from the indexer
+	IndexerCandidatesFiltered int                          `json:"indexerCandidatesFiltered"`          // The number of candidates that made it through the filtering stage
+	ProtocolsAllowed          []string                     `json:"protocolsAllowed,omitempty"`         // The available protocols that could be used for this retrieval
+	ProtocolsAttempted        []string                     `json:"protocolsAttempted,omitempty"`       // The protocols that were used to attempt this retrieval
+	RetrievalAttempts         map[string]*RetrievalAttempt `json:"retrievalAttempts,omitempty"`        // All of the retrieval attempts
 }
 
 type batchedEvents struct {
@@ -103,7 +103,7 @@ func (a *aggregateEventRecorder) RetrievalEventSubscriber() types.RetrievalEvent
 func (a *aggregateEventRecorder) ingestEvents() {
 	var batchedData []AggregateEvent
 	var emptyGaurdChan chan []AggregateEvent = nil
-	eventTempMap := make(map[types.RetrievalID]tempData)
+	eventTempMap := make(map[types.RetrievalID]*tempData)
 
 	for {
 		select {
@@ -119,78 +119,70 @@ func (a *aggregateEventRecorder) ingestEvents() {
 				// What we want to do depends which phase the Started event was emitted from
 				switch event.Phase() {
 				case types.FetchPhase:
+					allowedProtocols := make([]string, 0, len(event.Protocols()))
+					for _, codec := range event.Protocols() {
+						allowedProtocols = append(allowedProtocols, codec.String())
+					}
 					// Initialize the temp data for tracking retrieval stats
-					eventTempMap[id] = tempData{
-						startTime:            event.Time(),
-						candidatesFound:      0,
-						candidatesFiltered:   0,
-						firstByteTime:        time.Time{},
-						spId:                 "",
-						success:              false,
-						bandwidth:            0,
-						ttfb:                 0,
-						attemptedProtocolSet: make(map[string]struct{}),
-						retrievalAttemptMap:  make(map[string]RetrievalAttempt),
+					eventTempMap[id] = &tempData{
+						startTime:                event.Time(),
+						candidatesFound:          0,
+						candidatesFiltered:       0,
+						firstByteTime:            time.Time{},
+						spId:                     "",
+						success:                  false,
+						bandwidth:                0,
+						ttfb:                     "",
+						timeToFirstIndexerResult: "",
+						allowedProtocols:         allowedProtocols,
+						attemptedProtocolSet:     make(map[string]struct{}),
+						retrievalAttempts:        make(map[string]*RetrievalAttempt),
 					}
 
 				case types.RetrievalPhase:
 					// Create a retrieval attempt
 					var attempt RetrievalAttempt
-					spid := event.(events.RetrievalEventStarted).StorageProviderId().String()
-					attempt.StorageProviderID = spid
+					spid := types.Identifier(event)
 
 					// Save the retrieval attempt
 					tempData := eventTempMap[id]
-					retrievalAttemptMap := tempData.retrievalAttemptMap
-					retrievalAttemptMap[spid] = attempt
-					tempData.retrievalAttemptMap = retrievalAttemptMap
+					tempData.retrievalAttempts[spid] = &attempt
 
 					// Add any event protocols to the set of attempted protocols
 					for _, protocol := range event.(events.RetrievalEventStarted).Protocols() {
 						tempData.attemptedProtocolSet[protocol.String()] = struct{}{}
 					}
 
-					eventTempMap[id] = tempData
 				}
 
 			case types.CandidatesFoundCode:
 				tempData := eventTempMap[id]
-				tempData.candidatesFoundTime = event.Time()
-				tempData.candidatesFound = len(event.(events.RetrievalEventCandidatesFound).Candidates())
-				eventTempMap[id] = tempData
+				if tempData.timeToFirstIndexerResult == "" {
+					tempData.timeToFirstIndexerResult = event.Time().Sub(tempData.startTime).String()
+				}
+				tempData.candidatesFound += len(event.(events.RetrievalEventCandidatesFound).Candidates())
 
 			case types.CandidatesFilteredCode:
 				tempData := eventTempMap[id]
-				tempData.candidatesFiltered = len(event.(events.RetrievalEventCandidatesFiltered).Candidates())
-				eventTempMap[id] = tempData
+				tempData.candidatesFiltered += len(event.(events.RetrievalEventCandidatesFiltered).Candidates())
 
 			case types.FirstByteCode:
 				// Calculate time to first byte
 				tempData := eventTempMap[id]
 				tempData.firstByteTime = event.Time()
-				tempData.ttfb = event.Time().Sub(tempData.startTime).Milliseconds()
-				eventTempMap[id] = tempData
-
+				tempData.ttfb = event.Time().Sub(tempData.startTime).String()
 			case types.FailedCode:
 				tempData := eventTempMap[id]
-				spid := event.(events.RetrievalEventFailed).StorageProviderId().String()
+				spid := types.Identifier(event)
 				errorMsg := event.(events.RetrievalEventFailed).ErrorMessage()
 
 				// Add an error message to the retrieval attempt
-				retrievalAttemptMap := tempData.retrievalAttemptMap
-				attempt := retrievalAttemptMap[spid]
-				attempt.Error = errorMsg
-
-				// Save the attempt back to the map
-				retrievalAttemptMap[spid] = attempt
-				tempData.retrievalAttemptMap = retrievalAttemptMap
-
-				eventTempMap[id] = tempData
+				tempData.retrievalAttempts[spid].Error = errorMsg
 
 			case types.SuccessCode:
 				tempData := eventTempMap[id]
 				tempData.success = true
-				tempData.spId = event.(events.RetrievalEventSuccess).StorageProviderId().String()
+				tempData.spId = types.Identifier(event)
 
 				// Calculate bandwidth
 				receivedSize := event.(events.RetrievalEventSuccess).ReceivedSize()
@@ -198,9 +190,6 @@ func (a *aggregateEventRecorder) ingestEvents() {
 				if duration != 0 {
 					tempData.bandwidth = uint64(float64(receivedSize) / duration)
 				}
-
-				eventTempMap[id] = tempData
-
 			case types.FinishedCode:
 				tempData, ok := eventTempMap[id]
 				if !ok {
@@ -214,12 +203,6 @@ func (a *aggregateEventRecorder) ingestEvents() {
 					protocolsAttempted = append(protocolsAttempted, protocol)
 				}
 
-				// Create a slice of retrieval attempts
-				var retrievalAttempts []RetrievalAttempt
-				for _, attempt := range tempData.retrievalAttemptMap {
-					retrievalAttempts = append(retrievalAttempts, attempt)
-				}
-
 				// Create the aggregate event
 				aggregatedEvent := AggregateEvent{
 					InstanceID:        a.instanceID,
@@ -231,12 +214,12 @@ func (a *aggregateEventRecorder) ingestEvents() {
 					StartTime:         tempData.startTime,
 					EndTime:           event.Time(),
 
-					TimeToFirstIndexerResult:  tempData.candidatesFoundTime,
+					TimeToFirstIndexerResult:  tempData.timeToFirstIndexerResult,
 					IndexerCandidatesReceived: tempData.candidatesFound,
 					IndexerCandidatesFiltered: tempData.candidatesFiltered,
-					ProtocolsAllowed:          make([]string, 0),
+					ProtocolsAllowed:          tempData.allowedProtocols,
 					ProtocolsAttempted:        protocolsAttempted,
-					RetrievalAttempts:         retrievalAttempts,
+					RetrievalAttempts:         tempData.retrievalAttempts,
 				}
 
 				// Delete the key when we're done with the data

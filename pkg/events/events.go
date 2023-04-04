@@ -97,7 +97,6 @@ type RetrievalEventConnected struct {
 func (r spBaseEvent) StorageProviderId() peer.ID { return r.storageProviderId }
 
 func Connected(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.Time, phase types.Phase, candidate types.RetrievalCandidate) RetrievalEventConnected {
-	candidate.Metadata.Protocols()
 	return RetrievalEventConnected{spBaseEvent{baseEvent{at, retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}, phase}
 }
 
@@ -116,8 +115,11 @@ type RetrievalEventStarted struct {
 	phase types.Phase
 }
 
-func Started(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.Time, phase types.Phase, candidate types.RetrievalCandidate) RetrievalEventStarted {
-	return RetrievalEventStarted{spBaseEvent{baseEvent{at, retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}, phase}
+func Started(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.Time, phase types.Phase, candidate types.RetrievalCandidate, protocols ...multicodec.Code) RetrievalEventStarted {
+	if len(protocols) == 0 {
+		protocols = candidate.Metadata.Protocols()
+	}
+	return RetrievalEventStarted{spBaseEvent{baseEvent{at, retrievalId, phaseStartTime, candidate.RootCid, protocols}, candidate.MinerPeer.ID}, phase}
 }
 
 // RetrievalEventFirstByte describes when the first byte of data was received during the RetrievalPhase

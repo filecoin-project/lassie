@@ -88,12 +88,20 @@ func GenerateRetrievalRequests(t *testing.T, n int) []types.RetrievalRequest {
 }
 
 // GenerateRetrievalCandidates produces n retrieval candidates
-func GenerateRetrievalCandidates(t *testing.T, n int) []types.RetrievalCandidate {
-	candidates := make([]types.RetrievalCandidate, 0, n)
+func GenerateRetrievalCandidates(t *testing.T, n int, protocols ...metadata.Protocol) []types.RetrievalCandidate {
 	c := GenerateCid()
+	return GenerateRetrievalCandidatesForCID(t, n, c, protocols...)
+}
+
+// GenerateRetrievalCandidates produces n retrieval candidates
+func GenerateRetrievalCandidatesForCID(t *testing.T, n int, c cid.Cid, protocols ...metadata.Protocol) []types.RetrievalCandidate {
+	candidates := make([]types.RetrievalCandidate, 0, n)
 	peers := GeneratePeers(t, n)
+	if len(protocols) == 0 {
+		protocols = []metadata.Protocol{&metadata.Bitswap{}}
+	}
 	for i := 0; i < n; i++ {
-		candidates = append(candidates, types.NewRetrievalCandidate(peers[i], c, &metadata.Bitswap{}))
+		candidates = append(candidates, types.NewRetrievalCandidate(peers[i], c, protocols...))
 	}
 	return candidates
 }
