@@ -12,6 +12,7 @@ import (
 	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/events"
+	"github.com/filecoin-project/lassie/pkg/retriever/prioritywaitqueue"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/codec/dagjson"
@@ -19,7 +20,6 @@ import (
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
-	"github.com/rvagg/go-prioritywaitqueue"
 	"go.uber.org/multierr"
 )
 
