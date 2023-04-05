@@ -49,7 +49,7 @@ func NewGraphsyncRetrieverWithClock(getStorageProviderTimeout GetStorageProvider
 }
 
 // metadataCompare compares two metadata.GraphsyncFilecoinV1s and returns true if the first is preferable to the second.
-func metadataCompare(a, b *metadata.GraphsyncFilecoinV1) bool {
+func metadataCompare(a, b metadata.GraphsyncFilecoinV1) bool {
 	// prioritize verified deals over not verified deals
 	if a.VerifiedDeal != b.VerifiedDeal {
 		return a.VerifiedDeal
@@ -77,7 +77,7 @@ type graphsyncRetrieval struct {
 	ctx                context.Context
 	request            types.RetrievalRequest
 	eventsCallback     func(types.RetrievalEvent)
-	candidateMetadata  map[peer.ID]*metadata.GraphsyncFilecoinV1
+	candidateMetadata  map[peer.ID]metadata.GraphsyncFilecoinV1
 	candidateMetdataLk sync.RWMutex
 }
 
@@ -114,7 +114,7 @@ func (cfg *GraphSyncRetriever) Retrieve(
 		ctx:                ctx,
 		request:            retrievalRequest,
 		eventsCallback:     eventsCallback,
-		candidateMetadata:  make(map[peer.ID]*metadata.GraphsyncFilecoinV1),
+		candidateMetadata:  make(map[peer.ID]metadata.GraphsyncFilecoinV1),
 	}
 }
 
@@ -169,12 +169,24 @@ func (r *graphsyncRetrieval) RetrieveFromAsyncCandidates(asyncCandidates types.I
 				currMetadata, seenCandidate := r.candidateMetadata[candidate.MinerPeer.ID]
 				r.candidateMetdataLk.RUnlock()
 
-				// Don't start a new retrieval if we've seen this candidate before, but update the metadata if it's more favorable
+				// Grab the current candidate's metadata, adding the piece cid to the metadata if the type assertion failed
+				candidateMetadata, ok := candidate.Metadata.Get(multicodec.TransportGraphsyncFilecoinv1).(*metadata.GraphsyncFilecoinV1)
+				if !ok {
+					candidateMetadata = &metadata.GraphsyncFilecoinV1{PieceCID: r.request.Cid}
+				}
+
+				// Don't start a new retrieval if we've seen this candidate before,
+				// but update the metadata if it's more favorable
 				if seenCandidate {
-					newMetadata := candidate.Metadata.Get(multicodec.TransportGraphsyncFilecoinv1).(*metadata.GraphsyncFilecoinV1)
-					if metadataCompare(newMetadata, currMetadata) {
+					// We know the metadata is not as favorable if the type assertion failed
+					// since the metadata will be the zero value of graphsync metadata
+					if !ok {
+						continue
+					}
+
+					if metadataCompare(*candidateMetadata, currMetadata) {
 						r.candidateMetdataLk.Lock()
-						r.candidateMetadata[candidate.MinerPeer.ID] = newMetadata
+						r.candidateMetadata[candidate.MinerPeer.ID] = *candidateMetadata
 						r.candidateMetdataLk.Unlock()
 					}
 					continue
@@ -182,7 +194,7 @@ func (r *graphsyncRetrieval) RetrieveFromAsyncCandidates(asyncCandidates types.I
 
 				// Track the candidate metadata
 				r.candidateMetdataLk.Lock()
-				r.candidateMetadata[candidate.MinerPeer.ID] = candidate.Metadata.Get(multicodec.TransportGraphsyncFilecoinv1).(*metadata.GraphsyncFilecoinV1)
+				r.candidateMetadata[candidate.MinerPeer.ID] = *candidateMetadata
 				r.candidateMetdataLk.Unlock()
 
 				// Start the retrieval with the candidate
