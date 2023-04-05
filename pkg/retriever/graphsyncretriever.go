@@ -169,28 +169,30 @@ func (r *graphsyncRetrieval) RetrieveFromAsyncCandidates(asyncCandidates types.I
 				r.candidateMetdataLk.RLock()
 				currMetadata, seenCandidate := r.candidateMetadata[candidate.MinerPeer.ID]
 				r.candidateMetdataLk.RUnlock()
+
+				// Don't start a new retrieval if we've seen this candidate before, but update the metadata if it's more favorable
 				if seenCandidate {
-					// Don't start a new retrieval, but update the metadata if it's more favorable
 					newMetadata := candidate.Metadata.Get(multicodec.TransportGraphsyncFilecoinv1).(*metadata.GraphsyncFilecoinV1)
 					if metadataCompare(newMetadata, currMetadata) {
 						r.candidateMetdataLk.Lock()
 						r.candidateMetadata[candidate.MinerPeer.ID] = newMetadata
 						r.candidateMetdataLk.Unlock()
 					}
-				} else {
-					// Track the candidate metadata
-					r.candidateMetdataLk.Lock()
-					r.candidateMetadata[candidate.MinerPeer.ID] = candidate.Metadata.Get(multicodec.TransportGraphsyncFilecoinv1).(*metadata.GraphsyncFilecoinV1)
-					r.candidateMetdataLk.Unlock()
-
-					// Start the retrieval with the candidate
-					candidate := candidate
-					waitGroup.Add(1)
-					go func() {
-						defer waitGroup.Done()
-						runRetrievalCandidate(ctx, r.GraphSyncRetriever, r.request, r.Client, r.request.LinkSystem, retrieval, phaseStartTime, candidate)
-					}()
+					continue
 				}
+
+				// Track the candidate metadata
+				r.candidateMetdataLk.Lock()
+				r.candidateMetadata[candidate.MinerPeer.ID] = candidate.Metadata.Get(multicodec.TransportGraphsyncFilecoinv1).(*metadata.GraphsyncFilecoinV1)
+				r.candidateMetdataLk.Unlock()
+
+				// Start the retrieval with the candidate
+				candidate := candidate
+				waitGroup.Add(1)
+				go func() {
+					defer waitGroup.Done()
+					runRetrievalCandidate(ctx, r.GraphSyncRetriever, r.request, r.Client, r.request.LinkSystem, retrieval, phaseStartTime, candidate)
+				}()
 			}
 		}
 	}()
