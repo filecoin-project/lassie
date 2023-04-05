@@ -124,18 +124,17 @@ func (cfg *GraphSyncRetriever) Retrieve(
 // at the same time.
 func (r *graphsyncRetrieval) candidateCompare(a, b connectCandidate) bool {
 	r.candidateMetdataLk.RLock()
+	defer r.candidateMetdataLk.RUnlock()
+
 	mdA, ok := r.candidateMetadata[a.PeerID]
 	if !ok {
-		r.candidateMetdataLk.RUnlock()
 		return false
 	}
 
 	mdB, ok := r.candidateMetadata[b.PeerID]
 	if !ok {
-		r.candidateMetdataLk.RUnlock()
 		return true
 	}
-	r.candidateMetdataLk.RUnlock()
 
 	if metadataCompare(mdA, mdB) {
 		return true
