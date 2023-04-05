@@ -3,6 +3,7 @@ package testutil
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sync"
 	"testing"
 
@@ -108,8 +109,11 @@ func VerifyCollectedEvent(t *testing.T, actual types.RetrievalEvent, expected ty
 				for _, actualCandidate := range ac.Candidates() {
 					if expectedCandidate.MinerPeer.ID == actualCandidate.MinerPeer.ID &&
 						expectedCandidate.RootCid == actualCandidate.RootCid {
-						found = true
-						break
+						// only compare metadata if present on the expected candidate
+						if (expectedCandidate.Metadata.Len() == 0) || reflect.DeepEqual(expectedCandidate.Metadata, actualCandidate.Metadata) {
+							found = true
+							break
+						}
 					}
 				}
 				if !found {
