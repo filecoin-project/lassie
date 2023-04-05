@@ -74,11 +74,11 @@ type retrievalResult struct {
 // retrieval handles state on a per-retrieval (across multiple candidates) basis
 type graphsyncRetrieval struct {
 	*GraphSyncRetriever
-	ctx                 context.Context
-	request             types.RetrievalRequest
-	eventsCallback      func(types.RetrievalEvent)
-	candidateMetadata   map[peer.ID]*metadata.GraphsyncFilecoinV1
-	candidateMetdataMut *sync.RWMutex
+	ctx                context.Context
+	request            types.RetrievalRequest
+	eventsCallback     func(types.RetrievalEvent)
+	candidateMetadata  map[peer.ID]*metadata.GraphsyncFilecoinV1
+	candidateMetdataLk sync.RWMutex
 }
 
 type connectCandidate struct {
@@ -110,12 +110,11 @@ func (cfg *GraphSyncRetriever) Retrieve(
 
 	// state local to this CID's retrieval
 	return &graphsyncRetrieval{
-		GraphSyncRetriever:  cfg,
-		ctx:                 ctx,
-		request:             retrievalRequest,
-		eventsCallback:      eventsCallback,
-		candidateMetadata:   make(map[peer.ID]*metadata.GraphsyncFilecoinV1),
-		candidateMetdataMut: &sync.RWMutex{},
+		GraphSyncRetriever: cfg,
+		ctx:                ctx,
+		request:            retrievalRequest,
+		eventsCallback:     eventsCallback,
+		candidateMetadata:  make(map[peer.ID]*metadata.GraphsyncFilecoinV1),
 	}
 }
 
@@ -124,19 +123,19 @@ func (cfg *GraphSyncRetriever) Retrieve(
 // prioritise execution of retrievals if two candidates are available to compare
 // at the same time.
 func (r *graphsyncRetrieval) candidateCompare(a, b connectCandidate) bool {
-	r.candidateMetdataMut.RLock()
+	r.candidateMetdataLk.RLock()
 	mdA, ok := r.candidateMetadata[a.PeerID]
 	if !ok {
-		r.candidateMetdataMut.RUnlock()
+		r.candidateMetdataLk.RUnlock()
 		return false
 	}
 
 	mdB, ok := r.candidateMetadata[b.PeerID]
 	if !ok {
-		r.candidateMetdataMut.RUnlock()
+		r.candidateMetdataLk.RUnlock()
 		return true
 	}
-	r.candidateMetdataMut.RUnlock()
+	r.candidateMetdataLk.RUnlock()
 
 	if metadataCompare(mdA, mdB) {
 		return true
@@ -167,22 +166,22 @@ func (r *graphsyncRetrieval) RetrieveFromAsyncCandidates(asyncCandidates types.I
 			}
 			for _, candidate := range candidates {
 				// Check if we already started a retrieval for this candidate
-				r.candidateMetdataMut.RLock()
+				r.candidateMetdataLk.RLock()
 				currMetadata, seenCandidate := r.candidateMetadata[candidate.MinerPeer.ID]
-				r.candidateMetdataMut.RUnlock()
+				r.candidateMetdataLk.RUnlock()
 				if seenCandidate {
 					// Don't start a new retrieval, but update the metadata if it's more favorable
 					newMetadata := candidate.Metadata.Get(multicodec.TransportGraphsyncFilecoinv1).(*metadata.GraphsyncFilecoinV1)
 					if metadataCompare(newMetadata, currMetadata) {
-						r.candidateMetdataMut.Lock()
+						r.candidateMetdataLk.Lock()
 						r.candidateMetadata[candidate.MinerPeer.ID] = newMetadata
-						r.candidateMetdataMut.Unlock()
+						r.candidateMetdataLk.Unlock()
 					}
 				} else {
 					// Track the candidate metadata
-					r.candidateMetdataMut.Lock()
+					r.candidateMetdataLk.Lock()
 					r.candidateMetadata[candidate.MinerPeer.ID] = candidate.Metadata.Get(multicodec.TransportGraphsyncFilecoinv1).(*metadata.GraphsyncFilecoinV1)
-					r.candidateMetdataMut.Unlock()
+					r.candidateMetdataLk.Unlock()
 
 					// Start the retrieval with the candidate
 					candidate := candidate
