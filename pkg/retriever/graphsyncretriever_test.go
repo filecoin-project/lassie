@@ -654,9 +654,9 @@ func TestMultipleRetrievals(t *testing.T) {
 				RetrievalID: retrievalID,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
 			}, cb).RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{
-				{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}},
-				{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}},
-				{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}},
+				types.NewRetrievalCandidate(peer.ID("foo"), cid.Undef, &metadata.GraphsyncFilecoinV1{}),
+				types.NewRetrievalCandidate(peer.ID("bar"), cid.Undef, &metadata.GraphsyncFilecoinV1{}),
+				types.NewRetrievalCandidate(peer.ID("baz"), cid.Undef, &metadata.GraphsyncFilecoinV1{}),
 			}))
 		},
 		func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
@@ -665,9 +665,9 @@ func TestMultipleRetrievals(t *testing.T) {
 				RetrievalID: retrievalID,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
 			}, cb).RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{
-				{MinerPeer: peer.AddrInfo{ID: peer.ID("bang")}},
-				{MinerPeer: peer.AddrInfo{ID: peer.ID("boom")}},
-				{MinerPeer: peer.AddrInfo{ID: peer.ID("bing")}},
+				types.NewRetrievalCandidate(peer.ID("bang"), cid.Undef, &metadata.GraphsyncFilecoinV1{}),
+				types.NewRetrievalCandidate(peer.ID("boom"), cid.Undef, &metadata.GraphsyncFilecoinV1{}),
+				types.NewRetrievalCandidate(peer.ID("bing"), cid.Undef, &metadata.GraphsyncFilecoinV1{}),
 			}))
 		}})
 	require.Len(t, results, 2)
@@ -706,7 +706,7 @@ func TestRetrievalSelector(t *testing.T) {
 		LinkSystem:  cidlink.DefaultLinkSystem(),
 		Selector:    selector,
 	}, nil)
-	stats, err := retrieval.RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}}))
+	stats, err := retrieval.RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{types.NewRetrievalCandidate(peer.ID("foo"), cid.Undef, &metadata.GraphsyncFilecoinV1{})}))
 	require.NoError(t, err)
 	require.NotNil(t, stats)
 	require.Equal(t, mockClient.GetRetrievalReturns()["foo"].ResultStats, stats)
@@ -715,6 +715,109 @@ func TestRetrievalSelector(t *testing.T) {
 	rr := mockClient.VerifyReceivedRetrievalFrom(ctx, t, peer.ID("foo"))
 	require.NotNil(t, rr)
 	require.Same(t, selector, rr.Selector)
+}
+
+func TestDuplicateRetreivals(t *testing.T) {
+	retrievalID := types.RetrievalID(uuid.New())
+	cid1 := cid.MustParse("bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")
+	startTime := time.Now().Add(time.Hour)
+	clock := clock.NewMock()
+	clock.Set(startTime)
+	initialPause := 10 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	mockClient := testutil.NewMockClient(
+		map[string]testutil.DelayedConnectReturn{
+			"foo": {Err: nil, Delay: time.Millisecond * 50},
+			"baz": {Err: nil, Delay: time.Millisecond * 75},
+			"bar": {Err: nil, Delay: time.Millisecond * 100},
+		},
+		map[string]testutil.DelayedClientReturn{
+			"foo": {ResultErr: errors.New("Nope"), Delay: time.Millisecond * 150},
+			"bar": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}, Delay: time.Millisecond * 200},
+			"baz": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("baz"), Size: 2}, Delay: time.Millisecond * 200},
+		},
+		clock,
+	)
+
+	cfg := NewGraphsyncRetriever(func(peer peer.ID) time.Duration { return time.Second }, mockClient)
+	cfg.Clock = clock
+	cfg.QueueInitialPause = initialPause
+
+	expectedSequence := []testutil.ExpectedActionsAtTime{
+		{
+			AfterStart:          0,
+			ReceivedConnections: []peer.ID{"foo", "bar", "baz"},
+			ExpectedEvents: []types.RetrievalEvent{
+				events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+				events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
+				events.Started(startTime, retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}),
+			},
+		},
+		{
+			AfterStart: time.Millisecond * 50,
+			ExpectedEvents: []types.RetrievalEvent{
+				events.Connected(startTime.Add(time.Millisecond*50), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+			},
+		},
+		{
+			AfterStart:         time.Millisecond*50 + initialPause,
+			ReceivedRetrievals: []peer.ID{"foo"},
+		},
+		{
+			AfterStart: time.Millisecond * 75,
+			ExpectedEvents: []types.RetrievalEvent{
+				events.Connected(startTime.Add(time.Millisecond*75), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}),
+			},
+		},
+		{
+			AfterStart: time.Millisecond * 100,
+			ExpectedEvents: []types.RetrievalEvent{
+				events.Connected(startTime.Add(time.Millisecond*100), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
+			},
+		},
+		{
+			AfterStart:         time.Millisecond*200 + initialPause,
+			ReceivedRetrievals: []peer.ID{"bar"},
+			ExpectedEvents: []types.RetrievalEvent{
+				events.Proposed(startTime.Add(time.Millisecond*200+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
+				events.Failed(startTime.Add(time.Millisecond*200+initialPause), retrievalID, startTime, types.RetrievalPhase, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}, "retrieval failed: Nope"),
+			},
+		},
+		{
+			AfterStart: time.Millisecond*400 + initialPause,
+			ExpectedEvents: []types.RetrievalEvent{
+				events.Proposed(startTime.Add(time.Millisecond*400+initialPause), retrievalID, startTime, types.NewRetrievalCandidate(peer.ID("bar"), cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false})),
+				events.Accepted(startTime.Add(time.Millisecond*400+initialPause), retrievalID, startTime, types.NewRetrievalCandidate(peer.ID("bar"), cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false})),
+				events.FirstByte(startTime.Add(time.Millisecond*400+initialPause), retrievalID, startTime, types.NewRetrievalCandidate(peer.ID("bar"), cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false})),
+				events.Success(startTime.Add(time.Millisecond*400+initialPause), retrievalID, startTime, types.NewRetrievalCandidate(peer.ID("bar"), cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false}), 2, 0, 0, big.Zero(), 0),
+			},
+		},
+	}
+	results := testutil.RetrievalVerifier{
+		ExpectedSequence: expectedSequence,
+	}.RunWithVerification(ctx, t, clock, mockClient, nil, []testutil.RunRetrieval{
+		func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
+			return cfg.Retrieve(context.Background(), types.RetrievalRequest{
+				Cid:         cid1,
+				RetrievalID: retrievalID,
+				LinkSystem:  cidlink.DefaultLinkSystem(),
+			}, cb).RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{
+				types.NewRetrievalCandidate(peer.ID("foo"), cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: false, FastRetrieval: false}),
+				types.NewRetrievalCandidate(peer.ID("baz"), cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: false, FastRetrieval: false}),
+				types.NewRetrievalCandidate(peer.ID("bar"), cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: false, FastRetrieval: false}),
+				types.NewRetrievalCandidate(peer.ID("bar"), cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: false, FastRetrieval: true}),
+				types.NewRetrievalCandidate(peer.ID("bar"), cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false}),
+			}))
+		},
+	})
+	require.Len(t, results, 1)
+	stats, err := results[0].Stats, results[0].Err
+	require.NoError(t, err)
+	require.NotNil(t, stats)
+	// make sure we got the final retrieval we wanted
+	require.Equal(t, mockClient.GetRetrievalReturns()["bar"].ResultStats, stats)
 }
 
 func MakeAsyncCandidates(t *testing.T, candidates []types.RetrievalCandidate) types.InboundAsyncCandidates {
