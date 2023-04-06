@@ -46,18 +46,18 @@ func NewGraphsyncRetriever(getStorageProviderTimeout GetStorageProviderTimeout, 
 }
 
 // metadataCompare compares two metadata.GraphsyncFilecoinV1s and returns true if the first is preferable to the second.
-func metadataCompare(a, b metadata.GraphsyncFilecoinV1) bool {
+func metadataCompare(a, b metadata.GraphsyncFilecoinV1, defaultValue bool) bool {
 	// prioritize verified deals over not verified deals
 	if a.VerifiedDeal != b.VerifiedDeal {
 		return a.VerifiedDeal
 	}
 
 	// prioritize fast retrievel over not fast retrieval
-	if a.FastRetrieval && !b.FastRetrieval {
-		return true
+	if a.FastRetrieval != b.FastRetrieval {
+		return a.FastRetrieval
 	}
 
-	return false
+	return defaultValue
 }
 
 type retrievalResult struct {
@@ -133,11 +133,7 @@ func (r *graphsyncRetrieval) candidateCompare(a, b connectCandidate) bool {
 		return true
 	}
 
-	if metadataCompare(mdA, mdB) {
-		return true
-	}
-
-	return a.Duration < b.Duration
+	return metadataCompare(mdA, mdB, a.Duration < b.Duration)
 }
 
 func (r *graphsyncRetrieval) RetrieveFromAsyncCandidates(asyncCandidates types.InboundAsyncCandidates) (*types.RetrievalStats, error) {
@@ -185,7 +181,7 @@ func (r *graphsyncRetrieval) RetrieveFromAsyncCandidates(asyncCandidates types.I
 						continue
 					}
 
-					if metadataCompare(*candidateMetadata, currMetadata) {
+					if metadataCompare(*candidateMetadata, currMetadata, false) {
 						r.candidateMetdataLk.Lock()
 						r.candidateMetadata[candidate.MinerPeer.ID] = *candidateMetadata
 						r.candidateMetdataLk.Unlock()
@@ -285,7 +281,7 @@ func runRetrievalCandidate(
 	connectCtx := ctx
 	if timeout != 0 {
 		var timeoutFunc func()
-		connectCtx, timeoutFunc = context.WithDeadline(ctx, time.Now().Add(timeout))
+		connectCtx, timeoutFunc = cfg.Clock.WithDeadline(ctx, cfg.Clock.Now().Add(timeout))
 		defer timeoutFunc()
 	}
 
