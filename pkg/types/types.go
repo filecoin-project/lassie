@@ -261,3 +261,9 @@ func RetrievalIDFromContext(ctx context.Context) (RetrievalID, error) {
 	}
 	return id, nil
 }
+
+type CarScope string
+
+const CarScopeAll CarScope = "all"
+const CarScopeFile CarScope = "file"
+const CarScopeRoot CarScope = "root"

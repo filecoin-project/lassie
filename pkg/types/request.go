@@ -9,7 +9,9 @@ import (
 	"github.com/ipfs/go-unixfsnode"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
 	ipldstorage "github.com/ipld/go-ipld-prime/storage"
+	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/multiformats/go-multicodec"
 )
@@ -60,17 +62,24 @@ type RetrievalRequest struct {
 // and writing and it is explicitly set to be trusted (i.e. it will not
 // check CIDs match bytes). If the storage is not truested,
 // request.LinkSystem.TrustedStore should be set to false after this call.
-func NewRequestForPath(store ipldstorage.WritableStorage, cid cid.Cid, path string, full bool) (RetrievalRequest, error) {
+func NewRequestForPath(store ipldstorage.WritableStorage, cid cid.Cid, path string, carScope CarScope) (RetrievalRequest, error) {
 	retrievalId, err := NewRetrievalID()
 	if err != nil {
 		return RetrievalRequest{}, err
 	}
 
 	// Turn the path into a selector
-	targetSelector := unixfsnode.ExploreAllRecursivelySelector // full
-	if !full {
-		targetSelector = unixfsnode.MatchUnixFSPreloadSelector // shallow
+
+	targetSelector := unixfsnode.ExploreAllRecursivelySelector // all
+	switch carScope {
+	case CarScopeAll:
+	case CarScopeFile:
+		targetSelector = unixfsnode.MatchUnixFSPreloadSelector // file
+	case CarScopeRoot:
+		ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
+		targetSelector = ssb.Matcher() // root
 	}
+
 	selector := unixfsnode.UnixFSPathSelectorBuilder(path, targetSelector, false)
 
 	linkSystem := cidlink.DefaultLinkSystem()
