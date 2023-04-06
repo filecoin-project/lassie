@@ -3,12 +3,12 @@ package unixfs
 import (
 	"bytes"
 	"crypto/rand"
-	"encoding/base64"
 	"io"
 	"math/big"
 	"strings"
 	"testing"
 
+	"github.com/filecoin-project/lassie/pkg/internal/itest/unixfs/namegen"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-unixfsnode/data/builder"
 	dagpb "github.com/ipld/go-codec-dagpb"
@@ -60,25 +60,6 @@ func GenerateFile(t *testing.T, linkSys *linking.LinkSystem, randReader io.Reade
 	}
 }
 
-func fileName(randReader io.Reader) (string, error) {
-	for {
-		length, err := rand.Int(randReader, big.NewInt(63))
-		if err != nil {
-			return "", err
-		}
-		name := make([]byte, length.Int64()+1)
-		_, err = randReader.Read(name)
-		if err != nil {
-			return "", err
-		}
-
-		nameStr := strings.Replace(base64.RawStdEncoding.EncodeToString(name), "/", "", -1)
-		if len(nameStr) > 0 {
-			return nameStr, nil
-		}
-	}
-}
-
 func rndInt(randReader io.Reader, max int) int {
 	coin, err := rand.Int(randReader, big.NewInt(int64(max)))
 	if err != nil {
@@ -111,7 +92,7 @@ func GenerateDirectoryFrom(t *testing.T,
 			if targetSize-curSize <= 1024 { // don't make tiny directories
 				continue
 			}
-			newDir, err := fileName(randReader)
+			newDir, err := namegen.RandomDirectoryName(randReader)
 			require.NoError(t, err)
 			child := GenerateDirectoryFrom(t, linkSys, randReader, targetSize-curSize, dir+"/"+newDir, false)
 			children = append(children, child)
@@ -127,7 +108,7 @@ func GenerateDirectoryFrom(t *testing.T,
 				}
 			}
 			entry := GenerateFile(t, linkSys, randReader, size)
-			name, err := fileName(randReader)
+			name, err := namegen.RandomFileName(randReader)
 			require.NoError(t, err)
 			entry.Path = dir + "/" + name
 			curSize += size

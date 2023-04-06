@@ -102,6 +102,7 @@ func toDirEntryRecursive(t *testing.T, linkSys linking.LinkSystem, rootCid cid.C
 }
 
 func CompareDirEntries(t *testing.T, a, b DirEntry) {
+	t.Log("CompareDirEntries", a.Path, b.Path) // TODO: remove this
 	require.Equal(t, a.Path, b.Path)
 	require.Equal(t, a.Content, b.Content, a.Path+" content mismatch")
 	require.Equal(t, a.Root, b.Root, a.Path+" root mismatch")
