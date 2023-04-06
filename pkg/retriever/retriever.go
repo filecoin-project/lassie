@@ -49,6 +49,7 @@ type Retriever struct {
 	eventManager *events.EventManager
 	session      Session
 	clock        clock.Clock
+	protocols    []multicodec.Code
 }
 
 type CandidateFinder interface {
@@ -83,14 +84,14 @@ func NewRetrieverWithClock(
 		session:      session,
 		clock:        clock,
 	}
-	protocols := []multicodec.Code{}
+	retriever.protocols = []multicodec.Code{}
 	for protocol := range protocolRetrievers {
-		protocols = append(protocols, protocol)
+		retriever.protocols = append(retriever.protocols, protocol)
 	}
 	retriever.executor = combinators.RetrieverWithCandidateFinder{
 		CandidateFinder: NewAssignableCandidateFinderWithClock(candidateFinder, session.FilterIndexerCandidate, clock),
 		CandidateRetriever: combinators.SplitRetriever[multicodec.Code]{
-			AsyncCandidateSplitter: combinators.NewAsyncCandidateSplitter(protocols, NewProtocolSplitter),
+			AsyncCandidateSplitter: combinators.NewAsyncCandidateSplitter(retriever.protocols, NewProtocolSplitter),
 			CandidateRetrievers:    protocolRetrievers,
 			CoordinationKind:       types.RaceCoordination,
 		},
@@ -151,7 +152,7 @@ func (retriever *Retriever) Retrieve(
 	)
 
 	// Emit a Started event denoting that the entire fetch phase has started
-	onRetrievalEvent(events.Started(retriever.clock.Now(), request.RetrievalID, startTime, types.FetchPhase, types.RetrievalCandidate{RootCid: request.Cid}))
+	onRetrievalEvent(events.Started(retriever.clock.Now(), request.RetrievalID, startTime, types.FetchPhase, types.RetrievalCandidate{RootCid: request.Cid}, request.GetSupportedProtocols(retriever.protocols)...))
 
 	// retrieve, note that we could get a successful retrieval
 	// (retrievalStats!=nil) _and_ also an error return because there may be

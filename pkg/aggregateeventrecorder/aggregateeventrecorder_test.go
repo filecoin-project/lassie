@@ -7,20 +7,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/benbjohnson/clock"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/aggregateeventrecorder"
 	"github.com/filecoin-project/lassie/pkg/events"
+	"github.com/filecoin-project/lassie/pkg/internal/testutil"
 	"github.com/filecoin-project/lassie/pkg/types"
-	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/codec/dagjson"
 	"github.com/ipld/go-ipld-prime/datamodel"
+	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multicodec"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/context"
 )
-
-var testCid1 = mustCid("bafybeihrqe2hmfauph5yfbd6ucv7njqpiy4tvbewlvhzjl4bhnyiu6h7pm")
 
 func TestAggregateEventRecorder(t *testing.T) {
 	var req datamodel.Node
@@ -37,19 +38,42 @@ func TestAggregateEventRecorder(t *testing.T) {
 	}))
 	defer ts.Close()
 
+	testCid1 := testutil.GenerateCid()
+	bitswapCandidates := testutil.GenerateRetrievalCandidatesForCID(t, 2, testCid1, &metadata.Bitswap{})
+	graphsyncCandidates := testutil.GenerateRetrievalCandidatesForCID(t, 3, testCid1, &metadata.GraphsyncFilecoinV1{})
+
 	tests := []struct {
 		name string
-		exec func(t *testing.T, ctx context.Context, subscriber types.RetrievalEventSubscriber, id types.RetrievalID, etime, ptime time.Time, spid peer.ID)
+		exec func(t *testing.T, ctx context.Context, subscriber types.RetrievalEventSubscriber, id types.RetrievalID)
 	}{
 		{
 			name: "Retrieval Success",
-			exec: func(t *testing.T, ctx context.Context, subscriber types.RetrievalEventSubscriber, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
-				fetchPhaseStartTime := ptime.Add(-10 * time.Second)
+			exec: func(t *testing.T, ctx context.Context, subscriber types.RetrievalEventSubscriber, id types.RetrievalID) {
+				clock := clock.NewMock()
 
-				subscriber(events.Started(time.Now(), id, fetchPhaseStartTime, types.FetchPhase, types.RetrievalCandidate{RootCid: testCid1}))
-				subscriber(events.FirstByte(time.Now(), id, ptime, types.RetrievalCandidate{RootCid: testCid1}))
-				subscriber(events.Success(time.Now().Add(50*time.Millisecond), id, ptime, types.NewRetrievalCandidate(spid, testCid1), uint64(2020), 3030, 4*time.Second, big.Zero(), 55))
-				subscriber(events.Finished(time.Now().Add(50*time.Millisecond), id, fetchPhaseStartTime, types.RetrievalCandidate{RootCid: testCid1}))
+				subscriber(events.Started(clock.Now(), id, clock.Now(), types.FetchPhase, types.RetrievalCandidate{RootCid: testCid1}, multicodec.TransportGraphsyncFilecoinv1, multicodec.TransportBitswap))
+				fetchPhaseStartTime := clock.Now()
+				indexerStartTime := clock.Now()
+				clock.Add(10 * time.Millisecond)
+				subscriber(events.CandidatesFound(clock.Now(), id, indexerStartTime, testCid1, graphsyncCandidates))
+				subscriber(events.CandidatesFiltered(clock.Now(), id, indexerStartTime, testCid1, graphsyncCandidates[:2]))
+				subscriber(events.Started(clock.Now(), id, clock.Now(), types.RetrievalPhase, graphsyncCandidates[0]))
+				subscriber(events.Started(clock.Now(), id, clock.Now(), types.RetrievalPhase, graphsyncCandidates[1]))
+				graphsyncCandidateStartTime := clock.Now()
+				clock.Add(10 * time.Millisecond)
+				subscriber(events.CandidatesFound(clock.Now(), id, indexerStartTime, testCid1, bitswapCandidates[:2]))
+				subscriber(events.CandidatesFiltered(clock.Now(), id, indexerStartTime, testCid1, bitswapCandidates[:1]))
+				bitswapPeer := types.NewRetrievalCandidate(peer.ID(""), testCid1, &metadata.Bitswap{})
+				subscriber(events.Started(clock.Now(), id, clock.Now(), types.RetrievalPhase, bitswapPeer))
+				bitswapCandidateStartTime := clock.Now()
+				clock.Add(20 * time.Millisecond)
+				subscriber(events.FirstByte(clock.Now(), id, bitswapCandidateStartTime, bitswapPeer))
+				subscriber(events.Failed(clock.Now(), id, graphsyncCandidateStartTime, types.RetrievalPhase, graphsyncCandidates[0], "failed to dial"))
+				clock.Add(20 * time.Millisecond)
+				subscriber(events.FirstByte(clock.Now(), id, graphsyncCandidateStartTime, graphsyncCandidates[1]))
+				clock.Add(30 * time.Millisecond)
+				subscriber(events.Success(clock.Now(), id, bitswapCandidateStartTime, bitswapPeer, uint64(10000), 3030, 4*time.Second, big.Zero(), 55))
+				subscriber(events.Finished(clock.Now(), id, fetchPhaseStartTime, bitswapPeer))
 
 				select {
 				case <-ctx.Done():
@@ -60,24 +84,48 @@ func TestAggregateEventRecorder(t *testing.T) {
 				require.Equal(t, int64(1), req.Length())
 				eventList := verifyListNode(t, req, "events", 1)
 				event := verifyListElement(t, eventList, 0)
-				// require.Equal(t, int64(8), event.Length())
+				require.Equal(t, int64(14), event.Length())
 				verifyStringNode(t, event, "instanceId", "test-instance")
 				verifyStringNode(t, event, "retrievalId", id.String())
-				verifyStringNode(t, event, "storageProviderId", spid.String())
-				// verifyIntNode(t, event, "timeToFirstByte", 0)
-				// verifyIntNode(t, event, "bandwidth", 0)
+				verifyStringNode(t, event, "storageProviderId", types.BitswapIndentifier)
+				verifyStringNode(t, event, "timeToFirstByte", "40ms")
+				verifyStringNode(t, event, "timeToFirstIndexerResult", "10ms")
+				verifyIntNode(t, event, "bandwidth", 200000)
 				verifyBoolNode(t, event, "success", true)
-				// verifyStringNode(t, event, "startTime", fetchPhaseStartTime.Format(time.RFC3339Nano))
-				// verifyStringNode(t, event, "endTime", fetchPhaseStartTime.Format(time.RFC3339Nano))
+				verifyStringNode(t, event, "startTime", fetchPhaseStartTime.Format(time.RFC3339Nano))
+				verifyStringNode(t, event, "endTime", fetchPhaseStartTime.Add(90*time.Millisecond).Format(time.RFC3339Nano))
+
+				verifyIntNode(t, event, "indexerCandidatesReceived", 5)
+				verifyIntNode(t, event, "indexerCandidatesFiltered", 3)
+				protocolsAllowed := verifyListNode(t, event, "protocolsAllowed", 2)
+				verifyStringListElementsMatch(t, protocolsAllowed, []string{"transport-graphsync-filecoinv1", "transport-bitswap"})
+				protocolsAttempted := verifyListNode(t, event, "protocolsAttempted", 2)
+				verifyStringListElementsMatch(t, protocolsAttempted, []string{"transport-graphsync-filecoinv1", "transport-bitswap"})
+				retrievalAttempts, err := event.LookupByString("retrievalAttempts")
+				require.NoError(t, err)
+				require.Equal(t, int64(3), retrievalAttempts.Length())
+				sp1Attempt, err := retrievalAttempts.LookupByString(graphsyncCandidates[0].MinerPeer.ID.String())
+				require.NoError(t, err)
+				require.Equal(t, int64(1), sp1Attempt.Length())
+				verifyStringNode(t, sp1Attempt, "error", "failed to dial")
+				sp2Attempt, err := retrievalAttempts.LookupByString(graphsyncCandidates[1].MinerPeer.ID.String())
+				require.NoError(t, err)
+				require.Equal(t, int64(1), sp2Attempt.Length())
+				verifyStringNode(t, sp2Attempt, "timeToFirstByte", "60ms")
+				bitswapAttempt, err := retrievalAttempts.LookupByString(types.BitswapIndentifier)
+				require.NoError(t, err)
+				require.Equal(t, int64(1), bitswapAttempt.Length())
+				verifyStringNode(t, bitswapAttempt, "timeToFirstByte", "40ms")
+
 			},
 		},
 		{
 			name: "Retrieval Failure, Never Reached First Byte",
-			exec: func(t *testing.T, ctx context.Context, subscriber types.RetrievalEventSubscriber, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
-				fetchPhaseStartTime := ptime.Add(-10 * time.Second)
-
-				subscriber(events.Started(time.Now(), id, fetchPhaseStartTime, types.FetchPhase, types.RetrievalCandidate{RootCid: testCid1}))
-				subscriber(events.Finished(time.Now(), id, fetchPhaseStartTime, types.RetrievalCandidate{RootCid: testCid1}))
+			exec: func(t *testing.T, ctx context.Context, subscriber types.RetrievalEventSubscriber, id types.RetrievalID) {
+				clock := clock.NewMock()
+				fetchPhaseStartTime := clock.Now()
+				subscriber(events.Started(clock.Now(), id, fetchPhaseStartTime, types.FetchPhase, types.RetrievalCandidate{RootCid: testCid1}))
+				subscriber(events.Finished(clock.Now(), id, fetchPhaseStartTime, types.RetrievalCandidate{RootCid: testCid1}))
 
 				select {
 				case <-ctx.Done():
@@ -88,12 +136,12 @@ func TestAggregateEventRecorder(t *testing.T) {
 				require.Equal(t, int64(1), req.Length())
 				eventList := verifyListNode(t, req, "events", 1)
 				event := verifyListElement(t, eventList, 0)
-				require.Equal(t, int64(5), event.Length())
+				require.Equal(t, int64(7), event.Length())
 				verifyStringNode(t, event, "instanceId", "test-instance")
 				verifyStringNode(t, event, "retrievalId", id.String())
 				verifyBoolNode(t, event, "success", false)
-				// verifyStringNode(t, event, "startTime", fetchPhaseStartTime.Format(time.RFC3339Nano))
-				// verifyStringNode(t, event, "endTime", fetchPhaseStartTime.Format(time.RFC3339Nano))
+				verifyStringNode(t, event, "startTime", fetchPhaseStartTime.Format(time.RFC3339Nano))
+				verifyStringNode(t, event, "endTime", fetchPhaseStartTime.Format(time.RFC3339Nano))
 			},
 		},
 	}
@@ -107,14 +155,10 @@ func TestAggregateEventRecorder(t *testing.T) {
 				"test-instance",
 				fmt.Sprintf("%s/test-path/here", ts.URL),
 				authHeaderValue,
-				false,
 			).RetrievalEventSubscriber()
 			id, err := types.NewRetrievalID()
 			require.NoError(t, err)
-			etime := time.Now()
-			ptime := time.Now().Add(time.Hour * -1)
-			spid := peer.ID("A")
-			test.exec(t, ctx, subscriber, id, etime, ptime, spid)
+			test.exec(t, ctx, subscriber, id)
 			require.NotNil(t, req)
 			require.Equal(t, "/test-path/here", path)
 		})
@@ -133,6 +177,19 @@ func verifyListElement(t *testing.T, node datamodel.Node, index int64) datamodel
 	element, err := node.LookupByIndex(index)
 	require.NoError(t, err)
 	return element
+}
+
+func verifyStringListElementsMatch(t *testing.T, node datamodel.Node, expected []string) {
+	iter := node.ListIterator()
+	var received []string
+	for !iter.Done() {
+		_, element, err := iter.Next()
+		require.NoError(t, err)
+		str, err := element.AsString()
+		require.NoError(t, err)
+		received = append(received, str)
+	}
+	require.ElementsMatch(t, expected, received)
 }
 
 func verifyStringNode(t *testing.T, node datamodel.Node, key string, expected string) {
@@ -156,12 +213,12 @@ func verifyBoolNode(t *testing.T, node datamodel.Node, key string, expected bool
 	require.Equal(t, expected, ii)
 }
 
-func mustCid(cstr string) cid.Cid {
-	c, err := cid.Decode(cstr)
-	if err != nil {
-		panic(err)
-	}
-	return c
+func verifyIntNode(t *testing.T, node datamodel.Node, key string, expected int64) {
+	subNode, err := node.LookupByString(key)
+	require.NoError(t, err)
+	ii, err := subNode.AsInt()
+	require.NoError(t, err)
+	require.Equal(t, expected, ii)
 }
 
 var result bool
@@ -180,13 +237,12 @@ func BenchmarkAggregateEventRecorderSubscriber(b *testing.B) {
 		"test-instance",
 		fmt.Sprintf("%s/test-path/here", ts.URL),
 		authHeaderValue,
-		false,
 	).RetrievalEventSubscriber()
 	id, _ := types.NewRetrievalID()
 	fetchStartTime := time.Now()
 	ptime := time.Now().Add(time.Hour * -1)
 	spid := peer.ID("A")
-
+	testCid1 := testutil.GenerateCid()
 	var success bool
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
