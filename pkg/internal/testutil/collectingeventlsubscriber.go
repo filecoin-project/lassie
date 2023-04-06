@@ -76,8 +76,8 @@ func VerifyCollectedEventTimings(t *testing.T, events []types.RetrievalEvent) {
 	}
 }
 
-func VerifyContainsCollectedEvent(t *testing.T, actualList []types.RetrievalEvent, expected types.RetrievalEvent) {
-	for _, actual := range actualList {
+func VerifyContainsCollectedEvent(t *testing.T, expectedList []types.RetrievalEvent, actual types.RetrievalEvent) {
+	for _, expected := range expectedList {
 		// this matching might need to evolve to be more sophisticated, particularly SP ID
 		if actual.Code() == expected.Code() &&
 			actual.RetrievalId() == expected.RetrievalId() &&
@@ -89,7 +89,7 @@ func VerifyContainsCollectedEvent(t *testing.T, actualList []types.RetrievalEven
 			}
 		}
 	}
-	require.Fail(t, "event not found", expected.Code())
+	require.Fail(t, "event not found", actual.Code())
 }
 
 func VerifyCollectedEvent(t *testing.T, actual types.RetrievalEvent, expected types.RetrievalEvent) {

@@ -52,6 +52,7 @@ func TestRetriever(t *testing.T) {
 	cid1 := cid.MustParse("bafkqaalb")
 	peerA := peer.ID("A")
 	peerB := peer.ID("B")
+	initialPause := time.Millisecond * 5
 	blacklistedPeer := peer.ID("blacklisted")
 	startTime := time.Now().Add(time.Hour)
 	tc := []struct {
@@ -102,21 +103,23 @@ func TestRetriever(t *testing.T) {
 					},
 				},
 				{
-					AfterStart:         20 * time.Millisecond,
-					ReceivedRetrievals: []peer.ID{peerA},
+					AfterStart: 20 * time.Millisecond,
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Connected(startTime.Add(20*time.Millisecond), rid, startTime, types.RetrievalPhase, types.NewRetrievalCandidate(peerA, cid1)),
 					},
 				},
 				{
-					AfterStart: 25 * time.Millisecond,
+					AfterStart:         20*time.Millisecond + initialPause,
+					ReceivedRetrievals: []peer.ID{peerA},
+				},
+				{
+					AfterStart: 25*time.Millisecond + initialPause,
 					ExpectedEvents: []types.RetrievalEvent{
-
-						events.Proposed(startTime.Add(25*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerA, cid1)),
-						events.Accepted(startTime.Add(25*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerA, cid1)),
-						events.FirstByte(startTime.Add(25*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerA, cid1)),
-						events.Success(startTime.Add(25*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerA, cid1), 1, 2, 3*time.Second, big.Zero(), 55),
-						events.Finished(startTime.Add(25*time.Millisecond), rid, startTime, types.RetrievalCandidate{RootCid: cid1})},
+						events.Proposed(startTime.Add(25*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerA, cid1)),
+						events.Accepted(startTime.Add(25*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerA, cid1)),
+						events.FirstByte(startTime.Add(25*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerA, cid1)),
+						events.Success(startTime.Add(25*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerA, cid1), 1, 2, 3*time.Second, big.Zero(), 55),
+						events.Finished(startTime.Add(25*time.Millisecond+initialPause), rid, startTime, types.RetrievalCandidate{RootCid: cid1})},
 				},
 			},
 		},
@@ -165,20 +168,23 @@ func TestRetriever(t *testing.T) {
 					},
 				},
 				{
-					AfterStart:         5 * time.Millisecond,
-					ReceivedRetrievals: []peer.ID{peerB},
+					AfterStart: 5 * time.Millisecond,
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Connected(startTime.Add(5*time.Millisecond), rid, startTime, types.RetrievalPhase, types.NewRetrievalCandidate(peerB, cid1)),
 					},
 				},
 				{
-					AfterStart: 10 * time.Millisecond,
+					AfterStart:         5*time.Millisecond + initialPause,
+					ReceivedRetrievals: []peer.ID{peerB},
+				},
+				{
+					AfterStart: 10*time.Millisecond + initialPause,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.Proposed(startTime.Add(10*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerB, cid1)),
-						events.Accepted(startTime.Add(10*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerB, cid1)),
-						events.FirstByte(startTime.Add(10*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerB, cid1)),
-						events.Success(startTime.Add(10*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerB, cid1), 10, 11, 12*time.Second, big.Zero(), 50),
-						events.Finished(startTime.Add(10*time.Millisecond), rid, startTime, types.RetrievalCandidate{RootCid: cid1})},
+						events.Proposed(startTime.Add(10*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, cid1)),
+						events.Accepted(startTime.Add(10*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, cid1)),
+						events.FirstByte(startTime.Add(10*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, cid1)),
+						events.Success(startTime.Add(10*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, cid1), 10, 11, 12*time.Second, big.Zero(), 50),
+						events.Finished(startTime.Add(10*time.Millisecond+initialPause), rid, startTime, types.RetrievalCandidate{RootCid: cid1})},
 				},
 			},
 		},
@@ -227,20 +233,23 @@ func TestRetriever(t *testing.T) {
 					},
 				},
 				{
-					AfterStart:         50 * time.Millisecond,
-					ReceivedRetrievals: []peer.ID{peerA},
+					AfterStart: 50 * time.Millisecond,
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Connected(startTime.Add(50*time.Millisecond), rid, startTime, types.RetrievalPhase, types.NewRetrievalCandidate(peerA, cid1)),
 					},
 				},
 				{
-					AfterStart: 55 * time.Millisecond,
+					AfterStart:         50*time.Millisecond + initialPause,
+					ReceivedRetrievals: []peer.ID{peerA},
+				},
+				{
+					AfterStart: 55*time.Millisecond + initialPause,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.Proposed(startTime.Add(55*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerA, cid1)),
-						events.Accepted(startTime.Add(55*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerA, cid1)),
-						events.FirstByte(startTime.Add(55*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerA, cid1)),
-						events.Success(startTime.Add(55*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerA, cid1), 1, 2, 3*time.Second, big.Zero(), 55),
-						events.Finished(startTime.Add(55*time.Millisecond), rid, startTime, types.RetrievalCandidate{RootCid: cid1})},
+						events.Proposed(startTime.Add(55*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerA, cid1)),
+						events.Accepted(startTime.Add(55*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerA, cid1)),
+						events.FirstByte(startTime.Add(55*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerA, cid1)),
+						events.Success(startTime.Add(55*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerA, cid1), 1, 2, 3*time.Second, big.Zero(), 55),
+						events.Finished(startTime.Add(55*time.Millisecond+initialPause), rid, startTime, types.RetrievalCandidate{RootCid: cid1})},
 				},
 			},
 		},
@@ -296,21 +305,23 @@ func TestRetriever(t *testing.T) {
 					},
 				},
 				{
-					AfterStart:         50 * time.Millisecond,
-					ReceivedRetrievals: []peer.ID{peerB},
+					AfterStart: 50 * time.Millisecond,
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Connected(startTime.Add(50*time.Millisecond), rid, startTime, types.RetrievalPhase, types.NewRetrievalCandidate(peerB, cid1)),
 					},
 				},
-
 				{
-					AfterStart: 55 * time.Millisecond,
+					AfterStart:         50*time.Millisecond + initialPause,
+					ReceivedRetrievals: []peer.ID{peerB},
+				},
+				{
+					AfterStart: 55*time.Millisecond + initialPause,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.Proposed(startTime.Add(55*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerB, cid1)),
-						events.Accepted(startTime.Add(55*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerB, cid1)),
-						events.FirstByte(startTime.Add(55*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerB, cid1)),
-						events.Success(startTime.Add(55*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerB, cid1), 1, 2, 3*time.Second, big.Zero(), 55),
-						events.Finished(startTime.Add(55*time.Millisecond), rid, startTime, types.RetrievalCandidate{RootCid: cid1})},
+						events.Proposed(startTime.Add(55*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, cid1)),
+						events.Accepted(startTime.Add(55*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, cid1)),
+						events.FirstByte(startTime.Add(55*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, cid1)),
+						events.Success(startTime.Add(55*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, cid1), 1, 2, 3*time.Second, big.Zero(), 55),
+						events.Finished(startTime.Add(55*time.Millisecond+initialPause), rid, startTime, types.RetrievalCandidate{RootCid: cid1})},
 				},
 			},
 		},
@@ -361,17 +372,20 @@ func TestRetriever(t *testing.T) {
 					},
 				},
 				{
-					AfterStart:         5 * time.Millisecond,
-					ReceivedRetrievals: []peer.ID{peerB},
+					AfterStart: 5 * time.Millisecond,
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Connected(startTime.Add(5*time.Millisecond), rid, startTime, types.RetrievalPhase, types.NewRetrievalCandidate(peerB, cid1)),
 					},
 				},
 				{
-					AfterStart: 10 * time.Millisecond,
+					AfterStart:         5*time.Millisecond + initialPause,
+					ReceivedRetrievals: []peer.ID{peerB},
+				},
+				{
+					AfterStart: 10*time.Millisecond + initialPause,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.Proposed(startTime.Add(10*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerB, cid1)),
-						events.Failed(startTime.Add(10*time.Millisecond), rid, startTime, types.RetrievalPhase, types.NewRetrievalCandidate(peerB, cid1), "retrieval failed: bork!"),
+						events.Proposed(startTime.Add(10*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, cid1)),
+						events.Failed(startTime.Add(10*time.Millisecond+initialPause), rid, startTime, types.RetrievalPhase, types.NewRetrievalCandidate(peerB, cid1), "retrieval failed: bork!"),
 					},
 				},
 				{
@@ -449,11 +463,14 @@ func TestRetriever(t *testing.T) {
 					},
 				},
 				{
-					AfterStart:         1 * time.Millisecond,
-					ReceivedRetrievals: []peer.ID{peerA},
+					AfterStart: 1 * time.Millisecond,
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Connected(startTime.Add(1*time.Millisecond), rid, startTime, types.RetrievalPhase, types.NewRetrievalCandidate(peerA, cid1)),
 					},
+				},
+				{
+					AfterStart:         1*time.Millisecond + initialPause,
+					ReceivedRetrievals: []peer.ID{peerA},
 				},
 				{
 					AfterStart: 100 * time.Millisecond,
@@ -462,20 +479,20 @@ func TestRetriever(t *testing.T) {
 					},
 				},
 				{
-					AfterStart:         201 * time.Millisecond,
+					AfterStart:         201*time.Millisecond + initialPause,
 					ReceivedRetrievals: []peer.ID{peerB},
 					ExpectedEvents: []types.RetrievalEvent{
-						events.Failed(startTime.Add(201*time.Millisecond), rid, startTime, types.RetrievalPhase, types.NewRetrievalCandidate(peerA, cid1), "timeout after 200ms"),
+						events.Failed(startTime.Add(201*time.Millisecond+initialPause), rid, startTime, types.RetrievalPhase, types.NewRetrievalCandidate(peerA, cid1), "timeout after 200ms"),
 					},
 				},
 				{
-					AfterStart: 202 * time.Millisecond,
+					AfterStart: 202*time.Millisecond + initialPause,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.Proposed(startTime.Add(202*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerB, cid1)),
-						events.Accepted(startTime.Add(202*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerB, cid1)),
-						events.FirstByte(startTime.Add(202*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerB, cid1)),
-						events.Success(startTime.Add(202*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerB, cid1), 20, 30, 40*time.Second, big.Zero(), 50),
-						events.Finished(startTime.Add(202*time.Millisecond), rid, startTime, types.RetrievalCandidate{RootCid: cid1})},
+						events.Proposed(startTime.Add(202*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, cid1)),
+						events.Accepted(startTime.Add(202*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, cid1)),
+						events.FirstByte(startTime.Add(202*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, cid1)),
+						events.Success(startTime.Add(202*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, cid1), 20, 30, 40*time.Second, big.Zero(), 50),
+						events.Finished(startTime.Add(202*time.Millisecond+initialPause), rid, startTime, types.RetrievalCandidate{RootCid: cid1})},
 				},
 			},
 		},
@@ -554,7 +571,10 @@ func TestRetriever(t *testing.T) {
 				tc.setup(&config)
 			}
 			session := session.NewSession(config, true)
-			gsretriever := retriever.NewGraphsyncRetrieverWithClock(session.GetStorageProviderTimeout, client, clock)
+			gsretriever := retriever.NewGraphsyncRetriever(session.GetStorageProviderTimeout, client)
+			gsretriever.Clock = clock
+			gsretriever.QueueInitialPause = initialPause
+
 			// --- create ---
 			ret, err := retriever.NewRetrieverWithClock(context.Background(), session, candidateFinder, map[multicodec.Code]types.CandidateRetriever{
 				multicodec.TransportGraphsyncFilecoinv1: gsretriever,
@@ -601,6 +621,7 @@ func TestLinkSystemPerRequest(t *testing.T) {
 	startTime := time.Now().Add(5 * time.Hour)
 	clock := clock.NewMock()
 	clock.Set(startTime)
+	initialPause := time.Millisecond * 2
 	rid := types.RetrievalID(uuid.New())
 	cid1 := cid.MustParse("bafkqaalb")
 	peerA := peer.ID("A")
@@ -639,7 +660,9 @@ func TestLinkSystemPerRequest(t *testing.T) {
 	client := testutil.NewMockClient(returnsConnected, returnsRetrievals, clock)
 	config := session.Config{}
 	session := session.NewSession(config, true)
-	gsretriever := retriever.NewGraphsyncRetrieverWithClock(session.GetStorageProviderTimeout, client, clock)
+	gsretriever := retriever.NewGraphsyncRetriever(session.GetStorageProviderTimeout, client)
+	gsretriever.Clock = clock
+	gsretriever.QueueInitialPause = initialPause
 
 	// --- create ---
 	ret, err := retriever.NewRetrieverWithClock(context.Background(), session, candidateFinder, map[multicodec.Code]types.CandidateRetriever{
@@ -684,20 +707,23 @@ func TestLinkSystemPerRequest(t *testing.T) {
 				},
 			},
 			{
-				AfterStart:         5 * time.Millisecond,
-				ReceivedRetrievals: []peer.ID{peerA},
+				AfterStart: 5 * time.Millisecond,
 				ExpectedEvents: []types.RetrievalEvent{
 					events.Connected(startTime.Add(5*time.Millisecond), rid, startTime, types.RetrievalPhase, types.NewRetrievalCandidate(peerA, cid1)),
 				},
 			},
 			{
-				AfterStart: 10 * time.Millisecond,
+				AfterStart:         5*time.Millisecond + initialPause,
+				ReceivedRetrievals: []peer.ID{peerA},
+			},
+			{
+				AfterStart: 10*time.Millisecond + initialPause,
 				ExpectedEvents: []types.RetrievalEvent{
-					events.Proposed(startTime.Add(10*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerA, cid1)),
-					events.Accepted(startTime.Add(10*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerA, cid1)),
-					events.FirstByte(startTime.Add(10*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerA, cid1)),
-					events.Success(startTime.Add(10*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerA, cid1), 1, 2, 3*time.Second, big.Zero(), 55),
-					events.Finished(startTime.Add(10*time.Millisecond), rid, startTime, types.RetrievalCandidate{RootCid: cid1})},
+					events.Proposed(startTime.Add(10*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerA, cid1)),
+					events.Accepted(startTime.Add(10*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerA, cid1)),
+					events.FirstByte(startTime.Add(10*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerA, cid1)),
+					events.Success(startTime.Add(10*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerA, cid1), 1, 2, 3*time.Second, big.Zero(), 55),
+					events.Finished(startTime.Add(10*time.Millisecond+initialPause), rid, startTime, types.RetrievalCandidate{RootCid: cid1})},
 			},
 		},
 	}.RunWithVerification(ctx, t, clock, client, candidateFinder, []testutil.RunRetrieval{
@@ -738,29 +764,32 @@ func TestLinkSystemPerRequest(t *testing.T) {
 				},
 				ReceivedConnections: []peer.ID{peerA, peerB},
 				ExpectedEvents: []types.RetrievalEvent{
-					events.Started(startTime.Add(10*time.Millisecond), rid, startTime.Add(10*time.Millisecond), types.FetchPhase, types.RetrievalCandidate{RootCid: cid1}),
-					events.Started(startTime.Add(10*time.Millisecond), rid, startTime.Add(10*time.Millisecond), types.IndexerPhase, types.RetrievalCandidate{RootCid: cid1}),
-					events.CandidatesFound(startTime.Add(10*time.Millisecond), rid, startTime.Add(10*time.Millisecond), cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, cid1), types.NewRetrievalCandidate(peerB, cid1)}),
-					events.CandidatesFiltered(startTime.Add(10*time.Millisecond), rid, startTime.Add(10*time.Millisecond), cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, cid1), types.NewRetrievalCandidate(peerB, cid1)}),
-					events.Started(startTime.Add(10*time.Millisecond), rid, startTime.Add(10*time.Millisecond), types.RetrievalPhase, types.NewRetrievalCandidate(peerA, cid1)),
-					events.Started(startTime.Add(10*time.Millisecond), rid, startTime.Add(10*time.Millisecond), types.RetrievalPhase, types.NewRetrievalCandidate(peerB, cid1)),
+					events.Started(startTime.Add(10*time.Millisecond+initialPause), rid, startTime.Add(10*time.Millisecond+initialPause), types.FetchPhase, types.RetrievalCandidate{RootCid: cid1}),
+					events.Started(startTime.Add(10*time.Millisecond+initialPause), rid, startTime.Add(10*time.Millisecond+initialPause), types.IndexerPhase, types.RetrievalCandidate{RootCid: cid1}),
+					events.CandidatesFound(startTime.Add(10*time.Millisecond+initialPause), rid, startTime.Add(10*time.Millisecond+initialPause), cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, cid1), types.NewRetrievalCandidate(peerB, cid1)}),
+					events.CandidatesFiltered(startTime.Add(10*time.Millisecond+initialPause), rid, startTime.Add(10*time.Millisecond+initialPause), cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, cid1), types.NewRetrievalCandidate(peerB, cid1)}),
+					events.Started(startTime.Add(10*time.Millisecond+initialPause), rid, startTime.Add(10*time.Millisecond+initialPause), types.RetrievalPhase, types.NewRetrievalCandidate(peerA, cid1)),
+					events.Started(startTime.Add(10*time.Millisecond+initialPause), rid, startTime.Add(10*time.Millisecond+initialPause), types.RetrievalPhase, types.NewRetrievalCandidate(peerB, cid1)),
 				},
 			},
 			{
-				AfterStart:         5 * time.Millisecond,
+				AfterStart: 5 * time.Millisecond,
+				ExpectedEvents: []types.RetrievalEvent{
+					events.Connected(startTime.Add(15*time.Millisecond+initialPause), rid, startTime.Add(10*time.Millisecond+initialPause), types.RetrievalPhase, types.NewRetrievalCandidate(peerB, cid1)),
+				},
+			},
+			{
+				AfterStart:         5*time.Millisecond + initialPause,
 				ReceivedRetrievals: []peer.ID{peerB},
-				ExpectedEvents: []types.RetrievalEvent{
-					events.Connected(startTime.Add(15*time.Millisecond), rid, startTime.Add(10*time.Millisecond), types.RetrievalPhase, types.NewRetrievalCandidate(peerB, cid1)),
-				},
 			},
 			{
-				AfterStart: 10 * time.Millisecond,
+				AfterStart: 10*time.Millisecond + initialPause,
 				ExpectedEvents: []types.RetrievalEvent{
-					events.Proposed(startTime.Add(20*time.Millisecond), rid, startTime.Add(10*time.Millisecond), types.NewRetrievalCandidate(peerB, cid1)),
-					events.Accepted(startTime.Add(20*time.Millisecond), rid, startTime.Add(10*time.Millisecond), types.NewRetrievalCandidate(peerB, cid1)),
-					events.FirstByte(startTime.Add(20*time.Millisecond), rid, startTime.Add(10*time.Millisecond), types.NewRetrievalCandidate(peerB, cid1)),
-					events.Success(startTime.Add(20*time.Millisecond), rid, startTime.Add(10*time.Millisecond), types.NewRetrievalCandidate(peerB, cid1), 10, 11, 12*time.Second, big.Zero(), 50),
-					events.Finished(startTime.Add(20*time.Millisecond), rid, startTime.Add(10*time.Millisecond), types.RetrievalCandidate{RootCid: cid1})},
+					events.Proposed(startTime.Add((10*time.Millisecond+initialPause)*2), rid, startTime.Add(10*time.Millisecond+initialPause), types.NewRetrievalCandidate(peerB, cid1)),
+					events.Accepted(startTime.Add((10*time.Millisecond+initialPause)*2), rid, startTime.Add(10*time.Millisecond+initialPause), types.NewRetrievalCandidate(peerB, cid1)),
+					events.FirstByte(startTime.Add((10*time.Millisecond+initialPause)*2), rid, startTime.Add(10*time.Millisecond+initialPause), types.NewRetrievalCandidate(peerB, cid1)),
+					events.Success(startTime.Add((10*time.Millisecond+initialPause)*2), rid, startTime.Add(10*time.Millisecond+initialPause), types.NewRetrievalCandidate(peerB, cid1), 10, 11, 12*time.Second, big.Zero(), 50),
+					events.Finished(startTime.Add((10*time.Millisecond+initialPause)*2), rid, startTime.Add(10*time.Millisecond+initialPause), types.RetrievalCandidate{RootCid: cid1})},
 			},
 		},
 	}.RunWithVerification(ctx, t, clock, client, candidateFinder, []testutil.RunRetrieval{
