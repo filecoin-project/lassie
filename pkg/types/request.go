@@ -75,7 +75,7 @@ func NewRequestForPath(store ipldstorage.WritableStorage, cid cid.Cid, path stri
 	case CarScopeAll:
 	case CarScopeFile:
 		targetSelector = unixfsnode.MatchUnixFSPreloadSelector // file
-	case CarScopeRoot:
+	case CarScopeBlock:
 		ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 		targetSelector = ssb.Matcher() // root
 	}

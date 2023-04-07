@@ -266,4 +266,4 @@ type CarScope string
 
 const CarScopeAll CarScope = "all"
 const CarScopeFile CarScope = "file"
-const CarScopeRoot CarScope = "root"
+const CarScopeBlock CarScope = "block"

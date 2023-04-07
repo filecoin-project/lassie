@@ -34,8 +34,8 @@ func TestHttpFetch(t *testing.T) {
 	fileQuery := func(q url.Values) {
 		q.Set("car-scope", "file")
 	}
-	rootQuery := func(q url.Values) {
-		q.Set("car-scope", "root")
+	blockQuery := func(q url.Values) {
+		q.Set("car-scope", "block")
 	}
 
 	type queryModifier func(url.Values)
@@ -535,13 +535,13 @@ func TestHttpFetch(t *testing.T) {
 			},
 		},
 		{
-			// car-scope root fetch should only get the the root node for a plain file
-			name:             "graphsync large sharded file, car-scope root",
+			// car-scope block fetch should only get the the root node for a plain file
+			name:             "graphsync large sharded file, car-scope block",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20)}
 			},
-			modifyQueries: []queryModifier{rootQuery},
+			modifyQueries: []queryModifier{blockQuery},
 			validateBodies: []bodyValidator{
 				func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 					wantCids := []cid.Cid{
@@ -552,14 +552,14 @@ func TestHttpFetch(t *testing.T) {
 			},
 		},
 		{
-			name:             "graphsync nested large sharded file, with path, car-scope root",
+			name:             "graphsync nested large sharded file, with path, car-scope block",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := &remotes[0].LinkSystem
 				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateFile(t, lsys, rndReader, 4<<20))}
 			},
 			paths:         []string{"/want2/want1/want0"},
-			modifyQueries: []queryModifier{rootQuery},
+			modifyQueries: []queryModifier{blockQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := []cid.Cid{
 					srcData.Root,                                     // "/""

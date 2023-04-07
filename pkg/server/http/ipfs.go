@@ -128,8 +128,8 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			case "all":
 			case "file":
 				carScope = types.CarScopeFile
-			case "root":
-				carScope = types.CarScopeRoot
+			case "block":
+				carScope = types.CarScopeBlock
 			default:
 				logger.logStatus(http.StatusBadRequest, "Invalid car-scope parameter")
 				res.WriteHeader(http.StatusBadRequest)
