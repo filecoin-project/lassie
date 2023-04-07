@@ -52,11 +52,22 @@ var fetchCmd = &cli.Command{
 			Aliases: []string{"p"},
 			Usage:   "print progress output",
 		},
-		&cli.BoolFlag{
-			Name:        "shallow",
-			Usage:       "only fetch the content at the end of the path",
-			DefaultText: "false, the entire DAG at the end of the path will be fetched",
-			Value:       false,
+		&cli.StringFlag{
+			Name:        "car-scope",
+			Usage:       "describes the fetch behavior at the end of the traversal path. Valid values include [all, file, root].",
+			DefaultText: "defaults to all, the entire DAG at the end of the path will be fetched",
+			Value:       "all",
+			Action: func(cctx *cli.Context, v string) error {
+				switch v {
+				case string(types.CarScopeAll):
+				case string(types.CarScopeFile):
+				case string(types.CarScopeRoot):
+				default:
+					return fmt.Errorf("invalid car-scope parameter, must be of value [all, file, root]")
+				}
+
+				return nil
+			},
 		},
 		&cli.StringFlag{
 			Name:        "providers",
@@ -99,7 +110,7 @@ func Fetch(cctx *cli.Context) error {
 	progress := cctx.Bool("progress")
 	providerTimeout := cctx.Duration("provider-timeout")
 	globalTimeout := cctx.Duration("global-timeout")
-	shallow := cctx.Bool("shallow")
+	carScope := cctx.String("car-scope")
 	tempDir := cctx.String("tempdir")
 	bitswapConcurrency := cctx.Int("bitswap-concurrency")
 	eventRecorderURL := cctx.String("event-recorder-url")
@@ -195,7 +206,7 @@ func Fetch(cctx *cli.Context) error {
 		}
 	}, false)
 
-	request, err := types.NewRequestForPath(carStore, rootCid, path, !shallow)
+	request, err := types.NewRequestForPath(carStore, rootCid, path, types.CarScope(carScope))
 	if err != nil {
 		return err
 	}

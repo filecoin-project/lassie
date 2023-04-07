@@ -31,8 +31,11 @@ import (
 )
 
 func TestHttpFetch(t *testing.T) {
-	shallowQuery := func(q url.Values) {
-		q.Set("depthType", "shallow")
+	fileQuery := func(q url.Values) {
+		q.Set("car-scope", "file")
+	}
+	rootQuery := func(q url.Values) {
+		q.Set("car-scope", "root")
 	}
 
 	type queryModifier func(url.Values)
@@ -154,32 +157,32 @@ func TestHttpFetch(t *testing.T) {
 			}},
 		},
 		{
-			// shallow fetch should get the same DAG as full for a plain file
-			name:             "graphsync large sharded file, shallow",
+			// car-scope file fetch should get the same DAG as full for a plain file
+			name:             "graphsync large sharded file, car-scope file",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20)}
 			},
-			modifyQueries: []queryModifier{shallowQuery},
+			modifyQueries: []queryModifier{fileQuery},
 		},
 		{
-			// shallow fetch should get the same DAG as full for a plain file
-			name:           "bitswap large sharded file, shallow",
+			// car-scope file fetch should get the same DAG as full for a plain file
+			name:           "bitswap large sharded file, car-scope file",
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20)}
 			},
-			modifyQueries: []queryModifier{shallowQuery},
+			modifyQueries: []queryModifier{fileQuery},
 		},
 		{
-			name:             "graphsync nested large sharded file, with path, shallow",
+			name:             "graphsync nested large sharded file, with path, car-scope file",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := &remotes[0].LinkSystem
 				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateFile(t, lsys, rndReader, 4<<20))}
 			},
 			paths:         []string{"/want2/want1/want0"},
-			modifyQueries: []queryModifier{shallowQuery},
+			modifyQueries: []queryModifier{fileQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
@@ -192,14 +195,14 @@ func TestHttpFetch(t *testing.T) {
 			}},
 		},
 		{
-			name:           "bitswap nested large sharded file, with path, shallow",
+			name:           "bitswap nested large sharded file, with path, car-scope file",
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := &remotes[0].LinkSystem
 				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateFile(t, lsys, rndReader, 4<<20))}
 			},
 			paths:         []string{"/want2/want1/want0"},
-			modifyQueries: []queryModifier{shallowQuery},
+			modifyQueries: []queryModifier{fileQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
@@ -212,38 +215,38 @@ func TestHttpFetch(t *testing.T) {
 			}},
 		},
 		{
-			name:             "graphsync large directory, shallow",
+			name:             "graphsync large directory, car-scope file",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false)}
 			},
-			modifyQueries: []queryModifier{shallowQuery},
+			modifyQueries: []queryModifier{fileQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				// expect a CAR of one block, to represent the root directory we asked for
 				validateCarBody(t, body, srcData.Root, []cid.Cid{srcData.Root}, true)
 			}},
 		},
 		{
-			name:           "bitswap large directory, shallow",
+			name:           "bitswap large directory, car-scope file",
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false)}
 			},
-			modifyQueries: []queryModifier{shallowQuery},
+			modifyQueries: []queryModifier{fileQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				// expect a CAR of one block, to represent the root directory we asked for
 				validateCarBody(t, body, srcData.Root, []cid.Cid{srcData.Root}, true)
 			}},
 		},
 		{
-			name:             "graphsync nested large directory, with path, shallow",
+			name:             "graphsync nested large directory, with path, car-scope file",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := &remotes[0].LinkSystem
 				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false))}
 			},
 			paths:         []string{"/want2/want1/want0"},
-			modifyQueries: []queryModifier{shallowQuery},
+			modifyQueries: []queryModifier{fileQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
@@ -256,14 +259,14 @@ func TestHttpFetch(t *testing.T) {
 			}},
 		},
 		{
-			name:           "bitswap nested large directory, with path, shallow",
+			name:           "bitswap nested large directory, with path, car-scope file",
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := &remotes[0].LinkSystem
 				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false))}
 			},
 			paths:         []string{"/want2/want1/want0"},
-			modifyQueries: []queryModifier{shallowQuery},
+			modifyQueries: []queryModifier{fileQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
@@ -291,7 +294,7 @@ func TestHttpFetch(t *testing.T) {
 				},
 					srcData.Children[1].Children[1].Children[1].SelfCids..., // "/want2/want1/want0" (full dir)
 				)
-				// validate we got the shallow form
+				// validate we got the car-scope file form
 				validateCarBody(t, body, srcData.Root, wantCids, false)
 				// validate that we got the full depth form under the path
 				gotDir := unixfs.CarToDirEntry(t, bytes.NewReader(body), srcData.Children[1].Children[1].Children[1].Root, true)
@@ -315,7 +318,7 @@ func TestHttpFetch(t *testing.T) {
 				},
 					srcData.Children[1].Children[1].Children[1].SelfCids..., // "/want2/want1/want0" (full dir)
 				)
-				// validate we got the shallow form
+				// validate we got the car-scope file form
 				validateCarBody(t, body, srcData.Root, wantCids, false)
 				// validate that we got the full depth form under the path
 				gotDir := unixfs.CarToDirEntry(t, bytes.NewReader(body), srcData.Children[1].Children[1].Children[1].Root, true)
@@ -324,12 +327,12 @@ func TestHttpFetch(t *testing.T) {
 			}},
 		},
 		{
-			name:             "graphsync nested large sharded directory, shallow",
+			name:             "graphsync nested large sharded directory, car-scope file",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true)}
 			},
-			modifyQueries: []queryModifier{shallowQuery},
+			modifyQueries: []queryModifier{fileQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				// sharded directory contains multiple blocks, so we expect a CAR with
 				// exactly those blocks
@@ -337,12 +340,12 @@ func TestHttpFetch(t *testing.T) {
 			}},
 		},
 		{
-			name:           "bitswap nested large sharded directory, shallow",
+			name:           "bitswap nested large sharded directory, car-scope file",
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true)}
 			},
-			modifyQueries: []queryModifier{shallowQuery},
+			modifyQueries: []queryModifier{fileQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				// sharded directory contains multiple blocks, so we expect a CAR with
 				// exactly those blocks
@@ -350,14 +353,14 @@ func TestHttpFetch(t *testing.T) {
 			}},
 		},
 		{
-			name:             "graphsync nested large sharded directory, with path, shallow",
+			name:             "graphsync nested large sharded directory, with path, car-scope file",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := &remotes[0].LinkSystem
 				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true))}
 			},
 			paths:         []string{"/want2/want1/want0"},
-			modifyQueries: []queryModifier{shallowQuery},
+			modifyQueries: []queryModifier{fileQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
@@ -370,14 +373,14 @@ func TestHttpFetch(t *testing.T) {
 			}},
 		},
 		{
-			name:           "bitswap nested large sharded directory, with path, shallow",
+			name:           "bitswap nested large sharded directory, with path, car-scope file",
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := &remotes[0].LinkSystem
 				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true))}
 			},
 			paths:         []string{"/want2/want1/want0"},
-			modifyQueries: []queryModifier{shallowQuery},
+			modifyQueries: []queryModifier{fileQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
@@ -405,7 +408,7 @@ func TestHttpFetch(t *testing.T) {
 				},
 					srcData.Children[1].Children[1].Children[1].SelfCids..., // "/want2/want1/want0" (full dir)
 				)
-				// validate we got the shallow form
+				// validate we got the car-scope file form
 				validateCarBody(t, body, srcData.Root, wantCids, false)
 				// validate that we got the full depth form under the path
 				gotDir := unixfs.CarToDirEntry(t, bytes.NewReader(body), srcData.Children[1].Children[1].Children[1].Root, true)
@@ -429,7 +432,7 @@ func TestHttpFetch(t *testing.T) {
 				},
 					srcData.Children[1].Children[1].Children[1].SelfCids..., // "/want2/want1/want0" (full dir)
 				)
-				// validate we got the shallow form
+				// validate we got the car-scope file form
 				validateCarBody(t, body, srcData.Root, wantCids, false)
 				// validate that we got the full depth form under the path
 				gotDir := unixfs.CarToDirEntry(t, bytes.NewReader(body), srcData.Children[1].Children[1].Children[1].Root, true)
@@ -442,7 +445,7 @@ func TestHttpFetch(t *testing.T) {
 			// then we also make sure the root is in all of them, so the CandidateFinder will return them
 			// all. The retriever should then form a swarm of 4 peers and fetch the content from across
 			// the set.
-			name:           "bitswap, nested large sharded directory, spread across multiple peers, with path, shallow",
+			name:           "bitswap, nested large sharded directory, spread across multiple peers, with path, car-scope file",
 			bitswapRemotes: 4,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				// rotating linksystem - each block will be written to a different remote
@@ -476,7 +479,7 @@ func TestHttpFetch(t *testing.T) {
 				return []unixfs.DirEntry{data}
 			},
 			paths:         []string{"/want2/want1/want0"},
-			modifyQueries: []queryModifier{shallowQuery},
+			modifyQueries: []queryModifier{fileQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
@@ -530,6 +533,42 @@ func TestHttpFetch(t *testing.T) {
 					unixfs.GenerateDirectory(t, &remotes[1].LinkSystem, rndReader, 16<<20, false),
 				}
 			},
+		},
+		{
+			// car-scope root fetch should only get the the root node for a plain file
+			name:             "graphsync large sharded file, car-scope root",
+			graphsyncRemotes: 1,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				return []unixfs.DirEntry{unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20)}
+			},
+			modifyQueries: []queryModifier{rootQuery},
+			validateBodies: []bodyValidator{
+				func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
+					wantCids := []cid.Cid{
+						srcData.Root, // "/""
+					}
+					validateCarBody(t, body, srcData.Root, wantCids, true)
+				},
+			},
+		},
+		{
+			name:             "graphsync nested large sharded file, with path, car-scope root",
+			graphsyncRemotes: 1,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				lsys := &remotes[0].LinkSystem
+				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateFile(t, lsys, rndReader, 4<<20))}
+			},
+			paths:         []string{"/want2/want1/want0"},
+			modifyQueries: []queryModifier{rootQuery},
+			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
+				wantCids := []cid.Cid{
+					srcData.Root,                                     // "/""
+					srcData.Children[1].Root,                         // "/want2"
+					srcData.Children[1].Children[1].Root,             // "/want2/want1"
+					srcData.Children[1].Children[1].Children[1].Root, // "/want2/want1/want0"
+				}
+				validateCarBody(t, body, srcData.Root, wantCids, true)
+			}},
 		},
 	}
 

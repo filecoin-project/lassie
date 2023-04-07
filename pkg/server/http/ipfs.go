@@ -109,14 +109,29 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			unixfsPath = "/" + strings.Join(urlPath[2:], "/")
 		}
 
-		fullFetch := true
+		carScope := types.CarScopeAll
+		// TODO: Deprecating depthType parameter. Remove when Saturn updates to use car-scope parameter.
 		if req.URL.Query().Has("depthType") {
 			switch req.URL.Query().Get("depthType") {
 			case "full":
 			case "shallow":
-				fullFetch = false
+				carScope = types.CarScopeFile
 			default:
-				logger.logStatus(http.StatusBadRequest, "Invalid depthType parameter")
+				logger.logStatus(http.StatusBadRequest, "Invalid car-scope parameter")
+				res.WriteHeader(http.StatusBadRequest)
+				return
+			}
+		}
+
+		if req.URL.Query().Has("car-scope") {
+			switch req.URL.Query().Get("car-scope") {
+			case "all":
+			case "file":
+				carScope = types.CarScopeFile
+			case "root":
+				carScope = types.CarScopeRoot
+			default:
+				logger.logStatus(http.StatusBadRequest, "Invalid car-scope parameter")
 				res.WriteHeader(http.StatusBadRequest)
 				return
 			}
@@ -204,7 +219,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			close(bytesWritten)
 		}, true)
 
-		request, err := types.NewRequestForPath(store, rootCid, unixfsPath, fullFetch)
+		request, err := types.NewRequestForPath(store, rootCid, unixfsPath, carScope)
 		request.Protocols = protocols
 		if err != nil {
 			msg := fmt.Sprintf("Failed to create request: %s", err.Error())
@@ -221,7 +236,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		request.PreloadLinkSystem.SetWriteStorage(preloadStore)
 		request.PreloadLinkSystem.TrustedStorage = true
 
-		log.Debugw("fetching CID", "retrievalId", retrievalId, "CID", rootCid.String(), "path", unixfsPath, "fullFetch", fullFetch)
+		log.Debugw("fetching CID", "retrievalId", retrievalId, "CID", rootCid.String(), "path", unixfsPath, "carScope", carScope)
 		stats, err := lassie.Fetch(req.Context(), request)
 		if err != nil {
 			select {
