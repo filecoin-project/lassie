@@ -54,16 +54,16 @@ var fetchCmd = &cli.Command{
 		},
 		&cli.StringFlag{
 			Name:        "car-scope",
-			Usage:       "describes the fetch behavior at the end of the traversal path. Valid values include [all, file, root].",
+			Usage:       "describes the fetch behavior at the end of the traversal path. Valid values include [all, file, block].",
 			DefaultText: "defaults to all, the entire DAG at the end of the path will be fetched",
 			Value:       "all",
 			Action: func(cctx *cli.Context, v string) error {
 				switch v {
 				case string(types.CarScopeAll):
 				case string(types.CarScopeFile):
-				case string(types.CarScopeRoot):
+				case string(types.CarScopeBlock):
 				default:
-					return fmt.Errorf("invalid car-scope parameter, must be of value [all, file, root]")
+					return fmt.Errorf("invalid car-scope parameter, must be of value [all, file, block]")
 				}
 
 				return nil
