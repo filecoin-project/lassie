@@ -2,6 +2,7 @@ package lassie
 
 import (
 	"context"
+	"net/http"
 	"time"
 
 	"github.com/filecoin-project/lassie/pkg/indexerlookup"
@@ -107,6 +108,8 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 				TempDir:      cfg.TempDir,
 				Concurrency:  cfg.BitswapConcurrency,
 			})
+		case multicodec.TransportIpfsGatewayHttp:
+			protocolRetrievers[protocol] = retriever.NewHTTPRetriever(session.GetStorageProviderTimeout, *http.DefaultClient)
 		}
 	}
 
