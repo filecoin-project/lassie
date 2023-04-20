@@ -52,6 +52,8 @@ type RetrievalRequest struct {
 	Cid               cid.Cid
 	LinkSystem        ipld.LinkSystem
 	Selector          ipld.Node
+	Path              string
+	Scope             CarScope
 	Protocols         []multicodec.Code
 	PreloadLinkSystem ipld.LinkSystem
 	MaxBlocks         uint64
@@ -97,6 +99,8 @@ func NewRequestForPath(store ipldstorage.WritableStorage, cid cid.Cid, path stri
 		RetrievalID: retrievalId,
 		Cid:         cid,
 		Selector:    selector,
+		Path:        fmt.Sprintf("%s?car-scope=%s", path, carScope),
+		Scope:       carScope,
 		LinkSystem:  linkSystem,
 	}, nil
 }

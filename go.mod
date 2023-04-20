@@ -31,7 +31,7 @@ require (
 	github.com/libp2p/go-libp2p-testing v0.12.0
 	github.com/mitchellh/go-server-timing v1.0.1
 	github.com/multiformats/go-multiaddr v0.8.0
-	github.com/multiformats/go-multicodec v0.8.1
+	github.com/multiformats/go-multicodec v0.8.2-0.20230419141826-bd7ef45ca89b
 	github.com/multiformats/go-multihash v0.2.1
 	github.com/prometheus/client_golang v1.14.0
 	github.com/stretchr/testify v1.8.2
