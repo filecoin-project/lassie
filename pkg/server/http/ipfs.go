@@ -137,6 +137,17 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			}
 		}
 
+		var bytes *types.Bytes
+
+		if req.URL.Query().Has("bytes") {
+
+			bytes, err = types.ParseByteRange(req.URL.Query().Get("bytes"))
+			if err != nil {
+				logger.logStatus(http.StatusBadRequest, "Invalid bytes parameter")
+				res.WriteHeader(http.StatusBadRequest)
+				return
+			}
+		}
 		var protocols []multicodec.Code
 		if req.URL.Query().Has("protocols") {
 			var err error
@@ -219,7 +230,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			close(bytesWritten)
 		}, true)
 
-		request, err := types.NewRequestForPath(store, rootCid, unixfsPath, carScope)
+		request, err := types.NewRequestForPath(store, rootCid, unixfsPath, carScope, bytes)
 		request.Protocols = protocols
 		if err != nil {
 			msg := fmt.Sprintf("Failed to create request: %s", err.Error())

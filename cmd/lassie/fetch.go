@@ -22,7 +22,7 @@ import (
 )
 
 var fetchProviderAddrInfos []peer.AddrInfo
-
+var bytes *types.Bytes
 var fetchCmd = &cli.Command{
 	Name:   "fetch",
 	Usage:  "Fetches content from the IPFS and Filecoin network",
@@ -67,6 +67,16 @@ var fetchCmd = &cli.Command{
 				}
 
 				return nil
+			},
+		},
+		&cli.StringFlag{
+			Name:        "bytes",
+			Usage:       "return only blocks needed to verify a specific byte range within a file, expressed as 'start:end'",
+			DefaultText: "entire byte range",
+			Action: func(cctx *cli.Context, v string) error {
+				var err error
+				bytes, err = types.ParseByteRange(v)
+				return err
 			},
 		},
 		&cli.StringFlag{
@@ -206,7 +216,7 @@ func Fetch(cctx *cli.Context) error {
 		}
 	}, false)
 
-	request, err := types.NewRequestForPath(carStore, rootCid, path, types.CarScope(carScope))
+	request, err := types.NewRequestForPath(carStore, rootCid, path, types.CarScope(carScope), bytes)
 	if err != nil {
 		return err
 	}

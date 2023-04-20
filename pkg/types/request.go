@@ -2,6 +2,7 @@ package types
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -55,6 +56,11 @@ type RetrievalRequest struct {
 	PreloadLinkSystem ipld.LinkSystem
 }
 
+type Bytes struct {
+	Start uint64
+	End   uint64
+}
+
 // NewRequestForPath creates a new RetrievalRequest from the provided parameters
 // and assigns a new RetrievalID to it.
 //
@@ -62,22 +68,31 @@ type RetrievalRequest struct {
 // and writing and it is explicitly set to be trusted (i.e. it will not
 // check CIDs match bytes). If the storage is not truested,
 // request.LinkSystem.TrustedStore should be set to false after this call.
-func NewRequestForPath(store ipldstorage.WritableStorage, cid cid.Cid, path string, carScope CarScope) (RetrievalRequest, error) {
+func NewRequestForPath(store ipldstorage.WritableStorage, cid cid.Cid, path string, carScope CarScope, bytes *Bytes) (RetrievalRequest, error) {
 	retrievalId, err := NewRetrievalID()
 	if err != nil {
 		return RetrievalRequest{}, err
 	}
 
 	// Turn the path into a selector
-
 	targetSelector := unixfsnode.ExploreAllRecursivelySelector // all
 	switch carScope {
 	case CarScopeAll:
+		// TODO: what the heck does bytes mean for car scope all?
 	case CarScopeFile:
-		targetSelector = unixfsnode.MatchUnixFSPreloadSelector // file
+		if bytes == nil {
+			targetSelector = unixfsnode.MatchUnixFSPreloadSelector // file
+		} else {
+			ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
+			targetSelector = ssb.ExploreInterpretAs("unixfs", ssb.MatcherSubset(int64(bytes.Start), int64(bytes.End)))
+		}
 	case CarScopeBlock:
 		ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
-		targetSelector = ssb.Matcher() // root
+		if bytes == nil {
+			targetSelector = ssb.Matcher() // root
+		} else {
+			targetSelector = ssb.MatcherSubset(int64(bytes.Start), int64(bytes.End))
+		}
 	}
 
 	selector := unixfsnode.UnixFSPathSelectorBuilder(path, targetSelector, false)
@@ -143,4 +158,26 @@ func ParseProtocolsString(v string) ([]multicodec.Code, error) {
 		protocols = append(protocols, protocol)
 	}
 	return protocols, nil
+}
+
+func ParseByteRange(v string) (*Bytes, error) {
+	if v == "" {
+		return nil, nil
+	}
+
+	parts := strings.Split(v, ":")
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("format error: bytes should be a start and end value seperated by a single colon")
+	}
+	start, err := strconv.ParseUint(parts[0], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing start of byte range: %w", err)
+	}
+
+	end, err := strconv.ParseUint(parts[1], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing start of byte range: %w", err)
+	}
+
+	return &Bytes{start, end}, nil
 }
