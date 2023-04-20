@@ -118,7 +118,7 @@ func TestDirectFetch(t *testing.T) {
 			req.NoError(err)
 			request, err := types.NewRequestForPath(outCar, srcData1.Root, "", types.CarScopeAll)
 			req.NoError(err)
-			_, err = lassie.Fetch(ctx, request)
+			_, err = lassie.Fetch(ctx, request, func(types.RetrievalEvent) {})
 			req.NoError(err)
 			err = outCar.Finalize()
 			req.NoError(err)

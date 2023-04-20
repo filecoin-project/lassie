@@ -211,13 +211,13 @@ func WithBitswapConcurrency(concurrency int) LassieOption {
 	}
 }
 
-func (l *Lassie) Fetch(ctx context.Context, request types.RetrievalRequest) (*types.RetrievalStats, error) {
+func (l *Lassie) Fetch(ctx context.Context, request types.RetrievalRequest, eventsCb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
 	var cancel context.CancelFunc
 	if l.cfg.GlobalTimeout != time.Duration(0) {
 		ctx, cancel = context.WithTimeout(ctx, l.cfg.GlobalTimeout)
 		defer cancel()
 	}
-	return l.retriever.Retrieve(ctx, request, func(types.RetrievalEvent) {})
+	return l.retriever.Retrieve(ctx, request, eventsCb)
 }
 
 // RegisterSubscriber registers a subscriber to receive retrieval events.
