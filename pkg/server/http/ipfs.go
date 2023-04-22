@@ -223,7 +223,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			request.MaxBlocks = blockLimit
 		}
 
-                log.Debugw("fetching CID", "retrievalId", retrievalId, "CID", rootCid.String(), "path", unixfsPath, "carScope", carScope)
+		log.Debugw("fetching CID", "retrievalId", retrievalId, "CID", rootCid.String(), "path", unixfsPath, "carScope", carScope)
 		stats, err := lassie.Fetch(req.Context(), request, func(re types.RetrievalEvent) {
 			header := servertiming.FromContext(req.Context())
 			if header == nil {
