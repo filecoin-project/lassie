@@ -111,19 +111,6 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		}
 
 		carScope := types.CarScopeAll
-		// TODO: Deprecating depthType parameter. Remove when Saturn updates to use car-scope parameter.
-		if req.URL.Query().Has("depthType") {
-			switch req.URL.Query().Get("depthType") {
-			case "full":
-			case "shallow":
-				carScope = types.CarScopeFile
-			default:
-				logger.logStatus(http.StatusBadRequest, "Invalid car-scope parameter")
-				res.WriteHeader(http.StatusBadRequest)
-				return
-			}
-		}
-
 		if req.URL.Query().Has("car-scope") {
 			switch req.URL.Query().Get("car-scope") {
 			case "all":
