@@ -29,6 +29,7 @@ require (
 	github.com/libp2p/go-libp2p v0.26.4
 	github.com/libp2p/go-libp2p-routing-helpers v0.6.1
 	github.com/libp2p/go-libp2p-testing v0.12.0
+	github.com/mitchellh/go-server-timing v1.0.1
 	github.com/multiformats/go-multiaddr v0.8.0
 	github.com/multiformats/go-multicodec v0.8.1
 	github.com/multiformats/go-multihash v0.2.1
@@ -43,7 +44,9 @@ require (
 )
 
 require (
+	github.com/felixge/httpsnoop v1.0.0 // indirect
 	github.com/filecoin-project/go-address v1.1.0 // indirect
+	github.com/golang/gddo v0.0.0-20180823221919-9d8ff1c67be5 // indirect
 	github.com/gopherjs/gopherjs v1.17.2 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/libp2p/go-mplex v0.7.0 // indirect

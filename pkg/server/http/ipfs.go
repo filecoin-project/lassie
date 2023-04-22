@@ -16,6 +16,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	servertiming "github.com/mitchellh/go-server-timing"
 	"github.com/multiformats/go-multicodec"
 )
 
@@ -237,7 +238,27 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		request.PreloadLinkSystem.TrustedStorage = true
 
 		log.Debugw("fetching CID", "retrievalId", retrievalId, "CID", rootCid.String(), "path", unixfsPath, "carScope", carScope)
-		stats, err := lassie.Fetch(req.Context(), request, func(types.RetrievalEvent) {})
+		stats, err := lassie.Fetch(req.Context(), request, func(re types.RetrievalEvent) {
+			header := servertiming.FromContext(req.Context())
+			if header == nil {
+				return
+			}
+
+			if header.Metrics != nil {
+				for _, m := range header.Metrics {
+					if m.Name == string(re.Phase()) {
+						if m.Extra == nil {
+							m.Extra = map[string]string{}
+						}
+						m.Extra[string(re.Code())] = fmt.Sprintf("%d", re.Time().Sub(re.PhaseStartTime()))
+						return
+					}
+				}
+			}
+
+			metric := header.NewMetric(string(re.Phase()))
+			metric.Duration = re.Time().Sub(re.PhaseStartTime())
+		})
 		if err != nil {
 			select {
 			case <-bytesWritten:

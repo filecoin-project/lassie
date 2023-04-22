@@ -8,6 +8,7 @@ import (
 
 	"github.com/filecoin-project/lassie/pkg/lassie"
 	logging "github.com/ipfs/go-log/v2"
+	servertiming "github.com/mitchellh/go-server-timing"
 )
 
 var log = logging.Logger("lassie/httpserver")
@@ -39,10 +40,11 @@ func NewHttpServer(ctx context.Context, lassie *lassie.Lassie, cfg HttpServerCon
 
 	// create server
 	mux := http.NewServeMux()
+	handler := servertiming.Middleware(mux, nil)
 	server := &http.Server{
 		Addr:        fmt.Sprintf(":%d", cfg.Port),
 		BaseContext: func(listener net.Listener) context.Context { return ctx },
-		Handler:     mux,
+		Handler:     handler,
 	}
 
 	httpServer := &HttpServer{
