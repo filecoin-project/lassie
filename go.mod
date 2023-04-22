@@ -6,14 +6,14 @@ require (
 	contrib.go.opencensus.io/exporter/prometheus v0.4.2
 	github.com/benbjohnson/clock v1.3.0
 	github.com/dustin/go-humanize v1.0.1
-	github.com/filecoin-project/go-data-transfer/v2 v2.0.0-rc5
+	github.com/filecoin-project/go-data-transfer/v2 v2.0.0-rc7
 	github.com/filecoin-project/go-state-types v0.10.0
 	github.com/google/uuid v1.3.0
 	github.com/hannahhoward/go-pubsub v1.0.0
 	github.com/ipfs/go-blockservice v0.5.0
-	github.com/ipfs/go-cid v0.4.0
+	github.com/ipfs/go-cid v0.4.1
 	github.com/ipfs/go-datastore v0.6.0
-	github.com/ipfs/go-graphsync v0.14.4
+	github.com/ipfs/go-graphsync v0.14.6
 	github.com/ipfs/go-ipfs-blockstore v1.3.0
 	github.com/ipfs/go-ipfs-blocksutil v0.0.1
 	github.com/ipfs/go-ipfs-delay v0.0.1

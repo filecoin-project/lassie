@@ -59,6 +59,7 @@ func TestClient(t *testing.T) {
 		p,
 		proposal,
 		selector,
+		0,
 		eventsCb,
 		gracefulShutdownRequested,
 	)
@@ -106,6 +107,7 @@ func TestClient_BadSelector(t *testing.T) {
 		p,
 		proposal,
 		selector,
+		0,
 		eventsCb,
 		gracefulShutdownRequested,
 	)
