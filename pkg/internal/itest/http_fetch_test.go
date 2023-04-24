@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -24,6 +25,7 @@ import (
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
 	"github.com/stretchr/testify/require"
 
@@ -31,14 +33,14 @@ import (
 )
 
 func TestHttpFetch(t *testing.T) {
-	fileQuery := func(q url.Values) {
+	fileQuery := func(q url.Values, _ []testpeer.TestPeer) {
 		q.Set("car-scope", "file")
 	}
-	blockQuery := func(q url.Values) {
+	blockQuery := func(q url.Values, _ []testpeer.TestPeer) {
 		q.Set("car-scope", "block")
 	}
 
-	type queryModifier func(url.Values)
+	type queryModifier func(url.Values, []testpeer.TestPeer)
 	type bodyValidator func(*testing.T, unixfs.DirEntry, []byte)
 
 	testCases := []struct {
@@ -119,7 +121,7 @@ func TestHttpFetch(t *testing.T) {
 			name:             "graphsync max block limit in request",
 			graphsyncRemotes: 1,
 			modifyQueries: []queryModifier{
-				func(values url.Values) {
+				func(values url.Values, _ []testpeer.TestPeer) {
 					values.Add("blockLimit", "3")
 				},
 			},
@@ -570,6 +572,42 @@ func TestHttpFetch(t *testing.T) {
 				validateCarBody(t, body, srcData.Root, wantCids, true)
 			}},
 		},
+		{
+			name:             "graphsync large sharded file, fixedPeer",
+			graphsyncRemotes: 1,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				fileEntry := unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20)
+				// wipe content routing information for remote
+				remotes[0].Cids = make(map[cid.Cid]struct{})
+				return []unixfs.DirEntry{fileEntry}
+			},
+			modifyQueries: []queryModifier{func(v url.Values, tp []testpeer.TestPeer) {
+				multiaddrs, _ := peer.AddrInfoToP2pAddrs(tp[0].AddrInfo())
+				maStrings := make([]string, 0, len(multiaddrs))
+				for _, ma := range multiaddrs {
+					maStrings = append(maStrings, ma.String())
+				}
+				v.Set("providers", strings.Join(maStrings, ","))
+			}},
+		},
+		{
+			name:           "bitswap large sharded file",
+			bitswapRemotes: 1,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				fileEntry := unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20)
+				// wipe content routing information for remote
+				remotes[0].Cids = make(map[cid.Cid]struct{})
+				return []unixfs.DirEntry{fileEntry}
+			},
+			modifyQueries: []queryModifier{func(v url.Values, tp []testpeer.TestPeer) {
+				multiaddrs, _ := peer.AddrInfoToP2pAddrs(tp[0].AddrInfo())
+				maStrings := make([]string, 0, len(multiaddrs))
+				for _, ma := range multiaddrs {
+					maStrings = append(maStrings, ma.String())
+				}
+				v.Set("providers", strings.Join(maStrings, ","))
+			}},
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -636,7 +674,7 @@ func TestHttpFetch(t *testing.T) {
 					getReq.Header.Add("Accept", "application/vnd.ipld.car")
 					if testCase.modifyQueries != nil && testCase.modifyQueries[i] != nil {
 						q := getReq.URL.Query()
-						testCase.modifyQueries[i](q)
+						testCase.modifyQueries[i](q, mrn.Remotes)
 						getReq.URL.RawQuery = q.Encode()
 					}
 					t.Log("Fetching", getReq.URL.String())

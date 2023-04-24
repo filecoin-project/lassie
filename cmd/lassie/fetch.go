@@ -75,15 +75,9 @@ var fetchCmd = &cli.Command{
 			DefaultText: "Providers will be discovered automatically",
 			Usage:       "Provider addresses including its peer ID, seperated by a comma. Example: /ip4/1.2.3.4/tcp/1234/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4",
 			Action: func(cctx *cli.Context, v string) error {
-				vs := strings.Split(v, ",")
-				for _, v := range vs {
-					fetchProviderAddrInfo, err := peer.AddrInfoFromString(v)
-					if err != nil {
-						return err
-					}
-					fetchProviderAddrInfos = append(fetchProviderAddrInfos, *fetchProviderAddrInfo)
-				}
-				return nil
+				var err error
+				fetchProviderAddrInfos, err = types.ParseProviderStrings(v)
+				return err
 			},
 		},
 		FlagEventRecorderAuth,

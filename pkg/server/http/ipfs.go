@@ -15,6 +15,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/libp2p/go-libp2p/core/peer"
 	servertiming "github.com/mitchellh/go-server-timing"
 	"github.com/multiformats/go-multicodec"
 )
@@ -135,6 +136,17 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			}
 		}
 
+		var fixedPeers []peer.AddrInfo
+		if req.URL.Query().Has("providers") {
+			var err error
+			fixedPeers, err = types.ParseProviderStrings(req.URL.Query().Get("providers"))
+			if err != nil {
+				logger.logStatus(http.StatusBadRequest, "Invalid providers parameter")
+				res.WriteHeader(http.StatusBadRequest)
+				return
+			}
+		}
+
 		// for setting Content-Disposition header based on filename url parameter
 		var filename string
 		if req.URL.Query().Has("filename") {
@@ -193,6 +205,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 
 		request, err := types.NewRequestForPath(store, rootCid, unixfsPath, carScope)
 		request.Protocols = protocols
+		request.FixedPeers = fixedPeers
 		if err != nil {
 			msg := fmt.Sprintf("Failed to create request: %s", err.Error())
 			logger.logStatus(http.StatusInternalServerError, msg)
