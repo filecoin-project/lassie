@@ -32,6 +32,7 @@ type tempData struct {
 	allowedProtocols         []string
 	attemptedProtocolSet     map[string]struct{}
 	retrievalAttempts        map[string]*RetrievalAttempt
+	metadata                 map[string]interface{}
 }
 
 type RetrievalAttempt struct {
@@ -56,6 +57,8 @@ type AggregateEvent struct {
 	ProtocolsAllowed          []string                     `json:"protocolsAllowed,omitempty"`         // The available protocols that could be used for this retrieval
 	ProtocolsAttempted        []string                     `json:"protocolsAttempted,omitempty"`       // The protocols that were used to attempt this retrieval
 	RetrievalAttempts         map[string]*RetrievalAttempt `json:"retrievalAttempts,omitempty"`        // All of the retrieval attempts, indexed by their SP ID
+
+	Metadata map[string]interface{} `json:"metadata,omitempty"` // Any additional information regarding the events
 }
 
 type batchedEvents struct {
@@ -140,6 +143,7 @@ func (a *aggregateEventRecorder) ingestEvents() {
 					allowedProtocols:         allowedProtocols,
 					attemptedProtocolSet:     make(map[string]struct{}),
 					retrievalAttempts:        make(map[string]*RetrievalAttempt),
+					metadata:                 event.(events.RetrievalEventStarted).Metadata(),
 				}
 				continue
 			}
@@ -236,6 +240,8 @@ func (a *aggregateEventRecorder) ingestEvents() {
 					ProtocolsAllowed:          tempData.allowedProtocols,
 					ProtocolsAttempted:        protocolsAttempted,
 					RetrievalAttempts:         tempData.retrievalAttempts,
+
+					Metadata: tempData.metadata,
 				}
 
 				// Delete the key when we're done with the data

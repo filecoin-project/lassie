@@ -58,6 +58,21 @@ type RetrievalRequest struct {
 	PreloadLinkSystem ipld.LinkSystem
 	MaxBlocks         uint64
 	FixedPeers        []peer.AddrInfo
+	Metadata          map[string]interface{}
+}
+
+// retrievalRequestConfig customizes the behavior of a Lassie instance.
+type retrievalRequestConfig struct {
+	Metadata map[string]interface{}
+}
+
+type retrievalRequestOption func(cfg *retrievalRequestConfig)
+
+// WithMetadata allows you to specify custom metadata for a RetrievalRequest.
+func WithMetadata(metadata map[string]interface{}) retrievalRequestOption {
+	return func(cfg *retrievalRequestConfig) {
+		cfg.Metadata = metadata
+	}
 }
 
 // NewRequestForPath creates a new RetrievalRequest from the provided parameters
@@ -67,14 +82,25 @@ type RetrievalRequest struct {
 // and writing and it is explicitly set to be trusted (i.e. it will not
 // check CIDs match bytes). If the storage is not truested,
 // request.LinkSystem.TrustedStore should be set to false after this call.
-func NewRequestForPath(store ipldstorage.WritableStorage, cid cid.Cid, path string, carScope CarScope) (RetrievalRequest, error) {
+func NewRequestForPath(store ipldstorage.WritableStorage, cid cid.Cid, path string, carScope CarScope, opts ...retrievalRequestOption) (RetrievalRequest, error) {
+	cfg := &retrievalRequestConfig{}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+	return NewRequestForPathWithConfig(store, cid, path, carScope, cfg)
+}
+
+func NewRequestForPathWithConfig(store ipldstorage.WritableStorage, cid cid.Cid, path string, carScope CarScope, cfg *retrievalRequestConfig) (RetrievalRequest, error) {
+	if cfg.Metadata == nil {
+		cfg.Metadata = make(map[string]interface{})
+	}
+
 	retrievalId, err := NewRetrievalID()
 	if err != nil {
 		return RetrievalRequest{}, err
 	}
 
 	// Turn the path into a selector
-
 	targetSelector := unixfsnode.ExploreAllRecursivelySelector // all
 	switch carScope {
 	case CarScopeAll:
@@ -102,6 +128,7 @@ func NewRequestForPath(store ipldstorage.WritableStorage, cid cid.Cid, path stri
 		Path:        fmt.Sprintf("%s?car-scope=%s", path, carScope),
 		Scope:       carScope,
 		LinkSystem:  linkSystem,
+		Metadata:    cfg.Metadata,
 	}, nil
 }
 

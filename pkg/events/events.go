@@ -112,14 +112,15 @@ func Proposed(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.T
 // RetrievalEventStarted describes when a phase starts
 type RetrievalEventStarted struct {
 	spBaseEvent
-	phase types.Phase
+	phase    types.Phase
+	metadata map[string]interface{}
 }
 
-func Started(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.Time, phase types.Phase, candidate types.RetrievalCandidate, protocols ...multicodec.Code) RetrievalEventStarted {
+func Started(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.Time, phase types.Phase, candidate types.RetrievalCandidate, metadata map[string]interface{}, protocols ...multicodec.Code) RetrievalEventStarted {
 	if len(protocols) == 0 {
 		protocols = candidate.Metadata.Protocols()
 	}
-	return RetrievalEventStarted{spBaseEvent{baseEvent{at, retrievalId, phaseStartTime, candidate.RootCid, protocols}, candidate.MinerPeer.ID}, phase}
+	return RetrievalEventStarted{spBaseEvent{baseEvent{at, retrievalId, phaseStartTime, candidate.RootCid, protocols}, candidate.MinerPeer.ID}, phase, metadata}
 }
 
 // RetrievalEventFirstByte describes when the first byte of data was received during the RetrievalPhase
@@ -184,10 +185,11 @@ func (r RetrievalEventCandidatesFiltered) Phase() types.Phase    { return types.
 func (r RetrievalEventCandidatesFiltered) String() string {
 	return fmt.Sprintf("CandidatesFilteredEvent<%s, %s, %s, %d, %v>", r.eventTime, r.retrievalId, r.payloadCid, len(r.candidates), r.Protocols())
 }
-func (r RetrievalEventStarted) Code() types.EventCode { return types.StartedCode }
-func (r RetrievalEventStarted) Phase() types.Phase    { return r.phase }
+func (r RetrievalEventStarted) Code() types.EventCode            { return types.StartedCode }
+func (r RetrievalEventStarted) Phase() types.Phase               { return r.phase }
+func (r RetrievalEventStarted) Metadata() map[string]interface{} { return r.metadata }
 func (r RetrievalEventStarted) String() string {
-	return fmt.Sprintf("StartedEvent<%s, %s, %s, %s, %s, %v>", r.phase, r.eventTime, r.retrievalId, r.payloadCid, r.storageProviderId, r.protocols)
+	return fmt.Sprintf("StartedEvent<%s, %s, %s, %s, %s, %v, %v>", r.phase, r.eventTime, r.retrievalId, r.payloadCid, r.storageProviderId, r.protocols, r.metadata)
 }
 func (r RetrievalEventConnected) Code() types.EventCode { return types.ConnectedCode }
 func (r RetrievalEventConnected) Phase() types.Phase    { return r.phase }

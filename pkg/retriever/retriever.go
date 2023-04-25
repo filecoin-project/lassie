@@ -152,7 +152,16 @@ func (retriever *Retriever) Retrieve(
 	)
 
 	// Emit a Started event denoting that the entire fetch phase has started
-	onRetrievalEvent(events.Started(retriever.clock.Now(), request.RetrievalID, startTime, types.FetchPhase, types.RetrievalCandidate{RootCid: request.Cid}, request.GetSupportedProtocols(retriever.protocols)...))
+	startedEvent := events.Started(
+		retriever.clock.Now(),
+		request.RetrievalID,
+		startTime,
+		types.FetchPhase,
+		types.RetrievalCandidate{RootCid: request.Cid},
+		request.Metadata,
+		request.GetSupportedProtocols(retriever.protocols)...,
+	)
+	onRetrievalEvent(startedEvent)
 
 	// retrieve, note that we could get a successful retrieval
 	// (retrievalStats!=nil) _and_ also an error return because there may be
@@ -165,7 +174,13 @@ func (retriever *Retriever) Retrieve(
 	)
 
 	// Emit a Finished event denoting that the entire fetch phase has finished
-	onRetrievalEvent(events.Finished(retriever.clock.Now(), request.RetrievalID, startTime, types.RetrievalCandidate{RootCid: request.Cid}))
+	finishedEvent := events.Finished(
+		retriever.clock.Now(),
+		request.RetrievalID,
+		startTime,
+		types.RetrievalCandidate{RootCid: request.Cid},
+	)
+	onRetrievalEvent(finishedEvent)
 
 	if err != nil && retrievalStats == nil {
 		return nil, err

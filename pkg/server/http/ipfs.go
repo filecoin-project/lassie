@@ -203,7 +203,18 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			close(bytesWritten)
 		}, true)
 
-		request, err := types.NewRequestForPath(store, rootCid, unixfsPath, carScope)
+		// Create metadata about this request
+		metadata := map[string]interface{}{
+			"requestId": requestId,
+		}
+		userAgent := req.Header.Get("User-Agent")
+		if userAgent != "" {
+			metadata["userAgent"] = userAgent
+		}
+		requestMetadata := types.WithMetadata(metadata)
+
+		// Create the request
+		request, err := types.NewRequestForPath(store, rootCid, unixfsPath, carScope, requestMetadata)
 		request.Protocols = protocols
 		request.FixedPeers = fixedPeers
 		if err != nil {
