@@ -84,7 +84,7 @@ func TestAggregateEventRecorder(t *testing.T) {
 				require.Equal(t, int64(1), req.Length())
 				eventList := verifyListNode(t, req, "events", 1)
 				event := verifyListElement(t, eventList, 0)
-				require.Equal(t, int64(14), event.Length())
+				require.Equal(t, int64(15), event.Length())
 				verifyStringNode(t, event, "instanceId", "test-instance")
 				verifyStringNode(t, event, "retrievalId", id.String())
 				verifyStringNode(t, event, "storageProviderId", types.BitswapIndentifier)
@@ -152,9 +152,11 @@ func TestAggregateEventRecorder(t *testing.T) {
 			defer cancel()
 			subscriber := aggregateeventrecorder.NewAggregateEventRecorder(
 				ctx,
-				"test-instance",
-				fmt.Sprintf("%s/test-path/here", ts.URL),
-				authHeaderValue,
+				aggregateeventrecorder.EventRecorderConfig{
+					InstanceID:            "test-instance",
+					EndpointURL:           fmt.Sprintf("%s/test-path/here", ts.URL),
+					EndpointAuthorization: authHeaderValue,
+				},
 			).RetrievalEventSubscriber()
 			id, err := types.NewRetrievalID()
 			require.NoError(t, err)
@@ -234,9 +236,11 @@ func BenchmarkAggregateEventRecorderSubscriber(b *testing.B) {
 	ctx := context.Background()
 	subscriber := aggregateeventrecorder.NewAggregateEventRecorder(
 		ctx,
-		"test-instance",
-		fmt.Sprintf("%s/test-path/here", ts.URL),
-		authHeaderValue,
+		aggregateeventrecorder.EventRecorderConfig{
+			InstanceID:            "test-instance",
+			EndpointURL:           fmt.Sprintf("%s/test-path/here", ts.URL),
+			EndpointAuthorization: authHeaderValue,
+		},
 	).RetrievalEventSubscriber()
 	id, _ := types.NewRetrievalID()
 	fetchStartTime := time.Now()
