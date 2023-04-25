@@ -13,6 +13,7 @@ import (
 	ipldstorage "github.com/ipld/go-ipld-prime/storage"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
 )
 
@@ -54,6 +55,7 @@ type RetrievalRequest struct {
 	Protocols         []multicodec.Code
 	PreloadLinkSystem ipld.LinkSystem
 	MaxBlocks         uint64
+	FixedPeers        []peer.AddrInfo
 }
 
 // NewRequestForPath creates a new RetrievalRequest from the provided parameters
@@ -144,4 +146,18 @@ func ParseProtocolsString(v string) ([]multicodec.Code, error) {
 		protocols = append(protocols, protocol)
 	}
 	return protocols, nil
+}
+
+func ParseProviderStrings(v string) ([]peer.AddrInfo, error) {
+	vs := strings.Split(v, ",")
+	providerAddrInfos := make([]peer.AddrInfo, 0, len(vs))
+
+	for _, v := range vs {
+		providerAddrInfo, err := peer.AddrInfoFromString(v)
+		if err != nil {
+			return nil, err
+		}
+		providerAddrInfos = append(providerAddrInfos, *providerAddrInfo)
+	}
+	return providerAddrInfos, nil
 }
