@@ -20,6 +20,8 @@ import (
 	"go.uber.org/multierr"
 )
 
+var ErrHttpSelectorRequest = errors.New("can't perform HTTP retrieval for an explicit selector request")
+
 type HTTPRetriever struct {
 	Client http.Client
 	Clock  clock.Clock
@@ -63,6 +65,10 @@ func (cfg *HTTPRetriever) Retrieve(
 }
 
 func (r *httpRetrieval) RetrieveFromAsyncCandidates(asyncCandidates types.InboundAsyncCandidates) (*types.RetrievalStats, error) {
+	if r.request.Selector != nil { // explicit selector, can't handle these here
+		return nil, ErrHttpSelectorRequest
+	}
+
 	ctx, cancelCtx := context.WithCancel(r.ctx)
 
 	// start retrievals
@@ -159,7 +165,14 @@ func (r *httpRetrieval) doHTTPDownload(
 		return
 	}
 
-	reqURL := fmt.Sprintf("%s/ipfs/%s%s", candidateURL, r.request.Cid, r.request.Path)
+	path, err := r.request.GetUrlPath()
+	if err != nil {
+		retrievalErr = fmt.Errorf("couldn't construct a url path for request: %w", err)
+		log.Warnf(retrievalErr.Error())
+		r.sendEvent(events.Failed(r.HTTPRetriever.Clock.Now(), r.request.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate, retrievalErr.Error()))
+		return
+	}
+	reqURL := fmt.Sprintf("%s/ipfs/%s%s", candidateURL, r.request.Cid, path)
 	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
 		log.Warnf("Couldn't construct a http request %s: %v", candidate.MinerPeer.ID, err)
@@ -167,11 +180,7 @@ func (r *httpRetrieval) doHTTPDownload(
 		r.sendEvent(events.Failed(r.HTTPRetriever.Clock.Now(), r.request.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate, retrievalErr.Error()))
 		return
 	}
-	if r.request.Scope == types.CarScopeBlock {
-		req.Header.Add("Accept", "application/vnd.ipld.block")
-	} else {
-		req.Header.Add("Accept", "application/vnd.ipld.car")
-	}
+	req.Header.Add("Accept", r.request.Scope.AcceptHeader())
 
 	resp, err := r.Client.Do(req)
 
