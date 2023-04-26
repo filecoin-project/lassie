@@ -1,6 +1,7 @@
 package types
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -58,18 +59,24 @@ type RetrievalRequest struct {
 	PreloadLinkSystem ipld.LinkSystem
 	MaxBlocks         uint64
 	FixedPeers        []peer.AddrInfo
-	Metadata          map[string]interface{}
+	Metadata          RequestMetadata
+}
+
+type RequestMetadata map[string]string
+
+func (r RequestMetadata) MarshalJSON() ([]byte, error) {
+	return json.Marshal(r)
 }
 
 // retrievalRequestConfig customizes the behavior of a Lassie instance.
 type retrievalRequestConfig struct {
-	Metadata map[string]interface{}
+	Metadata RequestMetadata
 }
 
 type retrievalRequestOption func(cfg *retrievalRequestConfig)
 
 // WithMetadata allows you to specify custom metadata for a RetrievalRequest.
-func WithMetadata(metadata map[string]interface{}) retrievalRequestOption {
+func WithMetadata(metadata RequestMetadata) retrievalRequestOption {
 	return func(cfg *retrievalRequestConfig) {
 		cfg.Metadata = metadata
 	}
@@ -92,7 +99,7 @@ func NewRequestForPath(store ipldstorage.WritableStorage, cid cid.Cid, path stri
 
 func NewRequestForPathWithConfig(store ipldstorage.WritableStorage, cid cid.Cid, path string, carScope CarScope, cfg *retrievalRequestConfig) (RetrievalRequest, error) {
 	if cfg.Metadata == nil {
-		cfg.Metadata = make(map[string]interface{})
+		cfg.Metadata = make(RequestMetadata)
 	}
 
 	retrievalId, err := NewRetrievalID()

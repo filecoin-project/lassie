@@ -32,7 +32,7 @@ type tempData struct {
 	allowedProtocols         []string
 	attemptedProtocolSet     map[string]struct{}
 	retrievalAttempts        map[string]*RetrievalAttempt
-	metadata                 map[string]interface{}
+	metadata                 json.Marshaler
 }
 
 type RetrievalAttempt struct {
@@ -58,7 +58,7 @@ type AggregateEvent struct {
 	ProtocolsAttempted        []string                     `json:"protocolsAttempted,omitempty"`       // The protocols that were used to attempt this retrieval
 	RetrievalAttempts         map[string]*RetrievalAttempt `json:"retrievalAttempts,omitempty"`        // All of the retrieval attempts, indexed by their SP ID
 
-	Metadata map[string]interface{} `json:"metadata,omitempty"` // Any additional information regarding the events
+	Metadata json.Marshaler `json:"metadata,omitempty"` // Any additional information regarding the events
 }
 
 type batchedEvents struct {

@@ -152,7 +152,7 @@ func (retriever *Retriever) Retrieve(
 	)
 
 	// Emit a Started event denoting that the entire fetch phase has started
-	startedEvent := events.Started(
+	startedEvent := events.StartedWithMetadata(
 		retriever.clock.Now(),
 		request.RetrievalID,
 		startTime,
