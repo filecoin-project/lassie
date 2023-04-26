@@ -121,7 +121,7 @@ func Started(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.Ti
 	if len(protocols) == 0 {
 		protocols = candidate.Metadata.Protocols()
 	}
-	return RetrievalEventStarted{spBaseEvent{baseEvent{at, retrievalId, phaseStartTime, candidate.RootCid, protocols}, candidate.MinerPeer.ID}, phase, json.RawMessage{}}
+	return RetrievalEventStarted{spBaseEvent{baseEvent{at, retrievalId, phaseStartTime, candidate.RootCid, protocols}, candidate.MinerPeer.ID}, phase, types.NewRequestMetadata()}
 }
 
 func StartedWithMetadata(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.Time, phase types.Phase, candidate types.RetrievalCandidate, metadata json.Marshaler, protocols ...multicodec.Code) RetrievalEventStarted {
