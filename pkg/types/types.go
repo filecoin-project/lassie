@@ -8,6 +8,9 @@ import (
 
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/ipfs/go-cid"
+	"github.com/ipfs/go-unixfsnode"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
+	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
@@ -267,3 +270,28 @@ type CarScope string
 const CarScopeAll CarScope = "all"
 const CarScopeFile CarScope = "file"
 const CarScopeBlock CarScope = "block"
+
+var matcherSelector = builder.NewSelectorSpecBuilder(basicnode.Prototype.Any).Matcher()
+
+func (cs CarScope) TerminalSelectorSpec() builder.SelectorSpec {
+	switch cs {
+	case CarScopeAll:
+		return unixfsnode.ExploreAllRecursivelySelector
+	case CarScopeFile:
+		return unixfsnode.MatchUnixFSPreloadSelector // file
+	case CarScopeBlock:
+		return matcherSelector
+	case CarScope(""):
+		return unixfsnode.ExploreAllRecursivelySelector // default to explore-all for zero-value CarScope
+	}
+	panic(fmt.Sprintf("unknown CarScope: [%s]", string(cs)))
+}
+
+func (cs CarScope) AcceptHeader() string {
+	switch cs {
+	case CarScopeBlock:
+		return "application/vnd.ipld.block"
+	default:
+		return "application/vnd.ipld.car"
+	}
+}
