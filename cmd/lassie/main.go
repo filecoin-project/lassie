@@ -75,8 +75,11 @@ func before(cctx *cli.Context) error {
 		level = "DEBUG"
 	}
 
-	for _, name := range subsystems {
-		_ = logging.SetLogLevel(name, level)
+	// don't over-ride logging if set in the environment.
+	if os.Getenv("GOLOG_LOG_LEVEL") == "" {
+		for _, name := range subsystems {
+			_ = logging.SetLogLevel(name, level)
+		}
 	}
 
 	return nil
