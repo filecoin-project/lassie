@@ -97,6 +97,11 @@ var FlagExcludeProviders = &cli.StringFlag{
 	Usage:       "Provider peer IDs, seperated by a comma. Example: 12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4",
 	EnvVars:     []string{"LASSIE_EXCLUDE_PROVIDERS"},
 	Action: func(cctx *cli.Context, v string) error {
+		// Do nothing if given an empty string
+		if v == "" {
+			return nil
+		}
+
 		providerBlockList = make(map[peer.ID]bool)
 		vs := strings.Split(v, ",")
 		for _, v := range vs {
@@ -117,6 +122,11 @@ var FlagProtocols = &cli.StringFlag{
 	Usage:       "List of retrieval protocols to use, seperated by a comma",
 	EnvVars:     []string{"LASSIE_SUPPORTED_PROTOCOLS"},
 	Action: func(cctx *cli.Context, v string) error {
+		// Do nothing if given an empty string
+		if v == "" {
+			return nil
+		}
+
 		var err error
 		protocols, err = types.ParseProtocolsString(v)
 		return err
