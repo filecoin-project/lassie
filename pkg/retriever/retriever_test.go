@@ -1,4 +1,4 @@
-package retriever_test
+package retriever
 
 import (
 	"context"
@@ -11,7 +11,6 @@ import (
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/internal/testutil"
-	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/session"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/google/uuid"
@@ -31,8 +30,8 @@ func TestRetrieverStart(t *testing.T) {
 	candidateFinder := &testutil.MockCandidateFinder{}
 	client := &testutil.MockClient{}
 	session := session.NewSession(config, true)
-	gsretriever := retriever.NewGraphsyncRetriever(session.GetStorageProviderTimeout, client)
-	ret, err := retriever.NewRetriever(context.Background(), session, candidateFinder, map[multicodec.Code]types.CandidateRetriever{
+	gsretriever := NewGraphsyncRetriever(session.GetStorageProviderTimeout, client)
+	ret, err := NewRetriever(context.Background(), session, candidateFinder, map[multicodec.Code]types.CandidateRetriever{
 		multicodec.TransportGraphsyncFilecoinv1: gsretriever,
 	})
 	require.NoError(t, err)
@@ -43,7 +42,7 @@ func TestRetrieverStart(t *testing.T) {
 		RetrievalID: types.RetrievalID(uuid.New()),
 		Cid:         cid.MustParse("bafkqaalb"),
 	}, func(types.RetrievalEvent) {})
-	require.ErrorIs(t, err, retriever.ErrRetrieverNotStarted)
+	require.ErrorIs(t, err, ErrRetrieverNotStarted)
 	require.Nil(t, result)
 }
 
@@ -506,7 +505,7 @@ func TestRetriever(t *testing.T) {
 			returns_connected:  map[string]testutil.DelayedConnectReturn{},
 			returns_retrievals: map[string]testutil.DelayedClientReturn{},
 			successfulPeer:     peer.ID(""),
-			err:                retriever.ErrNoCandidates,
+			err:                ErrNoCandidates,
 			expectedSequence: []testutil.ExpectedActionsAtTime{
 				{
 					AfterStart:           0,
@@ -531,7 +530,7 @@ func TestRetriever(t *testing.T) {
 			returns_connected:  map[string]testutil.DelayedConnectReturn{},
 			returns_retrievals: map[string]testutil.DelayedClientReturn{},
 			successfulPeer:     peer.ID(""),
-			err:                retriever.ErrNoCandidates,
+			err:                ErrNoCandidates,
 			expectedSequence: []testutil.ExpectedActionsAtTime{
 				{
 					AfterStart: 0,
@@ -571,12 +570,12 @@ func TestRetriever(t *testing.T) {
 				tc.setup(&config)
 			}
 			session := session.NewSession(config, true)
-			gsretriever := retriever.NewGraphsyncRetriever(session.GetStorageProviderTimeout, client)
-			gsretriever.Clock = clock
-			gsretriever.QueueInitialPause = initialPause
+			gsretriever := NewGraphsyncRetriever(session.GetStorageProviderTimeout, client)
+			gsretriever.(*parallelPeerRetriever).Clock = clock
+			gsretriever.(*parallelPeerRetriever).QueueInitialPause = initialPause
 
 			// --- create ---
-			ret, err := retriever.NewRetrieverWithClock(context.Background(), session, candidateFinder, map[multicodec.Code]types.CandidateRetriever{
+			ret, err := NewRetrieverWithClock(context.Background(), session, candidateFinder, map[multicodec.Code]types.CandidateRetriever{
 				multicodec.TransportGraphsyncFilecoinv1: gsretriever,
 			}, clock)
 			require.NoError(t, err)
@@ -660,12 +659,12 @@ func TestLinkSystemPerRequest(t *testing.T) {
 	client := testutil.NewMockClient(returnsConnected, returnsRetrievals, clock)
 	config := session.Config{}
 	session := session.NewSession(config, true)
-	gsretriever := retriever.NewGraphsyncRetriever(session.GetStorageProviderTimeout, client)
-	gsretriever.Clock = clock
-	gsretriever.QueueInitialPause = initialPause
+	gsretriever := NewGraphsyncRetriever(session.GetStorageProviderTimeout, client)
+	gsretriever.(*parallelPeerRetriever).Clock = clock
+	gsretriever.(*parallelPeerRetriever).QueueInitialPause = initialPause
 
 	// --- create ---
-	ret, err := retriever.NewRetrieverWithClock(context.Background(), session, candidateFinder, map[multicodec.Code]types.CandidateRetriever{
+	ret, err := NewRetrieverWithClock(context.Background(), session, candidateFinder, map[multicodec.Code]types.CandidateRetriever{
 		multicodec.TransportGraphsyncFilecoinv1: gsretriever,
 	}, clock)
 	require.NoError(t, err)

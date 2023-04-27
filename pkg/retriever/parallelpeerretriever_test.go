@@ -510,8 +510,8 @@ func TestRetrievalRacing(t *testing.T) {
 				candidates = append(candidates, types.NewRetrievalCandidate(peer.ID(p), cid.Undef, protocol))
 			}
 			cfg := NewGraphsyncRetriever(func(peer peer.ID) time.Duration { return time.Second }, mockClient)
-			cfg.Clock = clock
-			cfg.QueueInitialPause = initialPause
+			cfg.(*parallelPeerRetriever).Clock = clock
+			cfg.(*parallelPeerRetriever).QueueInitialPause = initialPause
 
 			rv := testutil.RetrievalVerifier{
 				ExpectedSequence: tc.expectSequence,
@@ -577,8 +577,8 @@ func TestMultipleRetrievals(t *testing.T) {
 	)
 
 	cfg := NewGraphsyncRetriever(func(peer peer.ID) time.Duration { return time.Second }, mockClient)
-	cfg.Clock = clock
-	cfg.QueueInitialPause = initialPause
+	cfg.(*parallelPeerRetriever).Clock = clock
+	cfg.(*parallelPeerRetriever).QueueInitialPause = initialPause
 
 	expectedSequence := []testutil.ExpectedActionsAtTime{
 		{
@@ -742,8 +742,8 @@ func TestDuplicateRetreivals(t *testing.T) {
 	)
 
 	cfg := NewGraphsyncRetriever(func(peer peer.ID) time.Duration { return time.Second }, mockClient)
-	cfg.Clock = clock
-	cfg.QueueInitialPause = initialPause
+	cfg.(*parallelPeerRetriever).Clock = clock
+	cfg.(*parallelPeerRetriever).QueueInitialPause = initialPause
 
 	expectedSequence := []testutil.ExpectedActionsAtTime{
 		{
