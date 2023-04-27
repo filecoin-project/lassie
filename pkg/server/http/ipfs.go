@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	lassie "github.com/filecoin-project/lassie/pkg/lassie"
 	"github.com/filecoin-project/lassie/pkg/retriever"
@@ -22,8 +21,7 @@ import (
 
 func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
-		logger := newRequestLogger(req.Method, req.URL.Path)
-		logger.logPath()
+		statusLogger := newStatusLogger(req.Method, req.URL.Path)
 
 		urlPath := strings.Split(req.URL.Path, "/")[1:]
 
@@ -32,7 +30,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		case http.MethodGet:
 			break
 		default:
-			logger.logStatus(http.StatusMethodNotAllowed, "Method not allowed")
+			statusLogger.logStatus(http.StatusMethodNotAllowed, "Method not allowed")
 			res.Header().Add("Allow", http.MethodGet)
 			res.WriteHeader(http.StatusMethodNotAllowed)
 			return
@@ -41,7 +39,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		// check if CID path param is missing
 		if len(urlPath) < 2 {
 			// not a valid path to hit
-			logger.logStatus(http.StatusNotFound, "Not found")
+			statusLogger.logStatus(http.StatusNotFound, "Not found")
 			res.WriteHeader(http.StatusNotFound)
 			return
 		}
@@ -58,7 +56,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			}
 		}
 		if hasAccept && !validAccept {
-			logger.logStatus(http.StatusBadRequest, "No acceptable content type")
+			statusLogger.logStatus(http.StatusBadRequest, "No acceptable content type")
 			res.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -66,7 +64,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		// check if format is car
 		hasFormat := req.URL.Query().Has("format")
 		if hasFormat && req.URL.Query().Get("format") != "car" {
-			logger.logStatus(http.StatusBadRequest, fmt.Sprintf("Requested non-supported format %s", req.URL.Query().Get("format")))
+			statusLogger.logStatus(http.StatusBadRequest, fmt.Sprintf("Requested non-supported format %s", req.URL.Query().Get("format")))
 			res.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -74,7 +72,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		// if neither are provided return
 		// one of them has to be given with a CAR type since we only return CAR data
 		if !validAccept && !hasFormat {
-			logger.logStatus(http.StatusBadRequest, "Neither a valid accept header or format parameter were provided")
+			statusLogger.logStatus(http.StatusBadRequest, "Neither a valid accept header or format parameter were provided")
 			res.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -84,12 +82,12 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			filename := req.URL.Query().Get("filename")
 			ext := filepath.Ext(filename)
 			if ext == "" {
-				logger.logStatus(http.StatusBadRequest, "Filename missing extension")
+				statusLogger.logStatus(http.StatusBadRequest, "Filename missing extension")
 				res.WriteHeader(http.StatusBadRequest)
 				return
 			}
 			if ext != ".car" {
-				logger.logStatus(http.StatusBadRequest, fmt.Sprintf("Filename uses non-supported extension %s", ext))
+				statusLogger.logStatus(http.StatusBadRequest, fmt.Sprintf("Filename uses non-supported extension %s", ext))
 				res.WriteHeader(http.StatusBadRequest)
 				return
 			}
@@ -99,7 +97,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		cidStr := urlPath[1]
 		rootCid, err := cid.Parse(cidStr)
 		if err != nil {
-			logger.logStatus(http.StatusInternalServerError, "Failed to parse CID path parameter")
+			statusLogger.logStatus(http.StatusInternalServerError, "Failed to parse CID path parameter")
 			http.Error(res, "Failed to parse CID path parameter", http.StatusInternalServerError)
 			return
 		}
@@ -119,7 +117,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			case "block":
 				carScope = types.CarScopeBlock
 			default:
-				logger.logStatus(http.StatusBadRequest, "Invalid car-scope parameter")
+				statusLogger.logStatus(http.StatusBadRequest, "Invalid car-scope parameter")
 				res.WriteHeader(http.StatusBadRequest)
 				return
 			}
@@ -130,7 +128,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			var err error
 			protocols, err = types.ParseProtocolsString(req.URL.Query().Get("protocols"))
 			if err != nil {
-				logger.logStatus(http.StatusBadRequest, "Invalid protocols parameter")
+				statusLogger.logStatus(http.StatusBadRequest, "Invalid protocols parameter")
 				res.WriteHeader(http.StatusBadRequest)
 				return
 			}
@@ -141,7 +139,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			var err error
 			fixedPeers, err = types.ParseProviderStrings(req.URL.Query().Get("providers"))
 			if err != nil {
-				logger.logStatus(http.StatusBadRequest, "Invalid providers parameter")
+				statusLogger.logStatus(http.StatusBadRequest, "Invalid providers parameter")
 				res.WriteHeader(http.StatusBadRequest)
 				return
 			}
@@ -158,7 +156,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		retrievalId, err := types.NewRetrievalID()
 		if err != nil {
 			msg := fmt.Sprintf("Failed to generate retrieval ID: %s", err.Error())
-			logger.logStatus(http.StatusInternalServerError, msg)
+			statusLogger.logStatus(http.StatusInternalServerError, msg)
 			http.Error(res, msg, http.StatusInternalServerError)
 			return
 		}
@@ -171,7 +169,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		if requestId == "" {
 			requestId = retrievalId.String()
 		} else {
-			log.Debugw("Corrolating provided request ID with retrieval ID", "request_id", requestId, "retrieval_id", retrievalId)
+			logger.Debugw("Corrolating provided request ID with retrieval ID", "request_id", requestId, "retrieval_id", retrievalId)
 		}
 
 		// bytesWritten will be closed once we've started writing CAR content to
@@ -182,7 +180,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		carStore := storage.NewCachingTempStore(carWriter.BlockWriteOpener(), cfg.TempDir)
 		defer func() {
 			if err := carStore.Close(); err != nil {
-				log.Errorf("error closing temp store: %s", err)
+				logger.Errorf("error closing temp store: %s", err)
 			}
 		}()
 		var store types.ReadableWritableStorage = carStore
@@ -199,7 +197,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			// TODO: set X-Ipfs-Roots header when we support root+path
 			// see https://github.com/ipfs/kubo/pull/8720
 			res.Header().Set("X-Trace-Id", requestId)
-			logger.logStatus(200, "OK")
+			statusLogger.logStatus(200, "OK")
 			close(bytesWritten)
 		}, true)
 
@@ -208,7 +206,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		request.FixedPeers = fixedPeers
 		if err != nil {
 			msg := fmt.Sprintf("Failed to create request: %s", err.Error())
-			logger.logStatus(http.StatusInternalServerError, msg)
+			statusLogger.logStatus(http.StatusInternalServerError, msg)
 			http.Error(res, msg, http.StatusInternalServerError)
 			return
 		}
@@ -236,7 +234,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			request.MaxBlocks = blockLimit
 		}
 
-		log.Debugw("fetching CID", "retrievalId", retrievalId, "CID", rootCid.String(), "path", unixfsPath, "carScope", carScope)
+		logger.Debugw("fetching CID", "retrievalId", retrievalId, "CID", rootCid.String(), "path", unixfsPath, "carScope", carScope)
 		stats, err := lassie.Fetch(req.Context(), request, func(re types.RetrievalEvent) {
 			header := servertiming.FromContext(req.Context())
 			if header == nil {
@@ -266,17 +264,17 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			}
 			if errors.Is(err, retriever.ErrNoCandidates) {
 				msg := "No candidates found"
-				logger.logStatus(http.StatusNotFound, msg)
+				statusLogger.logStatus(http.StatusNotFound, msg)
 				http.Error(res, msg, http.StatusNotFound)
 			} else {
 				msg := fmt.Sprintf("Failed to fetch CID: %s", err.Error())
-				logger.logStatus(http.StatusGatewayTimeout, msg)
+				statusLogger.logStatus(http.StatusGatewayTimeout, msg)
 				http.Error(res, msg, http.StatusGatewayTimeout)
 			}
 
 			return
 		}
-		log.Debugw("successfully fetched CID",
+		logger.Debugw("successfully fetched CID",
 			"retrievalId", retrievalId,
 			"CID", rootCid,
 			"duration", stats.Duration,
@@ -285,28 +283,17 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 	}
 }
 
-// A logger for the requests and responses, separate from the application logging
-type requestLogger struct {
+// statusLogger is a logger for logging response statuses for a given request
+type statusLogger struct {
 	method string
 	path   string
 }
 
-func newRequestLogger(method string, path string) *requestLogger {
-	return &requestLogger{method, path}
+func newStatusLogger(method string, path string) *statusLogger {
+	return &statusLogger{method, path}
 }
 
-// Logs the method and path
-func (l requestLogger) logPath() {
-	now := time.Now().UTC().Local().Format(time.RFC3339)
-	fmt.Printf("%s\t%s\t%s\n", now, l.method, l.path)
-}
-
-// Logs the method, path, and any status code and message depending on the status code
-func (l requestLogger) logStatus(statusCode int, message string) {
-	now := time.Now().UTC().Local().Format(time.RFC3339)
-	if statusCode == http.StatusOK {
-		fmt.Printf("%s\t%s\t%s\t%s\n", now, l.method, l.path, message)
-	} else {
-		fmt.Printf("%s\t%s\t%s\tError (%d): %s\n", now, l.method, l.path, statusCode, message)
-	}
+// logStatus logs the method, path, status code and message
+func (l statusLogger) logStatus(statusCode int, message string) {
+	logger.Infof("%s\t%s\t%d: %s\n", l.method, l.path, statusCode, message)
 }
