@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/filecoin-project/go-state-types/abi"
@@ -11,6 +12,7 @@ import (
 	"github.com/ipfs/go-unixfsnode"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
+	"github.com/ipni/go-libipni/maurl"
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
@@ -30,6 +32,26 @@ func NewRetrievalCandidate(pid peer.ID, rootCid cid.Cid, protocols ...metadata.P
 		RootCid:   rootCid,
 		Metadata:  md,
 	}
+}
+
+// ToURL generates a valid HTTP URL from the candidate if possible
+func (rc RetrievalCandidate) ToURL() (*url.URL, error) {
+	// TODO: this is going to pass for websocket
+	var err error
+	var url *url.URL
+	for _, addr := range rc.MinerPeer.Addrs {
+		url, err = maurl.ToURL(addr)
+		if err == nil && url != nil {
+			return url, nil
+		}
+	}
+	if err == nil && url == nil {
+		return nil, errors.New("no valid multiaddrs")
+	}
+	if url != nil && !(url.Scheme == "http" || url.Scheme == "https") {
+		return nil, errors.New("no valid HTTP multiaddrs")
+	}
+	return url, err
 }
 
 // retrieval task is any task that can be run to produce a result

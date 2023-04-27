@@ -109,7 +109,7 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 				Concurrency:  cfg.BitswapConcurrency,
 			})
 		case multicodec.TransportIpfsGatewayHttp:
-			protocolRetrievers[protocol] = retriever.NewHTTPRetriever(session.GetStorageProviderTimeout, *http.DefaultClient)
+			protocolRetrievers[protocol] = retriever.NewHttpRetriever(session.GetStorageProviderTimeout, http.DefaultClient)
 		}
 	}
 
