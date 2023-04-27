@@ -144,6 +144,30 @@ func TestAggregateEventRecorder(t *testing.T) {
 				verifyStringNode(t, event, "endTime", fetchPhaseStartTime.Format(time.RFC3339Nano))
 			},
 		},
+		{
+			name: "Retrieval With Request Metadata",
+			exec: func(t *testing.T, ctx context.Context, subscriber types.RetrievalEventSubscriber, id types.RetrievalID) {
+				clock := clock.NewMock()
+				fetchPhaseStartTime := clock.Now()
+				requestMetadata := types.NewRequestMetadata()
+				requestMetadata.Set("foo", "bar")
+				subscriber(events.StartedWithMetadata(clock.Now(), id, fetchPhaseStartTime, types.FetchPhase, types.RetrievalCandidate{RootCid: testCid1}, requestMetadata))
+				subscriber(events.Finished(clock.Now(), id, fetchPhaseStartTime, types.RetrievalCandidate{RootCid: testCid1}))
+
+				select {
+				case <-ctx.Done():
+					t.Fatal(ctx.Err())
+				case <-receivedChan:
+				}
+
+				require.Equal(t, int64(1), req.Length())
+				eventList := verifyListNode(t, req, "events", 1)
+				event := verifyListElement(t, eventList, 0)
+				metadata, err := event.LookupByString("metadata")
+				require.NoError(t, err)
+				verifyStringNode(t, metadata, "foo", requestMetadata.Get("foo"))
+			},
+		},
 	}
 
 	for _, test := range tests {
