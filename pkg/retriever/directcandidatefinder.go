@@ -74,6 +74,18 @@ func (d *DirectCandidateFinder) FindCandidatesAsync(ctx context.Context, c cid.C
 		provider := provider
 		go func() {
 			defer wg.Done()
+
+			// if it's http, it'll be in the multiaddr and we can't probe it
+			if len(provider.Addrs) == 1 {
+				for _, proto := range provider.Addrs[0].Protocols() {
+					if proto.Name == "http" || proto.Name == "https" {
+						cs.sendCandidate(provider, metadata.IpfsGatewayHttp{})
+						return
+					}
+				}
+			}
+
+			// probe it
 			err := d.h.Connect(ctx, provider)
 			// don't add peers that we can't connect to
 			if err != nil {
@@ -136,7 +148,6 @@ func (d *DirectCandidateFinder) retrievalCandidatesFromProtocolProbing(ctx conte
 		if err == nil {
 			s.Close()
 			protocols = append(protocols, &metadata.GraphsyncFilecoinV1{})
-
 		}
 	}
 	_ = cs.sendCandidate(provider, protocols...)
