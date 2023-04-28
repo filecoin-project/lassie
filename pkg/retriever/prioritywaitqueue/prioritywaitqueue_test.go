@@ -131,6 +131,10 @@ func TestPriorityWaitQueue(t *testing.T) {
 				doneWg.Done()
 			}
 
+			if queue.InitialPauseDone(false) == (tc.initialPause > 0) {
+				t.Errorf("initial pause done: %v, expected %v", queue.InitialPauseDone(false), !(tc.initialPause > 0))
+			}
+
 			// run
 			startWg := sync.WaitGroup{}
 			startWg.Add(len(tc.sleeps))
@@ -146,6 +150,21 @@ func TestPriorityWaitQueue(t *testing.T) {
 			if !reflect.DeepEqual(out, tc.expected) {
 				t.Errorf("did not get expected order of execution: %v <> %v", out, tc.expected)
 			}
+			if !queue.InitialPauseDone(false) {
+				t.Errorf("initial pause should be done")
+			}
+
+			// InitialPauseDone should return immediately when asked to block
+			doneCh := make(chan struct{})
+			go func() {
+				select {
+				case <-doneCh:
+				case <-time.After(1 * time.Millisecond):
+					t.Errorf("InitialPauseDone should have returned immediately")
+				}
+			}()
+			queue.InitialPauseDone(true)
+			close(doneCh)
 		})
 	}
 }
