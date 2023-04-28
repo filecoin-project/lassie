@@ -84,7 +84,7 @@ func (acf AssignableCandidateFinder) FindCandidates(ctx context.Context, request
 }
 
 func sendFixedPeers(requestCid cid.Cid, fixedPeers []peer.AddrInfo, onNextCandidate candidatebuffer.OnNextCandidate) error {
-	md := metadata.Default.New(&metadata.GraphsyncFilecoinV1{}, &metadata.Bitswap{})
+	md := metadata.Default.New(&metadata.GraphsyncFilecoinV1{}, &metadata.Bitswap{}, &metadata.IpfsGatewayHttp{})
 	for _, fixedPeer := range fixedPeers {
 		onNextCandidate(types.RetrievalCandidate{
 			MinerPeer: fixedPeer,
