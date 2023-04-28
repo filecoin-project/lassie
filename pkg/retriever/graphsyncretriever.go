@@ -45,13 +45,23 @@ type ProtocolGraphsync struct {
 // NewGraphsyncRetriever makes a new CandidateRetriever for Graphsync retrievals
 // (transport-graphsync-filecoinv1).
 func NewGraphsyncRetriever(getStorageProviderTimeout GetStorageProviderTimeout, client GraphsyncClient) types.CandidateRetriever {
+	return NewGraphsyncRetrieverWithConfig(getStorageProviderTimeout, client, clock.New(), 2*time.Millisecond)
+}
+
+func NewGraphsyncRetrieverWithConfig(
+	getStorageProviderTimeout GetStorageProviderTimeout,
+	client GraphsyncClient,
+	clock clock.Clock,
+	initialPause time.Duration,
+) types.CandidateRetriever {
+
 	return &parallelPeerRetriever{
 		Protocol: &ProtocolGraphsync{
 			Client: client,
 		},
 		GetStorageProviderTimeout: getStorageProviderTimeout,
-		Clock:                     clock.New(),
-		QueueInitialPause:         2 * time.Millisecond,
+		Clock:                     clock,
+		QueueInitialPause:         initialPause,
 	}
 }
 

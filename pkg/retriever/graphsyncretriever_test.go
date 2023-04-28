@@ -1,4 +1,4 @@
-package retriever
+package retriever_test
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/internal/testutil"
+	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
@@ -509,9 +510,7 @@ func TestRetrievalRacing(t *testing.T) {
 				}
 				candidates = append(candidates, types.NewRetrievalCandidate(peer.ID(p), cid.Undef, protocol))
 			}
-			cfg := NewGraphsyncRetriever(func(peer peer.ID) time.Duration { return time.Second }, mockClient)
-			cfg.(*parallelPeerRetriever).Clock = clock
-			cfg.(*parallelPeerRetriever).QueueInitialPause = initialPause
+			cfg := retriever.NewGraphsyncRetrieverWithConfig(func(peer peer.ID) time.Duration { return time.Second }, mockClient, clock, initialPause)
 
 			rv := testutil.RetrievalVerifier{
 				ExpectedSequence: tc.expectSequence,
@@ -576,9 +575,7 @@ func TestMultipleRetrievals(t *testing.T) {
 		clock,
 	)
 
-	cfg := NewGraphsyncRetriever(func(peer peer.ID) time.Duration { return time.Second }, mockClient)
-	cfg.(*parallelPeerRetriever).Clock = clock
-	cfg.(*parallelPeerRetriever).QueueInitialPause = initialPause
+	cfg := retriever.NewGraphsyncRetrieverWithConfig(func(peer peer.ID) time.Duration { return time.Second }, mockClient, clock, initialPause)
 
 	expectedSequence := []testutil.ExpectedActionsAtTime{
 		{
@@ -689,14 +686,13 @@ func TestRetrievalSelector(t *testing.T) {
 	defer cancel()
 	retrievalID := types.RetrievalID(uuid.New())
 	cid1 := cid.MustParse("bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")
-	clock := clock.New()
 	mockClient := testutil.NewMockClient(
 		map[string]testutil.DelayedConnectReturn{"foo": {Err: nil, Delay: 0}},
 		map[string]testutil.DelayedClientReturn{"foo": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}, Delay: 0}},
-		clock,
+		clock.New(),
 	)
 
-	cfg := NewGraphsyncRetriever(func(peer peer.ID) time.Duration { return time.Second }, mockClient)
+	cfg := retriever.NewGraphsyncRetriever(func(peer peer.ID) time.Duration { return time.Second }, mockClient)
 
 	selector := selectorparse.CommonSelector_MatchPoint
 
@@ -741,9 +737,7 @@ func TestDuplicateRetreivals(t *testing.T) {
 		clock,
 	)
 
-	cfg := NewGraphsyncRetriever(func(peer peer.ID) time.Duration { return time.Second }, mockClient)
-	cfg.(*parallelPeerRetriever).Clock = clock
-	cfg.(*parallelPeerRetriever).QueueInitialPause = initialPause
+	cfg := retriever.NewGraphsyncRetrieverWithConfig(func(peer peer.ID) time.Duration { return time.Second }, mockClient, clock, initialPause)
 
 	expectedSequence := []testutil.ExpectedActionsAtTime{
 		{
