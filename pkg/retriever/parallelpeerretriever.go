@@ -114,14 +114,15 @@ func (cfg *parallelPeerRetriever) Retrieve(
 func (retrieval *retrieval) RetrieveFromAsyncCandidates(asyncCandidates types.InboundAsyncCandidates) (*types.RetrievalStats, error) {
 	ctx, cancelCtx := context.WithCancel(retrieval.ctx)
 
+	pwqOpts := []prioritywaitqueue.Option[connectCandidate]{prioritywaitqueue.WithClock[connectCandidate](retrieval.Clock)}
+	if retrieval.QueueInitialPause > 0 {
+		pwqOpts = append(pwqOpts, prioritywaitqueue.WithInitialPause[connectCandidate](retrieval.QueueInitialPause))
+	}
+
 	session := &retrievalSession{
 		resultChan: make(chan retrievalResult),
 		finishChan: make(chan struct{}),
-		waitQueue: prioritywaitqueue.New(
-			retrieval.candidateCompare,
-			prioritywaitqueue.WithInitialPause[connectCandidate](retrieval.QueueInitialPause),
-			prioritywaitqueue.WithClock[connectCandidate](retrieval.Clock),
-		),
+		waitQueue:  prioritywaitqueue.New(retrieval.candidateCompare, pwqOpts...),
 	}
 
 	// start retrievals

@@ -106,7 +106,11 @@ func (r RetrievalRequest) GetUrlPath() (string, error) {
 	if r.Selector != nil {
 		return "", errors.New("RetrievalRequest uses an explicit selector, can't generate a URL path for it")
 	}
-	return fmt.Sprintf("%s?car-scope=%s", r.Path, r.Scope), nil
+	scope := r.Scope
+	if r.Scope == "" {
+		scope = CarScopeAll
+	}
+	return fmt.Sprintf("%s?car-scope=%s", r.Path, scope), nil
 }
 
 // GetSupportedProtocols will safely return the supported protocols for a specific request.

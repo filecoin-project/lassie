@@ -36,7 +36,6 @@ func NewRetrievalCandidate(pid peer.ID, rootCid cid.Cid, protocols ...metadata.P
 
 // ToURL generates a valid HTTP URL from the candidate if possible
 func (rc RetrievalCandidate) ToURL() (*url.URL, error) {
-	// TODO: this is going to pass for websocket
 	var err error
 	var url *url.URL
 	for _, addr := range rc.MinerPeer.Addrs {
@@ -48,6 +47,7 @@ func (rc RetrievalCandidate) ToURL() (*url.URL, error) {
 	if err == nil && url == nil {
 		return nil, errors.New("no valid multiaddrs")
 	}
+	// we have to do this because we get ws and wss from maurl.ToURL
 	if url != nil && !(url.Scheme == "http" || url.Scheme == "https") {
 		return nil, errors.New("no valid HTTP multiaddrs")
 	}
