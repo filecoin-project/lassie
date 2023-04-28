@@ -143,6 +143,8 @@ func ParseProtocolsString(v string) ([]multicodec.Code, error) {
 			protocol = multicodec.TransportBitswap
 		case "graphsync":
 			protocol = multicodec.TransportGraphsyncFilecoinv1
+		case "http":
+			protocol = multicodec.TransportIpfsGatewayHttp
 		default:
 			return nil, fmt.Errorf("unrecognized protocol: %s", v)
 		}

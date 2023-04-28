@@ -118,7 +118,7 @@ var FlagExcludeProviders = &cli.StringFlag{
 var protocols []multicodec.Code
 var FlagProtocols = &cli.StringFlag{
 	Name:        "protocols",
-	DefaultText: "bitswap,graphsync",
+	DefaultText: "bitswap,graphsync,http",
 	Usage:       "List of retrieval protocols to use, seperated by a comma",
 	EnvVars:     []string{"LASSIE_SUPPORTED_PROTOCOLS"},
 	Action: func(cctx *cli.Context, v string) error {
