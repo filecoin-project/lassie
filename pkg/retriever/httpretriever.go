@@ -39,13 +39,16 @@ type ProtocolHttp struct {
 // NewHttpRetriever makes a new CandidateRetriever for verified CAR HTTP
 // retrievals (transport-ipfs-gateway-http).
 func NewHttpRetriever(getStorageProviderTimeout GetStorageProviderTimeout, client *http.Client) types.CandidateRetriever {
+	return NewHttpRetrieverWithClock(getStorageProviderTimeout, client, clock.New())
+}
+
+func NewHttpRetrieverWithClock(getStorageProviderTimeout GetStorageProviderTimeout, client *http.Client, clock clock.Clock) types.CandidateRetriever {
 	return &parallelPeerRetriever{
 		Protocol: &ProtocolHttp{
 			Client: client,
 		},
 		GetStorageProviderTimeout: getStorageProviderTimeout,
-		Clock:                     clock.New(),
-		QueueInitialPause:         2 * time.Millisecond,
+		Clock:                     clock,
 	}
 }
 
@@ -92,7 +95,6 @@ func (ph *ProtocolHttp) Retrieve(
 
 func makeRequest(ctx context.Context, request types.RetrievalRequest, candidate types.RetrievalCandidate) (*http.Request, error) {
 	candidateURL, err := candidate.ToURL()
-	fmt.Println("candidateURL", candidateURL, "err", err, "candidate", candidate)
 	if err != nil {
 		log.Warnf("Couldn't construct a url for miner %s: %v", candidate.MinerPeer.ID, err)
 		return nil, fmt.Errorf("%w: %v", ErrNoHttpForPeer, err)
@@ -117,8 +119,8 @@ func makeRequest(ctx context.Context, request types.RetrievalRequest, candidate 
 
 func readBody(rootCid cid.Cid, peerId peer.ID, body io.ReadCloser, writer linking.BlockWriteOpener) (*types.RetrievalStats, error) {
 	startTime := time.Now() // TODO: consider whether this should be at connection time rather than body read time
-	cr := &countingReader{Reader: body}
-	cbr, err := car.NewBlockReader(cr)
+	var blockBytes uint64
+	cbr, err := car.NewBlockReader(body)
 	if err != nil {
 		return nil, err
 	}
@@ -141,6 +143,7 @@ func readBody(rootCid cid.Cid, peerId peer.ID, body io.ReadCloser, writer linkin
 		if err != nil {
 			return nil, err
 		}
+		blockBytes += uint64(len(blk.RawData()))
 		err = d(cidlink.Link{Cid: blk.Cid()})
 		if err != nil {
 			return nil, err
@@ -149,12 +152,12 @@ func readBody(rootCid cid.Cid, peerId peer.ID, body io.ReadCloser, writer linkin
 	}
 
 	duration := time.Since(startTime)
-	speed := uint64(float64(cr.total) / duration.Seconds())
+	speed := uint64(float64(blockBytes) / duration.Seconds())
 
 	return &types.RetrievalStats{
 		RootCid:           rootCid,
 		StorageProviderId: peerId,
-		Size:              cr.total,
+		Size:              blockBytes,
 		Blocks:            blockCount,
 		Duration:          duration,
 		AverageSpeed:      speed,
@@ -163,15 +166,4 @@ func readBody(rootCid cid.Cid, peerId peer.ID, body io.ReadCloser, writer linkin
 		AskPrice:          big.Zero(),
 		TimeToFirstByte:   ttfb,
 	}, nil
-}
-
-type countingReader struct {
-	io.Reader
-	total uint64
-}
-
-func (cr *countingReader) Read(p []byte) (n int, err error) {
-	n, err = cr.Reader.Read(p)
-	cr.total += uint64(n)
-	return
 }

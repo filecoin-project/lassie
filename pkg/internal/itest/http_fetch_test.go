@@ -600,7 +600,7 @@ func TestHttpFetch(t *testing.T) {
 			}},
 		},
 		{
-			name:           "bitswap large sharded file",
+			name:           "bitswap large sharded file, fixedPeer",
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				fileEntry := unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20)
