@@ -508,7 +508,7 @@ func TestRetrievalRacing(t *testing.T) {
 				} else {
 					protocol = &metadata.GraphsyncFilecoinV1{VerifiedDeal: true, FastRetrieval: true}
 				}
-				candidates = append(candidates, types.NewRetrievalCandidate(peer.ID(p), cid.Undef, protocol))
+				candidates = append(candidates, types.NewRetrievalCandidate(peer.ID(p), nil, cid.Undef, protocol))
 			}
 			cfg := retriever.NewGraphsyncRetrieverWithConfig(func(peer peer.ID) time.Duration { return time.Second }, mockClient, clock, initialPause)
 
@@ -651,9 +651,9 @@ func TestMultipleRetrievals(t *testing.T) {
 				RetrievalID: retrievalID,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
 			}, cb).RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{
-				types.NewRetrievalCandidate(peer.ID("foo"), cid.Undef, &metadata.GraphsyncFilecoinV1{}),
-				types.NewRetrievalCandidate(peer.ID("bar"), cid.Undef, &metadata.GraphsyncFilecoinV1{}),
-				types.NewRetrievalCandidate(peer.ID("baz"), cid.Undef, &metadata.GraphsyncFilecoinV1{}),
+				types.NewRetrievalCandidate(peer.ID("foo"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{}),
+				types.NewRetrievalCandidate(peer.ID("bar"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{}),
+				types.NewRetrievalCandidate(peer.ID("baz"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{}),
 			}))
 		},
 		func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
@@ -662,9 +662,9 @@ func TestMultipleRetrievals(t *testing.T) {
 				RetrievalID: retrievalID,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
 			}, cb).RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{
-				types.NewRetrievalCandidate(peer.ID("bang"), cid.Undef, &metadata.GraphsyncFilecoinV1{}),
-				types.NewRetrievalCandidate(peer.ID("boom"), cid.Undef, &metadata.GraphsyncFilecoinV1{}),
-				types.NewRetrievalCandidate(peer.ID("bing"), cid.Undef, &metadata.GraphsyncFilecoinV1{}),
+				types.NewRetrievalCandidate(peer.ID("bang"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{}),
+				types.NewRetrievalCandidate(peer.ID("boom"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{}),
+				types.NewRetrievalCandidate(peer.ID("bing"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{}),
 			}))
 		}})
 	require.Len(t, results, 2)
@@ -702,7 +702,7 @@ func TestRetrievalSelector(t *testing.T) {
 		LinkSystem:  cidlink.DefaultLinkSystem(),
 		Selector:    selector,
 	}, nil)
-	stats, err := retrieval.RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{types.NewRetrievalCandidate(peer.ID("foo"), cid.Undef, &metadata.GraphsyncFilecoinV1{})}))
+	stats, err := retrieval.RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{types.NewRetrievalCandidate(peer.ID("foo"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{})}))
 	require.NoError(t, err)
 	require.NotNil(t, stats)
 	require.Equal(t, mockClient.GetRetrievalReturns()["foo"].ResultStats, stats)
@@ -782,10 +782,10 @@ func TestDuplicateRetreivals(t *testing.T) {
 		{
 			AfterStart: time.Millisecond*400 + initialPause,
 			ExpectedEvents: []types.RetrievalEvent{
-				events.Proposed(startTime.Add(time.Millisecond*400+initialPause), retrievalID, startTime, types.NewRetrievalCandidate(peer.ID("bar"), cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false})),
-				events.Accepted(startTime.Add(time.Millisecond*400+initialPause), retrievalID, startTime, types.NewRetrievalCandidate(peer.ID("bar"), cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false})),
-				events.FirstByte(startTime.Add(time.Millisecond*400+initialPause), retrievalID, startTime, types.NewRetrievalCandidate(peer.ID("bar"), cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false})),
-				events.Success(startTime.Add(time.Millisecond*400+initialPause), retrievalID, startTime, types.NewRetrievalCandidate(peer.ID("bar"), cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false}), 2, 0, 0, big.Zero(), 0),
+				events.Proposed(startTime.Add(time.Millisecond*400+initialPause), retrievalID, startTime, types.NewRetrievalCandidate(peer.ID("bar"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false})),
+				events.Accepted(startTime.Add(time.Millisecond*400+initialPause), retrievalID, startTime, types.NewRetrievalCandidate(peer.ID("bar"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false})),
+				events.FirstByte(startTime.Add(time.Millisecond*400+initialPause), retrievalID, startTime, types.NewRetrievalCandidate(peer.ID("bar"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false})),
+				events.Success(startTime.Add(time.Millisecond*400+initialPause), retrievalID, startTime, types.NewRetrievalCandidate(peer.ID("bar"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false}), 2, 0, 0, big.Zero(), 0),
 			},
 		},
 	}
@@ -798,11 +798,11 @@ func TestDuplicateRetreivals(t *testing.T) {
 				RetrievalID: retrievalID,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
 			}, cb).RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{
-				types.NewRetrievalCandidate(peer.ID("foo"), cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: false, FastRetrieval: false}),
-				types.NewRetrievalCandidate(peer.ID("baz"), cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: false, FastRetrieval: false}),
-				types.NewRetrievalCandidate(peer.ID("bar"), cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: false, FastRetrieval: false}),
-				types.NewRetrievalCandidate(peer.ID("bar"), cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: false, FastRetrieval: true}),
-				types.NewRetrievalCandidate(peer.ID("bar"), cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false}),
+				types.NewRetrievalCandidate(peer.ID("foo"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: false, FastRetrieval: false}),
+				types.NewRetrievalCandidate(peer.ID("baz"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: false, FastRetrieval: false}),
+				types.NewRetrievalCandidate(peer.ID("bar"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: false, FastRetrieval: false}),
+				types.NewRetrievalCandidate(peer.ID("bar"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: false, FastRetrieval: true}),
+				types.NewRetrievalCandidate(peer.ID("bar"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false}),
 			}))
 		},
 	})

@@ -25,10 +25,10 @@ type RetrievalCandidate struct {
 	Metadata  metadata.Metadata
 }
 
-func NewRetrievalCandidate(pid peer.ID, rootCid cid.Cid, protocols ...metadata.Protocol) RetrievalCandidate {
+func NewRetrievalCandidate(pid peer.ID, addrs []multiaddr.Multiaddr, rootCid cid.Cid, protocols ...metadata.Protocol) RetrievalCandidate {
 	md := metadata.Default.New(protocols...)
 	return RetrievalCandidate{
-		MinerPeer: peer.AddrInfo{ID: pid, Addrs: []multiaddr.Multiaddr{}},
+		MinerPeer: peer.AddrInfo{ID: pid, Addrs: addrs},
 		RootCid:   rootCid,
 		Metadata:  md,
 	}

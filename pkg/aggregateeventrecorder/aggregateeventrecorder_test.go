@@ -63,7 +63,7 @@ func TestAggregateEventRecorder(t *testing.T) {
 				clock.Add(10 * time.Millisecond)
 				subscriber(events.CandidatesFound(clock.Now(), id, indexerStartTime, testCid1, bitswapCandidates[:2]))
 				subscriber(events.CandidatesFiltered(clock.Now(), id, indexerStartTime, testCid1, bitswapCandidates[:1]))
-				bitswapPeer := types.NewRetrievalCandidate(peer.ID(""), testCid1, &metadata.Bitswap{})
+				bitswapPeer := types.NewRetrievalCandidate(peer.ID(""), nil, testCid1, &metadata.Bitswap{})
 				subscriber(events.Started(clock.Now(), id, clock.Now(), types.RetrievalPhase, bitswapPeer))
 				bitswapCandidateStartTime := clock.Now()
 				clock.Add(20 * time.Millisecond)
@@ -251,9 +251,9 @@ func BenchmarkAggregateEventRecorderSubscriber(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		b.StartTimer()
-		subscriber(events.Started(time.Now(), id, fetchStartTime, types.FetchPhase, types.NewRetrievalCandidate(spid, testCid1)))
-		subscriber(events.FirstByte(time.Now(), id, ptime, types.NewRetrievalCandidate(spid, testCid1)))
-		subscriber(events.Success(time.Now(), id, ptime, types.NewRetrievalCandidate(spid, testCid1), uint64(2020), 3030, 4*time.Second, big.Zero(), 55))
+		subscriber(events.Started(time.Now(), id, fetchStartTime, types.FetchPhase, types.NewRetrievalCandidate(spid, nil, testCid1)))
+		subscriber(events.FirstByte(time.Now(), id, ptime, types.NewRetrievalCandidate(spid, nil, testCid1)))
+		subscriber(events.Success(time.Now(), id, ptime, types.NewRetrievalCandidate(spid, nil, testCid1), uint64(2020), 3030, 4*time.Second, big.Zero(), 55))
 		subscriber(events.Finished(time.Now(), id, fetchStartTime, types.RetrievalCandidate{RootCid: testCid1}))
 		b.StopTimer()
 
