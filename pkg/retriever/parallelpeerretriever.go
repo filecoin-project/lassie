@@ -56,6 +56,9 @@ type parallelPeerRetriever struct {
 	GetStorageProviderTimeout GetStorageProviderTimeout
 	Clock                     clock.Clock
 	QueueInitialPause         time.Duration
+
+	// this is purely for testing purposes, to ensure that we receive all candidates
+	awaitReceivedCandidates chan<- struct{}
 }
 
 // retrieval handles state on a per-retrieval (across multiple candidates) basis
@@ -195,6 +198,12 @@ func (retrieval *retrieval) filterCandidates(ctx context.Context, asyncCandidate
 	filtered := make([]types.RetrievalCandidate, 0)
 	active, candidates, err := asyncCandidates.Next(ctx)
 	if !active || err != nil {
+		if retrieval.awaitReceivedCandidates != nil {
+			select {
+			case <-retrieval.ctx.Done():
+			case retrieval.awaitReceivedCandidates <- struct{}{}:
+			}
+		}
 		return false, nil, err
 	}
 

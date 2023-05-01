@@ -10,14 +10,13 @@ import (
 
 	"github.com/benbjohnson/clock"
 	"github.com/filecoin-project/go-state-types/big"
+	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/v2"
 	"github.com/ipld/go-ipld-prime"
-	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipni/go-libipni/metadata"
-	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
 )
 
@@ -39,16 +38,17 @@ type ProtocolHttp struct {
 // NewHttpRetriever makes a new CandidateRetriever for verified CAR HTTP
 // retrievals (transport-ipfs-gateway-http).
 func NewHttpRetriever(getStorageProviderTimeout GetStorageProviderTimeout, client *http.Client) types.CandidateRetriever {
-	return NewHttpRetrieverWithClock(getStorageProviderTimeout, client, clock.New())
+	return NewHttpRetrieverWithDeps(getStorageProviderTimeout, client, clock.New(), nil)
 }
 
-func NewHttpRetrieverWithClock(getStorageProviderTimeout GetStorageProviderTimeout, client *http.Client, clock clock.Clock) types.CandidateRetriever {
+func NewHttpRetrieverWithDeps(getStorageProviderTimeout GetStorageProviderTimeout, client *http.Client, clock clock.Clock, awaitReceivedCandidates chan<- struct{}) types.CandidateRetriever {
 	return &parallelPeerRetriever{
 		Protocol: &ProtocolHttp{
 			Client: client,
 		},
 		GetStorageProviderTimeout: getStorageProviderTimeout,
 		Clock:                     clock,
+		awaitReceivedCandidates:   awaitReceivedCandidates,
 	}
 }
 
@@ -90,7 +90,55 @@ func (ph *ProtocolHttp) Retrieve(
 ) (*types.RetrievalStats, error) {
 
 	defer ph.resp.Body.Close()
-	return readBody(candidate.RootCid, candidate.MinerPeer.ID, ph.resp.Body, retrieval.request.LinkSystem.StorageWriteOpener)
+
+	var blockBytes uint64
+	cbr, err := car.NewBlockReader(ph.resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	ttfb := retrieval.Clock.Since(phaseStartTime)
+	session.sendEvent(events.FirstByte(retrieval.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, candidate))
+
+	var blockCount uint64
+	for {
+		blk, err := cbr.Next()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, err
+		}
+		w, d, err := retrieval.request.LinkSystem.StorageWriteOpener(ipld.LinkContext{})
+		if err != nil {
+			return nil, err
+		}
+		_, err = w.Write(blk.RawData())
+		if err != nil {
+			return nil, err
+		}
+		blockBytes += uint64(len(blk.RawData()))
+		err = d(cidlink.Link{Cid: blk.Cid()})
+		if err != nil {
+			return nil, err
+		}
+		blockCount++
+	}
+
+	duration := retrieval.Clock.Since(phaseStartTime)
+	speed := uint64(float64(blockBytes) / duration.Seconds())
+
+	return &types.RetrievalStats{
+		RootCid:           candidate.RootCid,
+		StorageProviderId: candidate.MinerPeer.ID,
+		Size:              blockBytes,
+		Blocks:            blockCount,
+		Duration:          duration,
+		AverageSpeed:      speed,
+		TotalPayment:      big.Zero(),
+		NumPayments:       0,
+		AskPrice:          big.Zero(),
+		TimeToFirstByte:   ttfb,
+	}, nil
 }
 
 func makeRequest(ctx context.Context, request types.RetrievalRequest, candidate types.RetrievalCandidate) (*http.Request, error) {
@@ -115,55 +163,4 @@ func makeRequest(ctx context.Context, request types.RetrievalRequest, candidate 
 	req.Header.Add("Accept", request.Scope.AcceptHeader())
 
 	return req, nil
-}
-
-func readBody(rootCid cid.Cid, peerId peer.ID, body io.ReadCloser, writer linking.BlockWriteOpener) (*types.RetrievalStats, error) {
-	startTime := time.Now() // TODO: consider whether this should be at connection time rather than body read time
-	var blockBytes uint64
-	cbr, err := car.NewBlockReader(body)
-	if err != nil {
-		return nil, err
-	}
-	ttfb := time.Since(startTime)
-
-	var blockCount uint64
-	for {
-		blk, err := cbr.Next()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			return nil, err
-		}
-		w, d, err := writer(ipld.LinkContext{})
-		if err != nil {
-			return nil, err
-		}
-		_, err = w.Write(blk.RawData())
-		if err != nil {
-			return nil, err
-		}
-		blockBytes += uint64(len(blk.RawData()))
-		err = d(cidlink.Link{Cid: blk.Cid()})
-		if err != nil {
-			return nil, err
-		}
-		blockCount++
-	}
-
-	duration := time.Since(startTime)
-	speed := uint64(float64(blockBytes) / duration.Seconds())
-
-	return &types.RetrievalStats{
-		RootCid:           rootCid,
-		StorageProviderId: peerId,
-		Size:              blockBytes,
-		Blocks:            blockCount,
-		Duration:          duration,
-		AverageSpeed:      speed,
-		TotalPayment:      big.Zero(),
-		NumPayments:       0,
-		AskPrice:          big.Zero(),
-		TimeToFirstByte:   ttfb,
-	}, nil
 }

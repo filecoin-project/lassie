@@ -67,7 +67,7 @@ type BitswapRetriever struct {
 	blockService   blockservice.BlockService
 	clock          clock.Clock
 	cfg            BitswapConfig
-	// this is purely for testing purposes, to insure that we receive all candidates
+	// this is purely for testing purposes, to ensure that we receive all candidates
 	awaitReceivedCandidates chan<- struct{}
 }
 
@@ -133,7 +133,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	selector := br.request.GetSelector()
 	phaseStartTime := br.clock.Now()
 	// this is a hack cause we aren't able to track bitswap fetches per peer for now, so instead we just create a single peer for all events
-	bitswapCandidate := types.NewRetrievalCandidate(peer.ID(""), br.request.Cid, metadata.Bitswap{})
+	bitswapCandidate := types.NewRetrievalCandidate(peer.ID(""), nil, br.request.Cid, metadata.Bitswap{})
 
 	// setup the linksystem to record bytes & blocks written -- since this isn't automatic w/o go-data-transfer
 	ctx, cancel := context.WithCancel(br.ctx)

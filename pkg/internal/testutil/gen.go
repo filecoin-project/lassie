@@ -2,6 +2,8 @@ package testutil
 
 import (
 	"math/rand"
+	"net"
+	"strconv"
 	"testing"
 
 	"github.com/filecoin-project/lassie/pkg/types"
@@ -12,6 +14,8 @@ import (
 	"github.com/ipni/go-libipni/metadata"
 	crypto "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/stretchr/testify/require"
 )
 
@@ -100,10 +104,30 @@ func GenerateRetrievalCandidatesForCID(t *testing.T, n int, c cid.Cid, protocols
 	if len(protocols) == 0 {
 		protocols = []metadata.Protocol{&metadata.Bitswap{}}
 	}
+	addrs := []multiaddr.Multiaddr{GenerateMultiaddr()}
 	for i := 0; i < n; i++ {
-		candidates = append(candidates, types.NewRetrievalCandidate(peers[i], c, protocols...))
+		candidates = append(candidates, types.NewRetrievalCandidate(peers[i], addrs, c, protocols...))
 	}
 	return candidates
+}
+
+func GenerateMultiaddr() multiaddr.Multiaddr {
+	// generate a random ipv4 address
+	addr := &net.TCPAddr{IP: net.IPv4(byte(rand.Intn(255)), byte(rand.Intn(255)), byte(rand.Intn(255)), byte(rand.Intn(255))), Port: rand.Intn(65535)}
+	maddr, err := manet.FromIP(addr.IP)
+	if err != nil {
+		panic(err)
+	}
+	port, err := multiaddr.NewComponent(multiaddr.ProtocolWithCode(multiaddr.P_TCP).Name, strconv.Itoa(addr.Port))
+	if err != nil {
+		panic(err)
+	}
+	maddr = multiaddr.Join(maddr, port)
+	scheme, err := multiaddr.NewComponent("http", "")
+	if err != nil {
+		panic(err)
+	}
+	return multiaddr.Join(maddr, scheme)
 }
 
 func GenerateRetrievalIDs(t *testing.T, n int) []types.RetrievalID {
