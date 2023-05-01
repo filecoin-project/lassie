@@ -46,7 +46,7 @@ func TestEventRecorder(t *testing.T) {
 		{
 			name: "RetrievalSuccess",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
-				er.RecordEvent(events.Success(time.Now(), id, ptime, types.NewRetrievalCandidate(spid, testCid1), uint64(2020), 3030, 4*time.Second, big.Zero(), 50))
+				er.RecordEvent(events.Success(time.Now(), id, ptime, types.NewRetrievalCandidate(spid, nil, testCid1), uint64(2020), 3030, 4*time.Second, big.Zero(), 50))
 
 				select {
 				case <-ctx.Done():
@@ -81,7 +81,7 @@ func TestEventRecorder(t *testing.T) {
 		{
 			name: "RetrievalSuccess, bitswap",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
-				er.RecordEvent(events.Success(time.Now(), id, ptime, types.NewRetrievalCandidate(peer.ID(""), testCid1, metadata.Bitswap{}), uint64(2020), 3030, 4*time.Second, big.Zero(), 50))
+				er.RecordEvent(events.Success(time.Now(), id, ptime, types.NewRetrievalCandidate(peer.ID(""), nil, testCid1, metadata.Bitswap{}), uint64(2020), 3030, 4*time.Second, big.Zero(), 50))
 
 				select {
 				case <-ctx.Done():
@@ -116,7 +116,7 @@ func TestEventRecorder(t *testing.T) {
 		{
 			name: "RetrievalFailure",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
-				er.RecordEvent(events.Failed(time.Now(), id, ptime, types.RetrievalPhase, types.NewRetrievalCandidate(spid, testCid1), "ha ha no, silly silly"))
+				er.RecordEvent(events.Failed(time.Now(), id, ptime, types.RetrievalPhase, types.NewRetrievalCandidate(spid, nil, testCid1), "ha ha no, silly silly"))
 
 				select {
 				case <-ctx.Done():
@@ -148,7 +148,7 @@ func TestEventRecorder(t *testing.T) {
 		{
 			name: "RetrievalFailure, bitswap",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
-				er.RecordEvent(events.Failed(time.Now(), id, ptime, types.RetrievalPhase, types.NewRetrievalCandidate(peer.ID(""), testCid1, metadata.Bitswap{}), "ha ha no, silly silly"))
+				er.RecordEvent(events.Failed(time.Now(), id, ptime, types.RetrievalPhase, types.NewRetrievalCandidate(peer.ID(""), nil, testCid1, metadata.Bitswap{}), "ha ha no, silly silly"))
 
 				select {
 				case <-ctx.Done():
@@ -180,7 +180,7 @@ func TestEventRecorder(t *testing.T) {
 		{
 			name: "Connected",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
-				er.RecordEvent(events.Connected(time.Now(), id, ptime, types.RetrievalPhase, types.NewRetrievalCandidate(spid, testCid1)))
+				er.RecordEvent(events.Connected(time.Now(), id, ptime, types.RetrievalPhase, types.NewRetrievalCandidate(spid, nil, testCid1)))
 
 				select {
 				case <-ctx.Done():
@@ -207,7 +207,7 @@ func TestEventRecorder(t *testing.T) {
 		{
 			name: "RetrievalProgress",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
-				er.RecordEvent(events.FirstByte(time.Now(), id, ptime, types.NewRetrievalCandidate(spid, testCid1)))
+				er.RecordEvent(events.FirstByte(time.Now(), id, ptime, types.NewRetrievalCandidate(spid, nil, testCid1)))
 
 				select {
 				case <-ctx.Done():
@@ -235,7 +235,7 @@ func TestEventRecorder(t *testing.T) {
 			name: "CandidatesFound",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
 				er.RecordEvent(events.CandidatesFound(time.Now(), id, ptime, testCid1, []types.RetrievalCandidate{
-					types.NewRetrievalCandidate(spid, testCid1, metadata.Bitswap{}),
+					types.NewRetrievalCandidate(spid, nil, testCid1, metadata.Bitswap{}),
 				}))
 
 				select {
@@ -276,7 +276,7 @@ func TestEventRecorder(t *testing.T) {
 			name: "CandidatesFiltered",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
 				er.RecordEvent(events.CandidatesFiltered(time.Now(), id, ptime, testCid1, []types.RetrievalCandidate{
-					types.NewRetrievalCandidate(spid, testCid1, metadata.Bitswap{}),
+					types.NewRetrievalCandidate(spid, nil, testCid1, metadata.Bitswap{}),
 				}))
 
 				select {
@@ -424,7 +424,7 @@ func TestEventRecorderSlowPost(t *testing.T) {
 		requestWg.Add(1)
 		go func() {
 			defer wg.Done()
-			er.RecordEvent(events.FirstByte(time.Now(), id, ptime, types.NewRetrievalCandidate(spid, testCid1)))
+			er.RecordEvent(events.FirstByte(time.Now(), id, ptime, types.NewRetrievalCandidate(spid, nil, testCid1)))
 		}()
 	}
 	if !waitGroupWait(ctx, &wg) {
