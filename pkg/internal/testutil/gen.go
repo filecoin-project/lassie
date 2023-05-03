@@ -104,8 +104,8 @@ func GenerateRetrievalCandidatesForCID(t *testing.T, n int, c cid.Cid, protocols
 	if len(protocols) == 0 {
 		protocols = []metadata.Protocol{&metadata.Bitswap{}}
 	}
-	addrs := []multiaddr.Multiaddr{GenerateMultiaddr()}
 	for i := 0; i < n; i++ {
+		addrs := []multiaddr.Multiaddr{GenerateMultiaddr()}
 		candidates = append(candidates, types.NewRetrievalCandidate(peers[i], addrs, c, protocols...))
 	}
 	return candidates

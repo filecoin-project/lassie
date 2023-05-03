@@ -66,18 +66,10 @@ func (ph ProtocolHttp) CompareCandidates(a, b connectCandidate, mda, mdb metadat
 }
 
 func (ph *ProtocolHttp) Connect(ctx context.Context, retrieval *retrieval, candidate types.RetrievalCandidate) error {
-	// we currently start a full HTTP request during "connect" phase, which means
-	// we'll hit all candidates in parallel before proceeding to read the body
-	// of ones we choose, one by one, until we get success. This may not be
-	// optimal for servers that have to queue with a body, and may also result in
-	// timeouts for body reading when we fail on one and move to another.
-	// This may all need to move into the Retrieve() call and Connect() be a noop.
-	var err error
-	ph.req, err = makeRequest(ctx, retrieval.request, candidate)
-	if err == nil {
-		ph.resp, err = ph.Client.Do(ph.req)
-	}
-	return err
+	// We could begin the request here by moving ph.beginRequest() to this function.
+	// That would result in parallel connections to candidates as they are received,
+	// then serial reading of bodies.
+	return nil
 }
 
 func (ph *ProtocolHttp) Retrieve(
@@ -88,6 +80,14 @@ func (ph *ProtocolHttp) Retrieve(
 	timeout time.Duration,
 	candidate types.RetrievalCandidate,
 ) (*types.RetrievalStats, error) {
+
+	// Connect and read body in one flow, we can move ph.beginRequest() to Connect()
+	// to parallelise connections if we have confidence in not wasting server time
+	// by requesting but not reading bodies (or delayed reading which may result in
+	// timeouts).
+	if err := ph.beginRequest(ctx, retrieval.request, candidate); err != nil {
+		return nil, err
+	}
 
 	defer ph.resp.Body.Close()
 
@@ -139,6 +139,15 @@ func (ph *ProtocolHttp) Retrieve(
 		AskPrice:          big.Zero(),
 		TimeToFirstByte:   ttfb,
 	}, nil
+}
+
+func (ph *ProtocolHttp) beginRequest(ctx context.Context, request types.RetrievalRequest, candidate types.RetrievalCandidate) error {
+	var err error
+	ph.req, err = makeRequest(ctx, request, candidate)
+	if err == nil {
+		ph.resp, err = ph.Client.Do(ph.req)
+	}
+	return err
 }
 
 func makeRequest(ctx context.Context, request types.RetrievalRequest, candidate types.RetrievalCandidate) (*http.Request, error) {
