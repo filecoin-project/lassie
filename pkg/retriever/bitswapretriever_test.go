@@ -354,7 +354,7 @@ func TestBitswapRetriever(t *testing.T) {
 			clock.Set(time.Now())
 			retrievalResult := make(chan types.RetrievalResult, 1)
 			go func() {
-				stats, err := retrieval1.RetrieveFromAsyncCandidates(makeAsyncCandidates(expectedCandidates[rid1]))
+				stats, err := retrieval1.RetrieveFromAsyncCandidates(makeAsyncCandidates(t, spreadCandidates(expectedCandidates[rid1])))
 				retrievalResult <- types.RetrievalResult{Stats: stats, Err: err}
 			}()
 			if len(expectedCandidates[rid1]) > 0 {
@@ -384,7 +384,7 @@ func TestBitswapRetriever(t *testing.T) {
 			clock.Set(time.Now())
 			unlockExchange = make(chan struct{})
 			go func() {
-				stats, err := retrieval2.RetrieveFromAsyncCandidates(makeAsyncCandidates(expectedCandidates[rid2]))
+				stats, err := retrieval2.RetrieveFromAsyncCandidates(makeAsyncCandidates(t, spreadCandidates(expectedCandidates[rid2])))
 				retrievalResult <- types.RetrievalResult{Stats: stats, Err: err}
 			}()
 			if len(expectedCandidates[rid2]) > 0 {
@@ -560,13 +560,4 @@ func (mipc *mockInProgressCids) Inc(c cid.Cid, _ types.RetrievalID) {
 
 func (mipc *mockInProgressCids) Dec(c cid.Cid, _ types.RetrievalID) {
 	mipc.decremented = append(mipc.decremented, c)
-}
-
-func makeAsyncCandidates(candidates []types.RetrievalCandidate) types.InboundAsyncCandidates {
-	incoming, outgoing := types.MakeAsyncCandidates(len(candidates))
-	for _, candidate := range candidates {
-		outgoing <- []types.RetrievalCandidate{candidate}
-	}
-	close(outgoing)
-	return incoming
 }

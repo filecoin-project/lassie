@@ -67,14 +67,14 @@ func TestHTTPRetriever(t *testing.T) {
 		requestScope       []types.CarScope
 		remoteLinkSystems  map[cid.Cid]*linking.LinkSystem
 		remoteSelector     map[cid.Cid]ipld.Node // selector to run on the remote that matches this path+scope
-		expectedCandidates map[cid.Cid][]types.RetrievalCandidate
-		expectedEvents     map[cid.Cid][]types.EventCode
+		expectedCandidates map[cid.Cid][][]types.RetrievalCandidate
+		expectedEvents     map[cid.Cid]map[types.EventCode]int
 		expectedStats      map[cid.Cid]*types.RetrievalStats
 		expectedErrors     map[cid.Cid]struct{}
 		expectedCids       map[cid.Cid][]cid.Cid
 	}{
 		{
-			name:         "successful full remote fetch x 2",
+			name:         "successful full remote fetch, single candidates",
 			requestPath:  []string{"", ""},
 			requestScope: []types.CarScope{types.CarScopeAll, types.CarScopeAll},
 			remoteSelector: map[cid.Cid]ipld.Node{
@@ -85,13 +85,80 @@ func TestHTTPRetriever(t *testing.T) {
 				cid1: makeLsys(tbc1.AllBlocks()),
 				cid2: makeLsys(tbc2.AllBlocks()),
 			},
-			expectedCandidates: map[cid.Cid][]types.RetrievalCandidate{
-				cid1: cid1Cands[0:1],
-				cid2: cid2Cands[0:1],
+			expectedCandidates: map[cid.Cid][][]types.RetrievalCandidate{
+				cid1: {cid1Cands[0:1]},
+				cid2: {cid2Cands[0:1]},
 			},
-			expectedEvents: map[cid.Cid][]types.EventCode{
-				cid1: {types.StartedCode, types.ConnectedCode, types.FirstByteCode, types.SuccessCode},
-				cid2: {types.StartedCode, types.ConnectedCode, types.FirstByteCode, types.SuccessCode},
+			expectedEvents: map[cid.Cid]map[types.EventCode]int{
+				cid1: {
+					types.StartedCode:   1,
+					types.ConnectedCode: 1,
+					types.FirstByteCode: 1,
+					types.SuccessCode:   1,
+				},
+				cid2: {
+					types.StartedCode:   1,
+					types.ConnectedCode: 1,
+					types.FirstByteCode: 1,
+					types.SuccessCode:   1,
+				},
+			},
+			expectedCids: map[cid.Cid][]cid.Cid{
+				cid1: tbc1Cids,
+				cid2: tbc2Cids,
+			},
+			expectedStats: map[cid.Cid]*types.RetrievalStats{
+				cid1: {
+					RootCid:           cid1,
+					StorageProviderId: cid1Cands[0].MinerPeer.ID,
+					Size:              sizeOf(tbc1.AllBlocks()),
+					Blocks:            100,
+					Duration:          remoteBlockDuration * 100,
+					AverageSpeed:      uint64(float64(sizeOf(tbc1.AllBlocks())) / (remoteBlockDuration * 100).Seconds()),
+					TotalPayment:      big.Zero(),
+					AskPrice:          big.Zero(),
+				},
+				cid2: {
+					RootCid:           cid2,
+					StorageProviderId: cid2Cands[0].MinerPeer.ID,
+					Size:              sizeOf(tbc2.AllBlocks()),
+					Blocks:            100,
+					Duration:          remoteBlockDuration * 100,
+					AverageSpeed:      uint64(float64(sizeOf(tbc2.AllBlocks())) / (remoteBlockDuration * 100).Seconds()),
+					TotalPayment:      big.Zero(),
+					AskPrice:          big.Zero(),
+				},
+			},
+		},
+		{
+			name:         "successful full remote fetch, multiple candidates, first successful",
+			requestPath:  []string{"", ""},
+			requestScope: []types.CarScope{types.CarScopeAll, types.CarScopeAll},
+			remoteSelector: map[cid.Cid]ipld.Node{
+				cid1: selectorparse.CommonSelector_ExploreAllRecursively,
+				cid2: selectorparse.CommonSelector_ExploreAllRecursively,
+			},
+			remoteLinkSystems: map[cid.Cid]*linking.LinkSystem{
+				cid1: makeLsys(tbc1.AllBlocks()),
+				cid2: makeLsys(tbc2.AllBlocks()),
+			},
+			expectedCandidates: map[cid.Cid][][]types.RetrievalCandidate{
+				cid1: {cid1Cands},
+				cid2: {cid2Cands},
+			},
+			expectedEvents: map[cid.Cid]map[types.EventCode]int{
+				cid1: {
+					types.StartedCode:   10,
+					types.ConnectedCode: 10,
+					types.FirstByteCode: 1,
+					types.SuccessCode:   1,
+				},
+				cid2: {
+					types.StartedCode:   10,
+					types.ConnectedCode: 10,
+					types.FirstByteCode: 1,
+					types.SuccessCode:   1,
+				},
 			},
 			expectedCids: map[cid.Cid][]cid.Cid{
 				cid1: tbc1Cids,
@@ -173,6 +240,7 @@ func TestHTTPRetriever(t *testing.T) {
 			var remoteStatsLk sync.Mutex
 			var bodyWg sync.WaitGroup
 			makeBody := func(root cid.Cid) io.ReadCloser {
+				fmt.Println("makeBody")
 				bodyWg.Add(1)
 				// make traverser
 				lsys := linkSystemForCid(root, remoteLinkSystems)
@@ -191,10 +259,11 @@ func TestHTTPRetriever(t *testing.T) {
 						remoteStatsLk.Unlock()
 					}
 					bodyWg.Done()
+					fmt.Println("bodyWg.Done()")
 				}()
 				return carR
 			}
-			rt := NewCannedBytesRoundTripper(t, testCase.requestPath, testCase.requestScope, testCase.expectedCandidates, makeBody)
+			rt := NewCannedBytesRoundTripper(t, ctx, testCase.requestPath, testCase.requestScope, testCase.expectedCandidates, makeBody)
 			// mock http client that returns carBytes as the response body regardless
 			// of the request
 			client := &http.Client{Transport: rt}
@@ -207,26 +276,15 @@ func TestHTTPRetriever(t *testing.T) {
 			retrieval2 := hr.Retrieve(req2Context, req2, retrievalCollector)
 			receivedStats := make(map[cid.Cid]*types.RetrievalStats, 2)
 			receivedErrors := make(map[cid.Cid]struct{}, 2)
-			expectedCandidates := make(map[types.RetrievalID][]types.RetrievalCandidate)
-			if testCase.expectedCandidates != nil {
-				for key, candidates := range testCase.expectedCandidates {
-					switch key {
-					case cid1:
-						expectedCandidates[rid1] = candidates
-					case cid2:
-						expectedCandidates[rid2] = candidates
-					}
-				}
-			}
 
 			// reset the clock
 			clock.Set(time.Now())
 			retrievalResult := make(chan types.RetrievalResult, 1)
 			go func() {
-				stats, err := retrieval1.RetrieveFromAsyncCandidates(makeAsyncCandidates(expectedCandidates[rid1]))
+				stats, err := retrieval1.RetrieveFromAsyncCandidates(makeAsyncCandidates(t, testCase.expectedCandidates[cid1]))
 				retrievalResult <- types.RetrievalResult{Stats: stats, Err: err}
 			}()
-			if len(expectedCandidates[rid1]) > 0 {
+			if len(testCase.expectedCandidates[cid1]) > 0 && len(testCase.expectedCandidates[cid1][0]) > 0 {
 				select {
 				case <-ctx.Done():
 					req.FailNow("did not receive all candidates")
@@ -234,44 +292,52 @@ func TestHTTPRetriever(t *testing.T) {
 				}
 			}
 
-			var stats *types.RetrievalStats
-			select {
-			case <-ctx.Done():
-				req.FailNow("did not receive result")
-			case result := <-retrievalResult:
-				stats, err = result.Stats, result.Err
-			}
-			if stats != nil {
-				receivedStats[cid1] = stats
-			}
-			if err != nil {
-				receivedErrors[cid1] = struct{}{}
+			{
+				var stats *types.RetrievalStats
+				select {
+				case <-ctx.Done():
+					req.FailNow("did not receive result")
+				case result := <-retrievalResult:
+					stats, err = result.Stats, result.Err
+				}
+				if stats != nil {
+					receivedStats[cid1] = stats
+				}
+				if err != nil {
+					fmt.Println("retrieval1 error", err)
+					receivedErrors[cid1] = struct{}{}
+				}
 			}
 
 			// reset the clock
 			clock.Set(time.Now())
 			go func() {
-				stats, err := retrieval2.RetrieveFromAsyncCandidates(makeAsyncCandidates(expectedCandidates[rid2]))
+				stats, err := retrieval2.RetrieveFromAsyncCandidates(makeAsyncCandidates(t, testCase.expectedCandidates[cid2]))
 				retrievalResult <- types.RetrievalResult{Stats: stats, Err: err}
 			}()
-			if len(expectedCandidates[rid2]) > 0 {
+			if len(testCase.expectedCandidates[cid2]) > 0 && len(testCase.expectedCandidates[cid2][0]) > 0 {
 				select {
 				case <-ctx.Done():
 					req.FailNow("did not receive all candidates")
 				case <-awaitReceivedCandidates:
 				}
 			}
-			select {
-			case <-ctx.Done():
-				req.FailNow("did not receive result")
-			case result := <-retrievalResult:
-				stats, err = result.Stats, result.Err
-			}
-			if stats != nil {
-				receivedStats[cid2] = stats
-			}
-			if err != nil {
-				receivedErrors[cid2] = struct{}{}
+
+			{
+				var stats *types.RetrievalStats
+				select {
+				case <-ctx.Done():
+					req.FailNow("did not receive result")
+				case result := <-retrievalResult:
+					stats, err = result.Stats, result.Err
+				}
+				if stats != nil {
+					receivedStats[cid2] = stats
+				}
+				if err != nil {
+					fmt.Println("retrieval2 error", err)
+					receivedErrors[cid2] = struct{}{}
+				}
 			}
 
 			done := make(chan struct{})
@@ -285,7 +351,6 @@ func TestHTTPRetriever(t *testing.T) {
 				req.FailNow("Did not end sending all bodies")
 			}
 
-			receivedCodes := make(map[cid.Cid][]types.EventCode, len(receivedEvents))
 			expectedErrors := testCase.expectedErrors
 			if expectedErrors == nil {
 				expectedErrors = make(map[cid.Cid]struct{})
@@ -295,11 +360,31 @@ func TestHTTPRetriever(t *testing.T) {
 			if expectedStats == nil {
 				expectedStats = make(map[cid.Cid]*types.RetrievalStats)
 			}
+			// print testCase.expectedCandidates for each CID in the map, in String() form as a command separated list to stdout
+			// this is useful for updating the test case
+			for key, candidates := range testCase.expectedCandidates {
+				fmt.Printf("expectedCandidates[%s] = []types.RetrievalCandidate{\n", key)
+				for _, co := range candidates {
+					for _, candidate := range co {
+						fmt.Printf("\t%s,\n", candidate.MinerPeer.ID.String())
+					}
+				}
+				fmt.Printf("}\n")
+				// print StorageProviderId from receivedStats map in the same way
+				fmt.Printf("receivedStats[%s] = &types.RetrievalStats{StorageProviderID: %s}\n", key, receivedStats[key].StorageProviderId.String())
+
+			}
+
 			req.Equal(expectedStats, receivedStats)
+
+			receivedCodes := make(map[cid.Cid]map[types.EventCode]int, 0)
 			for key, events := range receivedEvents {
-				receivedCodes[key] = make([]types.EventCode, 0, len(events))
+				if receivedCodes[key] == nil {
+					receivedCodes[key] = make(map[types.EventCode]int, 0)
+				}
 				for _, event := range events {
-					receivedCodes[key] = append(receivedCodes[key], event.Code())
+					v := receivedCodes[key][event.Code()]
+					receivedCodes[key][event.Code()] = v + 1
 				}
 			}
 			expectedRemoteStats := []sentStats{
@@ -316,119 +401,47 @@ func TestHTTPRetriever(t *testing.T) {
 			}
 			req.Equal(expectedRemoteStats, remoteStats)
 			if testCase.expectedEvents == nil {
-				testCase.expectedEvents = make(map[cid.Cid][]types.EventCode)
+				testCase.expectedEvents = make(map[cid.Cid]map[types.EventCode]int, 0)
 			}
 			req.Equal(testCase.expectedEvents, receivedCodes)
 		})
 	}
 }
 
-/*
-func TestHTTPRetrieverX(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	req := require.New(t)
-	clock := clock.NewMock()
-	clock.Set(time.Now())
-	retrievalID := types.RetrievalID(uuid.New())
-	getTimeout := func(_ peer.ID) time.Duration { return 5 * time.Second }
-	// setup remote with a DAG ready to serve as a CAR
-	remote := newHttpRemote(ctx, t)
-	candidate := NewHttpCandidate(peer.ID("foo"), nil, remote.RootCid)
-
-	// local store, track the CIDs in the order we receive them
-	receivedBlocks := make([]cid.Cid, 0)
-	clientStore := &correctedMemStore{&memstore.Store{}}
-	clientLsys := cidlink.DefaultLinkSystem()
-	clientLsys.SetReadStorage(clientStore)
-	clientLsys.SetWriteStorage(clientStore)
-	originalCWO := clientLsys.StorageWriteOpener
-	clientLsys.StorageWriteOpener = func(lc linking.LinkContext) (io.Writer, linking.BlockWriteCommitter, error) {
-		w, wc, err := originalCWO(lc)
-		if err != nil {
-			return nil, nil, err
-		}
-		return w, func(l datamodel.Link) error {
-			receivedBlocks = append(receivedBlocks, l.(cidlink.Link).Cid)
-			return wc(l)
-		}, nil
-	}
-
-	carR, carW := io.Pipe()
-	rt := NewCannedBytesRoundTripper(carR)
-	// mock http client that returns carBytes as the response body regardless
-	// of the request
-	client := &http.Client{Transport: rt}
-
-	retriever := retriever.NewHttpRetrieverWithClock(getTimeout, client, clock)
-
-	request := types.RetrievalRequest{
-		Cid:         remote.RootCid,
-		RetrievalID: retrievalID,
-		LinkSystem:  clientLsys,
-		Scope:       types.CarScopeAll,
-	}
-
-	connectedCh := make(chan struct{})
-	eventCb := func(events types.RetrievalEvent) {
-		switch events.Code() {
-		case types.ConnectedCode:
-			close(connectedCh)
-		}
-	}
-
-	var stats *types.RetrievalStats
-	var retrievalErr error
-	doneCh := make(chan struct{})
-	go func() {
-		retrieval := retriever.Retrieve(ctx, request, eventCb)
-		stats, retrievalErr = retrieval.RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{candidate}))
-		close(doneCh)
-	}()
-
-	waitForClosed(t, ctx, connectedCh) // successfully started the HTTP request, got a body reader
-	// check the request that was given to the client
-	req.NotNil(rt.req)
-	req.Equal(fmt.Sprintf("http://127.1.2.3:6789/ipfs/%s?car-scope=all", remote.RootCid.String()), rt.req.URL.String())
-	// write the body from remote side
-	remote.GenerateCar(carW)
-	waitForClosed(t, ctx, doneCh) // successfully finished the retrieval
-
-	req.NoError(retrievalErr)
-	req.NotNil(stats)
-	req.Equal(peer.ID("foo"), stats.StorageProviderId)
-	req.Equal(remote.RootCid, stats.RootCid)
-	req.Equal(uint64(100), stats.Blocks)
-	req.Equal(remote.SentBytes, stats.Size)
-	req.Len(remote.SentBlocks, 100)
-	req.Equal(remote.SentBlocks, receivedBlocks)
-}
-*/
-
 type cannedBytesRoundTripper struct {
-	t             *testing.T
-	expectedPath  []string
-	expectedScope []types.CarScope
-	candidates    map[cid.Cid][]types.RetrievalCandidate
-	makeBody      func(cid.Cid) io.ReadCloser
+	t              *testing.T
+	ctx            context.Context
+	expectedPath   []string
+	expectedScope  []types.CarScope
+	candidates     map[cid.Cid][][]types.RetrievalCandidate
+	makeBody       func(cid.Cid) io.ReadCloser
+	batchCounter   map[cid.Cid][]int
+	batchCounterLk *sync.Mutex
+	batchWait      *sync.Cond
 }
 
 var _ http.RoundTripper = (*cannedBytesRoundTripper)(nil)
 
 func NewCannedBytesRoundTripper(
 	t *testing.T,
+	ctx context.Context,
 	expectedPath []string,
 	expectedScope []types.CarScope,
-	candidates map[cid.Cid][]types.RetrievalCandidate,
+	candidates map[cid.Cid][][]types.RetrievalCandidate,
 	makeBody func(cid.Cid) io.ReadCloser,
 ) *cannedBytesRoundTripper {
+
+	lk := sync.Mutex{}
 	return &cannedBytesRoundTripper{
 		t,
+		ctx,
 		expectedPath,
 		expectedScope,
 		candidates,
 		makeBody,
+		make(map[cid.Cid][]int),
+		&lk,
+		&sync.Cond{L: &lk},
 	}
 }
 
@@ -448,25 +461,67 @@ func (c *cannedBytesRoundTripper) RoundTrip(req *http.Request) (*http.Response, 
 	}
 	require.True(c.t, matchedPath > -1)
 	require.Equal(c.t, req.URL.RawQuery, fmt.Sprintf("car-scope=%s", c.expectedScope[matchedPath]))
-	cands, ok := c.candidates[root]
-	require.True(c.t, ok)
 	ip := req.URL.Hostname()
 	port := req.URL.Port()
-	var matchingCands int
-	// find a candidate matching multiaddr ip & port
-	for _, c := range cands {
-		for _, maddr := range c.MinerPeer.Addrs {
-			if maddr.String() == fmt.Sprintf("/ip4/%s/tcp/%s/http", ip, port) {
-				matchingCands++
-				break
-			}
+	myaddr := fmt.Sprintf("/ip4/%s/tcp/%s/http", ip, port)
+
+	cands, ok := c.candidates[root]
+	require.True(c.t, ok)
+
+	c.batchCounterLk.Lock()
+	var batchNum int
+	var batchCount int
+	for {
+		if c.ctx.Err() != nil {
+			c.batchCounterLk.Unlock()
+			return nil, c.ctx.Err()
+		}
+
+		// get next expected candidate to serve
+		batch, ok := c.batchCounter[root]
+		if ok {
+			batchNum = batch[0]
+			batchCount = batch[1]
+		} // else start at 0,0
+		if batchNum >= len(cands) {
+			require.FailNowf(c.t, "too many requests (exceeded batch count)", "batchNum: %d, len(cands): %d, batchCount: %d", batchNum, len(cands), batchCount)
+		}
+		if batchCount >= len(cands[batchNum]) {
+			require.FailNowf(c.t, "too many requests", "batchNum: %d, len(cands): %d, batchCount: %d, len(cands[batchNum]): %d", batchNum, len(cands), batchCount, len(cands[batchNum]))
+		}
+		if cands[batchNum][batchCount].MinerPeer.Addrs[0].String() == myaddr {
+			break
+		} else {
+			c.batchWait.Wait()
 		}
 	}
-	require.Equal(c.t, 1, matchingCands)
 
+	// increment values for next candidate to pick up from
+	if batchCount+1 >= len(cands[batchNum]) {
+		batchNum++
+		batchCount = 0
+	} else {
+		batchCount++
+	}
+	fmt.Printf("Setting batch counters for %s to %d, %d\n", root, batchNum, batchCount)
+	c.batchCounter[root] = []int{batchNum, batchCount}
+	c.batchCounterLk.Unlock()
+
+	endCh := make(chan struct{})
+	go func() {
+		select {
+		case <-c.ctx.Done():
+		case <-endCh:
+		}
+		c.batchCounterLk.Lock()
+		c.batchWait.Broadcast()
+		c.batchCounterLk.Unlock()
+	}()
+
+	fmt.Println("setting up response")
 	return &http.Response{
 		StatusCode: http.StatusOK,
-		Body:       c.makeBody(root),
+		Body:       &deferredReader{root: root, makeBody: c.makeBody, endCh: endCh},
 	}, nil
 }
 
@@ -474,6 +529,38 @@ type sentStats struct {
 	root      cid.Cid
 	byteCount uint64
 	blocks    []cid.Cid
+}
+
+// deferredReader is simply a Reader that lazily calls makeBody on the first Read
+// so we don't begin CAR generation if the HTTP response body never gets read by
+// the client.
+type deferredReader struct {
+	root     cid.Cid
+	makeBody func(cid.Cid) io.ReadCloser
+	endCh    chan struct{}
+
+	r    io.ReadCloser
+	once sync.Once
+}
+
+var _ io.ReadCloser = (*deferredReader)(nil)
+
+func (d *deferredReader) Read(p []byte) (n int, err error) {
+	d.once.Do(func() {
+		d.r = d.makeBody(d.root)
+	})
+	n, err = d.r.Read(p)
+	if err == io.EOF {
+		close(d.endCh)
+	}
+	return n, err
+}
+
+func (d *deferredReader) Close() error {
+	if d.r != nil {
+		return d.r.Close()
+	}
+	return nil
 }
 
 // given a writer (carW), a linkSystem, a root CID and a selector, traverse the graph
@@ -518,7 +605,8 @@ func traverseCar(t *testing.T,
 			if err != nil {
 				return nil, err
 			}
-			carWriter.Put(ctx, lnk.(cidlink.Link).Cid.KeyString(), byts)
+			err = carWriter.Put(ctx, lnk.(cidlink.Link).Cid.KeyString(), byts)
+			req.NoError(err)
 			stats.byteCount += uint64(len(byts)) // only the length of the bytes, not the rest of the CAR infrastructure
 			clock.Add(blockDuration)
 			return bytes.NewReader(byts), nil
