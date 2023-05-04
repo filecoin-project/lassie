@@ -83,6 +83,12 @@ func (mc *MockClient) VerifyRetrievalsReceived(ctx context.Context, t *testing.T
 	require.ElementsMatch(t, expectedRetrievals, retrievals)
 }
 
+func (mc *MockClient) VerifyRetrievalsServed(ctx context.Context, t *testing.T, expectedServed []RemoteStats) {
+}
+
+func (mc *MockClient) VerifyRetrievalsCompleted(ctx context.Context, t *testing.T, expectedRetrievals []peer.ID) {
+}
+
 func (mc *MockClient) VerifyReceivedRetrievalFrom(ctx context.Context, t *testing.T, p peer.ID) ClientRetrievalRequest {
 	for {
 		select {

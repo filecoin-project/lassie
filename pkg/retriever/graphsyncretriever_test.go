@@ -521,7 +521,7 @@ func TestRetrievalRacing(t *testing.T) {
 					Cid:         cid.Undef,
 					RetrievalID: retrievalID,
 					LinkSystem:  cidlink.DefaultLinkSystem(),
-				}, cb).RetrieveFromAsyncCandidates(makeAsyncCandidates(t, spreadCandidates(candidates)))
+				}, cb).RetrieveFromAsyncCandidates(makeAsyncCandidates(t, candidates))
 			}})
 			require.Len(t, results, 1)
 			stats, err := results[0].Stats, results[0].Err
@@ -650,22 +650,22 @@ func TestMultipleRetrievals(t *testing.T) {
 				Cid:         cid1,
 				RetrievalID: retrievalID,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
-			}, cb).RetrieveFromAsyncCandidates(makeAsyncCandidates(t, spreadCandidates([]types.RetrievalCandidate{
+			}, cb).RetrieveFromAsyncCandidates(makeAsyncCandidates(t, []types.RetrievalCandidate{
 				types.NewRetrievalCandidate(peer.ID("foo"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{}),
 				types.NewRetrievalCandidate(peer.ID("bar"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{}),
 				types.NewRetrievalCandidate(peer.ID("baz"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{}),
-			})))
+			}))
 		},
 		func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
 			return cfg.Retrieve(context.Background(), types.RetrievalRequest{
 				Cid:         cid2,
 				RetrievalID: retrievalID,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
-			}, cb).RetrieveFromAsyncCandidates(makeAsyncCandidates(t, spreadCandidates([]types.RetrievalCandidate{
+			}, cb).RetrieveFromAsyncCandidates(makeAsyncCandidates(t, []types.RetrievalCandidate{
 				types.NewRetrievalCandidate(peer.ID("bang"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{}),
 				types.NewRetrievalCandidate(peer.ID("boom"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{}),
 				types.NewRetrievalCandidate(peer.ID("bing"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{}),
-			})))
+			}))
 		}})
 	require.Len(t, results, 2)
 	stats, err := results[0].Stats, results[0].Err
@@ -702,7 +702,7 @@ func TestRetrievalSelector(t *testing.T) {
 		LinkSystem:  cidlink.DefaultLinkSystem(),
 		Selector:    selector,
 	}, nil)
-	stats, err := retrieval.RetrieveFromAsyncCandidates(makeAsyncCandidates(t, [][]types.RetrievalCandidate{{types.NewRetrievalCandidate(peer.ID("foo"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{})}}))
+	stats, err := retrieval.RetrieveFromAsyncCandidates(makeAsyncCandidates(t, []types.RetrievalCandidate{types.NewRetrievalCandidate(peer.ID("foo"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{})}))
 	require.NoError(t, err)
 	require.NotNil(t, stats)
 	require.Equal(t, mockClient.GetRetrievalReturns()["foo"].ResultStats, stats)
@@ -797,13 +797,13 @@ func TestDuplicateRetreivals(t *testing.T) {
 				Cid:         cid1,
 				RetrievalID: retrievalID,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
-			}, cb).RetrieveFromAsyncCandidates(makeAsyncCandidates(t, spreadCandidates([]types.RetrievalCandidate{
+			}, cb).RetrieveFromAsyncCandidates(makeAsyncCandidates(t, []types.RetrievalCandidate{
 				types.NewRetrievalCandidate(peer.ID("foo"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: false, FastRetrieval: false}),
 				types.NewRetrievalCandidate(peer.ID("baz"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: false, FastRetrieval: false}),
 				types.NewRetrievalCandidate(peer.ID("bar"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: false, FastRetrieval: false}),
 				types.NewRetrievalCandidate(peer.ID("bar"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: false, FastRetrieval: true}),
 				types.NewRetrievalCandidate(peer.ID("bar"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false}),
-			})))
+			}))
 		},
 	})
 	require.Len(t, results, 1)
@@ -814,19 +814,10 @@ func TestDuplicateRetreivals(t *testing.T) {
 	require.Equal(t, mockClient.GetRetrievalReturns()["bar"].ResultStats, stats)
 }
 
-func spreadCandidates(cands []types.RetrievalCandidate) [][]types.RetrievalCandidate {
-	// make cands into an slice of slices of candidates where each subslice only has one of the candidates in it
-	out := make([][]types.RetrievalCandidate, 0)
-	for _, cand := range cands {
-		out = append(out, []types.RetrievalCandidate{cand})
-	}
-	return out
-}
-
-func makeAsyncCandidates(t *testing.T, candidates [][]types.RetrievalCandidate) types.InboundAsyncCandidates {
+func makeAsyncCandidates(t *testing.T, candidates []types.RetrievalCandidate) types.InboundAsyncCandidates {
 	incoming, outgoing := types.MakeAsyncCandidates(len(candidates))
 	for _, candidate := range candidates {
-		err := outgoing.SendNext(context.Background(), candidate)
+		err := outgoing.SendNext(context.Background(), []types.RetrievalCandidate{candidate})
 		require.NoError(t, err)
 	}
 	close(outgoing)
