@@ -236,7 +236,6 @@ func collectResults(ctx context.Context, retrieval *retrievalSession, eventsCall
 			// have we got all responses but no success?
 			if !ok {
 				// we failed, and got only retrieval errors
-				fmt.Println("all failed, retrievalErrors", retrievalErrors)
 				retrievalErrors = multierr.Append(retrievalErrors, ErrAllRetrievalsFailed)
 				return nil, retrievalErrors
 			}
@@ -246,7 +245,6 @@ func collectResults(ctx context.Context, retrieval *retrievalSession, eventsCall
 				break
 			}
 			if result.Err != nil {
-				fmt.Println("result.Err", result.Err)
 				retrievalErrors = multierr.Append(retrievalErrors, result.Err)
 			}
 			if result.Stats != nil {
