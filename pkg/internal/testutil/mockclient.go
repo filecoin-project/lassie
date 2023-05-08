@@ -56,7 +56,7 @@ func NewMockClient(connectReturns map[string]DelayedConnectReturn, retrievalRetu
 	}
 }
 
-func (mc *MockClient) VerifyConnectionsReceived(ctx context.Context, t *testing.T, expectedConnections []peer.ID) {
+func (mc *MockClient) VerifyConnectionsReceived(ctx context.Context, t *testing.T, afterStart time.Duration, expectedConnections []peer.ID) {
 	connections := make([]peer.ID, 0, len(expectedConnections))
 	for i := 0; i < len(expectedConnections); i++ {
 		select {
@@ -64,29 +64,35 @@ func (mc *MockClient) VerifyConnectionsReceived(ctx context.Context, t *testing.
 			t.Logf("connecting to peer: %s", connection)
 			connections = append(connections, connection)
 		case <-ctx.Done():
-			require.FailNowf(t, "failed to receive expected connections", "expected %d, received %d", len(expectedConnections), i)
+			require.FailNowf(t, "failed to receive expected connections", "expected %d, received %d @ %s", len(expectedConnections), i, afterStart)
 		}
 	}
 	require.ElementsMatch(t, expectedConnections, connections)
 }
 
-func (mc *MockClient) VerifyRetrievalsReceived(ctx context.Context, t *testing.T, expectedRetrievals []peer.ID) {
+func (mc *MockClient) VerifyRetrievalsReceived(ctx context.Context, t *testing.T, afterStart time.Duration, expectedRetrievals []peer.ID) {
 	retrievals := make([]peer.ID, 0, len(expectedRetrievals))
 	for i := 0; i < len(expectedRetrievals); i++ {
 		select {
 		case retrieval := <-mc.received_retrievals:
 			retrievals = append(retrievals, retrieval.Peer)
 		case <-ctx.Done():
-			require.FailNowf(t, "failed to receive expected retrievals", "expected %d, received %d", len(expectedRetrievals), i)
+			require.FailNowf(t, "failed to receive expected retrievals", "expected %d, received %d @ %s", len(expectedRetrievals), i, afterStart)
 		}
 	}
 	require.ElementsMatch(t, expectedRetrievals, retrievals)
 }
 
-func (mc *MockClient) VerifyRetrievalsServed(ctx context.Context, t *testing.T, expectedServed []RemoteStats) {
+func (mc *MockClient) VerifyRetrievalsServed(ctx context.Context, t *testing.T, afterStart time.Duration, expectedServed []RemoteStats) {
+	if len(expectedServed) > 0 {
+		require.FailNowf(t, "unexpected RetrievalsServed", "@ %s", afterStart)
+	}
 }
 
-func (mc *MockClient) VerifyRetrievalsCompleted(ctx context.Context, t *testing.T, expectedRetrievals []peer.ID) {
+func (mc *MockClient) VerifyRetrievalsCompleted(ctx context.Context, t *testing.T, afterStart time.Duration, expectedRetrievals []peer.ID) {
+	if len(expectedRetrievals) > 0 {
+		require.FailNowf(t, "unexpected RetrievalsCompleted", "@ %s", afterStart)
+	}
 }
 
 func (mc *MockClient) VerifyReceivedRetrievalFrom(ctx context.Context, t *testing.T, p peer.ID) ClientRetrievalRequest {

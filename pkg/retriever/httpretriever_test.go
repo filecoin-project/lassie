@@ -41,6 +41,7 @@ type httpRemote struct {
 	lsys          *linking.LinkSystem
 	sel           ipld.Node
 	responseDelay time.Duration
+	malformed     bool
 }
 
 func TestHTTPRetriever(t *testing.T) {
@@ -71,6 +72,7 @@ func TestHTTPRetriever(t *testing.T) {
 	remoteBlockDuration := 50 * time.Millisecond
 	allSelector := selectorparse.CommonSelector_ExploreAllRecursively
 	getTimeout := func(_ peer.ID) time.Duration { return 5 * time.Second }
+	initialPause := 10 * time.Millisecond
 	startTime := time.Now().Add(time.Hour)
 
 	testCases := []struct {
@@ -79,13 +81,13 @@ func TestHTTPRetriever(t *testing.T) {
 		requestPath    map[cid.Cid]string
 		requestScope   map[cid.Cid]types.CarScope
 		remotes        map[cid.Cid][]httpRemote
-		expectedStats  map[cid.Cid]types.RetrievalStats
+		expectedStats  map[cid.Cid]*types.RetrievalStats
 		expectedErrors map[cid.Cid]struct{}
-		expectedCids   map[cid.Cid][]cid.Cid
+		expectedCids   map[cid.Cid][]cid.Cid // expected in this order
 		expectSequence []testutil.ExpectedActionsAtTime
 	}{
 		{
-			name:     "single full fetch, one peer",
+			name:     "single, one peer, success",
 			requests: map[cid.Cid]types.RetrievalID{cid1: rid1},
 			remotes: map[cid.Cid][]httpRemote{
 				cid1: {
@@ -97,18 +99,16 @@ func TestHTTPRetriever(t *testing.T) {
 					},
 				},
 			},
-			expectedCids: map[cid.Cid][]cid.Cid{
-				cid1: tbc1Cids,
-			},
-			expectedStats: map[cid.Cid]types.RetrievalStats{
+			expectedCids: map[cid.Cid][]cid.Cid{cid1: tbc1Cids},
+			expectedStats: map[cid.Cid]*types.RetrievalStats{
 				cid1: {
 					RootCid:           cid1,
 					StorageProviderId: cid1Cands[0].MinerPeer.ID,
 					Size:              sizeOf(tbc1.AllBlocks()),
 					Blocks:            100,
-					Duration:          40*time.Millisecond + remoteBlockDuration*100,
-					AverageSpeed:      uint64(float64(sizeOf(tbc1.AllBlocks())) / (40*time.Millisecond + remoteBlockDuration*100).Seconds()),
-					TimeToFirstByte:   40 * time.Millisecond,
+					Duration:          initialPause + 40*time.Millisecond + remoteBlockDuration*100,
+					AverageSpeed:      uint64(float64(sizeOf(tbc1.AllBlocks())) / (initialPause + 40*time.Millisecond + remoteBlockDuration*100).Seconds()),
+					TimeToFirstByte:   initialPause + 40*time.Millisecond,
 					TotalPayment:      big.Zero(),
 					AskPrice:          big.Zero(),
 				},
@@ -122,19 +122,19 @@ func TestHTTPRetriever(t *testing.T) {
 					},
 				},
 				{
-					AfterStart:         0,
+					AfterStart:         initialPause,
 					ReceivedRetrievals: []peer.ID{cid1Cands[0].MinerPeer.ID},
 				},
 				{
-					AfterStart: time.Millisecond * 40,
+					AfterStart: initialPause + time.Millisecond*40,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.FirstByte(startTime.Add(time.Millisecond*40), rid1, startTime, toCandidate(cid1, cid1Cands[0].MinerPeer)),
+						events.FirstByte(startTime.Add(initialPause+time.Millisecond*40), rid1, startTime, toCandidate(cid1, cid1Cands[0].MinerPeer)),
 					},
 				},
 				{
-					AfterStart: time.Millisecond*40 + remoteBlockDuration*100,
+					AfterStart: initialPause + time.Millisecond*40 + remoteBlockDuration*100,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.Success(startTime.Add(time.Millisecond*40+remoteBlockDuration*100), rid1, startTime, toCandidate(cid1, cid1Cands[0].MinerPeer), sizeOf(tbc2.AllBlocks()), 100, 40*time.Millisecond+remoteBlockDuration*100, big.Zero(), 0),
+						events.Success(startTime.Add(initialPause+time.Millisecond*40+remoteBlockDuration*100), rid1, startTime, toCandidate(cid1, cid1Cands[0].MinerPeer), sizeOf(tbc2.AllBlocks()), 100, initialPause+40*time.Millisecond+remoteBlockDuration*100, big.Zero(), 0),
 					},
 					ServedRetrievals: []testutil.RemoteStats{
 						{
@@ -149,7 +149,7 @@ func TestHTTPRetriever(t *testing.T) {
 			},
 		},
 		{
-			name:     "two parallel full fetch, small offset, one peer each",
+			name:     "two parallel, one peer each, success",
 			requests: map[cid.Cid]types.RetrievalID{cid1: rid1, cid2: rid2},
 			remotes: map[cid.Cid][]httpRemote{
 				cid1: {
@@ -169,19 +169,16 @@ func TestHTTPRetriever(t *testing.T) {
 					},
 				},
 			},
-			expectedCids: map[cid.Cid][]cid.Cid{
-				cid1: tbc1Cids,
-				cid2: tbc2Cids,
-			},
-			expectedStats: map[cid.Cid]types.RetrievalStats{
+			expectedCids: map[cid.Cid][]cid.Cid{cid1: tbc1Cids, cid2: tbc2Cids},
+			expectedStats: map[cid.Cid]*types.RetrievalStats{
 				cid1: {
 					RootCid:           cid1,
 					StorageProviderId: cid1Cands[0].MinerPeer.ID,
 					Size:              sizeOf(tbc1.AllBlocks()),
 					Blocks:            100,
-					Duration:          40*time.Millisecond + remoteBlockDuration*100,
-					AverageSpeed:      uint64(float64(sizeOf(tbc1.AllBlocks())) / (40*time.Millisecond + remoteBlockDuration*100).Seconds()),
-					TimeToFirstByte:   40 * time.Millisecond,
+					Duration:          initialPause + 40*time.Millisecond + remoteBlockDuration*100,
+					AverageSpeed:      uint64(float64(sizeOf(tbc1.AllBlocks())) / (initialPause + 40*time.Millisecond + remoteBlockDuration*100).Seconds()),
+					TimeToFirstByte:   initialPause + 40*time.Millisecond,
 					TotalPayment:      big.Zero(),
 					AskPrice:          big.Zero(),
 				},
@@ -190,9 +187,9 @@ func TestHTTPRetriever(t *testing.T) {
 					StorageProviderId: cid2Cands[0].MinerPeer.ID,
 					Size:              sizeOf(tbc2.AllBlocks()),
 					Blocks:            100,
-					Duration:          10*time.Millisecond + remoteBlockDuration*100,
-					AverageSpeed:      uint64(float64(sizeOf(tbc2.AllBlocks())) / (10*time.Millisecond + remoteBlockDuration*100).Seconds()),
-					TimeToFirstByte:   10 * time.Millisecond,
+					Duration:          initialPause + 10*time.Millisecond + remoteBlockDuration*100,
+					AverageSpeed:      uint64(float64(sizeOf(tbc2.AllBlocks())) / (initialPause + 10*time.Millisecond + remoteBlockDuration*100).Seconds()),
+					TimeToFirstByte:   initialPause + 10*time.Millisecond,
 					TotalPayment:      big.Zero(),
 					AskPrice:          big.Zero(),
 				},
@@ -208,25 +205,25 @@ func TestHTTPRetriever(t *testing.T) {
 					},
 				},
 				{
-					AfterStart:         0,
+					AfterStart:         initialPause,
 					ReceivedRetrievals: []peer.ID{cid1Cands[0].MinerPeer.ID, cid2Cands[0].MinerPeer.ID},
 				},
 				{
-					AfterStart: time.Millisecond * 10,
+					AfterStart: initialPause + time.Millisecond*10,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.FirstByte(startTime.Add(time.Millisecond*10), rid2, startTime, toCandidate(cid2, cid2Cands[0].MinerPeer)),
+						events.FirstByte(startTime.Add(initialPause+time.Millisecond*10), rid2, startTime, toCandidate(cid2, cid2Cands[0].MinerPeer)),
 					},
 				},
 				{
-					AfterStart: time.Millisecond * 40,
+					AfterStart: initialPause + time.Millisecond*40,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.FirstByte(startTime.Add(time.Millisecond*40), rid1, startTime, toCandidate(cid1, cid1Cands[0].MinerPeer)),
+						events.FirstByte(startTime.Add(initialPause+time.Millisecond*40), rid1, startTime, toCandidate(cid1, cid1Cands[0].MinerPeer)),
 					},
 				},
 				{
-					AfterStart: time.Millisecond*10 + remoteBlockDuration*100,
+					AfterStart: initialPause + time.Millisecond*10 + remoteBlockDuration*100,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.Success(startTime.Add(time.Millisecond*10+remoteBlockDuration*100), rid2, startTime, toCandidate(cid2, cid2Cands[0].MinerPeer), sizeOf(tbc2.AllBlocks()), 100, 10*time.Millisecond+remoteBlockDuration*100, big.Zero(), 0),
+						events.Success(startTime.Add(initialPause+time.Millisecond*10+remoteBlockDuration*100), rid2, startTime, toCandidate(cid2, cid2Cands[0].MinerPeer), sizeOf(tbc2.AllBlocks()), 100, initialPause+10*time.Millisecond+remoteBlockDuration*100, big.Zero(), 0),
 					},
 					ServedRetrievals: []testutil.RemoteStats{
 						{
@@ -239,9 +236,9 @@ func TestHTTPRetriever(t *testing.T) {
 					CompletedRetrievals: []peer.ID{cid2Cands[0].MinerPeer.ID},
 				},
 				{
-					AfterStart: time.Millisecond*40 + remoteBlockDuration*100,
+					AfterStart: initialPause + time.Millisecond*40 + remoteBlockDuration*100,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.Success(startTime.Add(time.Millisecond*40+remoteBlockDuration*100), rid1, startTime, toCandidate(cid1, cid1Cands[0].MinerPeer), sizeOf(tbc2.AllBlocks()), 100, 40*time.Millisecond+remoteBlockDuration*100, big.Zero(), 0),
+						events.Success(startTime.Add(initialPause+time.Millisecond*40+remoteBlockDuration*100), rid1, startTime, toCandidate(cid1, cid1Cands[0].MinerPeer), sizeOf(tbc2.AllBlocks()), 100, initialPause+40*time.Millisecond+remoteBlockDuration*100, big.Zero(), 0),
 					},
 					ServedRetrievals: []testutil.RemoteStats{
 						{
@@ -255,13 +252,285 @@ func TestHTTPRetriever(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:     "single, multiple errors",
+			requests: map[cid.Cid]types.RetrievalID{cid1: rid1},
+			remotes: map[cid.Cid][]httpRemote{
+				cid1: {
+					{
+						peer:          cid1Cands[0].MinerPeer,
+						lsys:          makeLsys(nil),
+						sel:           allSelector,
+						responseDelay: time.Millisecond * 10,
+						malformed:     true,
+					},
+					{
+						peer:          cid1Cands[1].MinerPeer,
+						lsys:          makeLsys(nil),
+						sel:           allSelector,
+						responseDelay: time.Millisecond * 10,
+						malformed:     true,
+					},
+					{
+						peer:          cid1Cands[2].MinerPeer,
+						lsys:          makeLsys(nil),
+						sel:           allSelector,
+						responseDelay: time.Millisecond * 10,
+						malformed:     true,
+					},
+				},
+			},
+			expectedErrors: map[cid.Cid]struct{}{
+				cid1: {},
+			},
+			expectSequence: []testutil.ExpectedActionsAtTime{
+				{
+					AfterStart: 0,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Started(startTime, rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[0].MinerPeer)),
+						events.Started(startTime, rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[1].MinerPeer)),
+						events.Started(startTime, rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[2].MinerPeer)),
+						events.Connected(startTime, rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[0].MinerPeer)),
+						events.Connected(startTime, rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[1].MinerPeer)),
+						events.Connected(startTime, rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[2].MinerPeer)),
+					},
+				},
+				{
+					AfterStart:         initialPause,
+					ReceivedRetrievals: []peer.ID{cid1Cands[0].MinerPeer.ID},
+				},
+				{
+					AfterStart: initialPause + time.Millisecond*10,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Failed(startTime.Add(initialPause+time.Millisecond*10), rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[0].MinerPeer), "unexpected EOF"),
+					},
+					CompletedRetrievals: []peer.ID{cid1Cands[0].MinerPeer.ID},
+					ReceivedRetrievals:  []peer.ID{cid1Cands[1].MinerPeer.ID},
+					ServedRetrievals: []testutil.RemoteStats{
+						{
+							Peer:      cid1Cands[0].MinerPeer.ID,
+							Root:      cid1,
+							ByteCount: 0,
+							Blocks:    []cid.Cid{},
+						},
+					},
+				},
+				{
+					AfterStart: initialPause + time.Millisecond*20,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Failed(startTime.Add(initialPause+time.Millisecond*20), rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[1].MinerPeer), "unexpected EOF"),
+					},
+					CompletedRetrievals: []peer.ID{cid1Cands[1].MinerPeer.ID},
+					ReceivedRetrievals:  []peer.ID{cid1Cands[2].MinerPeer.ID},
+					ServedRetrievals: []testutil.RemoteStats{
+						{
+							Peer:      cid1Cands[1].MinerPeer.ID,
+							Root:      cid1,
+							ByteCount: 0,
+							Blocks:    []cid.Cid{},
+						},
+					},
+				},
+				{
+					AfterStart: initialPause + time.Millisecond*30,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Failed(startTime.Add(initialPause+time.Millisecond*30), rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[2].MinerPeer), "unexpected EOF"),
+					},
+					CompletedRetrievals: []peer.ID{cid1Cands[2].MinerPeer.ID},
+					ServedRetrievals: []testutil.RemoteStats{
+						{
+							Peer:      cid1Cands[2].MinerPeer.ID,
+							Root:      cid1,
+							ByteCount: 0,
+							Blocks:    []cid.Cid{},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:     "single, multiple errors, one success",
+			requests: map[cid.Cid]types.RetrievalID{cid1: rid1},
+			remotes: map[cid.Cid][]httpRemote{
+				cid1: {
+					{
+						peer:          cid1Cands[0].MinerPeer,
+						lsys:          makeLsys(nil),
+						sel:           allSelector,
+						responseDelay: time.Millisecond * 10,
+						malformed:     true,
+					},
+					{
+						peer:          cid1Cands[1].MinerPeer,
+						lsys:          makeLsys(nil),
+						sel:           allSelector,
+						responseDelay: time.Millisecond * 10,
+						malformed:     true,
+					},
+					{
+						peer:          cid1Cands[2].MinerPeer,
+						lsys:          makeLsys(tbc1.AllBlocks()),
+						sel:           allSelector,
+						responseDelay: time.Millisecond * 10,
+					},
+				},
+			},
+			expectedCids: map[cid.Cid][]cid.Cid{cid1: tbc1Cids},
+			expectedStats: map[cid.Cid]*types.RetrievalStats{
+				cid1: {
+					RootCid:           cid1,
+					StorageProviderId: cid1Cands[2].MinerPeer.ID,
+					Size:              sizeOf(tbc1.AllBlocks()),
+					Blocks:            100,
+					Duration:          initialPause + 30*time.Millisecond + remoteBlockDuration*100,
+					AverageSpeed:      uint64(float64(sizeOf(tbc1.AllBlocks())) / (initialPause + 30*time.Millisecond + remoteBlockDuration*100).Seconds()),
+					TimeToFirstByte:   initialPause + 30*time.Millisecond,
+					TotalPayment:      big.Zero(),
+					AskPrice:          big.Zero(),
+				},
+			},
+			expectSequence: []testutil.ExpectedActionsAtTime{
+				{
+					AfterStart: 0,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Started(startTime, rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[0].MinerPeer)),
+						events.Started(startTime, rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[1].MinerPeer)),
+						events.Started(startTime, rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[2].MinerPeer)),
+						events.Connected(startTime, rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[0].MinerPeer)),
+						events.Connected(startTime, rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[1].MinerPeer)),
+						events.Connected(startTime, rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[2].MinerPeer)),
+					},
+				},
+				{
+					AfterStart:         initialPause,
+					ReceivedRetrievals: []peer.ID{cid1Cands[0].MinerPeer.ID},
+				},
+				{
+					AfterStart: initialPause + time.Millisecond*10,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Failed(startTime.Add(initialPause+time.Millisecond*10), rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[0].MinerPeer), "unexpected EOF"),
+					},
+					CompletedRetrievals: []peer.ID{cid1Cands[0].MinerPeer.ID},
+					ReceivedRetrievals:  []peer.ID{cid1Cands[1].MinerPeer.ID},
+					ServedRetrievals: []testutil.RemoteStats{
+						{
+							Peer:      cid1Cands[0].MinerPeer.ID,
+							Root:      cid1,
+							ByteCount: 0,
+							Blocks:    []cid.Cid{},
+						},
+					},
+				},
+				{
+					AfterStart: initialPause + time.Millisecond*20,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Failed(startTime.Add(initialPause+time.Millisecond*20), rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[1].MinerPeer), "unexpected EOF"),
+					},
+					CompletedRetrievals: []peer.ID{cid1Cands[1].MinerPeer.ID},
+					ReceivedRetrievals:  []peer.ID{cid1Cands[2].MinerPeer.ID},
+					ServedRetrievals: []testutil.RemoteStats{
+						{
+							Peer:      cid1Cands[1].MinerPeer.ID,
+							Root:      cid1,
+							ByteCount: 0,
+							Blocks:    []cid.Cid{},
+						},
+					},
+				},
+				{
+					AfterStart: initialPause + time.Millisecond*30,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.FirstByte(startTime.Add(initialPause+time.Millisecond*30), rid1, startTime, toCandidate(cid1, cid1Cands[2].MinerPeer)),
+					},
+				},
+				{
+					AfterStart: initialPause + time.Millisecond*30 + remoteBlockDuration*100,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Success(startTime.Add(initialPause+time.Millisecond*30+remoteBlockDuration*100), rid1, startTime, toCandidate(cid1, cid1Cands[2].MinerPeer), sizeOf(tbc2.AllBlocks()), 100, initialPause+30*time.Millisecond+remoteBlockDuration*100, big.Zero(), 0),
+					},
+					CompletedRetrievals: []peer.ID{cid1Cands[2].MinerPeer.ID},
+					ServedRetrievals: []testutil.RemoteStats{
+						{
+							Peer:      cid1Cands[2].MinerPeer.ID,
+							Root:      cid1,
+							ByteCount: sizeOf(tbc1.AllBlocks()),
+							Blocks:    tbc1Cids,
+						},
+					},
+				},
+			},
+		},
+		// TODO: this test demonstrates the incompleteness of the http implementation - it's counted
+		// as a success and we only signal an "error" because the selector on the server errors but
+		// that in no way carries over to the client.
+		{
+			name:     "single, one peer, partial served",
+			requests: map[cid.Cid]types.RetrievalID{cid1: rid1},
+			remotes: map[cid.Cid][]httpRemote{
+				cid1: {
+					{
+						peer:          cid1Cands[0].MinerPeer,
+						lsys:          makeLsys(tbc1.AllBlocks()[0:50]),
+						sel:           allSelector,
+						responseDelay: time.Millisecond * 40,
+					},
+				},
+			},
+			expectedCids: map[cid.Cid][]cid.Cid{cid1: tbc1Cids[0:50]},
+			expectedStats: map[cid.Cid]*types.RetrievalStats{
+				cid1: {
+					RootCid:           cid1,
+					StorageProviderId: cid1Cands[0].MinerPeer.ID,
+					Size:              sizeOf(tbc1.AllBlocks()[0:50]),
+					Blocks:            50,
+					Duration:          initialPause + 40*time.Millisecond + remoteBlockDuration*50,
+					AverageSpeed:      uint64(float64(sizeOf(tbc1.AllBlocks()[0:50])) / (initialPause + 40*time.Millisecond + remoteBlockDuration*50).Seconds()),
+					TimeToFirstByte:   initialPause + 40*time.Millisecond,
+					TotalPayment:      big.Zero(),
+					AskPrice:          big.Zero(),
+				},
+			},
+			expectSequence: []testutil.ExpectedActionsAtTime{
+				{
+					AfterStart: 0,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Started(startTime, rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[0].MinerPeer)),
+						events.Connected(startTime, rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[0].MinerPeer)),
+					},
+				},
+				{
+					AfterStart:         initialPause,
+					ReceivedRetrievals: []peer.ID{cid1Cands[0].MinerPeer.ID},
+				},
+				{
+					AfterStart: initialPause + time.Millisecond*40,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.FirstByte(startTime.Add(initialPause+time.Millisecond*40), rid1, startTime, toCandidate(cid1, cid1Cands[0].MinerPeer)),
+					},
+				},
+				{
+					AfterStart: initialPause + time.Millisecond*40 + remoteBlockDuration*50,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Success(startTime.Add(initialPause+time.Millisecond*40+remoteBlockDuration*50), rid1, startTime, toCandidate(cid1, cid1Cands[0].MinerPeer), sizeOf(tbc2.AllBlocks()[0:50]), 50, initialPause+40*time.Millisecond+remoteBlockDuration*50, big.Zero(), 0),
+					},
+					ServedRetrievals: []testutil.RemoteStats{
+						{
+							Peer:      cid1Cands[0].MinerPeer.ID,
+							Root:      cid1,
+							ByteCount: sizeOf(tbc1.AllBlocks()[0:50]),
+							Blocks:    tbc1Cids[0:50],
+							Err:       struct{}{},
+						},
+					},
+					CompletedRetrievals: []peer.ID{cid1Cands[0].MinerPeer.ID},
+				},
+			},
+		},
 	}
 
 	for _, testCase := range testCases {
 		testCase := testCase
 		t.Run(testCase.name, func(t *testing.T) {
-			// TODO:			t.Parallel()
-
 			req := require.New(t)
 			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
@@ -283,25 +552,56 @@ func TestHTTPRetriever(t *testing.T) {
 			}
 
 			roundTripper := NewCannedBytesRoundTripper(t, ctx, clock, remoteBlockDuration, testCase.requestPath, testCase.requestScope, getRemote)
-			defer roundTripper.Close()
 			client := &http.Client{Transport: roundTripper}
-			retriever := retriever.NewHttpRetrieverWithDeps(getTimeout, client, clock, awaitReceivedCandidates)
+			// customCompare lets us order candidates when they queue, since we currently
+			// have no other way to deterministically order them for testing.
+			customCompare := func(a, b retriever.ComparableCandidate, mda, mdb metadata.Protocol) bool {
+				for _, c := range cid1Cands {
+					if c.MinerPeer.ID == a.PeerID {
+						return true
+					}
+					if c.MinerPeer.ID == b.PeerID {
+						return false
+					}
+				}
+				for _, c := range cid2Cands {
+					if c.MinerPeer.ID == a.PeerID {
+						return true
+					}
+					if c.MinerPeer.ID == b.PeerID {
+						return false
+					}
+				}
+				return false
+			}
+			retriever := retriever.NewHttpRetrieverWithDeps(getTimeout, client, clock, awaitReceivedCandidates, initialPause, customCompare)
 
+			blockAccounting := make([]*blockAccounter, 0)
+			expectedCids := make([][]cid.Cid, 0)
 			retrievals := make([]testutil.RunRetrieval, 0)
-			expectedStats := make([]types.RetrievalStats, 0)
-			for cid, rid := range testCase.requests {
-				cid := cid
+			expectedStats := make([]*types.RetrievalStats, 0)
+			expectedErrors := make([]struct{}, 0)
+			for c, rid := range testCase.requests {
+				c := c
 				rid := rid
-				expectedStats = append(expectedStats, testCase.expectedStats[cid])
+				ec := testCase.expectedCids[c]
+				if ec == nil {
+					ec = []cid.Cid{}
+				}
+				expectedCids = append(expectedCids, ec)
+				expectedStats = append(expectedStats, testCase.expectedStats[c])
+				expectedErrors = append(expectedErrors, testCase.expectedErrors[c])
+				lsys := makeLsys(nil)
+				blockAccounting = append(blockAccounting, NewBlockAccounter(lsys))
 				retrievals = append(retrievals, func(eventsCb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
 					request := types.RetrievalRequest{
 						RetrievalID: rid,
-						Cid:         cid,
-						LinkSystem:  *makeLsys(nil),
-						Path:        testCase.requestPath[cid],
-						Scope:       testCase.requestScope[cid],
+						Cid:         c,
+						LinkSystem:  *lsys,
+						Path:        testCase.requestPath[c],
+						Scope:       testCase.requestScope[c],
 					}
-					candidates := toCandidates(cid, testCase.remotes[cid])
+					candidates := toCandidates(c, testCase.remotes[c])
 					return retriever.Retrieve(context.Background(), request, eventsCb).
 						RetrieveFromAsyncCandidates(makeAsyncCandidates(t, candidates))
 				})
@@ -311,15 +611,20 @@ func TestHTTPRetriever(t *testing.T) {
 				ExpectedSequence: testCase.expectSequence,
 			}.RunWithVerification(ctx, t, clock, roundTripper, nil, retrievals)
 
-			require.Len(t, results, len(testCase.requests))
-			actualStats := make([]types.RetrievalStats, 0)
-			for _, result := range results {
-				stats, err := result.Stats, result.Err
-				require.NoError(t, err)
-				require.NotNil(t, stats)
-				actualStats = append(actualStats, *stats)
+			req.Len(results, len(testCase.requests))
+			actualStats := make([]*types.RetrievalStats, len(results))
+			actualErrors := make([]struct{}, len(results))
+			actualCids := make([][]cid.Cid, len(results))
+			for i, result := range results {
+				actualStats[i] = result.Stats
+				if result.Err != nil {
+					actualErrors[i] = struct{}{}
+				}
+				actualCids[i] = blockAccounting[i].cids
 			}
-			require.ElementsMatch(t, expectedStats, actualStats)
+			req.ElementsMatch(expectedStats, actualStats)
+			req.ElementsMatch(expectedErrors, actualErrors)
+			req.Equal(expectedCids, actualCids)
 		})
 	}
 }
@@ -334,6 +639,28 @@ func toCandidates(root cid.Cid, remotes []httpRemote) []types.RetrievalCandidate
 
 func toCandidate(root cid.Cid, peer peer.AddrInfo) types.RetrievalCandidate {
 	return types.NewRetrievalCandidate(peer.ID, peer.Addrs, root, &metadata.IpfsGatewayHttp{})
+}
+
+type blockAccounter struct {
+	cids []cid.Cid
+	bwo  linking.BlockWriteOpener
+}
+
+func NewBlockAccounter(lsys *linking.LinkSystem) *blockAccounter {
+	ba := &blockAccounter{
+		cids: make([]cid.Cid, 0),
+		bwo:  lsys.StorageWriteOpener,
+	}
+	lsys.StorageWriteOpener = ba.StorageWriteOpener
+	return ba
+}
+
+func (ba *blockAccounter) StorageWriteOpener(lctx linking.LinkContext) (io.Writer, linking.BlockWriteCommitter, error) {
+	w, wc, err := ba.bwo(lctx)
+	return w, func(l datamodel.Link) error {
+		ba.cids = append(ba.cids, l.(cidlink.Link).Cid)
+		return wc(l)
+	}, err
 }
 
 type cannedBytesRoundTripper struct {
@@ -375,11 +702,6 @@ func NewCannedBytesRoundTripper(
 	}
 }
 
-func (c *cannedBytesRoundTripper) Close() {
-	close(c.StartsCh)
-	close(c.EndsCh)
-}
-
 func (c *cannedBytesRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	us := strings.Split(req.URL.Path, "/")
 	require.True(c.t, len(us) > 2)
@@ -406,7 +728,18 @@ func (c *cannedBytesRoundTripper) RoundTrip(req *http.Request) (*http.Response, 
 
 	makeBody := func(root cid.Cid, maddr string) io.ReadCloser {
 		carR, carW := io.Pipe()
-		statsCh := traverseCar(c.t, c.ctx, remote.peer.ID, c.clock, c.remoteBlockDuration, carW, remote.lsys, root, remote.sel)
+		statsCh := traverseCar(
+			c.t,
+			c.ctx,
+			remote.peer.ID,
+			c.clock,
+			c.remoteBlockDuration,
+			carW,
+			remote.malformed,
+			remote.lsys,
+			root,
+			remote.sel,
+		)
 		go func() {
 			select {
 			case <-c.ctx.Done():
@@ -428,44 +761,46 @@ func (c *cannedBytesRoundTripper) RoundTrip(req *http.Request) (*http.Response, 
 	}, nil
 }
 
-func (c *cannedBytesRoundTripper) VerifyConnectionsReceived(ctx context.Context, t *testing.T, expectedConnections []peer.ID) {
-	// connection is currently a noop
+func (c *cannedBytesRoundTripper) VerifyConnectionsReceived(ctx context.Context, t *testing.T, afterStart time.Duration, expectedConnections []peer.ID) {
+	if len(expectedConnections) > 0 {
+		require.FailNowf(t, "unexpected ConnectionsReceived", "@ %s", afterStart)
+	}
 }
 
-func (c *cannedBytesRoundTripper) VerifyRetrievalsReceived(ctx context.Context, t *testing.T, expectedRetrievals []peer.ID) {
+func (c *cannedBytesRoundTripper) VerifyRetrievalsReceived(ctx context.Context, t *testing.T, afterStart time.Duration, expectedRetrievals []peer.ID) {
 	retrievals := make([]peer.ID, 0, len(expectedRetrievals))
 	for i := 0; i < len(expectedRetrievals); i++ {
 		select {
 		case retrieval := <-c.StartsCh:
 			retrievals = append(retrievals, retrieval)
 		case <-ctx.Done():
-			require.FailNowf(t, "failed to receive expected retrievals", "expected %d, received %d", len(expectedRetrievals), i)
+			require.FailNowf(t, "failed to receive expected retrievals", "expected %d, received %d @ %s", len(expectedRetrievals), i, afterStart)
 		}
 	}
 	require.ElementsMatch(t, expectedRetrievals, retrievals)
 }
 
-func (c *cannedBytesRoundTripper) VerifyRetrievalsServed(ctx context.Context, t *testing.T, expectedServed []testutil.RemoteStats) {
+func (c *cannedBytesRoundTripper) VerifyRetrievalsServed(ctx context.Context, t *testing.T, afterStart time.Duration, expectedServed []testutil.RemoteStats) {
 	remoteStats := make([]testutil.RemoteStats, 0, len(expectedServed))
 	for i := 0; i < len(expectedServed); i++ {
 		select {
 		case stats := <-c.StatsCh:
 			remoteStats = append(remoteStats, stats)
 		case <-ctx.Done():
-			require.FailNowf(t, "failed to receive expected served", "expected %d, received %d", len(expectedServed), i)
+			require.FailNowf(t, "failed to receive expected served", "expected %d, received %d @ %s", len(expectedServed), i, afterStart)
 		}
 	}
 	require.ElementsMatch(t, expectedServed, remoteStats)
 }
 
-func (c *cannedBytesRoundTripper) VerifyRetrievalsCompleted(ctx context.Context, t *testing.T, expectedRetrievals []peer.ID) {
+func (c *cannedBytesRoundTripper) VerifyRetrievalsCompleted(ctx context.Context, t *testing.T, afterStart time.Duration, expectedRetrievals []peer.ID) {
 	retrievals := make([]peer.ID, 0, len(expectedRetrievals))
 	for i := 0; i < len(expectedRetrievals); i++ {
 		select {
 		case retrieval := <-c.EndsCh:
 			retrievals = append(retrievals, retrieval)
 		case <-ctx.Done():
-			require.FailNowf(t, "failed to complete expected retrievals", "expected %d, received %d", len(expectedRetrievals), i)
+			require.FailNowf(t, "failed to complete expected retrievals", "expected %d, received %d @ %s", len(expectedRetrievals), i, afterStart)
 		}
 	}
 	require.ElementsMatch(t, expectedRetrievals, retrievals)
@@ -507,12 +842,14 @@ func (d *deferredReader) Close() error {
 // given a writer (carW), a linkSystem, a root CID and a selector, traverse the graph
 // and write the blocks in CARv1 format to the writer. Return a channel that will
 // receive basic stats on what was written _after_ the write is finished.
-func traverseCar(t *testing.T,
+func traverseCar(
+	t *testing.T,
 	ctx context.Context,
 	id peer.ID,
 	clock *clock.Mock,
 	blockDuration time.Duration,
 	carW io.WriteCloser,
+	malformed bool,
 	lsys *linking.LinkSystem,
 	root cid.Cid,
 	selNode ipld.Node,
@@ -530,16 +867,27 @@ func traverseCar(t *testing.T,
 			Blocks: make([]cid.Cid, 0),
 		}
 
+		defer func() {
+			statsCh <- stats
+			req.NoError(carW.Close())
+		}()
+
+		if malformed {
+			carW.Write([]byte("nope, this is not what you're looking for"))
+			return
+		}
+
 		// instantiating this writes a CARv1 header and waits for more Put()s
 		carWriter, err := storage.NewWritable(carW, []cid.Cid{root}, car.WriteAsCarV1(true), car.AllowDuplicatePuts(false))
 		req.NoError(err)
+
+		startTime := clock.Now()
 
 		// intercept the StorageReadOpener of the LinkSystem so that for each
 		// read that the traverser performs, we take that block and Put() it
 		// to the CARv1 writer.
 		originalSRO := lsys.StorageReadOpener
 		lsys.StorageReadOpener = func(lc linking.LinkContext, lnk datamodel.Link) (io.Reader, error) {
-			stats.Blocks = append(stats.Blocks, lnk.(cidlink.Link).Cid)
 			r, err := originalSRO(lc, lnk)
 			if err != nil {
 				return nil, err
@@ -550,8 +898,18 @@ func traverseCar(t *testing.T,
 			}
 			err = carWriter.Put(ctx, lnk.(cidlink.Link).Cid.KeyString(), byts)
 			req.NoError(err)
+			stats.Blocks = append(stats.Blocks, lnk.(cidlink.Link).Cid)
 			stats.ByteCount += uint64(len(byts)) // only the length of the bytes, not the rest of the CAR infrastructure
-			clock.Sleep(blockDuration)
+
+			// ensure there is blockDuration between each block send
+			sleepFor := clock.Until(startTime.Add(blockDuration * time.Duration(len(stats.Blocks))))
+			if sleepFor > 0 {
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-clock.After(sleepFor):
+				}
+			}
 			return bytes.NewReader(byts), nil
 		}
 
@@ -559,18 +917,21 @@ func traverseCar(t *testing.T,
 		// the traverser won't load it (we feed the traverser the rood _node_
 		// not the link)
 		rootNode, err := lsys.Load(linking.LinkContext{}, cidlink.Link{Cid: root}, basicnode.Prototype.Any)
-		req.NoError(err)
-		// begin traversal
-		traversal.Progress{
-			Cfg: &traversal.Config{
-				Ctx:                            ctx,
-				LinkSystem:                     *lsys,
-				LinkTargetNodePrototypeChooser: basicnode.Chooser,
-			},
-		}.WalkAdv(rootNode, sel, func(p traversal.Progress, n datamodel.Node, vr traversal.VisitReason) error { return nil })
-		req.NoError(carW.Close())
-
-		statsCh <- stats
+		if err != nil {
+			stats.Err = struct{}{}
+		} else {
+			// begin traversal
+			err := traversal.Progress{
+				Cfg: &traversal.Config{
+					Ctx:                            ctx,
+					LinkSystem:                     *lsys,
+					LinkTargetNodePrototypeChooser: basicnode.Chooser,
+				},
+			}.WalkAdv(rootNode, sel, func(p traversal.Progress, n datamodel.Node, vr traversal.VisitReason) error { return nil })
+			if err != nil {
+				stats.Err = struct{}{}
+			}
+		}
 	}()
 	return statsCh
 }

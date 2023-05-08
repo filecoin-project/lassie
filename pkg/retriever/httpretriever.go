@@ -26,28 +26,41 @@ var (
 	ErrBadPathForRequest   = errors.New("bad path for request")
 )
 
+const HttpDefaultInitialWait time.Duration = 0
+
 var _ TransportProtocol = &ProtocolHttp{}
 
 type ProtocolHttp struct {
 	Client *http.Client
 
-	req  *http.Request
-	resp *http.Response
+	// customCompare is for testing only, and should be removed when we have more
+	// ways to compare candidates so we can control ordering deterministically in
+	// our tests.
+	customCompare func(a, b ComparableCandidate, mda, mdb metadata.Protocol) bool
 }
 
 // NewHttpRetriever makes a new CandidateRetriever for verified CAR HTTP
 // retrievals (transport-ipfs-gateway-http).
 func NewHttpRetriever(getStorageProviderTimeout GetStorageProviderTimeout, client *http.Client) types.CandidateRetriever {
-	return NewHttpRetrieverWithDeps(getStorageProviderTimeout, client, clock.New(), nil)
+	return NewHttpRetrieverWithDeps(getStorageProviderTimeout, client, clock.New(), nil, HttpDefaultInitialWait, nil)
 }
 
-func NewHttpRetrieverWithDeps(getStorageProviderTimeout GetStorageProviderTimeout, client *http.Client, clock clock.Clock, awaitReceivedCandidates chan<- struct{}) types.CandidateRetriever {
+func NewHttpRetrieverWithDeps(
+	getStorageProviderTimeout GetStorageProviderTimeout,
+	client *http.Client,
+	clock clock.Clock,
+	awaitReceivedCandidates chan<- struct{},
+	initialPause time.Duration,
+	customCompare func(a, b ComparableCandidate, mda, mdb metadata.Protocol) bool,
+) types.CandidateRetriever {
 	return &parallelPeerRetriever{
 		Protocol: &ProtocolHttp{
-			Client: client,
+			Client:        client,
+			customCompare: customCompare,
 		},
 		GetStorageProviderTimeout: getStorageProviderTimeout,
 		Clock:                     clock,
+		QueueInitialPause:         initialPause,
 		awaitReceivedCandidates:   awaitReceivedCandidates,
 	}
 }
@@ -60,8 +73,12 @@ func (ph ProtocolHttp) GetMergedMetadata(cid cid.Cid, currentMetadata, newMetada
 	return &metadata.IpfsGatewayHttp{}
 }
 
-func (ph ProtocolHttp) CompareCandidates(a, b connectCandidate, mda, mdb metadata.Protocol) bool {
-	// we only have duration .. currently
+func (ph ProtocolHttp) CompareCandidates(a, b ComparableCandidate, mda, mdb metadata.Protocol) bool {
+	if ph.customCompare != nil {
+		return ph.customCompare(a, b, mda, mdb)
+	}
+	// since Connect is a noop, Duration should be ~0; i.e. meaningless since it
+	// mainly relates to internal timings, including goroutine scheduling.
 	return a.Duration < b.Duration
 }
 
@@ -69,6 +86,12 @@ func (ph *ProtocolHttp) Connect(ctx context.Context, retrieval *retrieval, candi
 	// We could begin the request here by moving ph.beginRequest() to this function.
 	// That would result in parallel connections to candidates as they are received,
 	// then serial reading of bodies.
+	// If/when we need to share connection state between a Connect() and Retrieve()
+	// call, we'll need a shared state that we can pass - either return a Context
+	// here that we pick up in Retrieve, or have something on `retrieval` that can
+	// be keyed by `candidate` to do this; or similar. ProtocolHttp is not
+	// per-connection, it's per-protocol, and `retrieval` is not per-candidate
+	// either, it's per-retrieval.
 	return nil
 }
 
@@ -85,14 +108,15 @@ func (ph *ProtocolHttp) Retrieve(
 	// to parallelise connections if we have confidence in not wasting server time
 	// by requesting but not reading bodies (or delayed reading which may result in
 	// timeouts).
-	if err := ph.beginRequest(ctx, retrieval.request, candidate); err != nil {
+	resp, err := ph.beginRequest(ctx, retrieval.request, candidate)
+	if err != nil {
 		return nil, err
 	}
 
-	defer ph.resp.Body.Close()
+	defer resp.Body.Close()
 
 	var blockBytes uint64
-	cbr, err := car.NewBlockReader(ph.resp.Body)
+	cbr, err := car.NewBlockReader(resp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -141,13 +165,13 @@ func (ph *ProtocolHttp) Retrieve(
 	}, nil
 }
 
-func (ph *ProtocolHttp) beginRequest(ctx context.Context, request types.RetrievalRequest, candidate types.RetrievalCandidate) error {
-	var err error
-	ph.req, err = makeRequest(ctx, request, candidate)
+func (ph *ProtocolHttp) beginRequest(ctx context.Context, request types.RetrievalRequest, candidate types.RetrievalCandidate) (resp *http.Response, err error) {
+	var req *http.Request
+	req, err = makeRequest(ctx, request, candidate)
 	if err == nil {
-		ph.resp, err = ph.Client.Do(ph.req)
+		resp, err = ph.Client.Do(req)
 	}
-	return err
+	return resp, err
 }
 
 func makeRequest(ctx context.Context, request types.RetrievalRequest, candidate types.RetrievalCandidate) (*http.Request, error) {
