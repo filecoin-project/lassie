@@ -22,6 +22,8 @@ import (
 	"go.uber.org/multierr"
 )
 
+const GraphsyncDefaultInitialWait = 2 * time.Millisecond
+
 type GraphsyncClient interface {
 	Connect(ctx context.Context, peerAddr peer.AddrInfo) error
 	RetrieveFromPeer(
@@ -45,7 +47,7 @@ type ProtocolGraphsync struct {
 // NewGraphsyncRetriever makes a new CandidateRetriever for Graphsync retrievals
 // (transport-graphsync-filecoinv1).
 func NewGraphsyncRetriever(getStorageProviderTimeout GetStorageProviderTimeout, client GraphsyncClient) types.CandidateRetriever {
-	return NewGraphsyncRetrieverWithConfig(getStorageProviderTimeout, client, clock.New(), 2*time.Millisecond)
+	return NewGraphsyncRetrieverWithConfig(getStorageProviderTimeout, client, clock.New(), GraphsyncDefaultInitialWait)
 }
 
 func NewGraphsyncRetrieverWithConfig(
@@ -71,6 +73,9 @@ func (pg ProtocolGraphsync) Code() multicodec.Code {
 
 func (pg ProtocolGraphsync) GetMergedMetadata(cid cid.Cid, currentMetadata, newMetadata metadata.Protocol) metadata.Protocol {
 	gsNewMetadata, ok := newMetadata.(*metadata.GraphsyncFilecoinV1)
+	// Normally we should only get full GraphsyncFilecoinV1 metadata, but not
+	// if the candidate didn't come from the indexer. Since we depend on the
+	// metadata for comparison, we need to make sure we have some.
 	if !ok {
 		gsNewMetadata = &metadata.GraphsyncFilecoinV1{PieceCID: cid}
 	}
@@ -102,7 +107,7 @@ func graphsyncMetadataCompare(a, b *metadata.GraphsyncFilecoinV1, defaultValue b
 	return defaultValue
 }
 
-func (pg ProtocolGraphsync) CompareCandidates(a, b connectCandidate, mda, mdb metadata.Protocol) bool {
+func (pg ProtocolGraphsync) CompareCandidates(a, b ComparableCandidate, mda, mdb metadata.Protocol) bool {
 	gsmda := mda.(*metadata.GraphsyncFilecoinV1)
 	gsmdb := mdb.(*metadata.GraphsyncFilecoinV1)
 	return graphsyncMetadataCompare(gsmda, gsmdb, a.Duration < b.Duration)

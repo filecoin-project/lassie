@@ -26,7 +26,7 @@ type GetStorageProviderTimeout func(peer peer.ID) time.Duration
 type TransportProtocol interface {
 	Code() multicodec.Code
 	GetMergedMetadata(cid cid.Cid, currentMetadata, newMetadata metadata.Protocol) metadata.Protocol
-	CompareCandidates(a, b connectCandidate, mda, mdb metadata.Protocol) bool
+	CompareCandidates(a, b ComparableCandidate, mda, mdb metadata.Protocol) bool
 	Connect(ctx context.Context, retrieval *retrieval, candidate types.RetrievalCandidate) error
 	Retrieve(
 		ctx context.Context,
@@ -79,14 +79,14 @@ type retrievalResult struct {
 	Err        error
 }
 
-// connectCandidate is used for the prioritywaitqueue
-type connectCandidate struct {
+// ComparableCandidate is used for the prioritywaitqueue
+type ComparableCandidate struct {
 	PeerID   peer.ID
 	Duration time.Duration
 }
 
 type retrievalSession struct {
-	waitQueue  prioritywaitqueue.PriorityWaitQueue[connectCandidate]
+	waitQueue  prioritywaitqueue.PriorityWaitQueue[ComparableCandidate]
 	resultChan chan retrievalResult
 	finishChan chan struct{}
 }
@@ -117,9 +117,9 @@ func (cfg *parallelPeerRetriever) Retrieve(
 func (retrieval *retrieval) RetrieveFromAsyncCandidates(asyncCandidates types.InboundAsyncCandidates) (*types.RetrievalStats, error) {
 	ctx, cancelCtx := context.WithCancel(retrieval.ctx)
 
-	pwqOpts := []prioritywaitqueue.Option[connectCandidate]{prioritywaitqueue.WithClock[connectCandidate](retrieval.Clock)}
+	pwqOpts := []prioritywaitqueue.Option[ComparableCandidate]{prioritywaitqueue.WithClock[ComparableCandidate](retrieval.Clock)}
 	if retrieval.QueueInitialPause > 0 {
-		pwqOpts = append(pwqOpts, prioritywaitqueue.WithInitialPause[connectCandidate](retrieval.QueueInitialPause))
+		pwqOpts = append(pwqOpts, prioritywaitqueue.WithInitialPause[ComparableCandidate](retrieval.QueueInitialPause))
 	}
 
 	session := &retrievalSession{
@@ -169,11 +169,11 @@ func (retrieval *retrieval) RetrieveFromAsyncCandidates(asyncCandidates types.In
 	return stats, err
 }
 
-// candidateCompare compares two connectCandidates and returns true if the first is
+// candidateCompare compares two ComparableCandidates and returns true if the first is
 // preferable to the second. This is used for the PriorityWaitQueue that will
 // prioritise execution of retrievals if two candidates are available to compare
 // at the same time.
-func (retrieval *retrieval) candidateCompare(a, b connectCandidate) bool {
+func (retrieval *retrieval) candidateCompare(a, b ComparableCandidate) bool {
 	retrieval.candidateMetdataLk.RLock()
 	defer retrieval.candidateMetdataLk.RUnlock()
 
@@ -295,7 +295,7 @@ func (retrieval *retrieval) runRetrievalCandidate(
 		session.sendEvent(events.Connected(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate))
 
 		// Form a queue and run retrieval in serial
-		done = session.waitQueue.Wait(connectCandidate{
+		done = session.waitQueue.Wait(ComparableCandidate{
 			PeerID:   candidate.MinerPeer.ID,
 			Duration: retrieval.parallelPeerRetriever.Clock.Now().Sub(phaseStartTime),
 		})
