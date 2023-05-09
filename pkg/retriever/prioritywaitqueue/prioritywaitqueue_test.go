@@ -81,30 +81,30 @@ func TestPriorityWaitQueue(t *testing.T) {
 			// blocking beyond when we add 5 more and expect them all to be run in
 			// proper order
 			name:     "batched start",
-			sleeps:   []int{00, 200, 200, 200, 200, 500, 500, 500, 500, 500},
-			works:    []int{250, 50, 50, 50, 500, 50, 50, 50, 50, 50},
+			sleeps:   []int{00, 100, 100, 100, 100, 1000, 1000, 1000, 1000, 1000},
+			works:    []int{200, 20, 20, 20, 1000, 20, 20, 20, 20, 20},
 			expected: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
 		},
 		{
 			// similar to above, but without the initial straight-through #1
 			name:         "batched start, initial pause",
-			sleeps:       []int{200, 200, 200, 200, 200, 500, 500, 500, 500, 500},
-			works:        []int{50, 50, 50, 50, 500, 50, 50, 50, 50, 50},
+			sleeps:       []int{100, 100, 100, 100, 100, 1000, 1000, 1000, 1000, 1000},
+			works:        []int{20, 20, 20, 20, 1000, 20, 20, 20, 20, 20},
 			expected:     []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
 			initialPause: 10 * time.Millisecond,
 		},
 		{
 			// same as previous but with different batches
 			name:     "batched start reverse",
-			sleeps:   []int{00, 500, 500, 500, 500, 500, 200, 200, 200, 200},
-			works:    []int{250, 50, 50, 50, 50, 50, 50, 50, 50, 500},
+			sleeps:   []int{00, 1000, 1000, 1000, 1000, 1000, 100, 100, 100, 100},
+			works:    []int{200, 20, 20, 20, 20, 20, 20, 20, 20, 1000},
 			expected: []int{0, 6, 7, 8, 9, 1, 2, 3, 4, 5},
 		},
 		{
 			// same as previous but without the initial straight-through #1
 			name:         "batched start reverse, initial pause",
-			sleeps:       []int{200, 500, 500, 500, 500, 500, 200, 200, 200, 200},
-			works:        []int{50, 50, 50, 50, 50, 50, 50, 50, 50, 500},
+			sleeps:       []int{100, 1000, 1000, 1000, 1000, 1000, 100, 100, 100, 100},
+			works:        []int{20, 20, 20, 20, 20, 20, 20, 20, 20, 1000},
 			expected:     []int{0, 6, 7, 8, 9, 1, 2, 3, 4, 5},
 			initialPause: 10 * time.Millisecond,
 		},
