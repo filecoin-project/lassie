@@ -121,6 +121,13 @@ func (ttrw *CachingTempStore) Put(ctx context.Context, key string, data []byte) 
 
 // Close will clean up any temporary resources used by the storage.
 func (ttrw *CachingTempStore) Close() error {
+	// we need to ensure that the writer receives no more data, so swap
+	// it out with a no-op writer that returns an error
+	ttrw.store.lk.Lock()
+	ttrw.outWriter = func(lc linking.LinkContext) (io.Writer, linking.BlockWriteCommitter, error) {
+		return nil, nil, errClosed
+	}
+	ttrw.store.lk.Unlock()
 	return ttrw.store.Close()
 }
 

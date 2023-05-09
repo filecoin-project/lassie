@@ -676,7 +676,7 @@ func TestHttpFetch(t *testing.T) {
 					req.Equal(http.StatusOK, resp.StatusCode)
 					body, err := io.ReadAll(resp.Body)
 					req.NoError(err)
-					resp.Body.Close()
+					err = resp.Body.Close()
 					req.NoError(err)
 
 					if testCase.validateBodies != nil && testCase.validateBodies[i] != nil {
