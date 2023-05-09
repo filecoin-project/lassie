@@ -28,7 +28,6 @@ type tempData struct {
 	success                  bool
 	spId                     string
 	bandwidth                uint64
-	bytesTransferred         uint64
 	allowedProtocols         []string
 	attemptedProtocolSet     map[string]struct{}
 	retrievalAttempts        map[string]*RetrievalAttempt
@@ -45,7 +44,6 @@ type AggregateEvent struct {
 	StorageProviderID string    `json:"storageProviderId,omitempty"` // The ID of the storage provider that served the retrieval content
 	TimeToFirstByte   string    `json:"timeToFirstByte,omitempty"`   // The time it took to receive the first byte in milliseconds
 	Bandwidth         uint64    `json:"bandwidth,omitempty"`         // The bandwidth of the retrieval in bytes per second
-	BytesTransferred  uint64    `json:"bytesTransferred,omitempty"`  // The total transmitted deal size
 	Success           bool      `json:"success"`                     // Wether or not the retreival ended with a success event
 	StartTime         time.Time `json:"startTime"`                   // The time the retrieval started
 	EndTime           time.Time `json:"endTime"`                     // The time the retrieval ended
@@ -71,18 +69,12 @@ type aggregateEventRecorder struct {
 	postChan              chan []AggregateEvent     // A channel for posting events
 }
 
-type EventRecorderConfig struct {
-	InstanceID            string
-	EndpointURL           string
-	EndpointAuthorization string
-}
-
-func NewAggregateEventRecorder(ctx context.Context, eventRecorderConfig EventRecorderConfig) *aggregateEventRecorder {
+func NewAggregateEventRecorder(ctx context.Context, instanceID string, endpointURL string, endpointAuthorization string) *aggregateEventRecorder {
 	recorder := &aggregateEventRecorder{
 		ctx:                   ctx,
-		instanceID:            eventRecorderConfig.InstanceID,
-		endpointURL:           eventRecorderConfig.EndpointURL,
-		endpointAuthorization: eventRecorderConfig.EndpointAuthorization,
+		instanceID:            instanceID,
+		endpointURL:           endpointURL,
+		endpointAuthorization: endpointAuthorization,
 		ingestChan:            make(chan types.RetrievalEvent),
 		postChan:              make(chan []AggregateEvent),
 	}
@@ -121,41 +113,32 @@ func (a *aggregateEventRecorder) ingestEvents() {
 		// Read incoming data
 		case event := <-a.ingestChan:
 			id := event.RetrievalId()
-			if event.Code() == types.StartedCode && event.Phase() == types.FetchPhase {
-				allowedProtocols := make([]string, 0, len(event.Protocols()))
-				for _, codec := range event.Protocols() {
-					allowedProtocols = append(allowedProtocols, codec.String())
-				}
-				// Initialize the temp data for tracking retrieval stats
-				eventTempMap[id] = &tempData{
-					startTime:                event.Time(),
-					candidatesFound:          0,
-					candidatesFiltered:       0,
-					firstByteTime:            time.Time{},
-					spId:                     "",
-					success:                  false,
-					bandwidth:                0,
-					ttfb:                     "",
-					timeToFirstIndexerResult: "",
-					allowedProtocols:         allowedProtocols,
-					attemptedProtocolSet:     make(map[string]struct{}),
-					retrievalAttempts:        make(map[string]*RetrievalAttempt),
-				}
-				continue
-			}
-			tempData, ok := eventTempMap[id]
-			if !ok {
-				if event.Code() == types.FinishedCode {
-					logging.Errorf("Received Finished event but can't find aggregate data. Skipping creation of aggregate event.")
-				}
-				continue
-			}
+
 			switch event.Code() {
 			case types.StartedCode:
 
 				// What we want to do depends which phase the Started event was emitted from
 				switch event.Phase() {
 				case types.FetchPhase:
+					allowedProtocols := make([]string, 0, len(event.Protocols()))
+					for _, codec := range event.Protocols() {
+						allowedProtocols = append(allowedProtocols, codec.String())
+					}
+					// Initialize the temp data for tracking retrieval stats
+					eventTempMap[id] = &tempData{
+						startTime:                event.Time(),
+						candidatesFound:          0,
+						candidatesFiltered:       0,
+						firstByteTime:            time.Time{},
+						spId:                     "",
+						success:                  false,
+						bandwidth:                0,
+						ttfb:                     "",
+						timeToFirstIndexerResult: "",
+						allowedProtocols:         allowedProtocols,
+						attemptedProtocolSet:     make(map[string]struct{}),
+						retrievalAttempts:        make(map[string]*RetrievalAttempt),
+					}
 
 				case types.RetrievalPhase:
 					// Create a retrieval attempt
@@ -163,6 +146,7 @@ func (a *aggregateEventRecorder) ingestEvents() {
 					spid := types.Identifier(event)
 
 					// Save the retrieval attempt
+					tempData := eventTempMap[id]
 					tempData.retrievalAttempts[spid] = &attempt
 
 					// Add any event protocols to the set of attempted protocols
@@ -173,16 +157,19 @@ func (a *aggregateEventRecorder) ingestEvents() {
 				}
 
 			case types.CandidatesFoundCode:
+				tempData := eventTempMap[id]
 				if tempData.timeToFirstIndexerResult == "" {
 					tempData.timeToFirstIndexerResult = event.Time().Sub(tempData.startTime).String()
 				}
 				tempData.candidatesFound += len(event.(events.RetrievalEventCandidatesFound).Candidates())
 
 			case types.CandidatesFilteredCode:
+				tempData := eventTempMap[id]
 				tempData.candidatesFiltered += len(event.(events.RetrievalEventCandidatesFiltered).Candidates())
 
 			case types.FirstByteCode:
 				// Calculate time to first byte
+				tempData := eventTempMap[id]
 				spid := types.Identifier(event)
 				timeToFirstByte := event.Time().Sub(tempData.startTime).String()
 				tempData.retrievalAttempts[spid].TimeToFirstByte = timeToFirstByte
@@ -191,26 +178,30 @@ func (a *aggregateEventRecorder) ingestEvents() {
 					tempData.ttfb = timeToFirstByte
 				}
 			case types.FailedCode:
-				switch event.Phase() {
-				case types.RetrievalPhase:
-					spid := types.Identifier(event)
-					errorMsg := event.(events.RetrievalEventFailed).ErrorMessage()
+				tempData := eventTempMap[id]
+				spid := types.Identifier(event)
+				errorMsg := event.(events.RetrievalEventFailed).ErrorMessage()
 
-					// Add an error message to the retrieval attempt
-					tempData.retrievalAttempts[spid].Error = errorMsg
-				}
+				// Add an error message to the retrieval attempt
+				tempData.retrievalAttempts[spid].Error = errorMsg
+
 			case types.SuccessCode:
+				tempData := eventTempMap[id]
 				tempData.success = true
 				tempData.spId = types.Identifier(event)
 
 				// Calculate bandwidth
 				receivedSize := event.(events.RetrievalEventSuccess).ReceivedSize()
-				tempData.bytesTransferred = receivedSize
 				duration := event.Time().Sub(tempData.firstByteTime).Seconds()
 				if duration != 0 {
 					tempData.bandwidth = uint64(float64(receivedSize) / duration)
 				}
 			case types.FinishedCode:
+				tempData, ok := eventTempMap[id]
+				if !ok {
+					logging.Errorf("Received Finished event but can't find aggregate data. Skipping creation of aggregate event.")
+					continue
+				}
 
 				// Create a slice of attempted protocols
 				var protocolsAttempted []string
@@ -225,7 +216,6 @@ func (a *aggregateEventRecorder) ingestEvents() {
 					StorageProviderID: tempData.spId,
 					TimeToFirstByte:   tempData.ttfb,
 					Bandwidth:         tempData.bandwidth,
-					BytesTransferred:  tempData.bytesTransferred,
 					Success:           tempData.success,
 					StartTime:         tempData.startTime,
 					EndTime:           event.Time(),

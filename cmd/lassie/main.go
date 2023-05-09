@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/filecoin-project/lassie/pkg/aggregateeventrecorder"
+	"github.com/filecoin-project/lassie/pkg/eventrecorder"
 	"github.com/filecoin-project/lassie/pkg/lassie"
 	"github.com/google/uuid"
 	logging "github.com/ipfs/go-log/v2"
@@ -99,12 +99,12 @@ func setupLassieEventRecorder(
 			instanceID = uuid.String() // returns "" if uuid is invalid
 		}
 
-		eventRecorder := aggregateeventrecorder.NewAggregateEventRecorder(ctx, aggregateeventrecorder.EventRecorderConfig{
+		eventRecorder := eventrecorder.NewEventRecorder(ctx, eventrecorder.EventRecorderConfig{
 			InstanceID:            instanceID,
 			EndpointURL:           eventRecorderURL,
 			EndpointAuthorization: authToken,
 		})
-		lassie.RegisterSubscriber(eventRecorder.RetrievalEventSubscriber())
+		lassie.RegisterSubscriber(eventRecorder.RecordEvent)
 		log.Infow("Reporting retrieval events to event recorder API", "url", eventRecorderURL, "instance_id", instanceID)
 	}
 }
