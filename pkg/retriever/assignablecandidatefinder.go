@@ -10,9 +10,6 @@ import (
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/internal/candidatebuffer"
 	"github.com/filecoin-project/lassie/pkg/types"
-	"github.com/ipfs/go-cid"
-	"github.com/ipni/go-libipni/metadata"
-	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 type FilterIndexerCandidate func(types.RetrievalCandidate) (bool, types.RetrievalCandidate)
@@ -65,9 +62,6 @@ func (acf AssignableCandidateFinder) FindCandidates(ctx context.Context, request
 	}, acf.clock)
 
 	err := candidateBuffer.BufferStream(ctx, func(ctx context.Context, onNextCandidate candidatebuffer.OnNextCandidate) error {
-		if len(request.FixedPeers) > 0 {
-			return sendFixedPeers(request.Cid, request.FixedPeers, onNextCandidate)
-		}
 		return acf.candidateFinder.FindCandidatesAsync(ctx, request.Cid, onNextCandidate)
 	}, BufferWindow)
 
@@ -79,18 +73,6 @@ func (acf AssignableCandidateFinder) FindCandidates(ctx context.Context, request
 	if totalCandidates.Load() == 0 {
 		eventsCallback(events.Failed(acf.clock.Now(), request.RetrievalID, phaseStarted, types.IndexerPhase, types.RetrievalCandidate{RootCid: request.Cid}, ErrNoCandidates.Error()))
 		return ErrNoCandidates
-	}
-	return nil
-}
-
-func sendFixedPeers(requestCid cid.Cid, fixedPeers []peer.AddrInfo, onNextCandidate candidatebuffer.OnNextCandidate) error {
-	md := metadata.Default.New(&metadata.GraphsyncFilecoinV1{}, &metadata.Bitswap{})
-	for _, fixedPeer := range fixedPeers {
-		onNextCandidate(types.RetrievalCandidate{
-			MinerPeer: fixedPeer,
-			RootCid:   requestCid,
-			Metadata:  md,
-		})
 	}
 	return nil
 }

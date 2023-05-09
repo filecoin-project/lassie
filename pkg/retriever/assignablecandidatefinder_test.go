@@ -26,7 +26,6 @@ func TestAssignableCandidateFinder(t *testing.T) {
 		candidateResults   map[cid.Cid][]string
 		candidateError     error
 		filteredPeers      []string
-		fixedPeers         map[cid.Cid][]string
 		expectedEvents     map[cid.Cid][]types.EventCode
 		expectedCandidates map[cid.Cid][]string
 		expectedErrors     map[cid.Cid]error
@@ -109,25 +108,6 @@ func TestAssignableCandidateFinder(t *testing.T) {
 				cid2: {types.StartedCode, types.CandidatesFoundCode, types.CandidatesFilteredCode},
 			},
 		},
-		{
-			name: "fixed peers",
-			candidateResults: map[cid.Cid][]string{
-				cid1: {"fiz", "bang", "booz"},
-				cid2: {"apples", "oranges", "cheese"},
-			},
-			expectedCandidates: map[cid.Cid][]string{
-				cid1: {"double", "trouble"},
-				cid2: {"super", "duper"},
-			},
-			fixedPeers: map[cid.Cid][]string{
-				cid1: {"double", "trouble"},
-				cid2: {"super", "duper"},
-			},
-			expectedEvents: map[cid.Cid][]types.EventCode{
-				cid1: {types.StartedCode, types.CandidatesFoundCode, types.CandidatesFilteredCode},
-				cid2: {types.StartedCode, types.CandidatesFoundCode, types.CandidatesFilteredCode},
-			},
-		},
 	}
 
 	for _, testCase := range testCases {
@@ -142,17 +122,6 @@ func TestAssignableCandidateFinder(t *testing.T) {
 					candidateResults = append(candidateResults, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID(stringResult)}})
 				}
 				allCandidateResults[c] = candidateResults
-			}
-			if testCase.fixedPeers == nil {
-				testCase.fixedPeers = make(map[cid.Cid][]string)
-			}
-			allFixedPeers := make(map[cid.Cid][]peer.AddrInfo, len(testCase.fixedPeers))
-			for c, stringResults := range testCase.fixedPeers {
-				fixedPeers := make([]peer.AddrInfo, 0, len(stringResults))
-				for _, stringResult := range stringResults {
-					fixedPeers = append(fixedPeers, peer.AddrInfo{ID: peer.ID(stringResult)})
-				}
-				allFixedPeers[c] = fixedPeers
 			}
 			candidateFinder := testutil.NewMockCandidateFinder(testCase.candidateError, allCandidateResults)
 			isAcceptableStorageProvider := func(candidate types.RetrievalCandidate) (bool, types.RetrievalCandidate) {
@@ -183,12 +152,10 @@ func TestAssignableCandidateFinder(t *testing.T) {
 			candidateCollector := func(incoming []types.RetrievalCandidate) {
 				candidates = append(candidates, incoming...)
 			}
-
 			err = retrievalCandidateFinder.FindCandidates(ctx, types.RetrievalRequest{
 				RetrievalID: rid1,
 				Cid:         cid1,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
-				FixedPeers:  allFixedPeers[cid1],
 			}, retrievalCollector, candidateCollector)
 			if err != nil {
 				receivedErrors[cid1] = err
@@ -202,7 +169,6 @@ func TestAssignableCandidateFinder(t *testing.T) {
 				RetrievalID: rid2,
 				Cid:         cid2,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
-				FixedPeers:  allFixedPeers[cid2],
 			}, retrievalCollector, candidateCollector)
 			if err != nil {
 				receivedErrors[cid2] = err
