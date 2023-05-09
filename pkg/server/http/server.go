@@ -7,11 +7,11 @@ import (
 	"net/http"
 
 	"github.com/filecoin-project/lassie/pkg/lassie"
-	"github.com/ipfs/go-log/v2"
+	logging "github.com/ipfs/go-log/v2"
 	servertiming "github.com/mitchellh/go-server-timing"
 )
 
-var logger = log.Logger("lassie/httpserver")
+var log = logging.Logger("lassie/httpserver")
 
 // HttpServer is a Lassie server for fetching data from the network via HTTP
 type HttpServer struct {
@@ -67,10 +67,10 @@ func (s HttpServer) Addr() string {
 
 // Start starts the http server, returning an error if the server failed to start
 func (s *HttpServer) Start() error {
-	logger.Infow("starting http server", "listen_addr", s.listener.Addr())
+	log.Infow("starting http server", "listen_addr", s.listener.Addr())
 	err := s.server.Serve(s.listener)
 	if err != http.ErrServerClosed {
-		logger.Errorw("failed to start http server", "err", err)
+		log.Errorw("failed to start http server", "err", err)
 		return err
 	}
 
@@ -79,7 +79,7 @@ func (s *HttpServer) Start() error {
 
 // Close shutsdown the server and cancels the server context
 func (s *HttpServer) Close() error {
-	logger.Info("closing http server")
+	log.Info("closing http server")
 	s.cancel()
 	return s.server.Shutdown(context.Background())
 }
