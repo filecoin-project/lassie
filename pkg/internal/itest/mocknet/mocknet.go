@@ -78,6 +78,16 @@ func (mrn *MockRetrievalNet) AddGraphsyncPeers(n int) {
 		mrn.FinishedChan = append(mrn.FinishedChan, make(chan struct{}, 1))
 	}
 }
+
+func (mrn *MockRetrievalNet) AddHttpPeers(n int) {
+	peers := mrn.testPeerGenerator.HttpPeers(n)
+	for i := 0; i < n; i++ {
+		mrn.Remotes = append(mrn.Remotes, peers[i])
+		mrn.RemoteEvents = append(mrn.RemoteEvents, make([]datatransfer.Event, 0))
+		mrn.FinishedChan = append(mrn.FinishedChan, make(chan struct{}, 1))
+	}
+}
+
 func SetupRetrieval(t *testing.T, remote testpeer.TestPeer) chan []datatransfer.Event {
 	// Register DealProposal voucher type with automatic Pull acceptance
 	remoteDealValidator := &mockDealValidator{t: t, acceptPull: true}
@@ -129,6 +139,7 @@ func (mrn *MockRetrievalNet) TearDown() error {
 			if h.BitswapNetwork != nil {
 				h.BitswapNetwork.Stop()
 			}
+			// TODO: teardown http server
 		}(h)
 	}
 	wg.Wait()
@@ -144,9 +155,11 @@ func (mcf *mockCandidateFinder) FindCandidates(ctx context.Context, cid cid.Cid)
 	for _, h := range mcf.mrn.Remotes {
 		if _, has := h.Cids[cid]; has {
 			var md metadata.Metadata
-			if h.BitswapServer != nil {
+			if h.Bitswap {
 				md = metadata.Default.New(metadata.Bitswap{})
-			} else {
+			} else if h.Http {
+				md = metadata.Default.New(&metadata.IpfsGatewayHttp{})
+			} else if h.Graphsync {
 				md = metadata.Default.New(&metadata.GraphsyncFilecoinV1{PieceCID: cid})
 			}
 			candidates = append(candidates, types.RetrievalCandidate{MinerPeer: *h.AddrInfo(), RootCid: cid, Metadata: md})

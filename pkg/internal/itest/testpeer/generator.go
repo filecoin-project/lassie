@@ -1,9 +1,12 @@
 package testpeer
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +14,8 @@ import (
 	dtimpl "github.com/filecoin-project/go-data-transfer/v2/impl"
 	dtnet "github.com/filecoin-project/go-data-transfer/v2/network"
 	gstransport "github.com/filecoin-project/go-data-transfer/v2/transport/graphsync"
+	"github.com/filecoin-project/lassie/pkg/retriever"
+	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	delayed "github.com/ipfs/go-datastore/delayed"
@@ -22,17 +27,28 @@ import (
 	delay "github.com/ipfs/go-ipfs-delay"
 	bsnet "github.com/ipfs/go-libipfs/bitswap/network"
 	"github.com/ipfs/go-libipfs/bitswap/server"
+	"github.com/ipfs/go-log/v2"
+	"github.com/ipfs/go-unixfsnode"
+	"github.com/ipld/go-car/v2"
+	"github.com/ipld/go-car/v2/storage"
 	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
+	"github.com/ipld/go-ipld-prime/traversal"
+	"github.com/ipld/go-ipld-prime/traversal/selector"
 	routinghelpers "github.com/libp2p/go-libp2p-routing-helpers"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	p2ptestutil "github.com/libp2p/go-libp2p-testing/netutil"
 	"github.com/libp2p/go-libp2p/core/host"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
+	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
 )
+
+var logger = log.Logger("lassie/mocknet")
 
 // NewTestPeerGenerator generates a new TestPeerGenerator for the given
 // mocknet
@@ -67,7 +83,7 @@ func (g *TestPeerGenerator) Close() error {
 	return nil // for Closer interface
 }
 
-// Next generates a new test peer with bitswap + dependencies
+// NextBitswap generates a new test peer with bitswap + dependencies
 func (g *TestPeerGenerator) NextBitswap() TestPeer {
 	g.seq++
 	p, err := p2ptestutil.RandTestBogusIdentity()
@@ -77,7 +93,7 @@ func (g *TestPeerGenerator) NextBitswap() TestPeer {
 	return tp
 }
 
-// Next generates a new test peer with graphsync + dependencies
+// NextGraphsync generates a new test peer with graphsync + dependencies
 func (g *TestPeerGenerator) NextGraphsync() TestPeer {
 	g.seq++
 	p, err := p2ptestutil.RandTestBogusIdentity()
@@ -87,7 +103,17 @@ func (g *TestPeerGenerator) NextGraphsync() TestPeer {
 	return tp
 }
 
-// Peers creates N test peers with bitswap + dependencies
+// NextHttp generates a new test peer with http + dependencies
+func (g *TestPeerGenerator) NextHttp() TestPeer {
+	g.seq++
+	p, err := p2ptestutil.RandTestBogusIdentity()
+	require.NoError(g.t, err)
+	tp, err := NewTestHttpPeer(g.ctx, g.mn, p, g.t)
+	require.NoError(g.t, err)
+	return tp
+}
+
+// BitswapPeers creates N test peers with bitswap + dependencies
 func (g *TestPeerGenerator) BitswapPeers(n int) []TestPeer {
 	var instances []TestPeer
 	for j := 0; j < n; j++ {
@@ -97,11 +123,21 @@ func (g *TestPeerGenerator) BitswapPeers(n int) []TestPeer {
 	return instances
 }
 
-// Peers creates N test peers with bitswap + dependencies
+// GraphsyncPeers creates N test peers with graphsync + dependencies
 func (g *TestPeerGenerator) GraphsyncPeers(n int) []TestPeer {
 	var instances []TestPeer
 	for j := 0; j < n; j++ {
 		inst := g.NextGraphsync()
+		instances = append(instances, inst)
+	}
+	return instances
+}
+
+// HttpPeers creates N test peers with http  + dependencies
+func (g *TestPeerGenerator) HttpPeers(n int) []TestPeer {
+	var instances []TestPeer
+	for j := 0; j < n; j++ {
+		inst := g.NextHttp()
 		instances = append(instances, inst)
 	}
 	return instances
@@ -126,11 +162,17 @@ type TestPeer struct {
 	BitswapServer      *server.Server
 	BitswapNetwork     bsnet.BitSwapNetwork
 	DatatransferServer datatransfer.Manager
+	ProtocolHttp       *retriever.ProtocolHttp
 	blockstore         blockstore.Blockstore
 	Host               host.Host
 	blockstoreDelay    delay.D
 	LinkSystem         *linking.LinkSystem
 	Cids               map[cid.Cid]struct{}
+
+	// TODO: Replace with enum
+	Bitswap   bool
+	Graphsync bool
+	Http      bool
 }
 
 // Blockstore returns the block store for this test instance
@@ -151,7 +193,7 @@ func (i TestPeer) AddrInfo() *peer.AddrInfo {
 	}
 }
 
-// NewTestPeer creates a test peer instance.
+// NewTestBitswapPeer creates a test peer instance.
 //
 // NB: It's easy make mistakes by providing the same peer ID to two different
 // instances. To safeguard, use the InstanceGenerator to generate instances. It's
@@ -170,6 +212,7 @@ func NewTestBitswapPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity
 	}()
 	peer.BitswapServer = bs
 	peer.BitswapNetwork = bsNet
+	peer.Bitswap = true
 	return peer, nil
 }
 
@@ -195,6 +238,33 @@ func NewTestGraphsyncPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identi
 	}
 
 	peer.DatatransferServer = dtRemote
+	peer.Graphsync = true
+	return peer, nil
+}
+
+func NewTestHttpPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity, t *testing.T) (TestPeer, error) {
+	peer, _, err := newTestPeer(ctx, mn, p)
+	if err != nil {
+		return TestPeer{}, err
+	}
+
+	// Create http multiaddr from random peer addr and add it to the peer's addreses
+	httpAddr := p.Address().Encapsulate(ma.StringCast("/http"))
+	peer.Host.Peerstore().AddAddr(p.ID(), httpAddr, 10*time.Minute) // TODO: Look into ttl duration?
+
+	go func() {
+		// Handle /ipfs/ endpoint
+		http.HandleFunc("/ipfs/", HttpHandler(ctx, peer.LinkSystem))
+
+		// Parse multiaddr IP and port, serve http server from address
+		addrParts := strings.Split(p.Address().String(), "/")
+		err := http.ListenAndServe(fmt.Sprintf("%s:%s", addrParts[2], addrParts[4]), nil)
+		if err != http.ErrServerClosed {
+			logger.Errorw("failed to start mocknet peer http server", "err", err)
+		}
+	}()
+
+	peer.Http = true
 	return peer, nil
 }
 
@@ -258,5 +328,91 @@ func StartAndWaitForReady(ctx context.Context, manager datatransfer.Manager) err
 		return ctx.Err()
 	case err := <-ready:
 		return err
+	}
+}
+
+func HttpHandler(ctx context.Context, lsys linking.LinkSystem) func(http.ResponseWriter, *http.Request) {
+	return func(res http.ResponseWriter, req *http.Request) {
+		urlPath := strings.Split(req.URL.Path, "/")[1:]
+
+		// validate CID path parameter
+		cidStr := urlPath[1]
+		rootCid, err := cid.Parse(cidStr)
+		if err != nil {
+			http.Error(res, fmt.Sprintf("Failed to parse CID path parameter: %s", cidStr), http.StatusBadRequest)
+			return
+		}
+
+		// Grab unixfs path if it exists
+		unixfsPath := ""
+		if len(urlPath) > 2 {
+			unixfsPath = "/" + strings.Join(urlPath[2:], "/")
+		}
+
+		// Parse car scope and use it to get selector
+		carScope := types.CarScopeAll
+		if req.URL.Query().Has("car-scope") {
+			switch req.URL.Query().Get("car-scope") {
+			case "all":
+			case "file":
+				carScope = types.CarScopeFile
+			case "block":
+				carScope = types.CarScopeBlock
+			default:
+				http.Error(res, fmt.Sprintf("Invalid  car-scope parameter: %s", req.URL.Query().Get("car-scope")), http.StatusBadRequest)
+				return
+			}
+		}
+		selNode := unixfsnode.UnixFSPathSelectorBuilder(unixfsPath, carScope.TerminalSelectorSpec(), false)
+		sel, err := selector.CompileSelector(selNode)
+		if err != nil {
+			http.Error(res, fmt.Sprintf("Failed to compile selector from car-scope: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Write to response writer
+		carWriter, err := storage.NewWritable(res, []cid.Cid{rootCid}, car.WriteAsCarV1(true), car.AllowDuplicatePuts(false))
+		if err != nil {
+			http.Error(res, fmt.Sprintf("Failed to create car writer: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Extend the StorageReadOpener func to write to the carWriter
+		originalSRO := lsys.StorageReadOpener
+		lsys.StorageReadOpener = func(lc linking.LinkContext, lnk datamodel.Link) (io.Reader, error) {
+			r, err := originalSRO(lc, lnk)
+			if err != nil {
+				return nil, err
+			}
+			byts, err := io.ReadAll(r)
+			if err != nil {
+				return nil, err
+			}
+			err = carWriter.Put(ctx, lnk.(cidlink.Link).Cid.KeyString(), byts)
+			if err != nil {
+				return nil, err
+			}
+
+			return bytes.NewReader(byts), nil
+		}
+
+		rootNode, err := lsys.Load(linking.LinkContext{}, cidlink.Link{Cid: rootCid}, basicnode.Prototype.Any)
+		if err != nil {
+			http.Error(res, fmt.Sprintf("Failed to load root cid into link system: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		cfg := &traversal.Config{
+			Ctx:                            ctx,
+			LinkSystem:                     lsys,
+			LinkTargetNodePrototypeChooser: basicnode.Chooser,
+		}
+		progress := traversal.Progress{Cfg: cfg}
+
+		err = progress.WalkAdv(rootNode, sel, func(p traversal.Progress, n datamodel.Node, vr traversal.VisitReason) error { return nil })
+		if err != nil {
+			http.Error(res, fmt.Sprintf("Failed to traverse from root node: %v", err), http.StatusInternalServerError)
+			return
+		}
 	}
 }
