@@ -63,11 +63,12 @@ func (cfg Config) Verify(ctx context.Context, rdr io.Reader, bwo linking.BlockWr
 	nextBlockCh := make(chan nextBlock)
 
 	lsys := cidlink.DefaultLinkSystem()
+	lsys.TrustedStorage = true // we can rely on the CAR decoder to check CID integrity
 	unixfsnode.AddUnixFSReificationToLinkSystem(&lsys)
 
 	lsys.StorageReadOpener = nextBlockReadOpener(ctx, nextBlockCh, bwo)
 
-	cbr, err := car.NewBlockReader(rdr)
+	cbr, err := car.NewBlockReader(rdr, car.WithTrustedCAR(false))
 	if err != nil {
 		// TODO: post-1.19: fmt.Errorf("%w: %w", ErrMalformedCar, err)
 		return 0, 0, multierr.Combine(ErrMalformedCar, err)
@@ -160,16 +161,13 @@ func readNextBlock(ctx context.Context, nextBlockCh chan nextBlock, expected cid
 	case blk, ok := <-nextBlockCh:
 		if !ok {
 			// parser ended
-			fmt.Println("parser ended")
 			return nil, format.ErrNotFound{Cid: expected}
 		}
 		if blk.err != nil {
-			fmt.Println("parser error", blk.err)
 			// TODO: post-1.19: fmt.Errorf("%w: %w", ErrMalformedCar, err)
 			return nil, multierr.Combine(ErrMalformedCar, blk.err)
 		}
 		if blk.cid != expected {
-			fmt.Println("parser unexpected block", blk.cid, expected)
 			return nil, fmt.Errorf("%w: %s != %s", ErrUnexpectedBlock, blk.cid, expected)
 		}
 		return blk.data, nil
