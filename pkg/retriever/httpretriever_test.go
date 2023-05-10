@@ -302,7 +302,8 @@ func TestHTTPRetriever(t *testing.T) {
 				{
 					AfterStart: initialPause + time.Millisecond*10,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.Failed(startTime.Add(initialPause+time.Millisecond*10), rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[0].MinerPeer), "unexpected EOF"),
+						events.FirstByte(startTime.Add(initialPause+time.Millisecond*10), rid1, startTime, toCandidate(cid1, cid1Cands[0].MinerPeer)),
+						events.Failed(startTime.Add(initialPause+time.Millisecond*10), rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[0].MinerPeer), "malformed CAR; unexpected EOF"),
 					},
 					CompletedRetrievals: []peer.ID{cid1Cands[0].MinerPeer.ID},
 					ReceivedRetrievals:  []peer.ID{cid1Cands[1].MinerPeer.ID},
@@ -318,7 +319,8 @@ func TestHTTPRetriever(t *testing.T) {
 				{
 					AfterStart: initialPause + time.Millisecond*20,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.Failed(startTime.Add(initialPause+time.Millisecond*20), rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[1].MinerPeer), "unexpected EOF"),
+						events.FirstByte(startTime.Add(initialPause+time.Millisecond*20), rid1, startTime, toCandidate(cid1, cid1Cands[1].MinerPeer)),
+						events.Failed(startTime.Add(initialPause+time.Millisecond*20), rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[1].MinerPeer), "malformed CAR; unexpected EOF"),
 					},
 					CompletedRetrievals: []peer.ID{cid1Cands[1].MinerPeer.ID},
 					ReceivedRetrievals:  []peer.ID{cid1Cands[2].MinerPeer.ID},
@@ -334,7 +336,8 @@ func TestHTTPRetriever(t *testing.T) {
 				{
 					AfterStart: initialPause + time.Millisecond*30,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.Failed(startTime.Add(initialPause+time.Millisecond*30), rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[2].MinerPeer), "unexpected EOF"),
+						events.FirstByte(startTime.Add(initialPause+time.Millisecond*30), rid1, startTime, toCandidate(cid1, cid1Cands[2].MinerPeer)),
+						events.Failed(startTime.Add(initialPause+time.Millisecond*30), rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[2].MinerPeer), "malformed CAR; unexpected EOF"),
 					},
 					CompletedRetrievals: []peer.ID{cid1Cands[2].MinerPeer.ID},
 					ServedRetrievals: []testutil.RemoteStats{
@@ -408,7 +411,8 @@ func TestHTTPRetriever(t *testing.T) {
 				{
 					AfterStart: initialPause + time.Millisecond*10,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.Failed(startTime.Add(initialPause+time.Millisecond*10), rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[0].MinerPeer), "unexpected EOF"),
+						events.FirstByte(startTime.Add(initialPause+time.Millisecond*10), rid1, startTime, toCandidate(cid1, cid1Cands[0].MinerPeer)),
+						events.Failed(startTime.Add(initialPause+time.Millisecond*10), rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[0].MinerPeer), "malformed CAR; unexpected EOF"),
 					},
 					CompletedRetrievals: []peer.ID{cid1Cands[0].MinerPeer.ID},
 					ReceivedRetrievals:  []peer.ID{cid1Cands[1].MinerPeer.ID},
@@ -424,7 +428,8 @@ func TestHTTPRetriever(t *testing.T) {
 				{
 					AfterStart: initialPause + time.Millisecond*20,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.Failed(startTime.Add(initialPause+time.Millisecond*20), rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[1].MinerPeer), "unexpected EOF"),
+						events.FirstByte(startTime.Add(initialPause+time.Millisecond*20), rid1, startTime, toCandidate(cid1, cid1Cands[1].MinerPeer)),
+						events.Failed(startTime.Add(initialPause+time.Millisecond*20), rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[1].MinerPeer), "malformed CAR; unexpected EOF"),
 					},
 					CompletedRetrievals: []peer.ID{cid1Cands[1].MinerPeer.ID},
 					ReceivedRetrievals:  []peer.ID{cid1Cands[2].MinerPeer.ID},
@@ -477,18 +482,8 @@ func TestHTTPRetriever(t *testing.T) {
 				},
 			},
 			expectedCids: map[cid.Cid][]cid.Cid{cid1: tbc1Cids[0:50]},
-			expectedStats: map[cid.Cid]*types.RetrievalStats{
-				cid1: {
-					RootCid:           cid1,
-					StorageProviderId: cid1Cands[0].MinerPeer.ID,
-					Size:              sizeOf(tbc1.AllBlocks()[0:50]),
-					Blocks:            50,
-					Duration:          initialPause + 40*time.Millisecond + remoteBlockDuration*50,
-					AverageSpeed:      uint64(float64(sizeOf(tbc1.AllBlocks()[0:50])) / (initialPause + 40*time.Millisecond + remoteBlockDuration*50).Seconds()),
-					TimeToFirstByte:   initialPause + 40*time.Millisecond,
-					TotalPayment:      big.Zero(),
-					AskPrice:          big.Zero(),
-				},
+			expectedErrors: map[cid.Cid]struct{}{
+				cid1: {},
 			},
 			expectSequence: []testutil.ExpectedActionsAtTime{
 				{
@@ -511,7 +506,7 @@ func TestHTTPRetriever(t *testing.T) {
 				{
 					AfterStart: initialPause + time.Millisecond*40 + remoteBlockDuration*50,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.Success(startTime.Add(initialPause+time.Millisecond*40+remoteBlockDuration*50), rid1, startTime, toCandidate(cid1, cid1Cands[0].MinerPeer), sizeOf(tbc2.AllBlocks()[0:50]), 50, initialPause+40*time.Millisecond+remoteBlockDuration*50, big.Zero(), 0),
+						events.Failed(startTime.Add(initialPause+time.Millisecond*40+remoteBlockDuration*50), rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[0].MinerPeer), "malformed CAR; ipld: could not find "+tbc1.AllBlocks()[50].Cid().String()),
 					},
 					ServedRetrievals: []testutil.RemoteStats{
 						{
@@ -531,6 +526,8 @@ func TestHTTPRetriever(t *testing.T) {
 	for _, testCase := range testCases {
 		testCase := testCase
 		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
 			req := require.New(t)
 			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
