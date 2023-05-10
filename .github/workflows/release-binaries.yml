@@ -1,38 +1,26 @@
+name: GoReleaser
 on:
-  workflow_run:
-    workflows: [Releaser]
-    types: [completed]
+  release:
+    types: [ published ]
   workflow_dispatch:
-  
 jobs:
-  releases-matrix:
-    name: Release Go Binary
-    if: ${{ github.event.workflow_dispatch || github.event.workflow_run.conclusion == 'success' }}
+  bin-releaser:
+    name: Release Binaries
     runs-on: ubuntu-latest
-    env:
-      APP_VERSION: ""
-    strategy:
-      matrix:
-        # build and publish in parallel: linux/386, linux/amd64, linux/arm64, windows/386, windows/amd64, darwin/amd64, darwin/arm64
-        goos: [linux, windows, darwin]
-        goarch: ["386", amd64, arm64]
-        exclude:
-          - goarch: "386"
-            goos: darwin
-          - goarch: arm64
-            goos: windows
     steps:
-    - uses: actions/checkout@v3
-    - name: Determine version
-      run: echo "APP_VERSION=$(jq -r .version version.json)" >> $GITHUB_ENV
-    - uses: wangyoucao577/go-release-action@v1.34
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        goos: ${{ matrix.goos }}
-        goarch: ${{ matrix.goarch }}
-        goversion: "https://go.dev/dl/go1.19.5.linux-amd64.tar.gz"
-        project_path: "./cmd/lassie"
-        release_tag:  ${{ env.APP_VERSION }}
-        binary_name: "lassie"
-        ldflags: "-X main.version=${{ env.APP_VERSION }}"
-        extra_files: LICENSE-APACHE LICENSE-MIT README.md
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: "1.19.x"
+      - name: Release Binaries
+        uses: goreleaser/goreleaser-action@v4
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --rm-dist
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
