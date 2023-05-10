@@ -153,7 +153,6 @@ type carReader struct {
 }
 
 func (cr *carReader) readNextBlock(ctx context.Context, expected cid.Cid) ([]byte, error) {
-
 	blk, err := cr.cbr.Next()
 	if err != nil {
 		if errors.Is(err, io.EOF) {
