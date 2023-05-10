@@ -1,6 +1,5 @@
 builds:
-  - main: ./lassie
-    dir: cmd
+  - main: ./cmd/lassie
     binary: lassie
     goos:
       - linux
