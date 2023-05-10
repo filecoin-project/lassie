@@ -1,0 +1,23 @@
+builds:
+  - main: ./lassie
+    dir: cmd
+    binary: lassie
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - 'amd64'
+      - 'arm64'
+universal_binaries:
+  - replace: true
+archives:
+  - format_overrides:
+    - goos: windows
+      format: zip
+    - goos: darwin
+      format: zip
+release:
+  mode: keep-existing
+changelog:
+  skip: true
