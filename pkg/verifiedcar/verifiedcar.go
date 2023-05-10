@@ -24,10 +24,13 @@ import (
 var (
 	ErrMalformedCar    = errors.New("malformed CAR")
 	ErrBadVersion      = errors.New("bad CAR version")
-	ErrBadRoots        = errors.New("root CID mismatch")
-	ErrUnexpectedBlock = errors.New("unexpected block")
-	ErrExtraneousBlock = errors.New("extraneous block")
+	ErrBadRoots        = errors.New("CAR root CID mismatch")
+	ErrUnexpectedBlock = errors.New("unexpected block in CAR")
+	ErrExtraneousBlock = errors.New("extraneous block in CAR")
+	ErrMissingBlock    = errors.New("missing block in CAR")
 )
+
+var protoChooser = dagpb.AddSupportToChooser(basicnode.Chooser)
 
 type Config struct {
 	Root       cid.Cid           // The single root we expect to appear in the CAR and that we use to run our traversal against
@@ -46,7 +49,7 @@ type nextBlock struct {
 	data []byte
 }
 
-func visitNoop(traversal.Progress, datamodel.Node, traversal.VisitReason) error { return nil }
+func visitNoop(p traversal.Progress, n datamodel.Node, r traversal.VisitReason) error { return nil }
 
 // Verify reads a CAR from the provided reader, verifies the contents are
 // strictly what is specified by this Config and writes the blocks to the
@@ -59,14 +62,13 @@ func visitNoop(traversal.Progress, datamodel.Node, traversal.VisitReason) error 
 // * https://specs.ipfs.tech/http-gateways/trustless-gateway/
 //
 // * https://specs.ipfs.tech/http-gateways/path-gateway/
-func (cfg Config) Verify(ctx context.Context, rdr io.Reader, bwo linking.BlockWriteOpener) (uint64, uint64, error) {
+func (cfg Config) Verify(ctx context.Context, rdr io.Reader, lsys linking.LinkSystem) (uint64, uint64, error) {
 	nextBlockCh := make(chan nextBlock)
 
-	lsys := cidlink.DefaultLinkSystem()
 	lsys.TrustedStorage = true // we can rely on the CAR decoder to check CID integrity
 	unixfsnode.AddUnixFSReificationToLinkSystem(&lsys)
 
-	lsys.StorageReadOpener = nextBlockReadOpener(ctx, nextBlockCh, bwo)
+	lsys.StorageReadOpener = nextBlockReadOpener(ctx, nextBlockCh, lsys)
 
 	cbr, err := car.NewBlockReader(rdr, car.WithTrustedCAR(false))
 	if err != nil {
@@ -99,10 +101,16 @@ func (cfg Config) Verify(ctx context.Context, rdr io.Reader, bwo linking.BlockWr
 		Cfg: &traversal.Config{
 			Ctx:                            ctx,
 			LinkSystem:                     lsys,
-			LinkTargetNodePrototypeChooser: dagpb.AddSupportToChooser(basicnode.Chooser),
+			LinkTargetNodePrototypeChooser: protoChooser,
 		},
 	}
-	rootNode, err := lsys.Load(linking.LinkContext{}, cidlink.Link{Cid: cfg.Root}, basicnode.Prototype.Any)
+	lc := linking.LinkContext{}
+	lnk := cidlink.Link{Cid: cfg.Root}
+	proto, err := protoChooser(lnk, lc)
+	if err != nil {
+		return 0, 0, err
+	}
+	rootNode, err := lsys.Load(lc, lnk, proto)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -129,14 +137,22 @@ func (cfg Config) Verify(ctx context.Context, rdr io.Reader, bwo linking.BlockWr
 	}
 }
 
-func nextBlockReadOpener(ctx context.Context, nextBlockCh chan nextBlock, bwo linking.BlockWriteOpener) linking.BlockReadOpener {
+func nextBlockReadOpener(ctx context.Context, nextBlockCh chan nextBlock, lsys linking.LinkSystem) linking.BlockReadOpener {
+	seen := make(map[cid.Cid]struct{})
 	return func(lc linking.LinkContext, l datamodel.Link) (io.Reader, error) {
 		cid := l.(cidlink.Link).Cid
+
+		if _, ok := seen[cid]; ok {
+			// duplicate block, rely on the supplied LinkSystem to have stored this
+			return lsys.StorageReadOpener(lc, l)
+		}
+
+		seen[cid] = struct{}{}
 		data, err := readNextBlock(ctx, nextBlockCh, cid)
 		if err != nil {
 			return nil, err
 		}
-		w, wc, err := bwo(lc)
+		w, wc, err := lsys.StorageWriteOpener(lc)
 		if err != nil {
 			return nil, err
 		}
@@ -198,8 +214,8 @@ func traversalError(original error) error {
 	err := original
 	for {
 		if v, ok := err.(interface{ NotFound() bool }); ok && v.NotFound() {
-			// TODO: post-1.19: fmt.Errorf("%w: %w", ErrMalformedCar, err)
-			return multierr.Combine(ErrMalformedCar, err)
+			// TODO: post-1.19: fmt.Errorf("%w: %w", ErrMissingBlock, err)
+			return multierr.Combine(ErrMissingBlock, err)
 		}
 		if err = errors.Unwrap(err); err == nil {
 			return original

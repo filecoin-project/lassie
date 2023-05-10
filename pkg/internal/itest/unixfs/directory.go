@@ -118,3 +118,51 @@ func CompareDirEntries(t *testing.T, a, b DirEntry) {
 		require.True(t, found, fmt.Sprintf("%s child %s not found in b", a.Path, a.Children[i].Path))
 	}
 }
+
+const WrapPath = "/want2/want1/want0"
+
+// WrapContent embeds the content we want in some random nested content such
+// that it's fetchable under the path "/want2/want1/want0" but also contains
+// extraneous files in those nested directories.
+func WrapContent(t *testing.T, rndReader io.Reader, lsys *ipld.LinkSystem, content DirEntry) DirEntry {
+	before := GenerateDirectory(t, lsys, rndReader, 4<<10, false)
+	before.Path = "!before"
+	// target content goes here
+	want := content
+	want.Path = "want0"
+	after := GenerateFile(t, lsys, rndReader, 4<<11)
+	after.Path = "~after"
+	want = BuildDirectory(t, lsys, []DirEntry{before, want, after}, false)
+
+	before = GenerateFile(t, lsys, rndReader, 4<<10)
+	before.Path = "!before"
+	want.Path = "want1"
+	after = GenerateDirectory(t, lsys, rndReader, 4<<11, true)
+	after.Path = "~after"
+	want = BuildDirectory(t, lsys, []DirEntry{before, want, after}, false)
+
+	before = GenerateFile(t, lsys, rndReader, 4<<10)
+	before.Path = "!before"
+	want.Path = "want2"
+	after = GenerateFile(t, lsys, rndReader, 4<<11)
+	after.Path = "~after"
+	want = BuildDirectory(t, lsys, []DirEntry{before, want, after}, false)
+
+	return want
+}
+
+// WrapContentExclusive is the same as WrapContent but doesn't
+// include the extraneous files.
+func WrapContentExclusive(t *testing.T, rndReader io.Reader, lsys *ipld.LinkSystem, content DirEntry) DirEntry {
+	want := content
+	want.Path = "want0"
+	want = BuildDirectory(t, lsys, []DirEntry{want}, false)
+
+	want.Path = "want1"
+	want = BuildDirectory(t, lsys, []DirEntry{want}, false)
+
+	want.Path = "want2"
+	want = BuildDirectory(t, lsys, []DirEntry{want}, false)
+
+	return want
+}

@@ -22,6 +22,7 @@ import (
 	gstestutil "github.com/ipfs/go-graphsync/testutil"
 	"github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/storage"
+	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/linking"
@@ -506,7 +507,7 @@ func TestHTTPRetriever(t *testing.T) {
 				{
 					AfterStart: initialPause + time.Millisecond*40 + remoteBlockDuration*50,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.Failed(startTime.Add(initialPause+time.Millisecond*40+remoteBlockDuration*50), rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[0].MinerPeer), "malformed CAR; ipld: could not find "+tbc1.AllBlocks()[50].Cid().String()),
+						events.Failed(startTime.Add(initialPause+time.Millisecond*40+remoteBlockDuration*50), rid1, startTime, types.RetrievalPhase, toCandidate(cid1, cid1Cands[0].MinerPeer), "missing block in CAR; ipld: could not find "+tbc1.AllBlocks()[50].Cid().String()),
 					},
 					ServedRetrievals: []testutil.RemoteStats{
 						{
@@ -922,7 +923,11 @@ func traverseCar(
 		// load and register the root link so it's pushed to the CAR since
 		// the traverser won't load it (we feed the traverser the rood _node_
 		// not the link)
-		rootNode, err := lsys.Load(linking.LinkContext{}, cidlink.Link{Cid: root}, basicnode.Prototype.Any)
+		var proto datamodel.NodePrototype = basicnode.Prototype.Any
+		if root.Prefix().Codec == cid.DagProtobuf {
+			proto = dagpb.Type.PBNode
+		}
+		rootNode, err := lsys.Load(linking.LinkContext{}, cidlink.Link{Cid: root}, proto)
 		if err != nil {
 			stats.Err = struct{}{}
 		} else {

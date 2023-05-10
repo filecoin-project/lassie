@@ -181,9 +181,9 @@ func TestHttpFetch(t *testing.T) {
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := &remotes[0].LinkSystem
-				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateFile(t, lsys, rndReader, 4<<20))}
+				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateFile(t, lsys, rndReader, 4<<20))}
 			},
-			paths:         []string{"/want2/want1/want0"},
+			paths:         []string{unixfs.WrapPath},
 			modifyQueries: []queryModifier{fileQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
@@ -191,7 +191,7 @@ func TestHttpFetch(t *testing.T) {
 					srcData.Children[1].Root,             // "/want2"
 					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
-					srcData.Children[1].Children[1].Children[1].SelfCids..., // "/want2/want1/want0" (full file)
+					srcData.Children[1].Children[1].Children[1].SelfCids..., // unixfs.WrapPath (full file)
 				)
 				validateCarBody(t, body, srcData.Root, wantCids, true)
 			}},
@@ -201,9 +201,9 @@ func TestHttpFetch(t *testing.T) {
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := &remotes[0].LinkSystem
-				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateFile(t, lsys, rndReader, 4<<20))}
+				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateFile(t, lsys, rndReader, 4<<20))}
 			},
-			paths:         []string{"/want2/want1/want0"},
+			paths:         []string{unixfs.WrapPath},
 			modifyQueries: []queryModifier{fileQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
@@ -211,7 +211,7 @@ func TestHttpFetch(t *testing.T) {
 					srcData.Children[1].Root,             // "/want2"
 					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
-					srcData.Children[1].Children[1].Children[1].SelfCids..., // "/want2/want1/want0" (full file)
+					srcData.Children[1].Children[1].Children[1].SelfCids..., // unixfs.WrapPath (full file)
 				)
 				validateCarBody(t, body, srcData.Root, wantCids, true)
 			}},
@@ -245,9 +245,9 @@ func TestHttpFetch(t *testing.T) {
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := &remotes[0].LinkSystem
-				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false))}
+				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false))}
 			},
-			paths:         []string{"/want2/want1/want0"},
+			paths:         []string{unixfs.WrapPath},
 			modifyQueries: []queryModifier{fileQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
@@ -255,7 +255,7 @@ func TestHttpFetch(t *testing.T) {
 					srcData.Children[1].Root,             // "/want2"
 					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
-					srcData.Children[1].Children[1].Children[1].SelfCids..., // "/want2/want1/want0" (full dir)
+					srcData.Children[1].Children[1].Children[1].SelfCids..., // unixfs.WrapPath (full dir)
 				)
 				validateCarBody(t, body, srcData.Root, wantCids, true)
 			}},
@@ -265,9 +265,9 @@ func TestHttpFetch(t *testing.T) {
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := &remotes[0].LinkSystem
-				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false))}
+				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false))}
 			},
-			paths:         []string{"/want2/want1/want0"},
+			paths:         []string{unixfs.WrapPath},
 			modifyQueries: []queryModifier{fileQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
@@ -275,7 +275,7 @@ func TestHttpFetch(t *testing.T) {
 					srcData.Children[1].Root,             // "/want2"
 					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
-					srcData.Children[1].Children[1].Children[1].SelfCids..., // "/want2/want1/want0" (full dir)
+					srcData.Children[1].Children[1].Children[1].SelfCids..., // unixfs.WrapPath (full dir)
 				)
 				validateCarBody(t, body, srcData.Root, wantCids, true)
 			}},
@@ -285,16 +285,16 @@ func TestHttpFetch(t *testing.T) {
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := &remotes[0].LinkSystem
-				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false))}
+				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false))}
 			},
-			paths: []string{"/want2/want1/want0"},
+			paths: []string{unixfs.WrapPath},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
 					srcData.Children[1].Root,             // "/want2"
 					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
-					srcData.Children[1].Children[1].Children[1].SelfCids..., // "/want2/want1/want0" (full dir)
+					srcData.Children[1].Children[1].Children[1].SelfCids..., // unixfs.WrapPath (full dir)
 				)
 				// validate we got the car-scope file form
 				validateCarBody(t, body, srcData.Root, wantCids, false)
@@ -309,16 +309,16 @@ func TestHttpFetch(t *testing.T) {
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := &remotes[0].LinkSystem
-				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false))}
+				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false))}
 			},
-			paths: []string{"/want2/want1/want0"},
+			paths: []string{unixfs.WrapPath},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
 					srcData.Children[1].Root,             // "/want2"
 					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
-					srcData.Children[1].Children[1].Children[1].SelfCids..., // "/want2/want1/want0" (full dir)
+					srcData.Children[1].Children[1].Children[1].SelfCids..., // unixfs.WrapPath (full dir)
 				)
 				// validate we got the car-scope file form
 				validateCarBody(t, body, srcData.Root, wantCids, false)
@@ -359,9 +359,9 @@ func TestHttpFetch(t *testing.T) {
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := &remotes[0].LinkSystem
-				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true))}
+				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true))}
 			},
-			paths:         []string{"/want2/want1/want0"},
+			paths:         []string{unixfs.WrapPath},
 			modifyQueries: []queryModifier{fileQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
@@ -369,7 +369,7 @@ func TestHttpFetch(t *testing.T) {
 					srcData.Children[1].Root,             // "/want2"
 					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
-					srcData.Children[1].Children[1].Children[1].SelfCids..., // "/want2/want1/want0" (full dir)
+					srcData.Children[1].Children[1].Children[1].SelfCids..., // unixfs.WrapPath (full dir)
 				)
 				validateCarBody(t, body, srcData.Root, wantCids, true)
 			}},
@@ -379,9 +379,9 @@ func TestHttpFetch(t *testing.T) {
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := &remotes[0].LinkSystem
-				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true))}
+				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true))}
 			},
-			paths:         []string{"/want2/want1/want0"},
+			paths:         []string{unixfs.WrapPath},
 			modifyQueries: []queryModifier{fileQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
@@ -389,7 +389,7 @@ func TestHttpFetch(t *testing.T) {
 					srcData.Children[1].Root,             // "/want2"
 					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
-					srcData.Children[1].Children[1].Children[1].SelfCids..., // "/want2/want1/want0" (full dir)
+					srcData.Children[1].Children[1].Children[1].SelfCids..., // unixfs.WrapPath (full dir)
 				)
 				validateCarBody(t, body, srcData.Root, wantCids, true)
 			}},
@@ -399,16 +399,16 @@ func TestHttpFetch(t *testing.T) {
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := &remotes[0].LinkSystem
-				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true))}
+				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true))}
 			},
-			paths: []string{"/want2/want1/want0"},
+			paths: []string{unixfs.WrapPath},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
 					srcData.Children[1].Root,             // "/want2"
 					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
-					srcData.Children[1].Children[1].Children[1].SelfCids..., // "/want2/want1/want0" (full dir)
+					srcData.Children[1].Children[1].Children[1].SelfCids..., // unixfs.WrapPath (full dir)
 				)
 				// validate we got the car-scope file form
 				validateCarBody(t, body, srcData.Root, wantCids, false)
@@ -423,16 +423,16 @@ func TestHttpFetch(t *testing.T) {
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := &remotes[0].LinkSystem
-				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true))}
+				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true))}
 			},
-			paths: []string{"/want2/want1/want0"},
+			paths: []string{unixfs.WrapPath},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
 					srcData.Children[1].Root,             // "/want2"
 					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
-					srcData.Children[1].Children[1].Children[1].SelfCids..., // "/want2/want1/want0" (full dir)
+					srcData.Children[1].Children[1].Children[1].SelfCids..., // unixfs.WrapPath (full dir)
 				)
 				// validate we got the car-scope file form
 				validateCarBody(t, body, srcData.Root, wantCids, false)
@@ -459,7 +459,7 @@ func TestHttpFetch(t *testing.T) {
 				}
 				lsys.TrustedStorage = true
 				// generate data
-				data := wrapUnixfsContent(t, rndReader, &lsys, unixfs.GenerateDirectory(t, &lsys, rndReader, 16<<20, true))
+				data := unixfs.WrapContent(t, rndReader, &lsys, unixfs.GenerateDirectory(t, &lsys, rndReader, 16<<20, true))
 
 				// copy the root block to all remotes
 				lctx := ipld.LinkContext{}
@@ -480,7 +480,7 @@ func TestHttpFetch(t *testing.T) {
 
 				return []unixfs.DirEntry{data}
 			},
-			paths:         []string{"/want2/want1/want0"},
+			paths:         []string{unixfs.WrapPath},
 			modifyQueries: []queryModifier{fileQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
@@ -488,7 +488,7 @@ func TestHttpFetch(t *testing.T) {
 					srcData.Children[1].Root,             // "/want2"
 					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
-					srcData.Children[1].Children[1].Children[1].SelfCids..., // "/want2/want1/want0" (full dir)
+					srcData.Children[1].Children[1].Children[1].SelfCids..., // unixfs.WrapPath (full dir)
 				)
 				validateCarBody(t, body, srcData.Root, wantCids, true)
 			}},
@@ -558,16 +558,16 @@ func TestHttpFetch(t *testing.T) {
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := &remotes[0].LinkSystem
-				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateFile(t, lsys, rndReader, 4<<20))}
+				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateFile(t, lsys, rndReader, 4<<20))}
 			},
-			paths:         []string{"/want2/want1/want0"},
+			paths:         []string{unixfs.WrapPath},
 			modifyQueries: []queryModifier{blockQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := []cid.Cid{
 					srcData.Root,                                     // "/""
 					srcData.Children[1].Root,                         // "/want2"
 					srcData.Children[1].Children[1].Root,             // "/want2/want1"
-					srcData.Children[1].Children[1].Children[1].Root, // "/want2/want1/want0"
+					srcData.Children[1].Children[1].Children[1].Root, // unixfs.WrapPath
 				}
 				validateCarBody(t, body, srcData.Root, wantCids, true)
 			}},
@@ -768,33 +768,4 @@ func validateCarBody(t *testing.T, body []byte, root cid.Cid, wantCids []cid.Cid
 	if onlyWantCids {
 		require.Len(t, gotCids, len(wantCids))
 	}
-}
-
-// embeds the content we want in some random nested content such that it's
-// fetchable under the path "/want2/want1/want0"
-func wrapUnixfsContent(t *testing.T, rndReader io.Reader, lsys *ipld.LinkSystem, content unixfs.DirEntry) unixfs.DirEntry {
-	before := unixfs.GenerateDirectory(t, lsys, rndReader, 4<<10, false)
-	before.Path = "!before"
-	// target content goes here
-	want := content
-	want.Path = "want0"
-	after := unixfs.GenerateFile(t, lsys, rndReader, 4<<11)
-	after.Path = "~after"
-	want = unixfs.BuildDirectory(t, lsys, []unixfs.DirEntry{before, want, after}, false)
-
-	before = unixfs.GenerateFile(t, lsys, rndReader, 4<<10)
-	before.Path = "!before"
-	want.Path = "want1"
-	after = unixfs.GenerateDirectory(t, lsys, rndReader, 4<<11, true)
-	after.Path = "~after"
-	want = unixfs.BuildDirectory(t, lsys, []unixfs.DirEntry{before, want, after}, false)
-
-	before = unixfs.GenerateFile(t, lsys, rndReader, 4<<10)
-	before.Path = "!before"
-	want.Path = "want2"
-	after = unixfs.GenerateFile(t, lsys, rndReader, 4<<11)
-	after.Path = "~after"
-	want = unixfs.BuildDirectory(t, lsys, []unixfs.DirEntry{before, want, after}, false)
-
-	return want
 }

@@ -129,7 +129,7 @@ func (ph *ProtocolHttp) Retrieve(
 		Selector: sel,
 	}
 
-	blockCount, byteCount, err := cfg.Verify(ctx, rdr, retrieval.request.LinkSystem.StorageWriteOpener)
+	blockCount, byteCount, err := cfg.Verify(ctx, rdr, retrieval.request.LinkSystem)
 	if err != nil {
 		return nil, err
 	}
