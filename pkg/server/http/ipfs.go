@@ -241,6 +241,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 				return
 			}
 
+			header.Lock()
 			if header.Metrics != nil {
 				for _, m := range header.Metrics {
 					if m.Name == string(re.Phase()) {
@@ -248,10 +249,12 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 							m.Extra = map[string]string{}
 						}
 						m.Extra[string(re.Code())] = fmt.Sprintf("%d", re.Time().Sub(re.PhaseStartTime()))
+						header.Unlock()
 						return
 					}
 				}
 			}
+			header.Unlock()
 
 			metric := header.NewMetric(string(re.Phase()))
 			metric.Duration = re.Time().Sub(re.PhaseStartTime())
