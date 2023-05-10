@@ -38,17 +38,6 @@ type Config struct {
 	Selector   selector.Selector // The selector to execute, starting at the provided Root, to verify the contents of the CAR
 }
 
-type parse struct {
-	blocks uint64
-	bytes  uint64
-}
-
-type nextBlock struct {
-	err  error
-	cid  cid.Cid
-	data []byte
-}
-
 func visitNoop(p traversal.Progress, n datamodel.Node, r traversal.VisitReason) error { return nil }
 
 // Verify reads a CAR from the provided reader, verifies the contents are
@@ -63,12 +52,6 @@ func visitNoop(p traversal.Progress, n datamodel.Node, r traversal.VisitReason) 
 //
 // * https://specs.ipfs.tech/http-gateways/path-gateway/
 func (cfg Config) Verify(ctx context.Context, rdr io.Reader, lsys linking.LinkSystem) (uint64, uint64, error) {
-	nextBlockCh := make(chan nextBlock)
-
-	lsys.TrustedStorage = true // we can rely on the CAR decoder to check CID integrity
-	unixfsnode.AddUnixFSReificationToLinkSystem(&lsys)
-
-	lsys.StorageReadOpener = nextBlockReadOpener(ctx, nextBlockCh, lsys)
 
 	cbr, err := car.NewBlockReader(rdr, car.WithTrustedCAR(false))
 	if err != nil {
@@ -89,12 +72,14 @@ func (cfg Config) Verify(ctx context.Context, rdr io.Reader, lsys linking.LinkSy
 	if len(cbr.Roots) != 1 || cbr.Roots[0] != cfg.Root {
 		return 0, 0, ErrBadRoots
 	}
+	cr := &carReader{
+		cbr: cbr,
+	}
 
-	// run parser in separate goroutine
-	parseCh := make(chan parse, 1)
-	parseCtx, parseCancel := context.WithCancel(ctx)
-	defer parseCancel()
-	go parseCar(parseCtx, cbr, nextBlockCh, parseCh)
+	lsys.TrustedStorage = true // we can rely on the CAR decoder to check CID integrity
+	unixfsnode.AddUnixFSReificationToLinkSystem(&lsys)
+
+	lsys.StorageReadOpener = nextBlockReadOpener(ctx, cr, lsys)
 
 	// run traversal in this goroutine
 	progress := traversal.Progress{
@@ -119,25 +104,16 @@ func (cfg Config) Verify(ctx context.Context, rdr io.Reader, lsys linking.LinkSy
 	}
 
 	// make sure we don't have any extraneous data beyond what the traversal needs
-	select {
-	case <-ctx.Done():
-		return 0, 0, ctx.Err()
-	case _, ok := <-nextBlockCh:
-		if ok {
-			return 0, 0, ErrExtraneousBlock
-		}
+	_, err = cbr.Next()
+	if !errors.Is(err, io.EOF) {
+		return 0, 0, ErrExtraneousBlock
 	}
 
 	// wait for parser to finish and provide errors or stats
-	select {
-	case <-ctx.Done():
-		return 0, 0, ctx.Err()
-	case parse := <-parseCh:
-		return parse.blocks, parse.bytes, nil
-	}
+	return cr.blocks, cr.bytes, nil
 }
 
-func nextBlockReadOpener(ctx context.Context, nextBlockCh chan nextBlock, lsys linking.LinkSystem) linking.BlockReadOpener {
+func nextBlockReadOpener(ctx context.Context, cr *carReader, lsys linking.LinkSystem) linking.BlockReadOpener {
 	seen := make(map[cid.Cid]struct{})
 	return func(lc linking.LinkContext, l datamodel.Link) (io.Reader, error) {
 		cid := l.(cidlink.Link).Cid
@@ -148,7 +124,7 @@ func nextBlockReadOpener(ctx context.Context, nextBlockCh chan nextBlock, lsys l
 		}
 
 		seen[cid] = struct{}{}
-		data, err := readNextBlock(ctx, nextBlockCh, cid)
+		data, err := cr.readNextBlock(ctx, cid)
 		if err != nil {
 			return nil, err
 		}
@@ -170,44 +146,29 @@ func nextBlockReadOpener(ctx context.Context, nextBlockCh chan nextBlock, lsys l
 	}
 }
 
-func readNextBlock(ctx context.Context, nextBlockCh chan nextBlock, expected cid.Cid) ([]byte, error) {
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case blk, ok := <-nextBlockCh:
-		if !ok {
-			// parser ended
-			return nil, format.ErrNotFound{Cid: expected}
-		}
-		if blk.err != nil {
-			// TODO: post-1.19: fmt.Errorf("%w: %w", ErrMalformedCar, err)
-			return nil, multierr.Combine(ErrMalformedCar, blk.err)
-		}
-		if blk.cid != expected {
-			return nil, fmt.Errorf("%w: %s != %s", ErrUnexpectedBlock, blk.cid, expected)
-		}
-		return blk.data, nil
-	}
+type carReader struct {
+	cbr    *car.BlockReader
+	blocks uint64
+	bytes  uint64
 }
 
-func parseCar(ctx context.Context, cbr *car.BlockReader, nextBlockCh chan nextBlock, parseCh chan parse) {
-	defer close(parseCh)
-	defer close(nextBlockCh)
-	var blockCount, byteCount uint64
-	for ctx.Err() == nil {
-		blk, err := cbr.Next()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			nextBlockCh <- nextBlock{err: err}
-			return
+func (cr *carReader) readNextBlock(ctx context.Context, expected cid.Cid) ([]byte, error) {
+
+	blk, err := cr.cbr.Next()
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, format.ErrNotFound{Cid: expected}
 		}
-		nextBlockCh <- nextBlock{cid: blk.Cid(), data: blk.RawData()}
-		byteCount += uint64(len(blk.RawData()))
-		blockCount++
+		return nil, multierr.Combine(ErrMalformedCar, err)
 	}
-	parseCh <- parse{blocks: blockCount, bytes: byteCount}
+
+	if blk.Cid() != expected {
+		return nil, fmt.Errorf("%w: %s != %s", ErrUnexpectedBlock, blk.Cid(), expected)
+	}
+
+	cr.bytes += uint64(len(blk.RawData()))
+	cr.blocks++
+	return blk.RawData(), nil
 }
 
 func traversalError(original error) error {
