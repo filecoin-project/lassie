@@ -105,7 +105,7 @@ func VerifyContainsCollectedEvent(t *testing.T, afterStart time.Duration, expect
 			return actual.Code()
 		}
 		if actual.Code() == expected.Code() {
-			fmt.Printf("non-match: %s <> %s\n", actual, expected)
+			t.Logf("non-matching event: %s <> %s\n", actual, expected)
 		}
 	}
 	require.Failf(t, "unexpected event", "got '%s' @ %s", actual.Code(), afterStart)
