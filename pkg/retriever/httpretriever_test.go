@@ -936,7 +936,7 @@ func traverseCar(
 				Cfg: &traversal.Config{
 					Ctx:                            ctx,
 					LinkSystem:                     *lsys,
-					LinkTargetNodePrototypeChooser: basicnode.Chooser,
+					LinkTargetNodePrototypeChooser: dagpb.AddSupportToChooser(basicnode.Chooser),
 				},
 			}.WalkAdv(rootNode, sel, func(p traversal.Progress, n datamodel.Node, vr traversal.VisitReason) error { return nil })
 			if err != nil {

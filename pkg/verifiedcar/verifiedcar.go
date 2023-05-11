@@ -89,7 +89,7 @@ func (cfg Config) Verify(ctx context.Context, rdr io.Reader, lsys linking.LinkSy
 			LinkTargetNodePrototypeChooser: protoChooser,
 		},
 	}
-	lc := linking.LinkContext{}
+	lc := linking.LinkContext{Ctx: ctx}
 	lnk := cidlink.Link{Cid: cfg.Root}
 	proto, err := protoChooser(lnk, lc)
 	if err != nil {
