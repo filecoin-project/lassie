@@ -45,6 +45,12 @@ func (id *RetrievalID) UnmarshalText(data []byte) error {
 	return (*uuid.UUID)(id).UnmarshalText(data)
 }
 
+type PeerFilter struct {
+	Peer              peer.ID
+	ExcludeAll        bool
+	ExcludedProtocols []multicodec.Code
+}
+
 // RetrievalRequest is the top level parameters for a request --
 // this should be left unchanged as you move down a retriever tree
 type RetrievalRequest struct {
@@ -56,6 +62,7 @@ type RetrievalRequest struct {
 	PreloadLinkSystem ipld.LinkSystem
 	MaxBlocks         uint64
 	FixedPeers        []peer.AddrInfo
+	FilteredPeers     []PeerFilter
 }
 
 // NewRequestForPath creates a new RetrievalRequest from the provided parameters
@@ -151,7 +158,6 @@ func ParseProtocolsString(v string) ([]multicodec.Code, error) {
 func ParseProviderStrings(v string) ([]peer.AddrInfo, error) {
 	vs := strings.Split(v, ",")
 	providerAddrInfos := make([]peer.AddrInfo, 0, len(vs))
-
 	for _, v := range vs {
 		providerAddrInfo, err := peer.AddrInfoFromString(v)
 		if err != nil {

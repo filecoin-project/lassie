@@ -145,6 +145,33 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			}
 		}
 
+		var filteredPeers []types.PeerFilter
+		if req.URL.Query().Has("peer-filter") {
+			peerFilterStrings := req.URL.Query()["peer-filter"]
+			for _, peerFilterString := range peerFilterStrings {
+				peerString, protocolsString, hasProtocols := strings.Cut(peerFilterString, "~")
+				peerID, err := peer.Decode(peerString)
+				if err != nil {
+					statusLogger.logStatus(http.StatusBadRequest, "Invalid peer-filter parameter")
+					res.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				var filteredProtocols []multicodec.Code
+				if hasProtocols {
+					filteredProtocols, err = types.ParseProtocolsString(protocolsString)
+					if err != nil {
+						statusLogger.logStatus(http.StatusBadRequest, "Invalid peer-filter  parameter")
+						res.WriteHeader(http.StatusBadRequest)
+						return
+					}
+				}
+				filteredPeers = append(filteredPeers, types.PeerFilter{
+					Peer:              peerID,
+					ExcludeAll:        !hasProtocols,
+					ExcludedProtocols: filteredProtocols,
+				})
+			}
+		}
 		// for setting Content-Disposition header based on filename url parameter
 		var filename string
 		if req.URL.Query().Has("filename") {
@@ -210,6 +237,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			http.Error(res, msg, http.StatusInternalServerError)
 			return
 		}
+		request.FilteredPeers = filteredPeers
 		request.RetrievalID = retrievalId
 		// setup preload storage for bitswap, the temporary CAR store can set up a
 		// separate preload space in its storage
