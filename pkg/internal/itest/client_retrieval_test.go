@@ -66,7 +66,7 @@ func TestRetrieval(t *testing.T) {
 			mrn.MN.LinkAll()
 
 			// Generate source data on the remote
-			srcData := tt.generate(t, mrn.Remotes[0].LinkSystem)
+			srcData := tt.generate(t, *mrn.Remotes[0].LinkSystem)
 
 			// Perform retrieval
 			linkSystemLocal := runRetrieval(t, ctx, mrn, srcData.Root, finishedChan)

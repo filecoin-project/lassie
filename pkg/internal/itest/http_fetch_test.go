@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -23,7 +24,10 @@ import (
 	httpserver "github.com/filecoin-project/lassie/pkg/server/http"
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
+	"github.com/ipld/go-car/v2/storage"
 	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/datamodel"
+	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
@@ -31,6 +35,11 @@ import (
 
 	_ "net/http/pprof"
 )
+
+// DEBUG_DATA, when true, will write source and received data to CARs
+// for inspection if tests fail; otherwise they are cleaned up as tests
+// proceed.
+const DEBUG_DATA = true
 
 func TestHttpFetch(t *testing.T) {
 	fileQuery := func(q url.Values, _ []testpeer.TestPeer) {
@@ -59,42 +68,42 @@ func TestHttpFetch(t *testing.T) {
 			name:             "graphsync large sharded file",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				return []unixfs.DirEntry{unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20)}
+				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20)}
 			},
 		},
 		{
 			name:           "bitswap large sharded file",
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				return []unixfs.DirEntry{unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20)}
+				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20)}
 			},
 		},
 		{
 			name:             "graphsync large directory",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false)}
+				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, false)}
 			},
 		},
 		{
 			name:           "bitswap large directory",
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false)}
+				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, false)}
 			},
 		},
 		{
 			name:             "graphsync large sharded directory",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true)}
+				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, true)}
 			},
 		},
 		{
 			name:           "bitswap large sharded directory",
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true)}
+				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, true)}
 			},
 		},
 		{
@@ -105,7 +114,7 @@ func TestHttpFetch(t *testing.T) {
 				return cfg
 			},
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				return []unixfs.DirEntry{unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20)}
+				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20)}
 			},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				// 3 blocks max, start at the root and then two blocks into the sharded data
@@ -126,7 +135,7 @@ func TestHttpFetch(t *testing.T) {
 				},
 			},
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				return []unixfs.DirEntry{unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20)}
+				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20)}
 			},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				// 3 blocks max, start at the root and then two blocks into the sharded data
@@ -146,7 +155,7 @@ func TestHttpFetch(t *testing.T) {
 				return cfg
 			},
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				return []unixfs.DirEntry{unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20)}
+				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20)}
 			},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				// 3 blocks max, start at the root and then two blocks into the sharded data
@@ -163,7 +172,7 @@ func TestHttpFetch(t *testing.T) {
 			name:             "graphsync large sharded file, car-scope file",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				return []unixfs.DirEntry{unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20)}
+				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20)}
 			},
 			modifyQueries: []queryModifier{fileQuery},
 		},
@@ -172,7 +181,7 @@ func TestHttpFetch(t *testing.T) {
 			name:           "bitswap large sharded file, car-scope file",
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				return []unixfs.DirEntry{unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20)}
+				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20)}
 			},
 			modifyQueries: []queryModifier{fileQuery},
 		},
@@ -180,7 +189,7 @@ func TestHttpFetch(t *testing.T) {
 			name:             "graphsync nested large sharded file, with path, car-scope file",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				lsys := &remotes[0].LinkSystem
+				lsys := remotes[0].LinkSystem
 				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateFile(t, lsys, rndReader, 4<<20))}
 			},
 			paths:         []string{"/want2/want1/want0"},
@@ -200,7 +209,7 @@ func TestHttpFetch(t *testing.T) {
 			name:           "bitswap nested large sharded file, with path, car-scope file",
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				lsys := &remotes[0].LinkSystem
+				lsys := remotes[0].LinkSystem
 				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateFile(t, lsys, rndReader, 4<<20))}
 			},
 			paths:         []string{"/want2/want1/want0"},
@@ -220,7 +229,7 @@ func TestHttpFetch(t *testing.T) {
 			name:             "graphsync large directory, car-scope file",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false)}
+				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, false)}
 			},
 			modifyQueries: []queryModifier{fileQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
@@ -232,7 +241,7 @@ func TestHttpFetch(t *testing.T) {
 			name:           "bitswap large directory, car-scope file",
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false)}
+				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, false)}
 			},
 			modifyQueries: []queryModifier{fileQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
@@ -244,8 +253,8 @@ func TestHttpFetch(t *testing.T) {
 			name:             "graphsync nested large directory, with path, car-scope file",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				lsys := &remotes[0].LinkSystem
-				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false))}
+				lsys := remotes[0].LinkSystem
+				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, false))}
 			},
 			paths:         []string{"/want2/want1/want0"},
 			modifyQueries: []queryModifier{fileQuery},
@@ -264,8 +273,8 @@ func TestHttpFetch(t *testing.T) {
 			name:           "bitswap nested large directory, with path, car-scope file",
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				lsys := &remotes[0].LinkSystem
-				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false))}
+				lsys := remotes[0].LinkSystem
+				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, false))}
 			},
 			paths:         []string{"/want2/want1/want0"},
 			modifyQueries: []queryModifier{fileQuery},
@@ -284,8 +293,8 @@ func TestHttpFetch(t *testing.T) {
 			name:             "graphsync nested large directory, with path, full",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				lsys := &remotes[0].LinkSystem
-				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false))}
+				lsys := remotes[0].LinkSystem
+				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, false))}
 			},
 			paths: []string{"/want2/want1/want0"},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
@@ -308,8 +317,8 @@ func TestHttpFetch(t *testing.T) {
 			name:           "bitswap nested large directory, with path, full",
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				lsys := &remotes[0].LinkSystem
-				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false))}
+				lsys := remotes[0].LinkSystem
+				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, false))}
 			},
 			paths: []string{"/want2/want1/want0"},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
@@ -332,7 +341,7 @@ func TestHttpFetch(t *testing.T) {
 			name:             "graphsync nested large sharded directory, car-scope file",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true)}
+				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, true)}
 			},
 			modifyQueries: []queryModifier{fileQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
@@ -345,7 +354,7 @@ func TestHttpFetch(t *testing.T) {
 			name:           "bitswap nested large sharded directory, car-scope file",
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true)}
+				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, true)}
 			},
 			modifyQueries: []queryModifier{fileQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
@@ -358,8 +367,8 @@ func TestHttpFetch(t *testing.T) {
 			name:             "graphsync nested large sharded directory, with path, car-scope file",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				lsys := &remotes[0].LinkSystem
-				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true))}
+				lsys := remotes[0].LinkSystem
+				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, true))}
 			},
 			paths:         []string{"/want2/want1/want0"},
 			modifyQueries: []queryModifier{fileQuery},
@@ -378,8 +387,8 @@ func TestHttpFetch(t *testing.T) {
 			name:           "bitswap nested large sharded directory, with path, car-scope file",
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				lsys := &remotes[0].LinkSystem
-				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true))}
+				lsys := remotes[0].LinkSystem
+				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, true))}
 			},
 			paths:         []string{"/want2/want1/want0"},
 			modifyQueries: []queryModifier{fileQuery},
@@ -398,8 +407,8 @@ func TestHttpFetch(t *testing.T) {
 			name:             "graphsync nested large sharded directory, with path, full",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				lsys := &remotes[0].LinkSystem
-				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true))}
+				lsys := remotes[0].LinkSystem
+				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, true))}
 			},
 			paths: []string{"/want2/want1/want0"},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
@@ -422,8 +431,8 @@ func TestHttpFetch(t *testing.T) {
 			name:           "bitswap nested large sharded directory, with path, full",
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				lsys := &remotes[0].LinkSystem
-				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true))}
+				lsys := remotes[0].LinkSystem
+				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, true))}
 			},
 			paths: []string{"/want2/want1/want0"},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
@@ -498,8 +507,8 @@ func TestHttpFetch(t *testing.T) {
 			bitswapRemotes: 2,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{
-					unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20),
-					unixfs.GenerateDirectory(t, &remotes[1].LinkSystem, rndReader, 16<<20, false),
+					unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20),
+					unixfs.GenerateDirectory(t, remotes[1].LinkSystem, rndReader, 16<<20, false),
 				}
 			},
 		},
@@ -508,8 +517,8 @@ func TestHttpFetch(t *testing.T) {
 			graphsyncRemotes: 2,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{
-					unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20),
-					unixfs.GenerateDirectory(t, &remotes[1].LinkSystem, rndReader, 16<<20, false),
+					unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20),
+					unixfs.GenerateDirectory(t, remotes[1].LinkSystem, rndReader, 16<<20, false),
 				}
 			},
 		},
@@ -520,8 +529,8 @@ func TestHttpFetch(t *testing.T) {
 			expectFail:       true,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{
-					unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20),
-					unixfs.GenerateDirectory(t, &remotes[1].LinkSystem, rndReader, 16<<20, false),
+					unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20),
+					unixfs.GenerateDirectory(t, remotes[1].LinkSystem, rndReader, 16<<20, false),
 				}
 			},
 		},
@@ -531,8 +540,8 @@ func TestHttpFetch(t *testing.T) {
 			bitswapRemotes:   1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{
-					unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20),
-					unixfs.GenerateDirectory(t, &remotes[1].LinkSystem, rndReader, 16<<20, false),
+					unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20),
+					unixfs.GenerateDirectory(t, remotes[1].LinkSystem, rndReader, 16<<20, false),
 				}
 			},
 		},
@@ -541,7 +550,7 @@ func TestHttpFetch(t *testing.T) {
 			name:             "graphsync large sharded file, car-scope block",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				return []unixfs.DirEntry{unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20)}
+				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20)}
 			},
 			modifyQueries: []queryModifier{blockQuery},
 			validateBodies: []bodyValidator{
@@ -557,7 +566,7 @@ func TestHttpFetch(t *testing.T) {
 			name:             "graphsync nested large sharded file, with path, car-scope block",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				lsys := &remotes[0].LinkSystem
+				lsys := remotes[0].LinkSystem
 				return []unixfs.DirEntry{wrapUnixfsContent(t, rndReader, lsys, unixfs.GenerateFile(t, lsys, rndReader, 4<<20))}
 			},
 			paths:         []string{"/want2/want1/want0"},
@@ -576,7 +585,7 @@ func TestHttpFetch(t *testing.T) {
 			name:             "graphsync large sharded file, fixedPeer",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				fileEntry := unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20)
+				fileEntry := unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20)
 				// wipe content routing information for remote
 				remotes[0].Cids = make(map[cid.Cid]struct{})
 				return []unixfs.DirEntry{fileEntry}
@@ -594,7 +603,7 @@ func TestHttpFetch(t *testing.T) {
 			name:           "bitswap large sharded file",
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				fileEntry := unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20)
+				fileEntry := unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20)
 				// wipe content routing information for remote
 				remotes[0].Cids = make(map[cid.Cid]struct{})
 				return []unixfs.DirEntry{fileEntry}
@@ -629,6 +638,7 @@ func TestHttpFetch(t *testing.T) {
 			mrn.AddBitswapPeers(testCase.bitswapRemotes)
 			require.NoError(t, mrn.MN.LinkAll())
 
+			carFiles := debugRemotes(t, ctx, testCase.name, mrn.Remotes)
 			srcData := testCase.generate(t, rndReader, mrn.Remotes)
 
 			// Setup a new lassie
@@ -717,13 +727,32 @@ func TestHttpFetch(t *testing.T) {
 					err = resp.Body.Close()
 					req.NoError(err)
 
+					if DEBUG_DATA {
+						dstf, err := os.CreateTemp("", fmt.Sprintf("%s_received%d.car", testCase.name, i))
+						req.NoError(err)
+						t.Logf("Writing received data to CAR @ %s", dstf.Name())
+						_, err = dstf.Write(body)
+						req.NoError(err)
+						carFiles = append(carFiles, dstf)
+					}
+
 					if testCase.validateBodies != nil && testCase.validateBodies[i] != nil {
 						testCase.validateBodies[i](t, srcData[i], body)
 					} else {
-						gotDir := unixfs.CarToDirEntry(t, bytes.NewReader(body), srcData[i].Root, true)
+						// gotDir := unixfs.CarToDirEntry(t, bytes.NewReader(body), srcData[i].Root, true)
+						gotLsys := unixfs.CarBytesLinkSystem(t, bytes.NewReader(body))
+						gotDir := unixfs.ToDirEntry(t, gotLsys, srcData[i].Root, true)
 						unixfs.CompareDirEntries(t, srcData[i], gotDir)
 					}
 				}
+			}
+
+			if DEBUG_DATA {
+				for _, cf := range carFiles {
+					req.NoError(cf.Close())
+					req.NoError(os.Remove(cf.Name()))
+				}
+				t.Logf("Cleaned up CARs")
 			}
 
 			err = httpServer.Close()
@@ -797,4 +826,38 @@ func wrapUnixfsContent(t *testing.T, rndReader io.Reader, lsys *ipld.LinkSystem,
 	want = unixfs.BuildDirectory(t, lsys, []unixfs.DirEntry{before, want, after}, false)
 
 	return want
+}
+
+func debugRemotes(t *testing.T, ctx context.Context, name string, remotes []testpeer.TestPeer) []*os.File {
+	if !DEBUG_DATA {
+		return nil
+	}
+	carFiles := make([]*os.File, 0)
+	for ii, r := range remotes {
+		func(ii int, r testpeer.TestPeer) {
+			carFile, err := os.CreateTemp("", fmt.Sprintf("%s_remote%d.car", name, ii))
+			require.NoError(t, err)
+			t.Logf("Writing source data to CAR @ %s", carFile.Name())
+			carFiles = append(carFiles, carFile)
+			carW, err := storage.NewWritable(carFile, []cid.Cid{}, carv2.WriteAsCarV1(true), carv2.AllowDuplicatePuts(true))
+			require.NoError(t, err)
+			swo := r.LinkSystem.StorageWriteOpener
+			r.LinkSystem.StorageWriteOpener = func(lc linking.LinkContext) (io.Writer, linking.BlockWriteCommitter, error) {
+				w, c, err := swo(lc)
+				if err != nil {
+					return nil, nil, err
+				}
+				var buf bytes.Buffer
+				return &buf, func(l datamodel.Link) error {
+					require.NoError(t, carW.Put(ctx, l.(cidlink.Link).Cid.KeyString(), buf.Bytes()))
+					_, err := w.Write(buf.Bytes())
+					if err != nil {
+						return err
+					}
+					return c(l)
+				}, nil
+			}
+		}(ii, r)
+	}
+	return carFiles
 }

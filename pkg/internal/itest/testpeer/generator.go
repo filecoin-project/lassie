@@ -129,7 +129,7 @@ type TestPeer struct {
 	blockstore         blockstore.Blockstore
 	Host               host.Host
 	blockstoreDelay    delay.D
-	LinkSystem         linking.LinkSystem
+	LinkSystem         *linking.LinkSystem
 	Cids               map[cid.Cid]struct{}
 }
 
@@ -182,7 +182,7 @@ func NewTestGraphsyncPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identi
 	// Setup remote data transfer
 	gsNetRemote := gsnet.NewFromLibp2pHost(peer.Host)
 	dtNetRemote := dtnet.NewFromLibp2pHost(peer.Host, dtnet.RetryParameters(0, 0, 0, 0))
-	gsRemote := gsimpl.New(ctx, gsNetRemote, peer.LinkSystem)
+	gsRemote := gsimpl.New(ctx, gsNetRemote, *peer.LinkSystem)
 	gstpRemote := gstransport.NewTransport(peer.Host.ID(), gsRemote)
 	dtRemote, err := dtimpl.NewDataTransfer(dstore, dtNetRemote, gstpRemote)
 	if err != nil {
@@ -215,12 +215,13 @@ func newTestPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity) (Test
 	if err != nil {
 		return TestPeer{}, nil, err
 	}
+	lsys := storeutil.LinkSystemForBlockstore(bstore)
 	tp := TestPeer{
 		Host:            client,
 		ID:              p.ID(),
 		blockstore:      bstore,
 		blockstoreDelay: bsdelay,
-		LinkSystem:      storeutil.LinkSystemForBlockstore(bstore),
+		LinkSystem:      &lsys,
 		Cids:            make(map[cid.Cid]struct{}),
 	}
 

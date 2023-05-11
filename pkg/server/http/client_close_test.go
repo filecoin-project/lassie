@@ -32,7 +32,7 @@ func TestHttpClientClose(t *testing.T) {
 	mrn.AddBitswapPeers(1)
 	require.NoError(t, mrn.MN.LinkAll())
 
-	srcData := unixfs.GenerateFile(t, &mrn.Remotes[0].LinkSystem, rndReader, 20<<20)
+	srcData := unixfs.GenerateFile(t, mrn.Remotes[0].LinkSystem, rndReader, 20<<20)
 
 	// Setup a new lassie
 	req := require.New(t)

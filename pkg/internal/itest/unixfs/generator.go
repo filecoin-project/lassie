@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"io"
 	"math/big"
+	"sort"
 	"strings"
 	"testing"
 
@@ -92,8 +93,15 @@ func GenerateDirectoryFrom(t *testing.T,
 			if targetSize-curSize <= 1024 { // don't make tiny directories
 				continue
 			}
-			newDir, err := namegen.RandomDirectoryName(randReader)
-			require.NoError(t, err)
+			var newDir string
+			for {
+				var err error
+				newDir, err = namegen.RandomDirectoryName(randReader)
+				require.NoError(t, err)
+				if !dupeName(children, newDir) {
+					break
+				}
+			}
 			child := GenerateDirectoryFrom(t, linkSys, randReader, targetSize-curSize, dir+"/"+newDir, false)
 			children = append(children, child)
 			curSize += int(child.TSize)
@@ -108,8 +116,15 @@ func GenerateDirectoryFrom(t *testing.T,
 				}
 			}
 			entry := GenerateFile(t, linkSys, randReader, size)
-			name, err := namegen.RandomFileName(randReader)
-			require.NoError(t, err)
+			var name string
+			for {
+				var err error
+				name, err = namegen.RandomFileName(randReader)
+				require.NoError(t, err)
+				if !dupeName(children, name) {
+					break
+				}
+			}
 			entry.Path = dir + "/" + name
 			curSize += size
 			children = append(children, entry)
@@ -120,7 +135,22 @@ func GenerateDirectoryFrom(t *testing.T,
 	return dirEntry
 }
 
+func dupeName(children []DirEntry, name string) bool {
+	for _, child := range children {
+		if strings.HasSuffix(child.Path, "/"+name) {
+			return true
+		}
+	}
+	return false
+}
+
 func BuildDirectory(t *testing.T, linkSys *linking.LinkSystem, children []DirEntry, sharded bool) DirEntry {
+	// create stable sorted children, which should match the encoded form
+	// in dag-pb
+	sort.Slice(children, func(i, j int) bool {
+		return strings.Compare(children[i].Path, children[j].Path) < 0
+	})
+
 	dirLinks := make([]dagpb.PBLink, 0)
 	for _, child := range children {
 		paths := strings.Split(child.Path, "/")
