@@ -14,7 +14,6 @@ import (
 	dtimpl "github.com/filecoin-project/go-data-transfer/v2/impl"
 	dtnet "github.com/filecoin-project/go-data-transfer/v2/network"
 	gstransport "github.com/filecoin-project/go-data-transfer/v2/transport/graphsync"
-	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
@@ -31,6 +30,7 @@ import (
 	"github.com/ipfs/go-unixfsnode"
 	"github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/storage"
+	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/linking"
@@ -45,6 +45,7 @@ import (
 	peer "github.com/libp2p/go-libp2p/core/peer"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/multiformats/go-multicodec"
 	"github.com/stretchr/testify/require"
 )
 
@@ -162,17 +163,13 @@ type TestPeer struct {
 	BitswapServer      *server.Server
 	BitswapNetwork     bsnet.BitSwapNetwork
 	DatatransferServer datatransfer.Manager
-	ProtocolHttp       *retriever.ProtocolHttp
+	HttpServer         *TestPeerHttpServer
 	blockstore         blockstore.Blockstore
 	Host               host.Host
 	blockstoreDelay    delay.D
 	LinkSystem         *linking.LinkSystem
 	Cids               map[cid.Cid]struct{}
-
-	// TODO: Replace with enum
-	Bitswap   bool
-	Graphsync bool
-	Http      bool
+	Protocol           multicodec.Code
 }
 
 // Blockstore returns the block store for this test instance
@@ -212,7 +209,7 @@ func NewTestBitswapPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity
 	}()
 	peer.BitswapServer = bs
 	peer.BitswapNetwork = bsNet
-	peer.Bitswap = true
+	peer.Protocol = multicodec.TransportBitswap
 	return peer, nil
 }
 
@@ -238,7 +235,7 @@ func NewTestGraphsyncPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identi
 	}
 
 	peer.DatatransferServer = dtRemote
-	peer.Graphsync = true
+	peer.Protocol = multicodec.TransportGraphsyncFilecoinv1
 	return peer, nil
 }
 
@@ -253,18 +250,27 @@ func NewTestHttpPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity, t
 	peer.Host.Peerstore().AddAddr(p.ID(), httpAddr, 10*time.Minute) // TODO: Look into ttl duration?
 
 	go func() {
-		// Handle /ipfs/ endpoint
-		http.HandleFunc("/ipfs/", HttpHandler(ctx, peer.LinkSystem))
-
 		// Parse multiaddr IP and port, serve http server from address
 		addrParts := strings.Split(p.Address().String(), "/")
-		err := http.ListenAndServe(fmt.Sprintf("%s:%s", addrParts[2], addrParts[4]), nil)
+		peerHttpServer, err := NewTestPeerHttpServer(ctx, addrParts[2], addrParts[4])
+		if err != nil {
+			logger.Errorw("failed to make test peer http server", "err", err)
+			ctx.Done()
+		}
+		peer.HttpServer = peerHttpServer
+
+		// Handle custom /ipfs/ endpoint
+		peerHttpServer.Mux.HandleFunc("/ipfs/", MockIpfsHandler(ctx, peer.LinkSystem))
+
+		// Start the server
+		peerHttpServer.Start()
 		if err != http.ErrServerClosed {
-			logger.Errorw("failed to start mocknet peer http server", "err", err)
+			logger.Errorw("failed to start peer http server", "err", err)
+			ctx.Done()
 		}
 	}()
 
-	peer.Http = true
+	peer.Protocol = multicodec.TransportIpfsGatewayHttp
 	return peer, nil
 }
 
@@ -331,7 +337,7 @@ func StartAndWaitForReady(ctx context.Context, manager datatransfer.Manager) err
 	}
 }
 
-func HttpHandler(ctx context.Context, lsys linking.LinkSystem) func(http.ResponseWriter, *http.Request) {
+func MockIpfsHandler(ctx context.Context, lsys linking.LinkSystem) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
 		urlPath := strings.Split(req.URL.Path, "/")[1:]
 
@@ -349,20 +355,27 @@ func HttpHandler(ctx context.Context, lsys linking.LinkSystem) func(http.Respons
 			unixfsPath = "/" + strings.Join(urlPath[2:], "/")
 		}
 
-		// Parse car scope and use it to get selector
-		carScope := types.CarScopeAll
-		if req.URL.Query().Has("car-scope") {
-			switch req.URL.Query().Get("car-scope") {
-			case "all":
-			case "file":
-				carScope = types.CarScopeFile
-			case "block":
-				carScope = types.CarScopeBlock
-			default:
-				http.Error(res, fmt.Sprintf("Invalid  car-scope parameter: %s", req.URL.Query().Get("car-scope")), http.StatusBadRequest)
-				return
-			}
+		// We're always providing the car-scope parameter, so add a failure case if we stop
+		// providing it in the future
+		if !req.URL.Query().Has("car-scope") {
+			http.Error(res, "Missing car-scope parameter", http.StatusBadRequest)
+			return
 		}
+
+		// Parse car scope and use it to get selector
+		var carScope types.CarScope
+		switch req.URL.Query().Get("car-scope") {
+		case "all":
+			carScope = types.CarScopeAll
+		case "file":
+			carScope = types.CarScopeFile
+		case "block":
+			carScope = types.CarScopeBlock
+		default:
+			http.Error(res, fmt.Sprintf("Invalid car-scope parameter: %s", req.URL.Query().Get("car-scope")), http.StatusBadRequest)
+			return
+		}
+
 		selNode := unixfsnode.UnixFSPathSelectorBuilder(unixfsPath, carScope.TerminalSelectorSpec(), false)
 		sel, err := selector.CompileSelector(selNode)
 		if err != nil {
@@ -396,7 +409,16 @@ func HttpHandler(ctx context.Context, lsys linking.LinkSystem) func(http.Respons
 			return bytes.NewReader(byts), nil
 		}
 
-		rootNode, err := lsys.Load(linking.LinkContext{}, cidlink.Link{Cid: rootCid}, basicnode.Prototype.Any)
+		protoChooser := dagpb.AddSupportToChooser(basicnode.Chooser)
+		lnk := cidlink.Link{Cid: rootCid}
+		lnkCtx := linking.LinkContext{}
+		proto, err := protoChooser(lnk, lnkCtx)
+		if err != nil {
+			http.Error(res, fmt.Sprintf("Failed to choose prototype node: %s", cidStr), http.StatusBadRequest)
+			return
+		}
+
+		rootNode, err := lsys.Load(lnkCtx, lnk, proto)
 		if err != nil {
 			http.Error(res, fmt.Sprintf("Failed to load root cid into link system: %v", err), http.StatusInternalServerError)
 			return
@@ -405,14 +427,16 @@ func HttpHandler(ctx context.Context, lsys linking.LinkSystem) func(http.Respons
 		cfg := &traversal.Config{
 			Ctx:                            ctx,
 			LinkSystem:                     lsys,
-			LinkTargetNodePrototypeChooser: basicnode.Chooser,
+			LinkTargetNodePrototypeChooser: protoChooser,
 		}
 		progress := traversal.Progress{Cfg: cfg}
 
-		err = progress.WalkAdv(rootNode, sel, func(p traversal.Progress, n datamodel.Node, vr traversal.VisitReason) error { return nil })
+		err = progress.WalkAdv(rootNode, sel, visitNoop)
 		if err != nil {
 			http.Error(res, fmt.Sprintf("Failed to traverse from root node: %v", err), http.StatusInternalServerError)
 			return
 		}
 	}
 }
+
+func visitNoop(p traversal.Progress, n datamodel.Node, vr traversal.VisitReason) error { return nil }
