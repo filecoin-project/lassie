@@ -12,10 +12,9 @@ import (
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/types"
+	"github.com/filecoin-project/lassie/pkg/verifiedcar"
 	"github.com/ipfs/go-cid"
-	"github.com/ipld/go-car/v2"
-	"github.com/ipld/go-ipld-prime"
-	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/multiformats/go-multicodec"
 )
@@ -103,7 +102,6 @@ func (ph *ProtocolHttp) Retrieve(
 	timeout time.Duration,
 	candidate types.RetrievalCandidate,
 ) (*types.RetrievalStats, error) {
-
 	// Connect and read body in one flow, we can move ph.beginRequest() to Connect()
 	// to parallelise connections if we have confidence in not wasting server time
 	// by requesting but not reading bodies (or delayed reading which may result in
@@ -115,46 +113,34 @@ func (ph *ProtocolHttp) Retrieve(
 
 	defer resp.Body.Close()
 
-	var blockBytes uint64
-	cbr, err := car.NewBlockReader(resp.Body)
+	var ttfb time.Duration
+	rdr := newTimeToFirstByteReader(resp.Body, func() {
+		ttfb = retrieval.Clock.Since(phaseStartTime)
+		session.sendEvent(events.FirstByte(retrieval.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, candidate))
+	})
+
+	sel, err := selector.CompileSelector(retrieval.request.GetSelector())
 	if err != nil {
 		return nil, err
 	}
-	ttfb := retrieval.Clock.Since(phaseStartTime)
-	session.sendEvent(events.FirstByte(retrieval.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, candidate))
 
-	var blockCount uint64
-	for {
-		blk, err := cbr.Next()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			return nil, err
-		}
-		w, d, err := retrieval.request.LinkSystem.StorageWriteOpener(ipld.LinkContext{})
-		if err != nil {
-			return nil, err
-		}
-		_, err = w.Write(blk.RawData())
-		if err != nil {
-			return nil, err
-		}
-		blockBytes += uint64(len(blk.RawData()))
-		err = d(cidlink.Link{Cid: blk.Cid()})
-		if err != nil {
-			return nil, err
-		}
-		blockCount++
+	cfg := verifiedcar.Config{
+		Root:     retrieval.request.Cid,
+		Selector: sel,
+	}
+
+	blockCount, byteCount, err := cfg.Verify(ctx, rdr, retrieval.request.LinkSystem)
+	if err != nil {
+		return nil, err
 	}
 
 	duration := retrieval.Clock.Since(phaseStartTime)
-	speed := uint64(float64(blockBytes) / duration.Seconds())
+	speed := uint64(float64(byteCount) / duration.Seconds())
 
 	return &types.RetrievalStats{
 		RootCid:           candidate.RootCid,
 		StorageProviderId: candidate.MinerPeer.ID,
-		Size:              blockBytes,
+		Size:              byteCount,
 		Blocks:            blockCount,
 		Duration:          duration,
 		AverageSpeed:      speed,
@@ -196,4 +182,27 @@ func makeRequest(ctx context.Context, request types.RetrievalRequest, candidate 
 	req.Header.Add("Accept", request.Scope.AcceptHeader())
 
 	return req, nil
+}
+
+var _ io.Reader = (*timeToFirstByteReader)(nil)
+
+type timeToFirstByteReader struct {
+	r     io.Reader
+	first bool
+	cb    func()
+}
+
+func newTimeToFirstByteReader(r io.Reader, cb func()) *timeToFirstByteReader {
+	return &timeToFirstByteReader{
+		r:  r,
+		cb: cb,
+	}
+}
+
+func (t *timeToFirstByteReader) Read(p []byte) (n int, err error) {
+	if !t.first {
+		t.first = true
+		defer t.cb()
+	}
+	return t.r.Read(p)
 }

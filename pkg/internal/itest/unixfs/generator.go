@@ -176,6 +176,7 @@ func BuildDirectory(t *testing.T, linkSys *linking.LinkSystem, children []DirEnt
 		root, size, err = builder.BuildUnixFSDirectory(dirLinks, linkSys)
 		require.NoError(t, err)
 	}
+
 	return DirEntry{
 		Path:     "",
 		Root:     root.(cidlink.Link).Cid,
