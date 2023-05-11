@@ -2,6 +2,8 @@ package unixfs
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"testing"
@@ -102,10 +104,12 @@ func toDirEntryRecursive(t *testing.T, linkSys linking.LinkSystem, rootCid cid.C
 }
 
 func CompareDirEntries(t *testing.T, a, b DirEntry) {
-	t.Log("CompareDirEntries", a.Path, b.Path) // TODO: remove this
+	// t.Log("CompareDirEntries", a.Path, b.Path) // TODO: remove this
 	require.Equal(t, a.Path, b.Path)
-	require.Equal(t, a.Content, b.Content, a.Path+" content mismatch")
-	require.Equal(t, a.Root, b.Root, a.Path+" root mismatch")
+	require.Equal(t, a.Root.String(), b.Root.String(), a.Path+" root mismatch")
+	hashA := sha256.Sum256(a.Content)
+	hashB := sha256.Sum256(b.Content)
+	require.Equal(t, hex.EncodeToString(hashA[:]), hex.EncodeToString(hashB[:]), a.Path+"content hash mismatch")
 	require.Equal(t, len(a.Children), len(b.Children), fmt.Sprintf("%s child length mismatch %d <> %d", a.Path, len(a.Children), len(b.Children)))
 	for i := range a.Children {
 		// not necessarily in order

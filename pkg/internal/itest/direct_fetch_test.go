@@ -72,11 +72,11 @@ func TestDirectFetch(t *testing.T) {
 			// graphsync peer (0)
 			graphsyncMAs, err := peer.AddrInfoToP2pAddrs(mrn.Remotes[0].AddrInfo())
 			req.NoError(err)
-			srcData1 := unixfs.GenerateFile(t, &mrn.Remotes[0].LinkSystem, rndReader, 4<<20)
+			srcData1 := unixfs.GenerateFile(t, mrn.Remotes[0].LinkSystem, rndReader, 4<<20)
 			mocknet.SetupRetrieval(t, mrn.Remotes[0])
 
 			// bitswap peer (1)
-			srcData2 := unixfs.GenerateFile(t, &mrn.Remotes[1].LinkSystem, bytes.NewReader(srcData1.Content), 4<<20)
+			srcData2 := unixfs.GenerateFile(t, mrn.Remotes[1].LinkSystem, bytes.NewReader(srcData1.Content), 4<<20)
 			req.Equal(srcData2.Root, srcData2.Root)
 			bitswapMAs, err := peer.AddrInfoToP2pAddrs(mrn.Remotes[1].AddrInfo())
 			req.NoError(err)
