@@ -160,7 +160,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 				if hasProtocols {
 					filteredProtocols, err = types.ParseProtocolsString(protocolsString)
 					if err != nil {
-						statusLogger.logStatus(http.StatusBadRequest, "Invalid peer-filter  parameter")
+						statusLogger.logStatus(http.StatusBadRequest, "Invalid peer-filter parameter")
 						res.WriteHeader(http.StatusBadRequest)
 						return
 					}
