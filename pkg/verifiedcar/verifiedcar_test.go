@@ -35,7 +35,6 @@ func TestVerifiedCar(t *testing.T) {
 	req := require.New(t)
 
 	rndSeed := time.Now().UTC().UnixNano()
-	// rndSeed = 1683717206615965475
 	t.Logf("random seed: %d", rndSeed)
 	var rndReader io.Reader = rand.New(rand.NewSource(rndSeed))
 
@@ -68,7 +67,7 @@ func TestVerifiedCar(t *testing.T) {
 	for {
 		unixfsDir = unixfs.GenerateDirectory(t, &lsys, rndReader, 8<<20, false)
 		unixfsDirBlocks = toBlocks(t, lsys, unixfsDir.Root, allSelector)
-		if len(unixfsDir.Children) > 1 { // we need at least 2 children to test the path subset selector
+		if len(unixfsDir.Children) > 2 { // we want at least 3 children to test the path subset selector
 			break
 		}
 	}
@@ -81,7 +80,7 @@ func TestVerifiedCar(t *testing.T) {
 	unixfsPreloadDirBlocks := toBlocks(t, lsys, unixfsDir.Root, unixfsPreloadSelector)
 	unixfsPreloadShardedDirBlocks := toBlocks(t, lsys, unixfsShardedDir.Root, unixfsPreloadSelector)
 
-	unixfsDirSubsetSelector := mustCompile(unixfsnode.UnixFSPathSelectorBuilder(unixfsDir.Children[0].Path, unixfsnode.MatchUnixFSPreloadSelector, false))
+	unixfsDirSubsetSelector := mustCompile(unixfsnode.UnixFSPathSelectorBuilder(unixfsDir.Children[1].Path, unixfsnode.MatchUnixFSPreloadSelector, false))
 
 	unixfsWrappedPathSelector := mustCompile(unixfsnode.UnixFSPathSelectorBuilder(unixfs.WrapPath, unixfsnode.ExploreAllRecursivelySelector, false))
 	unixfsWrappedPreloadPathSelector := mustCompile(unixfsnode.UnixFSPathSelectorBuilder(unixfs.WrapPath, unixfsnode.MatchUnixFSPreloadSelector, false))

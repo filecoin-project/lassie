@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"io"
 	"math/big"
+	"sort"
 	"strings"
 	"testing"
 
@@ -140,6 +141,12 @@ func GenerateDirectoryFrom(t *testing.T,
 }
 
 func BuildDirectory(t *testing.T, linkSys *linking.LinkSystem, children []DirEntry, sharded bool) DirEntry {
+	// create stable sorted children, which should match the encoded form
+	// in dag-pb
+	sort.Slice(children, func(i, j int) bool {
+		return strings.Compare(children[i].Path, children[j].Path) < 0
+	})
+
 	dirLinks := make([]dagpb.PBLink, 0)
 	for _, child := range children {
 		paths := strings.Split(child.Path, "/")
@@ -165,6 +172,7 @@ func BuildDirectory(t *testing.T, linkSys *linking.LinkSystem, children []DirEnt
 		root, size, err = builder.BuildUnixFSDirectory(dirLinks, linkSys)
 		require.NoError(t, err)
 	}
+
 	return DirEntry{
 		Path:     "",
 		Root:     root.(cidlink.Link).Cid,
