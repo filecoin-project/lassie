@@ -260,7 +260,7 @@ func NewTestHttpPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity, t
 		peer.HttpServer = peerHttpServer
 
 		// Handle custom /ipfs/ endpoint
-		peerHttpServer.Mux.HandleFunc("/ipfs/", MockIpfsHandler(ctx, peer.LinkSystem))
+		peerHttpServer.Mux.HandleFunc("/ipfs/", MockIpfsHandler(ctx, *peer.LinkSystem))
 
 		// Start the server
 		peerHttpServer.Start()

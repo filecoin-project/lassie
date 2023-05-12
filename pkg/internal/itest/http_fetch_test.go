@@ -83,7 +83,7 @@ func TestHttpFetch(t *testing.T) {
 			name:        "http large sharded file",
 			httpRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				return []unixfs.DirEntry{unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20)}
+				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20)}
 			},
 		},
 		{
@@ -104,7 +104,7 @@ func TestHttpFetch(t *testing.T) {
 			name:        "http large directory",
 			httpRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false)}
+				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, false)}
 			},
 		},
 		{
@@ -125,7 +125,7 @@ func TestHttpFetch(t *testing.T) {
 			name:        "http large sharded directory",
 			httpRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true)}
+				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, true)}
 			},
 		},
 		{
