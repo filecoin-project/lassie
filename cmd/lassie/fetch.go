@@ -3,12 +3,14 @@ package main
 import (
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/dustin/go-humanize"
 	"github.com/filecoin-project/lassie/pkg/events"
+	"github.com/filecoin-project/lassie/pkg/indexerlookup"
 	"github.com/filecoin-project/lassie/pkg/lassie"
 	"github.com/filecoin-project/lassie/pkg/net/host"
 	"github.com/filecoin-project/lassie/pkg/retriever"
@@ -85,6 +87,12 @@ var fetchCmd = &cli.Command{
 				return err
 			},
 		},
+		&cli.StringFlag{
+			Name:        "ipniEndpoint",
+			Aliases:     []string{"ipni"},
+			DefaultText: "Defaults to https://cid.contact",
+			Usage:       "HTTP endpoint of the IPNI instance used to discover providers.",
+		},
 		FlagEventRecorderAuth,
 		FlagEventRecorderInstanceId,
 		FlagEventRecorderUrl,
@@ -132,7 +140,24 @@ func Fetch(cctx *cli.Context) error {
 
 	if len(fetchProviderAddrInfos) > 0 {
 		finderOpt := lassie.WithFinder(retriever.NewDirectCandidateFinder(host, fetchProviderAddrInfos))
+		if cctx.IsSet("ipniEndpoint") {
+			log.Warn("Ignoring ipniEndpoint flag since direct provider is specified")
+		}
 		lassieOpts = append(lassieOpts, finderOpt)
+	} else if cctx.IsSet("ipniEndpoint") {
+		endpoint := cctx.String("ipniEndpoint")
+		endpointUrl, err := url.Parse(endpoint)
+		if err != nil {
+			log.Errorw("Failed to parse IPNI endpoint as URL", "err", err)
+			return fmt.Errorf("cannot parse given IPNI endpoint %s as valid URL: %w", endpoint, err)
+		}
+		finder, err := indexerlookup.NewCandidateFinder(indexerlookup.WithHttpEndpoint(endpointUrl))
+		if err != nil {
+			log.Errorw("Failed to instantiate IPNI candidate finder", "err", err)
+			return err
+		}
+		lassieOpts = append(lassieOpts, lassie.WithFinder(finder))
+		log.Debug("Using explicit IPNI endpoint to find candidates", "endpoint", endpoint)
 	}
 
 	if len(providerBlockList) > 0 {
