@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"testing"
@@ -480,7 +479,7 @@ func TestVerifiedCar(t *testing.T) {
 			carStream := makeCarStream(t, ctx, testCase.roots, testCase.blocks, testCase.carv2, testCase.err != "")
 			blockCount, byteCount, err := testCase.cfg.Verify(ctx, carStream, lsys)
 			// read the rest of data
-			ioutil.ReadAll(carStream)
+			io.ReadAll(carStream)
 
 			if testCase.err != "" {
 				req.ErrorContains(err, testCase.err)
