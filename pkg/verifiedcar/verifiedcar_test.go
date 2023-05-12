@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/filecoin-project/lassie/pkg/internal/itest/unixfs"
 	"github.com/filecoin-project/lassie/pkg/verifiedcar"
 	"github.com/ipfs/go-cid"
 	gstestutil "github.com/ipfs/go-graphsync/testutil"
 	format "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-unixfsnode"
+	unixfs "github.com/ipfs/go-unixfsnode/testutil"
 	"github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/storage"
 	dagpb "github.com/ipld/go-codec-dagpb"

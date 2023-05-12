@@ -19,11 +19,11 @@ import (
 	datatransfer "github.com/filecoin-project/go-data-transfer/v2"
 	"github.com/filecoin-project/lassie/pkg/internal/itest/mocknet"
 	"github.com/filecoin-project/lassie/pkg/internal/itest/testpeer"
-	"github.com/filecoin-project/lassie/pkg/internal/itest/unixfs"
 	"github.com/filecoin-project/lassie/pkg/lassie"
 	httpserver "github.com/filecoin-project/lassie/pkg/server/http"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
+	unixfs "github.com/ipfs/go-unixfsnode/testutil"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/storage"
 	"github.com/ipld/go-ipld-prime"
@@ -333,7 +333,7 @@ func TestHttpFetch(t *testing.T) {
 				// validate we got the dag-scope entity form
 				validateCarBody(t, body, srcData.Root, wantCids, false)
 				// validate that we got the full depth form under the path
-				gotDir := unixfs.CarToDirEntry(t, bytes.NewReader(body), srcData.Children[1].Children[1].Children[1].Root, true)
+				gotDir := CarToDirEntry(t, bytes.NewReader(body), srcData.Children[1].Children[1].Children[1].Root, true)
 				gotDir.Path = "want0"
 				unixfs.CompareDirEntries(t, srcData.Children[1].Children[1].Children[1], gotDir)
 			}},
@@ -357,7 +357,7 @@ func TestHttpFetch(t *testing.T) {
 				// validate we got the dag-scope entity form
 				validateCarBody(t, body, srcData.Root, wantCids, false)
 				// validate that we got the full depth form under the path
-				gotDir := unixfs.CarToDirEntry(t, bytes.NewReader(body), srcData.Children[1].Children[1].Children[1].Root, true)
+				gotDir := CarToDirEntry(t, bytes.NewReader(body), srcData.Children[1].Children[1].Children[1].Root, true)
 				gotDir.Path = "want0"
 				unixfs.CompareDirEntries(t, srcData.Children[1].Children[1].Children[1], gotDir)
 			}},
@@ -447,7 +447,7 @@ func TestHttpFetch(t *testing.T) {
 				// validate we got the dag-scope entity form
 				validateCarBody(t, body, srcData.Root, wantCids, false)
 				// validate that we got the full depth form under the path
-				gotDir := unixfs.CarToDirEntry(t, bytes.NewReader(body), srcData.Children[1].Children[1].Children[1].Root, true)
+				gotDir := CarToDirEntry(t, bytes.NewReader(body), srcData.Children[1].Children[1].Children[1].Root, true)
 				gotDir.Path = "want0"
 				unixfs.CompareDirEntries(t, srcData.Children[1].Children[1].Children[1], gotDir)
 			}},
@@ -471,7 +471,7 @@ func TestHttpFetch(t *testing.T) {
 				// validate we got the dag-scope entity form
 				validateCarBody(t, body, srcData.Root, wantCids, false)
 				// validate that we got the full depth form under the path
-				gotDir := unixfs.CarToDirEntry(t, bytes.NewReader(body), srcData.Children[1].Children[1].Children[1].Root, true)
+				gotDir := CarToDirEntry(t, bytes.NewReader(body), srcData.Children[1].Children[1].Children[1].Root, true)
 				gotDir.Path = "want0"
 				unixfs.CompareDirEntries(t, srcData.Children[1].Children[1].Children[1], gotDir)
 			}},
@@ -781,8 +781,8 @@ func TestHttpFetch(t *testing.T) {
 					if testCase.validateBodies != nil && testCase.validateBodies[i] != nil {
 						testCase.validateBodies[i](t, srcData[i], body)
 					} else {
-						// gotDir := unixfs.CarToDirEntry(t, bytes.NewReader(body), srcData[i].Root, true)
-						gotLsys := unixfs.CarBytesLinkSystem(t, bytes.NewReader(body))
+						// gotDir := CarToDirEntry(t, bytes.NewReader(body), srcData[i].Root, true)
+						gotLsys := CarBytesLinkSystem(t, bytes.NewReader(body))
 						gotDir := unixfs.ToDirEntry(t, gotLsys, srcData[i].Root, true)
 						unixfs.CompareDirEntries(t, srcData[i], gotDir)
 					}
