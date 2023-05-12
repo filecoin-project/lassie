@@ -59,6 +59,8 @@ func TestVerifiedCar(t *testing.T) {
 
 	allSelector := mustCompile(selectorparse.CommonSelector_ExploreAllRecursively)
 
+	wrapPath := "/some/path/to/content"
+
 	unixfsFile := unixfs.GenerateFile(t, &lsys, rndReader, 4<<20)
 	unixfsFileBlocks := toBlocks(t, lsys, unixfsFile.Root, allSelector)
 
@@ -82,24 +84,24 @@ func TestVerifiedCar(t *testing.T) {
 
 	unixfsDirSubsetSelector := mustCompile(unixfsnode.UnixFSPathSelectorBuilder(unixfsDir.Children[1].Path, unixfsnode.MatchUnixFSPreloadSelector, false))
 
-	unixfsWrappedPathSelector := mustCompile(unixfsnode.UnixFSPathSelectorBuilder(unixfs.WrapPath, unixfsnode.ExploreAllRecursivelySelector, false))
-	unixfsWrappedPreloadPathSelector := mustCompile(unixfsnode.UnixFSPathSelectorBuilder(unixfs.WrapPath, unixfsnode.MatchUnixFSPreloadSelector, false))
+	unixfsWrappedPathSelector := mustCompile(unixfsnode.UnixFSPathSelectorBuilder(wrapPath, unixfsnode.ExploreAllRecursivelySelector, false))
+	unixfsWrappedPreloadPathSelector := mustCompile(unixfsnode.UnixFSPathSelectorBuilder(wrapPath, unixfsnode.MatchUnixFSPreloadSelector, false))
 
-	unixfsWrappedFile := unixfs.WrapContent(t, rndReader, &lsys, unixfsFile)
+	unixfsWrappedFile := unixfs.WrapContent(t, rndReader, &lsys, unixfsFile, wrapPath, false)
 	unixfsWrappedFileBlocks := toBlocks(t, lsys, unixfsWrappedFile.Root, allSelector)
 	// "trimmed" is similar to "exclusive" except that "trimmed" is a subset
 	// of a larger DAG, whereas "exclusive" is a complete DAG.
 	unixfsTrimmedWrappedFileBlocks := toBlocks(t, lsys, unixfsWrappedFile.Root, unixfsWrappedPathSelector)
-	unixfsExclusiveWrappedFile := unixfs.WrapContentExclusive(t, rndReader, &lsys, unixfsFile)
+	unixfsExclusiveWrappedFile := unixfs.WrapContent(t, rndReader, &lsys, unixfsFile, wrapPath, true)
 	unixfsExclusiveWrappedFileBlocks := toBlocks(t, lsys, unixfsExclusiveWrappedFile.Root, allSelector)
 
-	unixfsWrappedShardedDir := unixfs.WrapContent(t, rndReader, &lsys, unixfsShardedDir)
+	unixfsWrappedShardedDir := unixfs.WrapContent(t, rndReader, &lsys, unixfsShardedDir, wrapPath, false)
 	unixfsWrappedShardedDirBlocks := toBlocks(t, lsys, unixfsWrappedShardedDir.Root, allSelector)
 	// "trimmed" is similar to "exclusive" except that "trimmed" is a subset
 	// of a larger DAG, whereas "exclusive" is a complete DAG.
 	unixfsTrimmedWrappedShardedDirBlocks := toBlocks(t, lsys, unixfsWrappedShardedDir.Root, unixfsWrappedPathSelector)
 	unixfsTrimmedWrappedShardedDirOnlyBlocks := toBlocks(t, lsys, unixfsWrappedShardedDir.Root, unixfsWrappedPreloadPathSelector)
-	unixfsExclusiveWrappedShardedDir := unixfs.WrapContentExclusive(t, rndReader, &lsys, unixfsShardedDir)
+	unixfsExclusiveWrappedShardedDir := unixfs.WrapContent(t, rndReader, &lsys, unixfsShardedDir, wrapPath, true)
 	unixfsExclusiveWrappedShardedDirBlocks := toBlocks(t, lsys, unixfsExclusiveWrappedShardedDir.Root, allSelector)
 	unixfsExclusiveWrappedShardedDirOnlyBlocks := toBlocks(t, lsys, unixfsExclusiveWrappedShardedDir.Root, unixfsWrappedPreloadPathSelector)
 

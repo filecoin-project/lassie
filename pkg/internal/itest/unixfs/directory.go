@@ -124,50 +124,29 @@ func CompareDirEntries(t *testing.T, a, b DirEntry) {
 	}
 }
 
-const WrapPath = "/want2/want1/want0"
-
 // WrapContent embeds the content we want in some random nested content such
-// that it's fetchable under the path "/want2/want1/want0" but also contains
-// extraneous files in those nested directories.
-func WrapContent(t *testing.T, rndReader io.Reader, lsys *ipld.LinkSystem, content DirEntry) DirEntry {
-	before := GenerateDirectory(t, lsys, rndReader, 4<<10, false)
-	before.Path = "!before"
-	// target content goes here
+// that it's fetchable under the provided path. If exclusive is true, the
+// content will be the only thing under the path. If false, there will be
+// content before and after the wrapped content at each point in the path.
+func WrapContent(t *testing.T, rndReader io.Reader, lsys *ipld.LinkSystem, content DirEntry, wrapPath string, exclusive bool) DirEntry {
 	want := content
-	want.Path = "want0"
-	after := GenerateFile(t, lsys, rndReader, 4<<11)
-	after.Path = "~after"
-	want = BuildDirectory(t, lsys, []DirEntry{before, want, after}, false)
-
-	before = GenerateFile(t, lsys, rndReader, 4<<10)
-	before.Path = "!before"
-	want.Path = "want1"
-	after = GenerateDirectory(t, lsys, rndReader, 4<<11, true)
-	after.Path = "~after"
-	want = BuildDirectory(t, lsys, []DirEntry{before, want, after}, false)
-
-	before = GenerateFile(t, lsys, rndReader, 4<<10)
-	before.Path = "!before"
-	want.Path = "want2"
-	after = GenerateFile(t, lsys, rndReader, 4<<11)
-	after.Path = "~after"
-	want = BuildDirectory(t, lsys, []DirEntry{before, want, after}, false)
-
-	return want
-}
-
-// WrapContentExclusive is the same as WrapContent but doesn't
-// include the extraneous files.
-func WrapContentExclusive(t *testing.T, rndReader io.Reader, lsys *ipld.LinkSystem, content DirEntry) DirEntry {
-	want := content
-	want.Path = "want0"
-	want = BuildDirectory(t, lsys, []DirEntry{want}, false)
-
-	want.Path = "want1"
-	want = BuildDirectory(t, lsys, []DirEntry{want}, false)
-
-	want.Path = "want2"
-	want = BuildDirectory(t, lsys, []DirEntry{want}, false)
-
+	ps := datamodel.ParsePath(wrapPath)
+	for ps.Len() > 0 {
+		de := []DirEntry{}
+		if !exclusive {
+			before := GenerateDirectory(t, lsys, rndReader, 4<<10, false)
+			before.Path = "!before"
+			de = append(de, before)
+		}
+		want.Path = ps.Last().String()
+		de = append(de, want)
+		if !exclusive {
+			after := GenerateDirectory(t, lsys, rndReader, 4<<11, true)
+			after.Path = "~after"
+			de = append(de, after)
+		}
+		want = BuildDirectory(t, lsys, de, false)
+		ps = ps.Pop()
+	}
 	return want
 }

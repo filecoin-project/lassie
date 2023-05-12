@@ -53,6 +53,8 @@ func TestHttpFetch(t *testing.T) {
 	type queryModifier func(url.Values, []testpeer.TestPeer)
 	type bodyValidator func(*testing.T, unixfs.DirEntry, []byte)
 
+	wrapPath := "/want2/want1/want0"
+
 	testCases := []struct {
 		name             string
 		graphsyncRemotes int
@@ -213,9 +215,9 @@ func TestHttpFetch(t *testing.T) {
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := remotes[0].LinkSystem
-				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateFile(t, lsys, rndReader, 4<<20))}
+				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateFile(t, lsys, rndReader, 4<<20), wrapPath, false)}
 			},
-			paths:         []string{unixfs.WrapPath},
+			paths:         []string{wrapPath},
 			modifyQueries: []queryModifier{entityQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
@@ -223,7 +225,7 @@ func TestHttpFetch(t *testing.T) {
 					srcData.Children[1].Root,             // "/want2"
 					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
-					srcData.Children[1].Children[1].Children[1].SelfCids..., // unixfs.WrapPath (full file)
+					srcData.Children[1].Children[1].Children[1].SelfCids..., // wrapPath (full file)
 				)
 				validateCarBody(t, body, srcData.Root, wantCids, true)
 			}},
@@ -233,9 +235,9 @@ func TestHttpFetch(t *testing.T) {
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := remotes[0].LinkSystem
-				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateFile(t, lsys, rndReader, 4<<20))}
+				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateFile(t, lsys, rndReader, 4<<20), wrapPath, false)}
 			},
-			paths:         []string{unixfs.WrapPath},
+			paths:         []string{wrapPath},
 			modifyQueries: []queryModifier{entityQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
@@ -243,7 +245,7 @@ func TestHttpFetch(t *testing.T) {
 					srcData.Children[1].Root,             // "/want2"
 					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
-					srcData.Children[1].Children[1].Children[1].SelfCids..., // unixfs.WrapPath (full file)
+					srcData.Children[1].Children[1].Children[1].SelfCids..., // wrapPath (full file)
 				)
 				validateCarBody(t, body, srcData.Root, wantCids, true)
 			}},
@@ -277,9 +279,9 @@ func TestHttpFetch(t *testing.T) {
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := remotes[0].LinkSystem
-				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, false))}
+				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, false), wrapPath, false)}
 			},
-			paths:         []string{unixfs.WrapPath},
+			paths:         []string{wrapPath},
 			modifyQueries: []queryModifier{entityQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
@@ -287,7 +289,7 @@ func TestHttpFetch(t *testing.T) {
 					srcData.Children[1].Root,             // "/want2"
 					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
-					srcData.Children[1].Children[1].Children[1].SelfCids..., // unixfs.WrapPath (full dir)
+					srcData.Children[1].Children[1].Children[1].SelfCids..., // wrapPath (full dir)
 				)
 				validateCarBody(t, body, srcData.Root, wantCids, true)
 			}},
@@ -297,9 +299,9 @@ func TestHttpFetch(t *testing.T) {
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := remotes[0].LinkSystem
-				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, false))}
+				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, false), wrapPath, false)}
 			},
-			paths:         []string{unixfs.WrapPath},
+			paths:         []string{wrapPath},
 			modifyQueries: []queryModifier{entityQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
@@ -307,7 +309,7 @@ func TestHttpFetch(t *testing.T) {
 					srcData.Children[1].Root,             // "/want2"
 					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
-					srcData.Children[1].Children[1].Children[1].SelfCids..., // unixfs.WrapPath (full dir)
+					srcData.Children[1].Children[1].Children[1].SelfCids..., // wrapPath (full dir)
 				)
 				validateCarBody(t, body, srcData.Root, wantCids, true)
 			}},
@@ -317,16 +319,16 @@ func TestHttpFetch(t *testing.T) {
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := remotes[0].LinkSystem
-				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, false))}
+				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, false), wrapPath, false)}
 			},
-			paths: []string{unixfs.WrapPath},
+			paths: []string{wrapPath},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
 					srcData.Children[1].Root,             // "/want2"
 					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
-					srcData.Children[1].Children[1].Children[1].SelfCids..., // unixfs.WrapPath (full dir)
+					srcData.Children[1].Children[1].Children[1].SelfCids..., // wrapPath (full dir)
 				)
 				// validate we got the dag-scope entity form
 				validateCarBody(t, body, srcData.Root, wantCids, false)
@@ -341,16 +343,16 @@ func TestHttpFetch(t *testing.T) {
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := remotes[0].LinkSystem
-				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, false))}
+				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, false), wrapPath, false)}
 			},
-			paths: []string{unixfs.WrapPath},
+			paths: []string{wrapPath},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
 					srcData.Children[1].Root,             // "/want2"
 					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
-					srcData.Children[1].Children[1].Children[1].SelfCids..., // unixfs.WrapPath (full dir)
+					srcData.Children[1].Children[1].Children[1].SelfCids..., // wrapPath (full dir)
 				)
 				// validate we got the dag-scope entity form
 				validateCarBody(t, body, srcData.Root, wantCids, false)
@@ -391,9 +393,9 @@ func TestHttpFetch(t *testing.T) {
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := remotes[0].LinkSystem
-				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, true))}
+				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, true), wrapPath, false)}
 			},
-			paths:         []string{unixfs.WrapPath},
+			paths:         []string{wrapPath},
 			modifyQueries: []queryModifier{entityQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
@@ -401,7 +403,7 @@ func TestHttpFetch(t *testing.T) {
 					srcData.Children[1].Root,             // "/want2"
 					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
-					srcData.Children[1].Children[1].Children[1].SelfCids..., // unixfs.WrapPath (full dir)
+					srcData.Children[1].Children[1].Children[1].SelfCids..., // wrapPath (full dir)
 				)
 				validateCarBody(t, body, srcData.Root, wantCids, true)
 			}},
@@ -411,9 +413,9 @@ func TestHttpFetch(t *testing.T) {
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := remotes[0].LinkSystem
-				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, true))}
+				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, true), wrapPath, false)}
 			},
-			paths:         []string{unixfs.WrapPath},
+			paths:         []string{wrapPath},
 			modifyQueries: []queryModifier{entityQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
@@ -421,7 +423,7 @@ func TestHttpFetch(t *testing.T) {
 					srcData.Children[1].Root,             // "/want2"
 					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
-					srcData.Children[1].Children[1].Children[1].SelfCids..., // unixfs.WrapPath (full dir)
+					srcData.Children[1].Children[1].Children[1].SelfCids..., // wrapPath (full dir)
 				)
 				validateCarBody(t, body, srcData.Root, wantCids, true)
 			}},
@@ -431,16 +433,16 @@ func TestHttpFetch(t *testing.T) {
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := remotes[0].LinkSystem
-				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, true))}
+				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, true), wrapPath, false)}
 			},
-			paths: []string{unixfs.WrapPath},
+			paths: []string{wrapPath},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
 					srcData.Children[1].Root,             // "/want2"
 					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
-					srcData.Children[1].Children[1].Children[1].SelfCids..., // unixfs.WrapPath (full dir)
+					srcData.Children[1].Children[1].Children[1].SelfCids..., // wrapPath (full dir)
 				)
 				// validate we got the dag-scope entity form
 				validateCarBody(t, body, srcData.Root, wantCids, false)
@@ -455,16 +457,16 @@ func TestHttpFetch(t *testing.T) {
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := remotes[0].LinkSystem
-				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, true))}
+				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, true), wrapPath, false)}
 			},
-			paths: []string{unixfs.WrapPath},
+			paths: []string{wrapPath},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
 					srcData.Children[1].Root,             // "/want2"
 					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
-					srcData.Children[1].Children[1].Children[1].SelfCids..., // unixfs.WrapPath (full dir)
+					srcData.Children[1].Children[1].Children[1].SelfCids..., // wrapPath (full dir)
 				)
 				// validate we got the dag-scope entity form
 				validateCarBody(t, body, srcData.Root, wantCids, false)
@@ -491,7 +493,7 @@ func TestHttpFetch(t *testing.T) {
 				}
 				lsys.TrustedStorage = true
 				// generate data
-				data := unixfs.WrapContent(t, rndReader, &lsys, unixfs.GenerateDirectory(t, &lsys, rndReader, 16<<20, true))
+				data := unixfs.WrapContent(t, rndReader, &lsys, unixfs.GenerateDirectory(t, &lsys, rndReader, 16<<20, true), wrapPath, false)
 
 				// copy the root block to all remotes
 				lctx := ipld.LinkContext{}
@@ -512,7 +514,7 @@ func TestHttpFetch(t *testing.T) {
 
 				return []unixfs.DirEntry{data}
 			},
-			paths:         []string{unixfs.WrapPath},
+			paths:         []string{wrapPath},
 			modifyQueries: []queryModifier{entityQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
@@ -520,7 +522,7 @@ func TestHttpFetch(t *testing.T) {
 					srcData.Children[1].Root,             // "/want2"
 					srcData.Children[1].Children[1].Root, // "/want2/want1"
 				},
-					srcData.Children[1].Children[1].Children[1].SelfCids..., // unixfs.WrapPath (full dir)
+					srcData.Children[1].Children[1].Children[1].SelfCids..., // wrapPath (full dir)
 				)
 				validateCarBody(t, body, srcData.Root, wantCids, true)
 			}},
@@ -590,16 +592,16 @@ func TestHttpFetch(t *testing.T) {
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := remotes[0].LinkSystem
-				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateFile(t, lsys, rndReader, 4<<20))}
+				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateFile(t, lsys, rndReader, 4<<20), wrapPath, false)}
 			},
-			paths:         []string{unixfs.WrapPath},
+			paths:         []string{wrapPath},
 			modifyQueries: []queryModifier{blockQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := []cid.Cid{
 					srcData.Root,                                     // "/""
 					srcData.Children[1].Root,                         // "/want2"
 					srcData.Children[1].Children[1].Root,             // "/want2/want1"
-					srcData.Children[1].Children[1].Children[1].Root, // unixfs.WrapPath
+					srcData.Children[1].Children[1].Children[1].Root, // wrapPath
 				}
 				validateCarBody(t, body, srcData.Root, wantCids, true)
 			}},
