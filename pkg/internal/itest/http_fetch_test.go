@@ -56,6 +56,7 @@ func TestHttpFetch(t *testing.T) {
 		name             string
 		graphsyncRemotes int
 		bitswapRemotes   int
+		httpRemotes      int
 		disableGraphsync bool
 		expectFail       bool
 		modifyHttpConfig func(httpserver.HttpServerConfig) httpserver.HttpServerConfig
@@ -79,6 +80,13 @@ func TestHttpFetch(t *testing.T) {
 			},
 		},
 		{
+			name:        "http large sharded file",
+			httpRemotes: 1,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				return []unixfs.DirEntry{unixfs.GenerateFile(t, &remotes[0].LinkSystem, rndReader, 4<<20)}
+			},
+		},
+		{
 			name:             "graphsync large directory",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
@@ -93,6 +101,13 @@ func TestHttpFetch(t *testing.T) {
 			},
 		},
 		{
+			name:        "http large directory",
+			httpRemotes: 1,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, false)}
+			},
+		},
+		{
 			name:             "graphsync large sharded directory",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
@@ -104,6 +119,13 @@ func TestHttpFetch(t *testing.T) {
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, true)}
+			},
+		},
+		{
+			name:        "http large sharded directory",
+			httpRemotes: 1,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, &remotes[0].LinkSystem, rndReader, 16<<20, true)}
 			},
 		},
 		{
@@ -636,6 +658,8 @@ func TestHttpFetch(t *testing.T) {
 				finishedChans = append(finishedChans, mocknet.SetupRetrieval(t, r))
 			}
 			mrn.AddBitswapPeers(testCase.bitswapRemotes)
+			mrn.AddHttpPeers(testCase.httpRemotes)
+
 			require.NoError(t, mrn.MN.LinkAll())
 
 			carFiles := debugRemotes(t, ctx, testCase.name, mrn.Remotes)
