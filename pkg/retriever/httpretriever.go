@@ -27,6 +27,8 @@ var (
 
 const HttpDefaultInitialWait time.Duration = 0
 
+const DefaultUserAgent = "lassie"
+
 var _ TransportProtocol = &ProtocolHttp{}
 
 type ProtocolHttp struct {
@@ -180,6 +182,8 @@ func makeRequest(ctx context.Context, request types.RetrievalRequest, candidate 
 		return nil, fmt.Errorf("%w for peer %s: %v", ErrBadPathForRequest, candidate.MinerPeer.ID, err)
 	}
 	req.Header.Add("Accept", request.Scope.AcceptHeader())
+	req.Header.Add("User-Agent", DefaultUserAgent)
+	req.Header.Add("X-Request-Id", request.RetrievalID.String())
 
 	return req, nil
 }
