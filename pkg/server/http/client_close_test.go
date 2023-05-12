@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/filecoin-project/lassie/pkg/internal/itest/mocknet"
-	"github.com/filecoin-project/lassie/pkg/internal/itest/unixfs"
 	"github.com/filecoin-project/lassie/pkg/lassie"
+	unixfs "github.com/ipfs/go-unixfsnode/testutil"
 	"github.com/multiformats/go-multicodec"
 	"github.com/stretchr/testify/require"
 )
