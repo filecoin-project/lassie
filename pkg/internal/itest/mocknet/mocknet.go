@@ -22,6 +22,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	lpmock "github.com/libp2p/go-libp2p/p2p/net/mock"
+	"github.com/multiformats/go-multicodec"
 	"github.com/stretchr/testify/require"
 )
 
@@ -62,22 +63,25 @@ func NewMockRetrievalNet(ctx context.Context, t *testing.T) *MockRetrievalNet {
 }
 
 func (mrn *MockRetrievalNet) AddBitswapPeers(n int) {
-	peers := mrn.testPeerGenerator.BitswapPeers(n)
-	for i := 0; i < n; i++ {
-		mrn.Remotes = append(mrn.Remotes, peers[i])
-		mrn.RemoteEvents = append(mrn.RemoteEvents, make([]datatransfer.Event, 0)) // not used for bitswap
-		mrn.FinishedChan = append(mrn.FinishedChan, make(chan struct{}, 1))        // not used for bitswap
-	}
+	mrn.addPeers(mrn.testPeerGenerator.BitswapPeers(n))
 }
 
 func (mrn *MockRetrievalNet) AddGraphsyncPeers(n int) {
-	peers := mrn.testPeerGenerator.GraphsyncPeers(n)
-	for i := 0; i < n; i++ {
+	mrn.addPeers(mrn.testPeerGenerator.GraphsyncPeers(n))
+}
+
+func (mrn *MockRetrievalNet) AddHttpPeers(n int) {
+	mrn.addPeers(mrn.testPeerGenerator.HttpPeers(n))
+}
+
+func (mrn *MockRetrievalNet) addPeers(peers []testpeer.TestPeer) {
+	for i := 0; i < len(peers); i++ {
 		mrn.Remotes = append(mrn.Remotes, peers[i])
 		mrn.RemoteEvents = append(mrn.RemoteEvents, make([]datatransfer.Event, 0))
 		mrn.FinishedChan = append(mrn.FinishedChan, make(chan struct{}, 1))
 	}
 }
+
 func SetupRetrieval(t *testing.T, remote testpeer.TestPeer) chan []datatransfer.Event {
 	// Register DealProposal voucher type with automatic Pull acceptance
 	remoteDealValidator := &mockDealValidator{t: t, acceptPull: true}
@@ -129,6 +133,9 @@ func (mrn *MockRetrievalNet) TearDown() error {
 			if h.BitswapNetwork != nil {
 				h.BitswapNetwork.Stop()
 			}
+			if h.HttpServer != nil {
+				h.HttpServer.Close()
+			}
 		}(h)
 	}
 	wg.Wait()
@@ -144,10 +151,13 @@ func (mcf *mockCandidateFinder) FindCandidates(ctx context.Context, cid cid.Cid)
 	for _, h := range mcf.mrn.Remotes {
 		if _, has := h.Cids[cid]; has {
 			var md metadata.Metadata
-			if h.BitswapServer != nil {
+			switch h.Protocol {
+			case multicodec.TransportBitswap:
 				md = metadata.Default.New(metadata.Bitswap{})
-			} else {
+			case multicodec.TransportGraphsyncFilecoinv1:
 				md = metadata.Default.New(&metadata.GraphsyncFilecoinV1{PieceCID: cid})
+			case multicodec.TransportIpfsGatewayHttp:
+				md = metadata.Default.New(&metadata.IpfsGatewayHttp{})
 			}
 			candidates = append(candidates, types.RetrievalCandidate{MinerPeer: *h.AddrInfo(), RootCid: cid, Metadata: md})
 		}

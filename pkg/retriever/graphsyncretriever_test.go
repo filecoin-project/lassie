@@ -1,4 +1,4 @@
-package retriever
+package retriever_test
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/internal/testutil"
+	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
@@ -507,11 +508,9 @@ func TestRetrievalRacing(t *testing.T) {
 				} else {
 					protocol = &metadata.GraphsyncFilecoinV1{VerifiedDeal: true, FastRetrieval: true}
 				}
-				candidates = append(candidates, types.NewRetrievalCandidate(peer.ID(p), cid.Undef, protocol))
+				candidates = append(candidates, types.NewRetrievalCandidate(peer.ID(p), nil, cid.Undef, protocol))
 			}
-			cfg := NewGraphsyncRetriever(func(peer peer.ID) time.Duration { return time.Second }, mockClient)
-			cfg.Clock = clock
-			cfg.QueueInitialPause = initialPause
+			cfg := retriever.NewGraphsyncRetrieverWithConfig(func(peer peer.ID) time.Duration { return time.Second }, mockClient, clock, initialPause)
 
 			rv := testutil.RetrievalVerifier{
 				ExpectedSequence: tc.expectSequence,
@@ -522,7 +521,7 @@ func TestRetrievalRacing(t *testing.T) {
 					Cid:         cid.Undef,
 					RetrievalID: retrievalID,
 					LinkSystem:  cidlink.DefaultLinkSystem(),
-				}, cb).RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, candidates))
+				}, cb).RetrieveFromAsyncCandidates(makeAsyncCandidates(t, candidates))
 			}})
 			require.Len(t, results, 1)
 			stats, err := results[0].Stats, results[0].Err
@@ -576,9 +575,7 @@ func TestMultipleRetrievals(t *testing.T) {
 		clock,
 	)
 
-	cfg := NewGraphsyncRetriever(func(peer peer.ID) time.Duration { return time.Second }, mockClient)
-	cfg.Clock = clock
-	cfg.QueueInitialPause = initialPause
+	cfg := retriever.NewGraphsyncRetrieverWithConfig(func(peer peer.ID) time.Duration { return time.Second }, mockClient, clock, initialPause)
 
 	expectedSequence := []testutil.ExpectedActionsAtTime{
 		{
@@ -653,10 +650,10 @@ func TestMultipleRetrievals(t *testing.T) {
 				Cid:         cid1,
 				RetrievalID: retrievalID,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
-			}, cb).RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{
-				types.NewRetrievalCandidate(peer.ID("foo"), cid.Undef, &metadata.GraphsyncFilecoinV1{}),
-				types.NewRetrievalCandidate(peer.ID("bar"), cid.Undef, &metadata.GraphsyncFilecoinV1{}),
-				types.NewRetrievalCandidate(peer.ID("baz"), cid.Undef, &metadata.GraphsyncFilecoinV1{}),
+			}, cb).RetrieveFromAsyncCandidates(makeAsyncCandidates(t, []types.RetrievalCandidate{
+				types.NewRetrievalCandidate(peer.ID("foo"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{}),
+				types.NewRetrievalCandidate(peer.ID("bar"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{}),
+				types.NewRetrievalCandidate(peer.ID("baz"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{}),
 			}))
 		},
 		func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
@@ -664,10 +661,10 @@ func TestMultipleRetrievals(t *testing.T) {
 				Cid:         cid2,
 				RetrievalID: retrievalID,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
-			}, cb).RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{
-				types.NewRetrievalCandidate(peer.ID("bang"), cid.Undef, &metadata.GraphsyncFilecoinV1{}),
-				types.NewRetrievalCandidate(peer.ID("boom"), cid.Undef, &metadata.GraphsyncFilecoinV1{}),
-				types.NewRetrievalCandidate(peer.ID("bing"), cid.Undef, &metadata.GraphsyncFilecoinV1{}),
+			}, cb).RetrieveFromAsyncCandidates(makeAsyncCandidates(t, []types.RetrievalCandidate{
+				types.NewRetrievalCandidate(peer.ID("bang"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{}),
+				types.NewRetrievalCandidate(peer.ID("boom"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{}),
+				types.NewRetrievalCandidate(peer.ID("bing"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{}),
 			}))
 		}})
 	require.Len(t, results, 2)
@@ -689,14 +686,13 @@ func TestRetrievalSelector(t *testing.T) {
 	defer cancel()
 	retrievalID := types.RetrievalID(uuid.New())
 	cid1 := cid.MustParse("bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")
-	clock := clock.New()
 	mockClient := testutil.NewMockClient(
 		map[string]testutil.DelayedConnectReturn{"foo": {Err: nil, Delay: 0}},
 		map[string]testutil.DelayedClientReturn{"foo": {ResultStats: &types.RetrievalStats{StorageProviderId: peer.ID("bar"), Size: 2}, Delay: 0}},
-		clock,
+		clock.New(),
 	)
 
-	cfg := NewGraphsyncRetriever(func(peer peer.ID) time.Duration { return time.Second }, mockClient)
+	cfg := retriever.NewGraphsyncRetriever(func(peer peer.ID) time.Duration { return time.Second }, mockClient)
 
 	selector := selectorparse.CommonSelector_MatchPoint
 
@@ -706,7 +702,7 @@ func TestRetrievalSelector(t *testing.T) {
 		LinkSystem:  cidlink.DefaultLinkSystem(),
 		Selector:    selector,
 	}, nil)
-	stats, err := retrieval.RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{types.NewRetrievalCandidate(peer.ID("foo"), cid.Undef, &metadata.GraphsyncFilecoinV1{})}))
+	stats, err := retrieval.RetrieveFromAsyncCandidates(makeAsyncCandidates(t, []types.RetrievalCandidate{types.NewRetrievalCandidate(peer.ID("foo"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{})}))
 	require.NoError(t, err)
 	require.NotNil(t, stats)
 	require.Equal(t, mockClient.GetRetrievalReturns()["foo"].ResultStats, stats)
@@ -741,9 +737,7 @@ func TestDuplicateRetreivals(t *testing.T) {
 		clock,
 	)
 
-	cfg := NewGraphsyncRetriever(func(peer peer.ID) time.Duration { return time.Second }, mockClient)
-	cfg.Clock = clock
-	cfg.QueueInitialPause = initialPause
+	cfg := retriever.NewGraphsyncRetrieverWithConfig(func(peer peer.ID) time.Duration { return time.Second }, mockClient, clock, initialPause)
 
 	expectedSequence := []testutil.ExpectedActionsAtTime{
 		{
@@ -788,10 +782,10 @@ func TestDuplicateRetreivals(t *testing.T) {
 		{
 			AfterStart: time.Millisecond*400 + initialPause,
 			ExpectedEvents: []types.RetrievalEvent{
-				events.Proposed(startTime.Add(time.Millisecond*400+initialPause), retrievalID, startTime, types.NewRetrievalCandidate(peer.ID("bar"), cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false})),
-				events.Accepted(startTime.Add(time.Millisecond*400+initialPause), retrievalID, startTime, types.NewRetrievalCandidate(peer.ID("bar"), cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false})),
-				events.FirstByte(startTime.Add(time.Millisecond*400+initialPause), retrievalID, startTime, types.NewRetrievalCandidate(peer.ID("bar"), cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false})),
-				events.Success(startTime.Add(time.Millisecond*400+initialPause), retrievalID, startTime, types.NewRetrievalCandidate(peer.ID("bar"), cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false}), 2, 0, 0, big.Zero(), 0),
+				events.Proposed(startTime.Add(time.Millisecond*400+initialPause), retrievalID, startTime, types.NewRetrievalCandidate(peer.ID("bar"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false})),
+				events.Accepted(startTime.Add(time.Millisecond*400+initialPause), retrievalID, startTime, types.NewRetrievalCandidate(peer.ID("bar"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false})),
+				events.FirstByte(startTime.Add(time.Millisecond*400+initialPause), retrievalID, startTime, types.NewRetrievalCandidate(peer.ID("bar"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false})),
+				events.Success(startTime.Add(time.Millisecond*400+initialPause), retrievalID, startTime, types.NewRetrievalCandidate(peer.ID("bar"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false}), 2, 0, 0, big.Zero(), 0),
 			},
 		},
 	}
@@ -803,12 +797,12 @@ func TestDuplicateRetreivals(t *testing.T) {
 				Cid:         cid1,
 				RetrievalID: retrievalID,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
-			}, cb).RetrieveFromAsyncCandidates(MakeAsyncCandidates(t, []types.RetrievalCandidate{
-				types.NewRetrievalCandidate(peer.ID("foo"), cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: false, FastRetrieval: false}),
-				types.NewRetrievalCandidate(peer.ID("baz"), cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: false, FastRetrieval: false}),
-				types.NewRetrievalCandidate(peer.ID("bar"), cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: false, FastRetrieval: false}),
-				types.NewRetrievalCandidate(peer.ID("bar"), cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: false, FastRetrieval: true}),
-				types.NewRetrievalCandidate(peer.ID("bar"), cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false}),
+			}, cb).RetrieveFromAsyncCandidates(makeAsyncCandidates(t, []types.RetrievalCandidate{
+				types.NewRetrievalCandidate(peer.ID("foo"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: false, FastRetrieval: false}),
+				types.NewRetrievalCandidate(peer.ID("baz"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: false, FastRetrieval: false}),
+				types.NewRetrievalCandidate(peer.ID("bar"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: false, FastRetrieval: false}),
+				types.NewRetrievalCandidate(peer.ID("bar"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: false, FastRetrieval: true}),
+				types.NewRetrievalCandidate(peer.ID("bar"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false}),
 			}))
 		},
 	})
@@ -820,7 +814,7 @@ func TestDuplicateRetreivals(t *testing.T) {
 	require.Equal(t, mockClient.GetRetrievalReturns()["bar"].ResultStats, stats)
 }
 
-func MakeAsyncCandidates(t *testing.T, candidates []types.RetrievalCandidate) types.InboundAsyncCandidates {
+func makeAsyncCandidates(t *testing.T, candidates []types.RetrievalCandidate) types.InboundAsyncCandidates {
 	incoming, outgoing := types.MakeAsyncCandidates(len(candidates))
 	for _, candidate := range candidates {
 		err := outgoing.SendNext(context.Background(), []types.RetrievalCandidate{candidate})

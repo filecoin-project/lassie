@@ -61,6 +61,8 @@ func (s *Session) FilterIndexerCandidate(candidate types.RetrievalCandidate) (bo
 			includeProtocol = s.isAcceptableGraphsyncCandidate(candidate.MinerPeer.ID)
 		case multicodec.TransportBitswap:
 			includeProtocol = s.isAcceptableBitswapCandidate(candidate.MinerPeer.ID)
+		case multicodec.TransportIpfsGatewayHttp:
+			includeProtocol = s.isAcceptableHttpCandidate(candidate.MinerPeer.ID)
 		}
 		if includeProtocol {
 			newProtocolMetadata = append(newProtocolMetadata, candidate.Metadata.Get(protocol))
@@ -102,6 +104,20 @@ func (s *Session) isAcceptableGraphsyncCandidate(storageProviderId peer.ID) bool
 }
 
 func (state *Session) isAcceptableBitswapCandidate(storageProviderId peer.ID) bool {
+	// Skip blacklist
+	if state.config.ProviderBlockList[storageProviderId] {
+		return false
+	}
+
+	// Skip non-whitelist IF the whitelist isn't empty
+	if len(state.config.ProviderAllowList) > 0 && !state.config.ProviderAllowList[storageProviderId] {
+		return false
+	}
+
+	return true
+}
+
+func (state *Session) isAcceptableHttpCandidate(storageProviderId peer.ID) bool {
 	// Skip blacklist
 	if state.config.ProviderBlockList[storageProviderId] {
 		return false

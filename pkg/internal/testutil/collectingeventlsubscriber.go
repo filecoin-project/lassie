@@ -3,8 +3,10 @@ package testutil
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/types"
@@ -30,14 +32,29 @@ func (ev *AsyncCollectingEventsListener) Collect(evt types.RetrievalEvent) {
 	}
 }
 
-func (ev *AsyncCollectingEventsListener) VerifyNextEvents(t *testing.T, expectedEvents []types.RetrievalEvent) {
+func (ev *AsyncCollectingEventsListener) VerifyNextEvents(t *testing.T, afterStart time.Duration, expectedEvents []types.RetrievalEvent) {
+	got := make([]types.EventCode, 0)
 	for i := 0; i < len(expectedEvents); i++ {
 		select {
 		case evt := <-ev.retrievalEventChan:
 			t.Logf("received event: %s", evt)
-			VerifyContainsCollectedEvent(t, expectedEvents, evt)
+			got = append(got, VerifyContainsCollectedEvent(t, afterStart, expectedEvents, evt))
 		case <-ev.ctx.Done():
-			require.FailNow(t, "did not receive expected events")
+			// work out which codes we didn't have
+			missing := make([]string, 0)
+			for _, expected := range expectedEvents {
+				found := false
+				for _, g := range got {
+					if g == expected.Code() {
+						found = true
+						break
+					}
+				}
+				if !found {
+					missing = append(missing, string(expected.Code()))
+				}
+			}
+			require.FailNowf(t, "did not receive expected events", "missing: %s", strings.Join(missing, ", "))
 		}
 	}
 }
@@ -76,20 +93,23 @@ func VerifyCollectedEventTimings(t *testing.T, events []types.RetrievalEvent) {
 	}
 }
 
-func VerifyContainsCollectedEvent(t *testing.T, expectedList []types.RetrievalEvent, actual types.RetrievalEvent) {
+func VerifyContainsCollectedEvent(t *testing.T, afterStart time.Duration, expectedList []types.RetrievalEvent, actual types.RetrievalEvent) types.EventCode {
 	for _, expected := range expectedList {
 		// this matching might need to evolve to be more sophisticated, particularly SP ID
 		if actual.Code() == expected.Code() &&
 			actual.RetrievalId() == expected.RetrievalId() &&
 			actual.PayloadCid() == expected.PayloadCid() &&
-			actual.Phase() == expected.Phase() {
-			if actual.StorageProviderId() == expected.StorageProviderId() {
-				VerifyCollectedEvent(t, actual, expected)
-				return
-			}
+			actual.Phase() == expected.Phase() &&
+			actual.StorageProviderId() == expected.StorageProviderId() {
+			VerifyCollectedEvent(t, actual, expected)
+			return actual.Code()
+		}
+		if actual.Code() == expected.Code() {
+			t.Logf("non-matching event: %s <> %s\n", actual, expected)
 		}
 	}
-	require.Fail(t, "event not found", actual.Code())
+	require.Failf(t, "unexpected event", "got '%s' @ %s", actual.Code(), afterStart)
+	return ""
 }
 
 func VerifyCollectedEvent(t *testing.T, actual types.RetrievalEvent, expected types.RetrievalEvent) {

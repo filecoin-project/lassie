@@ -24,6 +24,13 @@ type PriorityWaitQueue[T interface{}] interface {
 	// check for themselves when Wait() returns and immediately call done() if
 	// a context has cancelled in order to clean up all running goroutines.
 	Wait(waitWith T) func()
+
+	// InitialPauseDone returns once the initial pause has been completed and
+	// will block until then. If an initial pause was not set, or has already
+	// completed, this will return immediately. Setting block to false will make
+	// this function return immediately with a bool indicating whether the initial
+	// pause was completed. This is useful for testing.
+	InitialPauseDone(block bool) bool
 }
 
 type Option[T interface{}] func(PriorityWaitQueue[T])
@@ -36,6 +43,7 @@ type Option[T interface{}] func(PriorityWaitQueue[T])
 func WithInitialPause[T interface{}](duration time.Duration) Option[T] {
 	return func(q PriorityWaitQueue[T]) {
 		q.(*priorityWaitQueue[T]).initialPause = duration
+		q.(*priorityWaitQueue[T]).initialPauseDoneCh = make(chan struct{})
 	}
 }
 
@@ -69,14 +77,44 @@ func New[T interface{}](cmp ComparePriority[T], options ...Option[T]) PriorityWa
 var _ PriorityWaitQueue[int] = &priorityWaitQueue[int]{}
 
 type priorityWaitQueue[T interface{}] struct {
-	cmp              ComparePriority[T]
-	cond             *sync.Cond
-	waiters          []*T
-	running          *T
-	clock            clock.Clock
-	initialPause     time.Duration
-	initialPauseDone bool
-	initialPauseLk   sync.Mutex
+	cmp                   ComparePriority[T]
+	cond                  *sync.Cond
+	waiters               []*T
+	running               *T
+	clock                 clock.Clock
+	initialPause          time.Duration
+	initialPauseDoneCh    chan struct{}
+	initialPauseDoneClose sync.Once
+}
+
+func (pwq *priorityWaitQueue[T]) InitialPauseDone(block bool) bool {
+	if pwq.isInitialPauseDone() {
+		return true
+	}
+	if !block {
+		return false
+	}
+	for range pwq.initialPauseDoneCh {
+	}
+	return true
+}
+
+func (pwq *priorityWaitQueue[T]) isInitialPauseDone() bool {
+	if pwq.initialPauseDoneCh == nil {
+		return true
+	}
+	select {
+	case _, ok := <-pwq.initialPauseDoneCh:
+		return !ok
+	default:
+	}
+	return false
+}
+
+func (pwq *priorityWaitQueue[T]) setInitialPauseDone() {
+	pwq.initialPauseDoneClose.Do(func() {
+		close(pwq.initialPauseDoneCh)
+	})
 }
 
 func (pwq *priorityWaitQueue[T]) Wait(waitWith T) func() {
@@ -92,12 +130,10 @@ func (pwq *priorityWaitQueue[T]) Wait(waitWith T) func() {
 	// we (the first caller) hold the lock
 	if pwq.initialPause > 0 {
 		pwq.cond.L.Unlock()
-		pwq.initialPauseLk.Lock()
-		if !pwq.initialPauseDone {
+		if !pwq.isInitialPauseDone() {
 			pwq.clock.Sleep(pwq.initialPause)
-			pwq.initialPauseDone = true
+			pwq.setInitialPauseDone()
 		}
-		pwq.initialPauseLk.Unlock()
 		pwq.cond.L.Lock()
 	}
 

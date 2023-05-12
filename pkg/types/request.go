@@ -1,6 +1,7 @@
 package types
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -9,10 +10,7 @@ import (
 	"github.com/ipfs/go-unixfsnode"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	"github.com/ipld/go-ipld-prime/node/basicnode"
 	ipldstorage "github.com/ipld/go-ipld-prime/storage"
-	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
-	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
 )
@@ -52,6 +50,8 @@ type RetrievalRequest struct {
 	Cid               cid.Cid
 	LinkSystem        ipld.LinkSystem
 	Selector          ipld.Node
+	Path              string
+	Scope             CarScope
 	Protocols         []multicodec.Code
 	PreloadLinkSystem ipld.LinkSystem
 	MaxBlocks         uint64
@@ -71,20 +71,6 @@ func NewRequestForPath(store ipldstorage.WritableStorage, cid cid.Cid, path stri
 		return RetrievalRequest{}, err
 	}
 
-	// Turn the path into a selector
-
-	targetSelector := unixfsnode.ExploreAllRecursivelySelector // all
-	switch carScope {
-	case CarScopeAll:
-	case CarScopeFile:
-		targetSelector = unixfsnode.MatchUnixFSPreloadSelector // file
-	case CarScopeBlock:
-		ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
-		targetSelector = ssb.Matcher() // root
-	}
-
-	selector := unixfsnode.UnixFSPathSelectorBuilder(path, targetSelector, false)
-
 	linkSystem := cidlink.DefaultLinkSystem()
 	linkSystem.SetWriteStorage(store)
 	if read, ok := store.(ipldstorage.ReadableStorage); ok {
@@ -96,18 +82,35 @@ func NewRequestForPath(store ipldstorage.WritableStorage, cid cid.Cid, path stri
 	return RetrievalRequest{
 		RetrievalID: retrievalId,
 		Cid:         cid,
-		Selector:    selector,
+		Path:        path,
+		Scope:       carScope,
 		LinkSystem:  linkSystem,
 	}, nil
 }
 
 // GetSelector will safely return a selector for this request. If none has been
-// set, it will return explore-all (full DAG).
+// set, it will generate one for the path & scope.
 func (r RetrievalRequest) GetSelector() ipld.Node {
-	if r.Selector != nil {
+	if r.Selector != nil { // custom selector
 		return r.Selector
 	}
-	return selectorparse.CommonSelector_ExploreAllRecursively
+	// Turn the path / scope into a selector
+	return unixfsnode.UnixFSPathSelectorBuilder(r.Path, r.Scope.TerminalSelectorSpec(), false)
+}
+
+// GetUrlPath returns a URL path and query string valid with the Trusted HTTP
+// Gateway spec by combining the Path and the Scope of this request. If this
+// request uses an explicit Selector rather than a Path, an error will be
+// returned.
+func (r RetrievalRequest) GetUrlPath() (string, error) {
+	if r.Selector != nil {
+		return "", errors.New("RetrievalRequest uses an explicit selector, can't generate a URL path for it")
+	}
+	scope := r.Scope
+	if r.Scope == "" {
+		scope = CarScopeAll
+	}
+	return fmt.Sprintf("%s?car-scope=%s", r.Path, scope), nil
 }
 
 // GetSupportedProtocols will safely return the supported protocols for a specific request.
@@ -140,6 +143,8 @@ func ParseProtocolsString(v string) ([]multicodec.Code, error) {
 			protocol = multicodec.TransportBitswap
 		case "graphsync":
 			protocol = multicodec.TransportGraphsyncFilecoinv1
+		case "http":
+			protocol = multicodec.TransportIpfsGatewayHttp
 		default:
 			return nil, fmt.Errorf("unrecognized protocol: %s", v)
 		}

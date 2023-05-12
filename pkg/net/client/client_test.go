@@ -182,7 +182,6 @@ type fakeConn struct{}
 
 func (f fakeConn) Close() error                                      { return nil }
 func (f fakeConn) LocalPeer() peer.ID                                { return peer.ID("") }
-func (f fakeConn) LocalPrivateKey() ic.PrivKey                       { return nil }
 func (f fakeConn) RemotePeer() peer.ID                               { return peer.ID("") }
 func (f fakeConn) RemotePublicKey() ic.PubKey                        { return nil }
 func (f fakeConn) ConnState() network.ConnectionState                { return network.ConnectionState{} }
@@ -193,6 +192,7 @@ func (f fakeConn) Scope() network.ConnScope                          { return ni
 func (f fakeConn) ID() string                                        { return "" }
 func (f fakeConn) NewStream(context.Context) (network.Stream, error) { return nil, nil }
 func (f fakeConn) GetStreams() []network.Stream                      { return nil }
+func (f fakeConn) IsClosed() bool                                    { return false }
 
 type openedDt struct {
 	to       peer.ID

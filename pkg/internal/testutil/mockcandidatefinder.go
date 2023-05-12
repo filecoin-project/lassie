@@ -3,6 +3,7 @@ package testutil
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
@@ -28,14 +29,14 @@ func NewMockCandidateFinder(err error, candidates map[cid.Cid][]types.RetrievalC
 	}
 }
 
-func (me *MockCandidateFinder) VerifyCandidatesDiscovered(ctx context.Context, t *testing.T, expectedCandidatesDiscovered []DiscoveredCandidate) {
+func (me *MockCandidateFinder) VerifyCandidatesDiscovered(ctx context.Context, t *testing.T, afterStart time.Duration, expectedCandidatesDiscovered []DiscoveredCandidate) {
 	candidatesDiscovered := make([]DiscoveredCandidate, 0, len(expectedCandidatesDiscovered))
 	for i := 0; i < len(expectedCandidatesDiscovered); i++ {
 		select {
 		case candidate := <-me.discoveredCandidates:
 			candidatesDiscovered = append(candidatesDiscovered, candidate)
 		case <-ctx.Done():
-			require.FailNowf(t, "failed to receive expected candidates", "expected %d, received %d", len(expectedCandidatesDiscovered), i)
+			require.FailNowf(t, "failed to receive expected candidates", "expected %d, received %d @", len(expectedCandidatesDiscovered), i, afterStart)
 		}
 	}
 	require.ElementsMatch(t, expectedCandidatesDiscovered, candidatesDiscovered)
