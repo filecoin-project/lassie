@@ -33,9 +33,11 @@ var (
 var protoChooser = dagpb.AddSupportToChooser(basicnode.Chooser)
 
 type Config struct {
-	Root       cid.Cid           // The single root we expect to appear in the CAR and that we use to run our traversal against
-	AllowCARv2 bool              // If true, allow CARv2 files to be received, otherwise strictly only allow CARv1
-	Selector   selector.Selector // The selector to execute, starting at the provided Root, to verify the contents of the CAR
+	Root                  cid.Cid           // The single root we expect to appear in the CAR and that we use to run our traversal against
+	AllowCARv2            bool              // If true, allow CARv2 files to be received, otherwise strictly only allow CARv1
+	AllowUnexpectedBlocks bool              // If true, allows unexpected blocks as long as we ultimately satisfy a depth first traversal (also applies to duplicates)
+	AllowExtraneousBlocks bool              // If true, allows extraneous data in the car after traversal
+	Selector              selector.Selector // The selector to execute, starting at the provided Root, to verify the contents of the CAR
 }
 
 func visitNoop(p traversal.Progress, n datamodel.Node, r traversal.VisitReason) error { return nil }
@@ -79,7 +81,7 @@ func (cfg Config) Verify(ctx context.Context, rdr io.Reader, lsys linking.LinkSy
 	lsys.TrustedStorage = true // we can rely on the CAR decoder to check CID integrity
 	unixfsnode.AddUnixFSReificationToLinkSystem(&lsys)
 
-	lsys.StorageReadOpener = nextBlockReadOpener(ctx, cr, lsys)
+	lsys.StorageReadOpener = nextBlockReadOpener(ctx, cr, lsys, cfg.AllowUnexpectedBlocks)
 
 	// run traversal in this goroutine
 	progress := traversal.Progress{
@@ -104,16 +106,18 @@ func (cfg Config) Verify(ctx context.Context, rdr io.Reader, lsys linking.LinkSy
 	}
 
 	// make sure we don't have any extraneous data beyond what the traversal needs
-	_, err = cbr.Next()
-	if !errors.Is(err, io.EOF) {
-		return 0, 0, ErrExtraneousBlock
+	if !cfg.AllowExtraneousBlocks {
+		_, err = cbr.Next()
+		if !errors.Is(err, io.EOF) {
+			return 0, 0, ErrExtraneousBlock
+		}
 	}
 
 	// wait for parser to finish and provide errors or stats
 	return cr.blocks, cr.bytes, nil
 }
 
-func nextBlockReadOpener(ctx context.Context, cr *carReader, lsys linking.LinkSystem) linking.BlockReadOpener {
+func nextBlockReadOpener(ctx context.Context, cr *carReader, lsys linking.LinkSystem, allowUnexpectedBlocks bool) linking.BlockReadOpener {
 	seen := make(map[cid.Cid]struct{})
 	return func(lc linking.LinkContext, l datamodel.Link) (io.Reader, error) {
 		cid := l.(cidlink.Link).Cid
@@ -124,7 +128,14 @@ func nextBlockReadOpener(ctx context.Context, cr *carReader, lsys linking.LinkSy
 		}
 
 		seen[cid] = struct{}{}
-		data, err := cr.readNextBlock(ctx, cid)
+		var data []byte
+		var err error
+		for {
+			data, err = cr.readNextBlock(ctx, cid)
+			if err == nil || !allowUnexpectedBlocks || !errors.Is(err, ErrUnexpectedBlock) {
+				break
+			}
+		}
 		if err != nil {
 			return nil, err
 		}
