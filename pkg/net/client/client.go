@@ -29,7 +29,7 @@ import (
 	graphsync "github.com/ipfs/go-graphsync/impl"
 	gsnetwork "github.com/ipfs/go-graphsync/network"
 
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/ipfs/go-log/v2"
 
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -39,7 +39,7 @@ import (
 )
 
 // Logging
-var log = logging.Logger("client")
+var logger = log.Logger("lassie/client")
 var tracer trace.Tracer = otel.Tracer("lassie")
 
 const RetrievalQueryProtocol = "/fil/retrieval/qry/1.0.0"
@@ -186,7 +186,7 @@ func (rc *RetrievalClient) RetrieveFromPeer(
 	eventsCallback datatransfer.Subscriber,
 	gracefulShutdownRequested <-chan struct{},
 ) (*types.RetrievalStats, error) {
-	log.Infof("Starting retrieval with miner peer ID: %s", peerID)
+	logger.Infof("Starting retrieval with miner peer ID: %s", peerID)
 
 	ctx, span := tracer.Start(ctx, "rcRetrieveContent")
 	defer span.End()
@@ -245,18 +245,18 @@ func (rc *RetrievalClient) RetrieveFromPeer(
 			lastVoucher := state.LastVoucherResult()
 			resType, err := retrievaltypes.DealResponseFromNode(lastVoucher.Voucher)
 			if err != nil {
-				log.Errorf("unexpected voucher result received: %s", err.Error())
+				logger.Errorf("unexpected voucher result received: %s", err.Error())
 				return
 			}
 			if len(resType.Message) != 0 {
-				log.Debugf("Received deal response voucher result %s (%v): %s\n\t%+v", resType.Status, resType.Status, resType.Message, resType)
+				logger.Debugf("Received deal response voucher result %s (%v): %s\n\t%+v", resType.Status, resType.Status, resType.Message, resType)
 			} else {
-				log.Debugf("Received deal response voucher result %s (%v)\n\t%+v", resType.Status, resType.Status, resType)
+				logger.Debugf("Received deal response voucher result %s (%v)\n\t%+v", resType.Status, resType.Status, resType)
 			}
 
 			switch resType.Status {
 			case retrievaltypes.DealStatusAccepted:
-				log.Info("Deal accepted")
+				logger.Info("Deal accepted")
 			case retrievaltypes.DealStatusFundsNeeded, retrievaltypes.DealStatusFundsNeededLastPayment:
 				finish(fmt.Errorf("provider requested payment"))
 				return
@@ -297,7 +297,7 @@ func (rc *RetrievalClient) RetrieveFromPeer(
 		blocksIndex := state.ReceivedCidsTotal()
 		totalReceived := state.Received()
 		if !receivedFirstByte { // || rc.logRetrievalProgressEvents {
-			log.Debugw("retrieval event", "dealID", dealID, "rootCid", rootCid, "peerID", peerID, "name", name, "code", code, "message", msg, "blocksIndex", blocksIndex, "totalReceived", totalReceived)
+			logger.Debugw("retrieval event", "dealID", dealID, "rootCid", rootCid, "peerID", peerID, "name", name, "code", code, "message", msg, "blocksIndex", blocksIndex, "totalReceived", totalReceived)
 		}
 	}
 
@@ -334,7 +334,7 @@ awaitfinished:
 				return nil, fmt.Errorf("data transfer failed: %w", err)
 			}
 
-			log.Debugf("data transfer for retrieval complete")
+			logger.Debugf("data transfer for retrieval complete")
 			break awaitfinished
 		case <-gracefulShutdownRequested:
 			go func() {
@@ -349,7 +349,7 @@ awaitfinished:
 	// here indicates a data transfer error that was not properly reported
 	if _, err := linkSystem.StorageReadOpener(ipld.LinkContext{}, cidlink.Link{Cid: rootCid}); err != nil {
 		if nf, ok := err.(interface{ NotFound() bool }); !ok || !nf.NotFound() {
-			log.Errorf("could not query block store: %w", err)
+			logger.Errorf("could not query block store: %w", err)
 		}
 		return nil, errors.New("data transfer failed: unconfirmed block transfer")
 	}

@@ -17,10 +17,10 @@ import (
 	"net/http"
 	"os"
 
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/ipfs/go-log/v2"
 )
 
-var log = logging.Logger("filelogserver")
+var logger = log.Logger("lassie/filelogserver")
 
 func main() {
 	port := flag.Int("port", 8080, "set port to listen to")
@@ -31,7 +31,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	log.Infof("Writing to file %s", *output)
+	logger.Infof("Writing to file %s", *output)
 
 	http.HandleFunc("/retrieval-events", func(w http.ResponseWriter, r *http.Request) {
 		if r.Body == nil {
@@ -41,27 +41,27 @@ func main() {
 
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
-			log.Errorf("Could not decode body: %s", err.Error())
+			logger.Errorf("Could not decode body: %s", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		m := make(map[string]interface{})
 		err = json.Unmarshal(body, &m)
 		if err != nil {
-			log.Errorf("Could not decode body: %s", err.Error())
+			logger.Errorf("Could not decode body: %s", err.Error())
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 		reencode, err := json.Marshal(m)
 		if err != nil {
-			log.Errorf("Error building log entry: %s", err.Error())
+			logger.Errorf("Error building log entry: %s", err.Error())
 			return
 		}
-		log.Debugf("Got: %s", string(reencode))
+		logger.Debugf("Got: %s", string(reencode))
 		outfile.WriteString(string(reencode))
 		outfile.Write([]byte{'\n'})
 	})
 
-	log.Infof("Listening on port %d", *port)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
+	logger.Infof("Listening on port %d", *port)
+	logger.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
 }

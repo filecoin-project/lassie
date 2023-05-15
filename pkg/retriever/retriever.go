@@ -136,7 +136,7 @@ func (retriever *Retriever) Retrieve(
 	}
 	defer func() {
 		if err := retriever.session.EndRetrieval(request.RetrievalID); err != nil {
-			log.Errorf("failed to end retrieval tracking for %s: %s", request.Cid, err.Error())
+			logger.Errorf("failed to end retrieval tracking for %s: %s", request.Cid, err.Error())
 		}
 	}()
 
@@ -172,7 +172,7 @@ func (retriever *Retriever) Retrieve(
 	}
 
 	// success
-	log.Infof(
+	logger.Infof(
 		"Successfully retrieved from miner %s for %s\n"+
 			"\tDuration: %s\n"+
 			"\tBytes Received: %s\n"+
@@ -257,7 +257,7 @@ func handleFailureEvent(
 		}
 	case types.RetrievalPhase:
 		eventStats.failedCount++
-		log.Warnf(
+		logger.Warnf(
 			"Failed to retrieve from miner %s for %s: %s",
 			event.StorageProviderId(),
 			event.PayloadCid(),
@@ -300,7 +300,7 @@ func handleCandidatesFilteredEvent(
 			ids = append(ids, c.MinerPeer.ID)
 		}
 		if err := session.AddToRetrieval(retrievalId, ids); err != nil {
-			log.Errorf("failed to add storage providers to tracked retrieval for %s: %s", retrievalCid, err.Error())
+			logger.Errorf("failed to add storage providers to tracked retrieval for %s: %s", retrievalCid, err.Error())
 		}
 	}
 }
@@ -345,5 +345,5 @@ func logEvent(event types.RetrievalEvent) {
 	case events.RetrievalEventSuccess:
 		logadd("receivedSize", tevent.ReceivedSize())
 	}
-	log.Debugw("retrieval-event", kv...)
+	logger.Debugw("retrieval-event", kv...)
 }

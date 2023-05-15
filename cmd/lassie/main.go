@@ -10,11 +10,11 @@ import (
 	"github.com/filecoin-project/lassie/pkg/aggregateeventrecorder"
 	"github.com/filecoin-project/lassie/pkg/lassie"
 	"github.com/google/uuid"
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/ipfs/go-log/v2"
 	"github.com/urfave/cli/v2"
 )
 
-var log = logging.Logger("lassie")
+var logger = log.Logger("lassie/main")
 
 func main() {
 	// set up a context that is canceled when a command is interrupted
@@ -29,7 +29,7 @@ func main() {
 		select {
 		case <-interrupt:
 			fmt.Println()
-			log.Info("received interrupt signal")
+			logger.Info("received interrupt signal")
 			cancel()
 		case <-ctx.Done():
 		}
@@ -54,7 +54,7 @@ func main() {
 	}
 
 	if err := app.RunContext(ctx, os.Args); err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 }
 
@@ -78,7 +78,7 @@ func before(cctx *cli.Context) error {
 	// don't over-ride logging if set in the environment.
 	if os.Getenv("GOLOG_LOG_LEVEL") == "" {
 		for _, name := range subsystems {
-			_ = logging.SetLogLevel(name, level)
+			_ = log.SetLogLevel(name, level)
 		}
 	}
 
@@ -97,7 +97,7 @@ func setupLassieEventRecorder(
 		if instanceID == "" {
 			uuid, err := uuid.NewRandom()
 			if err != nil {
-				log.Warnw("failed to generate default event recorder instance ID UUID, no instance ID will be provided", "err", err)
+				logger.Warnw("failed to generate default event recorder instance ID UUID, no instance ID will be provided", "err", err)
 			}
 			instanceID = uuid.String() // returns "" if uuid is invalid
 		}
@@ -108,6 +108,6 @@ func setupLassieEventRecorder(
 			EndpointAuthorization: authToken,
 		})
 		lassie.RegisterSubscriber(eventRecorder.RetrievalEventSubscriber())
-		log.Infow("Reporting retrieval events to event recorder API", "url", eventRecorderURL, "instance_id", instanceID)
+		logger.Infow("Reporting retrieval events to event recorder API", "url", eventRecorderURL, "instance_id", instanceID)
 	}
 }

@@ -164,7 +164,7 @@ func (retrieval *retrieval) RetrieveFromAsyncCandidates(asyncCandidates types.In
 	select {
 	case <-finishAll:
 	case <-time.After(100 * time.Millisecond):
-		log.Warn("Unable to successfully cancel all retrieval attempts withing 100ms")
+		logger.Warn("Unable to successfully cancel all retrieval attempts withing 100ms")
 	}
 	return stats, err
 }
@@ -287,7 +287,7 @@ func (retrieval *retrieval) runRetrievalCandidate(
 	err := retrieval.Protocol.Connect(connectCtx, retrieval, candidate)
 	if err != nil {
 		if ctx.Err() == nil { // not cancelled, maybe timed out though
-			log.Warnf("Failed to connect to SP %s: %v", candidate.MinerPeer.ID, err)
+			logger.Warnf("Failed to connect to SP %s: %v", candidate.MinerPeer.ID, err)
 			retrievalErr = fmt.Errorf("%w: %v", ErrConnectFailed, err)
 			session.sendEvent(events.Failed(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate, retrievalErr.Error()))
 		}

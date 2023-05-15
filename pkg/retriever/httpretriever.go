@@ -163,20 +163,20 @@ func (ph *ProtocolHttp) beginRequest(ctx context.Context, request types.Retrieva
 func makeRequest(ctx context.Context, request types.RetrievalRequest, candidate types.RetrievalCandidate) (*http.Request, error) {
 	candidateURL, err := candidate.ToURL()
 	if err != nil {
-		log.Warnf("Couldn't construct a url for miner %s: %v", candidate.MinerPeer.ID, err)
+		logger.Warnf("Couldn't construct a url for miner %s: %v", candidate.MinerPeer.ID, err)
 		return nil, fmt.Errorf("%w: %v", ErrNoHttpForPeer, err)
 	}
 
 	path, err := request.GetUrlPath()
 	if err != nil {
-		log.Warnf("Couldn't construct a url path for request: %v", err)
+		logger.Warnf("Couldn't construct a url path for request: %v", err)
 		return nil, fmt.Errorf("%w: %v", ErrBadPathForRequest, err)
 	}
 
 	reqURL := fmt.Sprintf("%s/ipfs/%s%s", candidateURL, request.Cid, path)
 	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
-		log.Warnf("Couldn't construct a http request %s: %v", candidate.MinerPeer.ID, err)
+		logger.Warnf("Couldn't construct a http request %s: %v", candidate.MinerPeer.ID, err)
 		return nil, fmt.Errorf("%w for peer %s: %v", ErrBadPathForRequest, candidate.MinerPeer.ID, err)
 	}
 	req.Header.Add("Accept", request.Scope.AcceptHeader())

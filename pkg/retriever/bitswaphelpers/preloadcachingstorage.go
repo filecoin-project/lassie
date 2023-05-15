@@ -198,14 +198,14 @@ func (cs *PreloadCachingStorage) Preloader(preloadCtx preload.PreloadContext, li
 
 	// check parent
 	if has, err := linkSystemHas(cs.parentLinkSystem, linkCtx, link.Link); err != nil {
-		log.Errorf("parent LinkSystem block existence check failed: %s", err.Error())
+		logger.Errorf("parent LinkSystem block existence check failed: %s", err.Error())
 	} else if has {
 		return
 	}
 
 	// check cache
 	if has, err := linkSystemHas(cs.cacheLinkSystem, linkCtx, link.Link); err != nil {
-		log.Errorf("cache LinkSystem block existence check failed: %s", err.Error())
+		logger.Errorf("cache LinkSystem block existence check failed: %s", err.Error())
 	} else if has {
 		return
 	}

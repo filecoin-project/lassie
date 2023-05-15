@@ -83,7 +83,7 @@ func (ir *IndexerRouting) FindProvidersAsync(ctx context.Context, c cid.Cid, max
 			}
 		}
 		ir.providerSetsLk.Unlock()
-		log.Debugw("provider records requested from bitswap, sending back indexer results", "providerCount", len(providers))
+		logger.Debugw("provider records requested from bitswap, sending back indexer results", "providerCount", len(providers))
 		for _, p := range providers {
 			select {
 			case <-ctx.Done():

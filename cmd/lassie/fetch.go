@@ -141,23 +141,23 @@ func Fetch(cctx *cli.Context) error {
 	if len(fetchProviderAddrInfos) > 0 {
 		finderOpt := lassie.WithFinder(retriever.NewDirectCandidateFinder(host, fetchProviderAddrInfos))
 		if cctx.IsSet("ipni-endpoint") {
-			log.Warn("Ignoring ipni-endpoint flag since direct provider is specified")
+			logger.Warn("Ignoring ipni-endpoint flag since direct provider is specified")
 		}
 		lassieOpts = append(lassieOpts, finderOpt)
 	} else if cctx.IsSet("ipni-endpoint") {
 		endpoint := cctx.String("ipni-endpoint")
 		endpointUrl, err := url.Parse(endpoint)
 		if err != nil {
-			log.Errorw("Failed to parse IPNI endpoint as URL", "err", err)
+			logger.Errorw("Failed to parse IPNI endpoint as URL", "err", err)
 			return fmt.Errorf("cannot parse given IPNI endpoint %s as valid URL: %w", endpoint, err)
 		}
 		finder, err := indexerlookup.NewCandidateFinder(indexerlookup.WithHttpEndpoint(endpointUrl))
 		if err != nil {
-			log.Errorw("Failed to instantiate IPNI candidate finder", "err", err)
+			logger.Errorw("Failed to instantiate IPNI candidate finder", "err", err)
 			return err
 		}
 		lassieOpts = append(lassieOpts, lassie.WithFinder(finder))
-		log.Debug("Using explicit IPNI endpoint to find candidates", "endpoint", endpoint)
+		logger.Debug("Using explicit IPNI endpoint to find candidates", "endpoint", endpoint)
 	}
 
 	if len(providerBlockList) > 0 {

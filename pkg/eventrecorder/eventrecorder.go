@@ -11,14 +11,14 @@ import (
 
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/types"
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/ipfs/go-log/v2"
 	"github.com/multiformats/go-multicodec"
 )
 
 var HttpTimeout = 5 * time.Second
 var ParallelPosters = 5
 
-var log = logging.Logger("eventrecorder")
+var logger = log.Logger("lassie/eventrecorder")
 
 type EventRecorderConfig struct {
 	DisableIndexerEvents  bool
@@ -209,13 +209,13 @@ func (er *EventRecorder) handleReports(client http.Client, reports []report) {
 
 	byts, err := json.Marshal(MultiEventReport{eventReports})
 	if err != nil {
-		log.Errorf("Failed to JSONify and encode event [%s]: %w", sources, err.Error())
+		logger.Errorf("Failed to JSONify and encode event [%s]: %w", sources, err.Error())
 		return
 	}
 
 	req, err := http.NewRequest("POST", er.cfg.EndpointURL, bytes.NewBufferString(string(byts)))
 	if err != nil {
-		log.Errorf("Failed to create POST request [%s] for recorder [%s]: %w", sources, er.cfg.EndpointURL, err.Error())
+		logger.Errorf("Failed to create POST request [%s] for recorder [%s]: %w", sources, er.cfg.EndpointURL, err.Error())
 		return
 	}
 
@@ -228,12 +228,12 @@ func (er *EventRecorder) handleReports(client http.Client, reports []report) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Errorf("Failed to POST event [%s] to recorder [%s]: %w", sources, er.cfg.EndpointURL, err.Error())
+		logger.Errorf("Failed to POST event [%s] to recorder [%s]: %w", sources, er.cfg.EndpointURL, err.Error())
 		return
 	}
 
 	defer resp.Body.Close() // error not so important at this point
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		log.Errorf("Expected success response code from event recorder server, got: %s", http.StatusText(resp.StatusCode))
+		logger.Errorf("Expected success response code from event recorder server, got: %s", http.StatusText(resp.StatusCode))
 	}
 }

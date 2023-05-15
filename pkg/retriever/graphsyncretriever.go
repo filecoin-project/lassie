@@ -190,7 +190,7 @@ func (pg *ProtocolGraphsync) retrievalPhase(
 		ss = string(byts)
 	}
 
-	log.Infof(
+	logger.Infof(
 		"Attempting retrieval from SP %s for %s (with selector: [%s])",
 		candidate.MinerPeer.ID,
 		candidate.RootCid,
