@@ -1,5 +1,5 @@
 package retriever
 
-import logging "github.com/ipfs/go-log/v2"
+import "github.com/ipfs/go-log/v2"
 
-var log = logging.Logger("retriever")
+var logger = log.Logger("lassie/retriever")

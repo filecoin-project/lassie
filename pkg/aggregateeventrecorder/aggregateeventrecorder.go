@@ -13,7 +13,7 @@ import (
 	"github.com/ipfs/go-log/v2"
 )
 
-var logging = log.Logger("aggregateeventrecorder")
+var logger = log.Logger("lassie/aggregateeventrecorder")
 
 const httpTimeout = 5 * time.Second
 const parallelPosters = 5
@@ -146,7 +146,7 @@ func (a *aggregateEventRecorder) ingestEvents() {
 			tempData, ok := eventTempMap[id]
 			if !ok {
 				if event.Code() == types.FinishedCode {
-					logging.Errorf("Received Finished event but can't find aggregate data. Skipping creation of aggregate event.")
+					logger.Errorf("Received Finished event but can't find aggregate data. Skipping creation of aggregate event.")
 				}
 				continue
 			}
@@ -270,13 +270,13 @@ func (a *aggregateEventRecorder) postEvents() {
 		case batchedData := <-a.postChan:
 			byts, err := json.Marshal(batchedEvents{batchedData})
 			if err != nil {
-				logging.Errorf("Failed to JSONify and encode event: %w", err.Error())
+				logger.Errorf("Failed to JSONify and encode event: %w", err.Error())
 				continue
 			}
 
 			req, err := http.NewRequest("POST", a.endpointURL, bytes.NewBufferString(string(byts)))
 			if err != nil {
-				logging.Errorf("Failed to create POST request for [%s]: %w", a.endpointURL, err.Error())
+				logger.Errorf("Failed to create POST request for [%s]: %w", a.endpointURL, err.Error())
 				continue
 			}
 
@@ -289,13 +289,13 @@ func (a *aggregateEventRecorder) postEvents() {
 
 			resp, err := client.Do(req)
 			if err != nil {
-				logging.Errorf("Failed to POST event to [%s]: %w", a.endpointURL, err.Error())
+				logger.Errorf("Failed to POST event to [%s]: %w", a.endpointURL, err.Error())
 				continue
 			}
 
 			defer resp.Body.Close() // error not so important at this point
 			if resp.StatusCode < 200 || resp.StatusCode > 299 {
-				logging.Errorf("Expected success response code from server, got: %s", http.StatusText(resp.StatusCode))
+				logger.Errorf("Expected success response code from server, got: %s", http.StatusText(resp.StatusCode))
 			}
 		}
 	}

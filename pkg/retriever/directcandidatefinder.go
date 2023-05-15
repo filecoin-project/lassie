@@ -96,11 +96,11 @@ func (d *DirectCandidateFinder) FindCandidatesAsync(ctx context.Context, c cid.C
 			transportsClient := lp2ptransports.NewTransportsClient(d.h)
 			qr, err := transportsClient.SendQuery(ctx, provider.ID)
 			if err == nil {
-				log.Debugw("retrieving metadata from transports protocol", "peer", provider.ID)
+				logger.Debugw("retrieving metadata from transports protocol", "peer", provider.ID)
 				// if present, construct metadata from Boost libp2p transports response
 				d.retrievalCandidatesFromTransportsProtocol(ctx, qr, provider, cs)
 			} else {
-				log.Debugw("retrieving metadata from libp2p protocol list", "peer", provider.ID)
+				logger.Debugw("retrieving metadata from libp2p protocol list", "peer", provider.ID)
 				// if not present, just make guesses based on list of supported libp2p
 				// protocols catalogued via identify protocol
 				d.retrievalCandidatesFromProtocolProbing(ctx, provider, cs)

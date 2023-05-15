@@ -7,14 +7,14 @@ import (
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
-	logging "github.com/ipfs/go-log/v2"
+	"github.com/ipfs/go-log/v2"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
 )
 
-var log = logging.Logger("lassie/session")
+var logger = log.Logger("lassie/session")
 
 type State interface {
 	RecordFailure(storageProviderId peer.ID, retrievalId types.RetrievalID) error
@@ -139,7 +139,7 @@ func (s *Session) IsAcceptableQueryResponse(peer peer.ID, req types.RetrievalReq
 
 	acceptable := s.config.PaidRetrievals || big.Add(big.Mul(queryResponse.MinPricePerByte, big.NewIntUnsigned(queryResponse.Size)), queryResponse.UnsealPrice).Equals(big.Zero())
 	if !acceptable {
-		log.Debugf("skipping query response from %s for %s: paid retrieval not allowed", peer, req.Cid)
+		logger.Debugf("skipping query response from %s for %s: paid retrieval not allowed", peer, req.Cid)
 		s.State.RemoveStorageProviderFromRetrieval(peer, req.RetrievalID)
 	}
 	return acceptable

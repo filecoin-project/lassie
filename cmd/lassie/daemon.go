@@ -161,7 +161,7 @@ func daemonCommand(cctx *cli.Context) error {
 	})
 
 	if err != nil {
-		log.Errorw("failed to create http server", "err", err)
+		logger.Errorw("failed to create http server", "err", err)
 		return err
 	}
 
@@ -178,7 +178,7 @@ func daemonCommand(cctx *cli.Context) error {
 		metricsServer, err = metrics.NewHttpServer(ctx, metricsAddress, metricsPort)
 
 		if err != nil {
-			log.Errorw("failed to create metrics server", "err", err)
+			logger.Errorw("failed to create metrics server", "err", err)
 			return err
 		}
 
@@ -192,20 +192,20 @@ func daemonCommand(cctx *cli.Context) error {
 	select {
 	case <-cctx.Done(): // command was cancelled
 	case err = <-serverErrChan: // error from server
-		log.Errorw("failed to start http server", "err", err)
+		logger.Errorw("failed to start http server", "err", err)
 	case err = <-metricsServerErrChan: // error from server
-		log.Errorw("failed to start metrics server", "err", err)
+		logger.Errorw("failed to start metrics server", "err", err)
 	}
 
 	fmt.Println("Shutting down Lassie daemon")
 	if err = httpServer.Close(); err != nil {
-		log.Errorw("failed to close http server", "err", err)
+		logger.Errorw("failed to close http server", "err", err)
 	}
 
 	if exposeMetrics {
 		fmt.Println("Shutting down Lassie metrics server")
 		if err = metricsServer.Close(); err != nil {
-			log.Errorw("failed to close metrics server", "err", err)
+			logger.Errorw("failed to close metrics server", "err", err)
 		}
 	}
 

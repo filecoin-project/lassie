@@ -211,7 +211,7 @@ func (spt *spTracker) RecordFailure(storageProviderId peer.ID, retrievalId types
 	}
 
 	if status.isSuspended() {
-		log.Warnf(
+		logger.Warnf(
 			"Suspending storage provider for %s after %d failures within %s: %s",
 			status.suspensionDuration,
 			len(status.failures),

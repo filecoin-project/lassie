@@ -24,7 +24,7 @@ import (
 var (
 	_ retriever.CandidateFinder = (*IndexerCandidateFinder)(nil)
 
-	logger = log.Logger("indexerlookup")
+	logger = log.Logger("lassie/indexerlookup")
 )
 
 type IndexerCandidateFinder struct {

@@ -8,11 +8,7 @@ import (
 
 	// expose default metrics
 	_ "net/http/pprof"
-
-	logging "github.com/ipfs/go-log/v2"
 )
-
-var log = logging.Logger("lassie/metrics")
 
 // MetricsServer simply exposes prometheus and pprof metrics via HTTP
 type MetricsServer struct {
@@ -59,10 +55,10 @@ func (s MetricsServer) Addr() string {
 
 // Start starts the metrics http server, returning an error if the server failed to start
 func (s *MetricsServer) Start() error {
-	log.Infow("starting metrics server", "listen_addr", s.listener.Addr())
+	logger.Infow("starting metrics server", "listen_addr", s.listener.Addr())
 	err := s.server.Serve(s.listener)
 	if err != http.ErrServerClosed {
-		log.Errorw("failed to start metrics server", "err", err)
+		logger.Errorw("failed to start metrics server", "err", err)
 		return err
 	}
 
@@ -71,7 +67,7 @@ func (s *MetricsServer) Start() error {
 
 // Close shutsdown the server and cancels the server context
 func (s *MetricsServer) Close() error {
-	log.Info("closing http server")
+	logger.Info("closing http server")
 	s.cancel()
 	return s.server.Shutdown(context.Background())
 }

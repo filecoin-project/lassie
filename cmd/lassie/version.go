@@ -25,8 +25,8 @@ var versionCmd = &cli.Command{
 
 func versionCommand(cctx *cli.Context) error {
 	if version == "" {
-		log.Warn("executable built without a version")
-		log.Warn("set version with `go build -ldflags=\"-X main.version=v0.0.0\"")
+		logger.Warn("executable built without a version")
+		logger.Warn("set version with `go build -ldflags=\"-X main.version=v0.0.0\"")
 		version = "[not set]"
 	}
 
