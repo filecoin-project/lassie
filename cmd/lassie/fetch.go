@@ -88,7 +88,7 @@ var fetchCmd = &cli.Command{
 			},
 		},
 		&cli.StringFlag{
-			Name:        "ipniEndpoint",
+			Name:        "ipni-endpoint",
 			Aliases:     []string{"ipni"},
 			DefaultText: "Defaults to https://cid.contact",
 			Usage:       "HTTP endpoint of the IPNI instance used to discover providers.",
@@ -140,12 +140,12 @@ func Fetch(cctx *cli.Context) error {
 
 	if len(fetchProviderAddrInfos) > 0 {
 		finderOpt := lassie.WithFinder(retriever.NewDirectCandidateFinder(host, fetchProviderAddrInfos))
-		if cctx.IsSet("ipniEndpoint") {
-			log.Warn("Ignoring ipniEndpoint flag since direct provider is specified")
+		if cctx.IsSet("ipni-endpoint") {
+			log.Warn("Ignoring ipni-endpoint flag since direct provider is specified")
 		}
 		lassieOpts = append(lassieOpts, finderOpt)
-	} else if cctx.IsSet("ipniEndpoint") {
-		endpoint := cctx.String("ipniEndpoint")
+	} else if cctx.IsSet("ipni-endpoint") {
+		endpoint := cctx.String("ipni-endpoint")
 		endpointUrl, err := url.Parse(endpoint)
 		if err != nil {
 			log.Errorw("Failed to parse IPNI endpoint as URL", "err", err)
