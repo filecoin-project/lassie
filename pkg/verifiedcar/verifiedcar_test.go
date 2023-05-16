@@ -192,7 +192,6 @@ func TestVerifiedCar(t *testing.T) {
 				Selector: allSelector,
 			},
 		},
-
 		{
 			name:   "carv1 with extraneous leading blocks, allow unexpected blocks",
 			blocks: append(skippedBlocks([]block{{extraneousLnk.(cidlink.Link).Cid, extraneousByts}}), consumedBlocks(allBlocks)...),
