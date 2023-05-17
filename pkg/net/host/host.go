@@ -3,11 +3,13 @@ package host
 import (
 	"context"
 
+	"github.com/filecoin-project/lassie/pkg/build"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/p2p/muxer/mplex"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
+	"github.com/libp2p/go-libp2p/p2p/protocol/identify"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	quic "github.com/libp2p/go-libp2p/p2p/transport/quic"
@@ -32,7 +34,20 @@ func InitHost(ctx context.Context, opts []libp2p.Option, listenAddrs ...multiadd
 
 	// add muxers
 	opts = append([]libp2p.Option{libp2p.Muxer(yamuxID, yamuxTransport()), libp2p.Muxer(mplexID, mplex.DefaultTransport)}, opts...)
-	return libp2p.New(opts...)
+
+	host, err := libp2p.New(opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set the identify protocol user agent
+	idService, err := identify.NewIDService(host, identify.UserAgent(build.Version))
+	if err != nil {
+		return nil, err
+	}
+	idService.Start()
+
+	return host, nil
 }
 
 func yamuxTransport() network.Multiplexer {

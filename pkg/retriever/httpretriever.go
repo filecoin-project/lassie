@@ -10,6 +10,7 @@ import (
 
 	"github.com/benbjohnson/clock"
 	"github.com/filecoin-project/go-state-types/big"
+	"github.com/filecoin-project/lassie/pkg/build"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/filecoin-project/lassie/pkg/verifiedcar"
@@ -178,6 +179,7 @@ func makeRequest(ctx context.Context, request types.RetrievalRequest, candidate 
 	req.Header.Add("User-Agent", DefaultUserAgent)
 	req.Header.Add("X-Request-Id", request.RetrievalID.String())
 
+	req.Header.Add("User-Agent", build.UserAgent)
 	return req, nil
 }
 
