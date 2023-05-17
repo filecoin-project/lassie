@@ -1,3 +1,7 @@
+/.vscode
+
 /cmd/lassie/lassie
 /lassie
 *.car
+
+dist/
