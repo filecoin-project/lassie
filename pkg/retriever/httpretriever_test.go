@@ -12,6 +12,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/internal/testutil"
 	"github.com/filecoin-project/lassie/pkg/retriever"
+	"github.com/filecoin-project/lassie/pkg/session"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
@@ -53,7 +54,6 @@ func TestHTTPRetriever(t *testing.T) {
 	rid2 := types.RetrievalID(uuid.New())
 	remoteBlockDuration := 50 * time.Millisecond
 	allSelector := selectorparse.CommonSelector_ExploreAllRecursively
-	getTimeout := func(_ peer.ID) time.Duration { return 5 * time.Second }
 	initialPause := 10 * time.Millisecond
 	startTime := time.Now().Add(time.Hour)
 
@@ -520,28 +520,23 @@ func TestHTTPRetriever(t *testing.T) {
 			awaitReceivedCandidates := make(chan struct{}, 1)
 			roundTripper := testutil.NewMockRoundTripper(t, ctx, clock, remoteBlockDuration, testCase.requestPath, testCase.requestScope, testCase.remotes)
 			client := &http.Client{Transport: roundTripper}
-			// customCompare lets us order candidates when they queue, since we currently
-			// have no other way to deterministically order them for testing.
-			customCompare := func(a, b retriever.ComparableCandidate, mda, mdb metadata.Protocol) bool {
-				for _, c := range cid1Cands {
-					if c.MinerPeer.ID == a.PeerID {
-						return true
-					}
-					if c.MinerPeer.ID == b.PeerID {
-						return false
-					}
-				}
-				for _, c := range cid2Cands {
-					if c.MinerPeer.ID == a.PeerID {
-						return true
-					}
-					if c.MinerPeer.ID == b.PeerID {
-						return false
-					}
-				}
-				return false
+			session := session.NewSession(&session.Config{
+				DefaultProviderConfig: session.ProviderConfig{
+					RetrievalTimeout: 5 * time.Second,
+				},
+				// bias to the most recent connect time
+				// (that we are about to register below)
+				ConnectTimeAlpha: 0.9999,
+			}, true)
+			// pre-bias the session with some connect times so we get deterministic
+			// ordering of candidates being chosen for retrieval
+			for ii, c := range cid1Cands {
+				session.RegisterConnectTime(c.MinerPeer.ID, time.Minute*time.Duration(ii))
 			}
-			retriever := retriever.NewHttpRetrieverWithDeps(getTimeout, client, clock, awaitReceivedCandidates, initialPause, customCompare)
+			for ii, c := range cid2Cands {
+				session.RegisterConnectTime(c.MinerPeer.ID, time.Minute*time.Duration(ii))
+			}
+			retriever := retriever.NewHttpRetrieverWithDeps(session, client, clock, awaitReceivedCandidates, initialPause)
 
 			blockAccounting := make([]*blockAccounter, 0)
 			expectedCids := make([][]cid.Cid, 0)

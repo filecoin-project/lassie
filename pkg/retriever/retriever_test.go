@@ -26,11 +26,10 @@ import (
 )
 
 func TestRetrieverStart(t *testing.T) {
-	config := session.Config{}
 	candidateFinder := &testutil.MockCandidateFinder{}
 	client := &testutil.MockClient{}
-	session := session.NewSession(config, true)
-	gsretriever := NewGraphsyncRetriever(session.GetStorageProviderTimeout, client)
+	session := session.NewSession(nil, true)
+	gsretriever := NewGraphsyncRetriever(session, client)
 	ret, err := NewRetriever(context.Background(), session, candidateFinder, map[multicodec.Code]types.CandidateRetriever{
 		multicodec.TransportGraphsyncFilecoinv1: gsretriever,
 	})
@@ -409,7 +408,7 @@ func TestRetriever(t *testing.T) {
 		{
 			name: "two candidates, first times out retrieval",
 			setup: func(rc *session.Config) {
-				rc.DefaultMinerConfig.RetrievalTimeout = time.Millisecond * 200
+				rc.DefaultProviderConfig.RetrievalTimeout = time.Millisecond * 200
 			},
 			candidates: []types.RetrievalCandidate{
 				{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
@@ -499,7 +498,7 @@ func TestRetriever(t *testing.T) {
 		{
 			name: "no candidates",
 			setup: func(rc *session.Config) {
-				rc.DefaultMinerConfig.RetrievalTimeout = time.Millisecond * 100
+				rc.DefaultProviderConfig.RetrievalTimeout = time.Millisecond * 100
 			},
 			candidates:         []types.RetrievalCandidate{},
 			returns_connected:  map[string]testutil.DelayedConnectReturn{},
@@ -522,7 +521,7 @@ func TestRetriever(t *testing.T) {
 		{
 			name: "no acceptable candidates",
 			setup: func(rc *session.Config) {
-				rc.DefaultMinerConfig.RetrievalTimeout = time.Millisecond * 100
+				rc.DefaultProviderConfig.RetrievalTimeout = time.Millisecond * 100
 			},
 			candidates: []types.RetrievalCandidate{
 				{MinerPeer: peer.AddrInfo{ID: blacklistedPeer}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
@@ -563,14 +562,13 @@ func TestRetriever(t *testing.T) {
 			// --- setup ---
 			candidateFinder := testutil.NewMockCandidateFinder(nil, map[cid.Cid][]types.RetrievalCandidate{cid1: tc.candidates})
 			client := testutil.NewMockClient(tc.returns_connected, tc.returns_retrievals, clock)
-			config := session.Config{
-				ProviderBlockList: map[peer.ID]bool{blacklistedPeer: true},
-			}
+			config := session.DefaultConfig()
+			config.ProviderBlockList = map[peer.ID]bool{blacklistedPeer: true}
 			if tc.setup != nil {
-				tc.setup(&config)
+				tc.setup(config)
 			}
 			session := session.NewSession(config, true)
-			gsretriever := NewGraphsyncRetriever(session.GetStorageProviderTimeout, client)
+			gsretriever := NewGraphsyncRetriever(session, client)
 			gsretriever.(*parallelPeerRetriever).Clock = clock
 			gsretriever.(*parallelPeerRetriever).QueueInitialPause = initialPause
 
@@ -657,9 +655,8 @@ func TestLinkSystemPerRequest(t *testing.T) {
 
 	candidateFinder := testutil.NewMockCandidateFinder(nil, map[cid.Cid][]types.RetrievalCandidate{cid1: candidates})
 	client := testutil.NewMockClient(returnsConnected, returnsRetrievals, clock)
-	config := session.Config{}
-	session := session.NewSession(config, true)
-	gsretriever := NewGraphsyncRetriever(session.GetStorageProviderTimeout, client)
+	session := session.NewSession(nil, true)
+	gsretriever := NewGraphsyncRetriever(session, client)
 	gsretriever.(*parallelPeerRetriever).Clock = clock
 	gsretriever.(*parallelPeerRetriever).QueueInitialPause = initialPause
 

@@ -11,6 +11,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/internal/testutil"
 	"github.com/filecoin-project/lassie/pkg/retriever"
+	"github.com/filecoin-project/lassie/pkg/session"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
@@ -510,7 +511,13 @@ func TestRetrievalRacing(t *testing.T) {
 				}
 				candidates = append(candidates, types.NewRetrievalCandidate(peer.ID(p), nil, cid.Undef, protocol))
 			}
-			cfg := retriever.NewGraphsyncRetrieverWithConfig(func(peer peer.ID) time.Duration { return time.Second }, mockClient, clock, initialPause)
+			session := session.NewSession(&session.Config{
+				DefaultProviderConfig: session.ProviderConfig{
+					RetrievalTimeout: time.Second,
+				},
+				ConnectTimeAlpha: 0,
+			}, true)
+			cfg := retriever.NewGraphsyncRetrieverWithConfig(session, mockClient, clock, initialPause)
 
 			rv := testutil.RetrievalVerifier{
 				ExpectedSequence: tc.expectSequence,
@@ -575,7 +582,13 @@ func TestMultipleRetrievals(t *testing.T) {
 		clock,
 	)
 
-	cfg := retriever.NewGraphsyncRetrieverWithConfig(func(peer peer.ID) time.Duration { return time.Second }, mockClient, clock, initialPause)
+	session := session.NewSession(&session.Config{
+		DefaultProviderConfig: session.ProviderConfig{
+			RetrievalTimeout: time.Second,
+		},
+		ConnectTimeAlpha: 0,
+	}, true)
+	cfg := retriever.NewGraphsyncRetrieverWithConfig(session, mockClient, clock, initialPause)
 
 	expectedSequence := []testutil.ExpectedActionsAtTime{
 		{
@@ -692,7 +705,13 @@ func TestRetrievalSelector(t *testing.T) {
 		clock.New(),
 	)
 
-	cfg := retriever.NewGraphsyncRetriever(func(peer peer.ID) time.Duration { return time.Second }, mockClient)
+	session := session.NewSession(&session.Config{
+		DefaultProviderConfig: session.ProviderConfig{
+			RetrievalTimeout: time.Second,
+		},
+		ConnectTimeAlpha: 0,
+	}, true)
+	cfg := retriever.NewGraphsyncRetriever(session, mockClient)
 
 	selector := selectorparse.CommonSelector_MatchPoint
 
@@ -737,7 +756,13 @@ func TestDuplicateRetreivals(t *testing.T) {
 		clock,
 	)
 
-	cfg := retriever.NewGraphsyncRetrieverWithConfig(func(peer peer.ID) time.Duration { return time.Second }, mockClient, clock, initialPause)
+	session := session.NewSession(&session.Config{
+		DefaultProviderConfig: session.ProviderConfig{
+			RetrievalTimeout: time.Second,
+		},
+		ConnectTimeAlpha: 0,
+	}, true)
+	cfg := retriever.NewGraphsyncRetrieverWithConfig(session, mockClient, clock, initialPause)
 
 	expectedSequence := []testutil.ExpectedActionsAtTime{
 		{

@@ -42,16 +42,17 @@ var _ TransportProtocol = &ProtocolGraphsync{}
 
 type ProtocolGraphsync struct {
 	Client GraphsyncClient
+	Clock  clock.Clock
 }
 
 // NewGraphsyncRetriever makes a new CandidateRetriever for Graphsync retrievals
 // (transport-graphsync-filecoinv1).
-func NewGraphsyncRetriever(getStorageProviderTimeout GetStorageProviderTimeout, client GraphsyncClient) types.CandidateRetriever {
-	return NewGraphsyncRetrieverWithConfig(getStorageProviderTimeout, client, clock.New(), GraphsyncDefaultInitialWait)
+func NewGraphsyncRetriever(session Session, client GraphsyncClient) types.CandidateRetriever {
+	return NewGraphsyncRetrieverWithConfig(session, client, clock.New(), GraphsyncDefaultInitialWait)
 }
 
 func NewGraphsyncRetrieverWithConfig(
-	getStorageProviderTimeout GetStorageProviderTimeout,
+	session Session,
 	client GraphsyncClient,
 	clock clock.Clock,
 	initialPause time.Duration,
@@ -60,10 +61,11 @@ func NewGraphsyncRetrieverWithConfig(
 	return &parallelPeerRetriever{
 		Protocol: &ProtocolGraphsync{
 			Client: client,
+			Clock:  clock,
 		},
-		GetStorageProviderTimeout: getStorageProviderTimeout,
-		Clock:                     clock,
-		QueueInitialPause:         initialPause,
+		Session:           session,
+		Clock:             clock,
+		QueueInitialPause: initialPause,
 	}
 }
 
@@ -93,6 +95,7 @@ func (pg ProtocolGraphsync) GetMergedMetadata(cid cid.Cid, currentMetadata, newM
 
 // graphsyncMetadataCompare compares two metadata.GraphsyncFilecoinV1s and
 // returns true if the first is preferable to the second.
+// NOTE this is similar to comparisons used in Session#CompareCandidates
 func graphsyncMetadataCompare(a, b *metadata.GraphsyncFilecoinV1, defaultValue bool) bool {
 	// prioritize verified deals over not verified deals
 	if a.VerifiedDeal != b.VerifiedDeal {
@@ -107,27 +110,24 @@ func graphsyncMetadataCompare(a, b *metadata.GraphsyncFilecoinV1, defaultValue b
 	return defaultValue
 }
 
-func (pg ProtocolGraphsync) CompareCandidates(a, b ComparableCandidate, mda, mdb metadata.Protocol) bool {
-	gsmda := mda.(*metadata.GraphsyncFilecoinV1)
-	gsmdb := mdb.(*metadata.GraphsyncFilecoinV1)
-	return graphsyncMetadataCompare(gsmda, gsmdb, a.Duration < b.Duration)
-}
-
-func (pg *ProtocolGraphsync) Connect(ctx context.Context, retrieval *retrieval, candidate types.RetrievalCandidate) error {
-	return pg.Client.Connect(ctx, candidate.MinerPeer)
+func (pg *ProtocolGraphsync) Connect(ctx context.Context, retrieval *retrieval, phaseStartTime time.Time, candidate types.RetrievalCandidate) (time.Duration, error) {
+	if err := pg.Client.Connect(ctx, candidate.MinerPeer); err != nil {
+		return 0, err
+	}
+	return pg.Clock.Since(phaseStartTime), nil
 }
 
 func (pg *ProtocolGraphsync) Retrieve(
 	ctx context.Context,
 	retrieval *retrieval,
-	session *retrievalSession,
+	shared *retrievalShared,
 	phaseStartTime time.Time,
 	timeout time.Duration,
 	candidate types.RetrievalCandidate,
 ) (*types.RetrievalStats, error) {
 
 	eventsCallback := makeEventsCallback(
-		session,
+		shared,
 		retrieval.parallelPeerRetriever.Clock,
 		retrieval.request.RetrievalID,
 		phaseStartTime,
@@ -143,7 +143,7 @@ func (pg *ProtocolGraphsync) Retrieve(
 }
 
 func makeEventsCallback(
-	session *retrievalSession,
+	shared *retrievalShared,
 	clock clock.Clock,
 	retrievalId types.RetrievalID,
 	phaseStartTime time.Time,
@@ -153,7 +153,7 @@ func makeEventsCallback(
 	return func(event datatransfer.Event, channelState datatransfer.ChannelState) {
 		switch event.Code {
 		case datatransfer.Open:
-			session.sendEvent(events.Proposed(clock.Now(), retrievalId, phaseStartTime, candidate))
+			shared.sendEvent(events.Proposed(clock.Now(), retrievalId, phaseStartTime, candidate))
 		case datatransfer.NewVoucherResult:
 			lastVoucher := channelState.LastVoucherResult()
 			resType, err := retrievaltypes.DealResponseFromNode(lastVoucher.Voucher)
@@ -161,12 +161,12 @@ func makeEventsCallback(
 				return
 			}
 			if resType.Status == retrievaltypes.DealStatusAccepted {
-				session.sendEvent(events.Accepted(clock.Now(), retrievalId, phaseStartTime, candidate))
+				shared.sendEvent(events.Accepted(clock.Now(), retrievalId, phaseStartTime, candidate))
 			}
 		case datatransfer.DataReceivedProgress:
 			if !receivedFirstByte {
 				receivedFirstByte = true
-				session.sendEvent(events.FirstByte(clock.Now(), retrievalId, phaseStartTime, candidate))
+				shared.sendEvent(events.FirstByte(clock.Now(), retrievalId, phaseStartTime, candidate))
 			}
 		}
 	}
