@@ -26,12 +26,11 @@ type GetStorageProviderTimeout func(peer peer.ID) time.Duration
 type TransportProtocol interface {
 	Code() multicodec.Code
 	GetMergedMetadata(cid cid.Cid, currentMetadata, newMetadata metadata.Protocol) metadata.Protocol
-	CompareCandidates(a, b ComparableCandidate, mda, mdb metadata.Protocol) bool
-	Connect(ctx context.Context, retrieval *retrieval, candidate types.RetrievalCandidate) error
+	Connect(ctx context.Context, retrieval *retrieval, phaseStartTime time.Time, candidate types.RetrievalCandidate) (time.Duration, error)
 	Retrieve(
 		ctx context.Context,
 		retrieval *retrieval,
-		session *retrievalSession,
+		shared *retrievalShared,
 		phaseStartTime time.Time,
 		timeout time.Duration,
 		candidate types.RetrievalCandidate,
@@ -52,10 +51,10 @@ var _ types.CandidateRetrieval = (*retrieval)(nil)
 // TransportProtocol interface. parallelPeerRetriever manages candidates and
 // the parallel+serial flow of connect+retrieve.
 type parallelPeerRetriever struct {
-	Protocol                  TransportProtocol
-	GetStorageProviderTimeout GetStorageProviderTimeout
-	Clock                     clock.Clock
-	QueueInitialPause         time.Duration
+	Protocol          TransportProtocol
+	Session           Session
+	Clock             clock.Clock
+	QueueInitialPause time.Duration
 
 	// this is purely for testing purposes, to ensure that we receive all candidates
 	awaitReceivedCandidates chan<- struct{}
@@ -79,16 +78,44 @@ type retrievalResult struct {
 	Err        error
 }
 
-// ComparableCandidate is used for the prioritywaitqueue
-type ComparableCandidate struct {
-	PeerID   peer.ID
-	Duration time.Duration
-}
-
-type retrievalSession struct {
-	waitQueue  prioritywaitqueue.PriorityWaitQueue[ComparableCandidate]
+// retrievalShared is the shared state and coordination between the per-SP
+// retrieval goroutines.
+type retrievalShared struct {
+	waitQueue  prioritywaitqueue.PriorityWaitQueue[peer.ID]
 	resultChan chan retrievalResult
 	finishChan chan struct{}
+}
+
+// canSendResult will indicate whether a result is likely to be accepted (true)
+// or whether the retrieval is already finished (likely by a success)
+func (shared *retrievalShared) canSendResult() bool {
+	select {
+	case <-shared.finishChan:
+		return false
+	default:
+	}
+	return true
+}
+
+// sendResult will only send a result to the parent goroutine if a retrieval has
+// finished (likely by a success), otherwise it will send the result
+func (shared *retrievalShared) sendResult(result retrievalResult) bool {
+	select {
+	case <-shared.finishChan:
+		return false
+	case shared.resultChan <- result:
+		if result.Stats != nil {
+			// signals to goroutines to bail, this has to be done here, rather than on
+			// the receiving parent end, because immediately after this call we instruct
+			// the prioritywaitqueue that we're done and another may start
+			close(shared.finishChan)
+		}
+	}
+	return true
+}
+
+func (shared *retrievalShared) sendEvent(event types.RetrievalEvent) {
+	shared.sendResult(retrievalResult{PeerID: event.StorageProviderId(), Event: &event})
 }
 
 func (cfg *parallelPeerRetriever) Retrieve(
@@ -97,14 +124,9 @@ func (cfg *parallelPeerRetriever) Retrieve(
 	eventsCallback func(types.RetrievalEvent),
 ) types.CandidateRetrieval {
 
-	if cfg == nil {
-		cfg = &parallelPeerRetriever{}
-	}
 	if eventsCallback == nil {
 		eventsCallback = func(re types.RetrievalEvent) {}
 	}
-
-	// state local to this CID's retrieval
 	return &retrieval{
 		parallelPeerRetriever: cfg,
 		ctx:                   ctx,
@@ -117,12 +139,12 @@ func (cfg *parallelPeerRetriever) Retrieve(
 func (retrieval *retrieval) RetrieveFromAsyncCandidates(asyncCandidates types.InboundAsyncCandidates) (*types.RetrievalStats, error) {
 	ctx, cancelCtx := context.WithCancel(retrieval.ctx)
 
-	pwqOpts := []prioritywaitqueue.Option[ComparableCandidate]{prioritywaitqueue.WithClock[ComparableCandidate](retrieval.Clock)}
+	pwqOpts := []prioritywaitqueue.Option[peer.ID]{prioritywaitqueue.WithClock[peer.ID](retrieval.Clock)}
 	if retrieval.QueueInitialPause > 0 {
-		pwqOpts = append(pwqOpts, prioritywaitqueue.WithInitialPause[ComparableCandidate](retrieval.QueueInitialPause))
+		pwqOpts = append(pwqOpts, prioritywaitqueue.WithInitialPause[peer.ID](retrieval.QueueInitialPause))
 	}
 
-	session := &retrievalSession{
+	shared := &retrievalShared{
 		resultChan: make(chan retrievalResult),
 		finishChan: make(chan struct{}),
 		waitQueue:  prioritywaitqueue.New(retrieval.candidateCompare, pwqOpts...),
@@ -145,7 +167,7 @@ func (retrieval *retrieval) RetrieveFromAsyncCandidates(asyncCandidates types.In
 				waitGroup.Add(1)
 				go func() {
 					defer waitGroup.Done()
-					retrieval.runRetrievalCandidate(ctx, session, phaseStartTime, candidate)
+					retrieval.runRetrievalCandidate(ctx, shared, phaseStartTime, candidate)
 				}()
 			}
 		}
@@ -154,11 +176,11 @@ func (retrieval *retrieval) RetrieveFromAsyncCandidates(asyncCandidates types.In
 	finishAll := make(chan struct{}, 1)
 	go func() {
 		waitGroup.Wait()
-		close(session.resultChan)
+		close(shared.resultChan)
 		finishAll <- struct{}{}
 	}()
 
-	stats, err := collectResults(ctx, session, retrieval.eventsCallback)
+	stats, err := collectResults(ctx, shared, retrieval.eventsCallback)
 	cancelCtx()
 	// optimistically try to wait for all routines to finish
 	select {
@@ -169,25 +191,24 @@ func (retrieval *retrieval) RetrieveFromAsyncCandidates(asyncCandidates types.In
 	return stats, err
 }
 
-// candidateCompare compares two ComparableCandidates and returns true if the first is
+// candidateCompare compares two peer.IDs and returns true if the first is
 // preferable to the second. This is used for the PriorityWaitQueue that will
 // prioritise execution of retrievals if two candidates are available to compare
 // at the same time.
-func (retrieval *retrieval) candidateCompare(a, b ComparableCandidate) bool {
+func (retrieval *retrieval) candidateCompare(a, b peer.ID) bool {
 	retrieval.candidateMetdataLk.RLock()
 	defer retrieval.candidateMetdataLk.RUnlock()
 
-	mdA, ok := retrieval.candidateMetadata[a.PeerID]
+	mdA, ok := retrieval.candidateMetadata[a]
 	if !ok {
 		return false
 	}
-
-	mdB, ok := retrieval.candidateMetadata[b.PeerID]
+	mdB, ok := retrieval.candidateMetadata[b]
 	if !ok {
 		return true
 	}
 
-	return retrieval.Protocol.CompareCandidates(a, b, mdA, mdB)
+	return retrieval.Session.CompareStorageProviders(retrieval.Protocol.Code(), a, b, mdA, mdB)
 }
 
 // filterCandidates is needed because we can receive duplicate candidates in
@@ -228,11 +249,11 @@ func (retrieval *retrieval) filterCandidates(ctx context.Context, asyncCandidate
 // collectResults is responsible for receiving query errors, retrieval errors
 // and retrieval results and aggregating into an appropriate return of either
 // a complete RetrievalStats or an bundled multi-error
-func collectResults(ctx context.Context, retrieval *retrievalSession, eventsCallback func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
+func collectResults(ctx context.Context, shared *retrievalShared, eventsCallback func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
 	var retrievalErrors error
 	for {
 		select {
-		case result, ok := <-retrieval.resultChan:
+		case result, ok := <-shared.resultChan:
 			// have we got all responses but no success?
 			if !ok {
 				// we failed, and got only retrieval errors
@@ -261,21 +282,18 @@ func collectResults(ctx context.Context, retrieval *retrievalSession, eventsCall
 // only attempt one retrieval-proper at a time.
 func (retrieval *retrieval) runRetrievalCandidate(
 	ctx context.Context,
-	session *retrievalSession,
+	shared *retrievalShared,
 	phaseStartTime time.Time,
 	candidate types.RetrievalCandidate,
 ) {
 
-	var timeout time.Duration
-	if retrieval.parallelPeerRetriever.GetStorageProviderTimeout != nil {
-		timeout = retrieval.parallelPeerRetriever.GetStorageProviderTimeout(candidate.MinerPeer.ID)
-	}
+	timeout := retrieval.Session.GetStorageProviderTimeout(candidate.MinerPeer.ID)
 
 	var stats *types.RetrievalStats
 	var retrievalErr error
 	var done func()
 
-	session.sendEvent(events.Started(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate))
+	shared.sendEvent(events.Started(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate))
 	connectCtx := ctx
 	if timeout != 0 {
 		var timeoutFunc func()
@@ -284,33 +302,32 @@ func (retrieval *retrieval) runRetrievalCandidate(
 	}
 
 	// Setup in parallel
-	err := retrieval.Protocol.Connect(connectCtx, retrieval, candidate)
+	connectTime, err := retrieval.Protocol.Connect(connectCtx, retrieval, phaseStartTime, candidate)
 	if err != nil {
 		if ctx.Err() == nil { // not cancelled, maybe timed out though
 			logger.Warnf("Failed to connect to SP %s: %v", candidate.MinerPeer.ID, err)
 			retrievalErr = fmt.Errorf("%w: %v", ErrConnectFailed, err)
-			session.sendEvent(events.Failed(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate, retrievalErr.Error()))
+			shared.sendEvent(events.Failed(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate, retrievalErr.Error()))
 		}
 	} else {
-		session.sendEvent(events.Connected(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate))
+		shared.sendEvent(events.Connected(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate))
+
+		retrieval.Session.RegisterConnectTime(candidate.MinerPeer.ID, connectTime)
 
 		// Form a queue and run retrieval in serial
-		done = session.waitQueue.Wait(ComparableCandidate{
-			PeerID:   candidate.MinerPeer.ID,
-			Duration: retrieval.parallelPeerRetriever.Clock.Now().Sub(phaseStartTime),
-		})
+		done = shared.waitQueue.Wait(candidate.MinerPeer.ID)
 
-		if session.canSendResult() { // move on to retrieval phase
-			stats, retrievalErr = retrieval.Protocol.Retrieve(ctx, retrieval, session, phaseStartTime, timeout, candidate)
+		if shared.canSendResult() { // move on to retrieval phase
+			stats, retrievalErr = retrieval.Protocol.Retrieve(ctx, retrieval, shared, phaseStartTime, timeout, candidate)
 
 			if retrievalErr != nil {
 				msg := retrievalErr.Error()
 				if errors.Is(retrievalErr, ErrRetrievalTimedOut) {
 					msg = fmt.Sprintf("timeout after %s", timeout)
 				}
-				session.sendEvent(events.Failed(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate, msg))
+				shared.sendEvent(events.Failed(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate, msg))
 			} else {
-				session.sendEvent(events.Success(
+				shared.sendEvent(events.Success(
 					retrieval.parallelPeerRetriever.Clock.Now(),
 					retrieval.request.RetrievalID,
 					phaseStartTime,
@@ -326,52 +343,20 @@ func (retrieval *retrieval) runRetrievalCandidate(
 		} // else we didn't get to retrieval phase because we were cancelled
 	}
 
-	if session.canSendResult() {
+	if shared.canSendResult() {
 		if retrievalErr != nil {
 			if ctx.Err() != nil { // cancelled, don't report the error
-				session.sendResult(retrievalResult{PhaseStart: phaseStartTime, PeerID: candidate.MinerPeer.ID})
+				shared.sendResult(retrievalResult{PhaseStart: phaseStartTime, PeerID: candidate.MinerPeer.ID})
 			} else {
 				// an error of some kind to report
-				session.sendResult(retrievalResult{PhaseStart: phaseStartTime, PeerID: candidate.MinerPeer.ID, Err: retrievalErr})
+				shared.sendResult(retrievalResult{PhaseStart: phaseStartTime, PeerID: candidate.MinerPeer.ID, Err: retrievalErr})
 			}
 		} else { // success, we have stats and no errors
-			session.sendResult(retrievalResult{PhaseStart: phaseStartTime, PeerID: candidate.MinerPeer.ID, Stats: stats})
+			shared.sendResult(retrievalResult{PhaseStart: phaseStartTime, PeerID: candidate.MinerPeer.ID, Stats: stats})
 		}
 	} // else nothing to do, we were cancelled
 
 	if done != nil {
 		done() // allow prioritywaitqueue to move on to next candidate
 	}
-}
-
-// canSendResult will indicate whether a result is likely to be accepted (true)
-// or whether the retrieval is already finished (likely by a success)
-func (retrieval *retrievalSession) canSendResult() bool {
-	select {
-	case <-retrieval.finishChan:
-		return false
-	default:
-	}
-	return true
-}
-
-// sendResult will only send a result to the parent goroutine if a retrieval has
-// finished (likely by a success), otherwise it will send the result
-func (retrieval *retrievalSession) sendResult(result retrievalResult) bool {
-	select {
-	case <-retrieval.finishChan:
-		return false
-	case retrieval.resultChan <- result:
-		if result.Stats != nil {
-			// signals to goroutines to bail, this has to be done here, rather than on
-			// the receiving parent end, because immediately after this call we instruct
-			// the prioritywaitqueue that we're done and another may start
-			close(retrieval.finishChan)
-		}
-	}
-	return true
-}
-
-func (session *retrievalSession) sendEvent(event types.RetrievalEvent) {
-	session.sendResult(retrievalResult{PeerID: event.StorageProviderId(), Event: &event})
 }

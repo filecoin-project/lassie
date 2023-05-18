@@ -3,12 +3,8 @@ package session
 import (
 	"time"
 
-	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
-	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/types"
-	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-log/v2"
-	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
@@ -16,55 +12,64 @@ import (
 
 var logger = log.Logger("lassie/session")
 
-type State interface {
-	RecordFailure(storageProviderId peer.ID, retrievalId types.RetrievalID) error
-	RemoveStorageProviderFromRetrieval(storageProviderId peer.ID, retrievalId types.RetrievalID) error
-	IsSuspended(storageProviderId peer.ID) bool
-	GetConcurrency(storageProviderId peer.ID) uint
-	AddToRetrieval(retrievalId types.RetrievalID, storageProviderIds []peer.ID) error
-	EndRetrieval(retrievalId types.RetrievalID) error
-	RegisterRetrieval(retrievalId types.RetrievalID, cid cid.Cid, selector datamodel.Node) bool
-}
-
+// Session and State both deal with per-storage provider data and usage
+// questions. While State is responsible for gathering data of ongoing
+// interactions with storage providers and making dynamic decisions based
+// on that information, Session extends it and provides harder rules that
+// arise from configuration and other static heuristics.
 type Session struct {
 	State
-	config Config
+	config *Config
 }
 
-func NewSession(config Config, withState bool) *Session {
+// NewSession constructs a new Session with the given config and with or
+// without ongoing dynamic data collection. When withState is false, no
+// dynamic data will be collected and decisions will be made solely based
+// on the config.
+func NewSession(config *Config, withState bool) *Session {
+	if config == nil {
+		config = DefaultConfig()
+	}
 	var state State
 	if withState {
-		state = newSpTracker(nil)
+		state = NewSessionState(config)
 	} else {
-		state = &nilstate{}
+		state = nilstate{}
 	}
-	return &Session{
-		State:  state,
-		config: config,
+	if config == nil {
+		config = &Config{}
 	}
-}
-func (s *Session) GetStorageProviderTimeout(storageProviderId peer.ID) time.Duration {
-	return s.config.getMinerConfig(storageProviderId).RetrievalTimeout
+	return &Session{state, config}
 }
 
-// isAcceptableStorageProvider checks whether the storage provider in question
-// is acceptable as a retrieval candidate. It checks the blacklists and
-// whitelists, the miner monitor for failures and whether we are already at
-// concurrency limit for this SP.
-func (s *Session) FilterIndexerCandidate(candidate types.RetrievalCandidate) (bool, types.RetrievalCandidate) {
+// GetStorageProviderTimeout returns the per-retrieval timeout from the
+// RetrievalTimeout configuration option.
+func (session *Session) GetStorageProviderTimeout(storageProviderId peer.ID) time.Duration {
+	return session.config.getProviderConfig(storageProviderId).RetrievalTimeout
+}
+
+// FilterIndexerCandidate filters out protocols that are not acceptable for
+// the given candidate. It returns a bool indicating whether the candidate
+// should be considered at all, and a new candidate with the filtered
+// protocols.
+func (session *Session) FilterIndexerCandidate(candidate types.RetrievalCandidate) (bool, types.RetrievalCandidate) {
+	if !session.isAcceptableCandidate(candidate.MinerPeer.ID) {
+		return false, types.RetrievalCandidate{
+			MinerPeer: candidate.MinerPeer,
+			RootCid:   candidate.RootCid,
+			Metadata:  metadata.Default.New(),
+		}
+	}
+
 	protocols := candidate.Metadata.Protocols()
 	newProtocolMetadata := make([]metadata.Protocol, 0, len(protocols))
+	seen := make(map[multicodec.Code]struct{})
 	for _, protocol := range protocols {
-		includeProtocol := true
-		switch protocol {
-		case multicodec.TransportGraphsyncFilecoinv1:
-			includeProtocol = s.isAcceptableGraphsyncCandidate(candidate.MinerPeer.ID)
-		case multicodec.TransportBitswap:
-			includeProtocol = s.isAcceptableBitswapCandidate(candidate.MinerPeer.ID)
-		case multicodec.TransportIpfsGatewayHttp:
-			includeProtocol = s.isAcceptableHttpCandidate(candidate.MinerPeer.ID)
+		if _, ok := seen[protocol]; ok {
+			continue
 		}
-		if includeProtocol {
+		seen[protocol] = struct{}{}
+		if session.isAcceptableCandidateForProtocol(candidate.MinerPeer.ID, protocol) {
 			newProtocolMetadata = append(newProtocolMetadata, candidate.Metadata.Get(protocol))
 		}
 	}
@@ -75,72 +80,35 @@ func (s *Session) FilterIndexerCandidate(candidate types.RetrievalCandidate) (bo
 	}
 }
 
-func (s *Session) isAcceptableGraphsyncCandidate(storageProviderId peer.ID) bool {
-	// Skip blacklist
-	if s.config.ProviderBlockList[storageProviderId] {
+func (session *Session) isAcceptableCandidate(storageProviderId peer.ID) bool {
+	// if blacklisted, candidate is not acceptable
+	if session.config.ProviderBlockList[storageProviderId] {
+		return false
+	}
+	// if a whitelist exists and the candidate is not on it, candidate is not acceptable
+	if len(session.config.ProviderAllowList) > 0 && !session.config.ProviderAllowList[storageProviderId] {
+		return false
+	}
+	return true
+}
+
+func (session *Session) isAcceptableCandidateForProtocol(storageProviderId peer.ID, protocol multicodec.Code) bool {
+	if protocol == multicodec.TransportBitswap {
+		return true
+	}
+
+	// has the candidate been suspended by ongoing state monitoring
+	if session.State.IsSuspended(storageProviderId) {
 		return false
 	}
 
-	// Skip non-whitelist IF the whitelist isn't empty
-	if len(s.config.ProviderAllowList) > 0 && !s.config.ProviderAllowList[storageProviderId] {
-		return false
-	}
-
-	// Skip suspended SPs from the minerMonitor
-	if s.State.IsSuspended(storageProviderId) {
-		return false
-	}
-
-	// Skip if we are currently at our maximum concurrent retrievals for this SP
-	// since we likely won't be able to retrieve from them at the moment even if
-	// query is successful
-	minerConfig := s.config.getMinerConfig(storageProviderId)
+	// check if we are currently retrieving from the candidate with its maximum
+	// concurrency
+	minerConfig := session.config.getProviderConfig(storageProviderId)
 	if minerConfig.MaxConcurrentRetrievals > 0 &&
-		s.State.GetConcurrency(storageProviderId) >= minerConfig.MaxConcurrentRetrievals {
+		session.State.GetConcurrency(storageProviderId) >= minerConfig.MaxConcurrentRetrievals {
 		return false
 	}
 
 	return true
-}
-
-func (state *Session) isAcceptableBitswapCandidate(storageProviderId peer.ID) bool {
-	// Skip blacklist
-	if state.config.ProviderBlockList[storageProviderId] {
-		return false
-	}
-
-	// Skip non-whitelist IF the whitelist isn't empty
-	if len(state.config.ProviderAllowList) > 0 && !state.config.ProviderAllowList[storageProviderId] {
-		return false
-	}
-
-	return true
-}
-
-func (state *Session) isAcceptableHttpCandidate(storageProviderId peer.ID) bool {
-	// Skip blacklist
-	if state.config.ProviderBlockList[storageProviderId] {
-		return false
-	}
-
-	// Skip non-whitelist IF the whitelist isn't empty
-	if len(state.config.ProviderAllowList) > 0 && !state.config.ProviderAllowList[storageProviderId] {
-		return false
-	}
-
-	return true
-}
-
-// IsAcceptableQueryResponse determines whether a queryResponse is acceptable
-// according to the current configuration. For now this is just checking whether
-// PaidRetrievals is set and not accepting paid retrievals if so.
-func (s *Session) IsAcceptableQueryResponse(peer peer.ID, req types.RetrievalRequest, queryResponse *retrievaltypes.QueryResponse) bool {
-	// filter out paid retrievals if necessary
-
-	acceptable := s.config.PaidRetrievals || big.Add(big.Mul(queryResponse.MinPricePerByte, big.NewIntUnsigned(queryResponse.Size)), queryResponse.UnsealPrice).Equals(big.Zero())
-	if !acceptable {
-		logger.Debugf("skipping query response from %s for %s: paid retrieval not allowed", peer, req.Cid)
-		s.State.RemoveStorageProviderFromRetrieval(peer, req.RetrievalID)
-	}
-	return acceptable
 }

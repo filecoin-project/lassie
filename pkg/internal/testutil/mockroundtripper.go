@@ -137,16 +137,18 @@ func (mrt *MockRoundTripper) VerifyConnectionsReceived(ctx context.Context, t *t
 }
 
 func (mrt *MockRoundTripper) VerifyRetrievalsReceived(ctx context.Context, t *testing.T, afterStart time.Duration, expectedRetrievals []peer.ID) {
-	retrievals := make([]peer.ID, 0, len(expectedRetrievals))
+	retrievals := make([]string, 0, len(expectedRetrievals))
+	er := make([]string, 0, len(expectedRetrievals))
 	for i := 0; i < len(expectedRetrievals); i++ {
+		er = append(er, expectedRetrievals[i].String())
 		select {
 		case retrieval := <-mrt.startsCh:
-			retrievals = append(retrievals, retrieval)
+			retrievals = append(retrievals, retrieval.String())
 		case <-ctx.Done():
 			require.FailNowf(t, "failed to receive expected retrievals", "expected %d, received %d @ %s", len(expectedRetrievals), i, afterStart)
 		}
 	}
-	require.ElementsMatch(t, expectedRetrievals, retrievals)
+	require.ElementsMatch(t, er, retrievals)
 }
 
 func (mrt *MockRoundTripper) VerifyRetrievalsServed(ctx context.Context, t *testing.T, afterStart time.Duration, expectedServed []RemoteStats) {

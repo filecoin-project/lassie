@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/benbjohnson/clock"
 	"github.com/dustin/go-humanize"
@@ -14,6 +15,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime/datamodel"
+	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
 	"go.opencensus.io/stats"
@@ -41,6 +43,9 @@ type Session interface {
 	AddToRetrieval(retrievalId types.RetrievalID, storageProviderIds []peer.ID) error
 	RecordFailure(storageProviderId peer.ID, retrievalId types.RetrievalID) error
 	FilterIndexerCandidate(candidate types.RetrievalCandidate) (bool, types.RetrievalCandidate)
+	GetStorageProviderTimeout(storageProviderId peer.ID) time.Duration
+	RegisterConnectTime(storageProviderId peer.ID, connectTime time.Duration)
+	CompareStorageProviders(protocol multicodec.Code, a, b peer.ID, mda, mdb metadata.Protocol) bool
 }
 
 type Retriever struct {

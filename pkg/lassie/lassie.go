@@ -75,10 +75,10 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 		}
 	}
 
-	sessionConfig := session.Config{
+	sessionConfig := &session.Config{
 		ProviderBlockList: cfg.ProviderBlockList,
 		ProviderAllowList: cfg.ProviderAllowList,
-		DefaultMinerConfig: session.MinerConfig{
+		DefaultProviderConfig: session.ProviderConfig{
 			RetrievalTimeout:        cfg.ProviderTimeout,
 			MaxConcurrentRetrievals: cfg.ConcurrentSPRetrievals,
 		},
@@ -101,7 +101,7 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 			if err := retrievalClient.AwaitReady(); err != nil { // wait for dt setup
 				return nil, err
 			}
-			protocolRetrievers[protocol] = retriever.NewGraphsyncRetriever(session.GetStorageProviderTimeout, retrievalClient)
+			protocolRetrievers[protocol] = retriever.NewGraphsyncRetriever(session, retrievalClient)
 		case multicodec.TransportBitswap:
 			protocolRetrievers[protocol] = retriever.NewBitswapRetrieverFromHost(ctx, cfg.Host, retriever.BitswapConfig{
 				BlockTimeout: cfg.ProviderTimeout,
@@ -109,7 +109,7 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 				Concurrency:  cfg.BitswapConcurrency,
 			})
 		case multicodec.TransportIpfsGatewayHttp:
-			protocolRetrievers[protocol] = retriever.NewHttpRetriever(session.GetStorageProviderTimeout, http.DefaultClient)
+			protocolRetrievers[protocol] = retriever.NewHttpRetriever(session, http.DefaultClient)
 		}
 	}
 

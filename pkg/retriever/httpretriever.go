@@ -41,36 +41,27 @@ var _ TransportProtocol = &ProtocolHttp{}
 
 type ProtocolHttp struct {
 	Client *http.Client
-
-	// customCompare is for testing only, and should be removed when we have more
-	// ways to compare candidates so we can control ordering deterministically in
-	// our tests.
-	customCompare func(a, b ComparableCandidate, mda, mdb metadata.Protocol) bool
 }
 
 // NewHttpRetriever makes a new CandidateRetriever for verified CAR HTTP
 // retrievals (transport-ipfs-gateway-http).
-func NewHttpRetriever(getStorageProviderTimeout GetStorageProviderTimeout, client *http.Client) types.CandidateRetriever {
-	return NewHttpRetrieverWithDeps(getStorageProviderTimeout, client, clock.New(), nil, HttpDefaultInitialWait, nil)
+func NewHttpRetriever(session Session, client *http.Client) types.CandidateRetriever {
+	return NewHttpRetrieverWithDeps(session, client, clock.New(), nil, HttpDefaultInitialWait)
 }
 
 func NewHttpRetrieverWithDeps(
-	getStorageProviderTimeout GetStorageProviderTimeout,
+	session Session,
 	client *http.Client,
 	clock clock.Clock,
 	awaitReceivedCandidates chan<- struct{},
 	initialPause time.Duration,
-	customCompare func(a, b ComparableCandidate, mda, mdb metadata.Protocol) bool,
 ) types.CandidateRetriever {
 	return &parallelPeerRetriever{
-		Protocol: &ProtocolHttp{
-			Client:        client,
-			customCompare: customCompare,
-		},
-		GetStorageProviderTimeout: getStorageProviderTimeout,
-		Clock:                     clock,
-		QueueInitialPause:         initialPause,
-		awaitReceivedCandidates:   awaitReceivedCandidates,
+		Protocol:                &ProtocolHttp{Client: client},
+		Session:                 session,
+		Clock:                   clock,
+		QueueInitialPause:       initialPause,
+		awaitReceivedCandidates: awaitReceivedCandidates,
 	}
 }
 
@@ -82,16 +73,7 @@ func (ph ProtocolHttp) GetMergedMetadata(cid cid.Cid, currentMetadata, newMetada
 	return &metadata.IpfsGatewayHttp{}
 }
 
-func (ph ProtocolHttp) CompareCandidates(a, b ComparableCandidate, mda, mdb metadata.Protocol) bool {
-	if ph.customCompare != nil {
-		return ph.customCompare(a, b, mda, mdb)
-	}
-	// since Connect is a noop, Duration should be ~0; i.e. meaningless since it
-	// mainly relates to internal timings, including goroutine scheduling.
-	return a.Duration < b.Duration
-}
-
-func (ph *ProtocolHttp) Connect(ctx context.Context, retrieval *retrieval, candidate types.RetrievalCandidate) error {
+func (ph *ProtocolHttp) Connect(ctx context.Context, retrieval *retrieval, phaseStartTime time.Time, candidate types.RetrievalCandidate) (time.Duration, error) {
 	// We could begin the request here by moving ph.beginRequest() to this function.
 	// That would result in parallel connections to candidates as they are received,
 	// then serial reading of bodies.
@@ -101,13 +83,13 @@ func (ph *ProtocolHttp) Connect(ctx context.Context, retrieval *retrieval, candi
 	// be keyed by `candidate` to do this; or similar. ProtocolHttp is not
 	// per-connection, it's per-protocol, and `retrieval` is not per-candidate
 	// either, it's per-retrieval.
-	return nil
+	return 0, nil
 }
 
 func (ph *ProtocolHttp) Retrieve(
 	ctx context.Context,
 	retrieval *retrieval,
-	session *retrievalSession,
+	shared *retrievalShared,
 	phaseStartTime time.Time,
 	timeout time.Duration,
 	candidate types.RetrievalCandidate,
@@ -129,7 +111,7 @@ func (ph *ProtocolHttp) Retrieve(
 	var ttfb time.Duration
 	rdr := newTimeToFirstByteReader(resp.Body, func() {
 		ttfb = retrieval.Clock.Since(phaseStartTime)
-		session.sendEvent(events.FirstByte(retrieval.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, candidate))
+		shared.sendEvent(events.FirstByte(retrieval.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, candidate))
 	})
 
 	sel, err := selector.CompileSelector(retrieval.request.GetSelector())
