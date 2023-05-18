@@ -355,31 +355,31 @@ func MockIpfsHandler(ctx context.Context, lsys linking.LinkSystem) func(http.Res
 			unixfsPath = "/" + strings.Join(urlPath[2:], "/")
 		}
 
-		// We're always providing the car-scope parameter, so add a failure case if we stop
+		// We're always providing the dag-scope parameter, so add a failure case if we stop
 		// providing it in the future
-		if !req.URL.Query().Has("car-scope") {
-			http.Error(res, "Missing car-scope parameter", http.StatusBadRequest)
+		if !req.URL.Query().Has("dag-scope") {
+			http.Error(res, "Missing dag-scope parameter", http.StatusBadRequest)
 			return
 		}
 
 		// Parse car scope and use it to get selector
-		var carScope types.CarScope
-		switch req.URL.Query().Get("car-scope") {
+		var dagScope types.DagScope
+		switch req.URL.Query().Get("dag-scope") {
 		case "all":
-			carScope = types.CarScopeAll
-		case "file":
-			carScope = types.CarScopeFile
+			dagScope = types.DagScopeAll
+		case "entity":
+			dagScope = types.DagScopeEntity
 		case "block":
-			carScope = types.CarScopeBlock
+			dagScope = types.DagScopeBlock
 		default:
-			http.Error(res, fmt.Sprintf("Invalid car-scope parameter: %s", req.URL.Query().Get("car-scope")), http.StatusBadRequest)
+			http.Error(res, fmt.Sprintf("Invalid dag-scope parameter: %s", req.URL.Query().Get("dag-scope")), http.StatusBadRequest)
 			return
 		}
 
-		selNode := unixfsnode.UnixFSPathSelectorBuilder(unixfsPath, carScope.TerminalSelectorSpec(), false)
+		selNode := unixfsnode.UnixFSPathSelectorBuilder(unixfsPath, dagScope.TerminalSelectorSpec(), false)
 		sel, err := selector.CompileSelector(selNode)
 		if err != nil {
-			http.Error(res, fmt.Sprintf("Failed to compile selector from car-scope: %v", err), http.StatusInternalServerError)
+			http.Error(res, fmt.Sprintf("Failed to compile selector from dag-scope: %v", err), http.StatusInternalServerError)
 			return
 		}
 

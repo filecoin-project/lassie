@@ -104,14 +104,29 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			return
 		}
 
-		carScope := types.CarScopeAll
-		if req.URL.Query().Has("car-scope") {
+		dagScope := types.DagScopeAll
+
+		if req.URL.Query().Has("dag-scope") {
+			switch req.URL.Query().Get("dag-scope") {
+			case "all":
+			case "entity":
+				dagScope = types.DagScopeEntity
+			case "block":
+				dagScope = types.DagScopeBlock
+			default:
+				statusLogger.logStatus(http.StatusBadRequest, "Invalid dag-scope parameter")
+				res.WriteHeader(http.StatusBadRequest)
+				return
+			}
+		}
+		// check for legacy param name -- to do -- delete once we confirm this isn't used any more
+		if req.URL.Query().Has("car-scope") && !req.URL.Query().Has("dag-scope") {
 			switch req.URL.Query().Get("car-scope") {
 			case "all":
 			case "file":
-				carScope = types.CarScopeFile
+				dagScope = types.DagScopeEntity
 			case "block":
-				carScope = types.CarScopeBlock
+				dagScope = types.DagScopeBlock
 			default:
 				statusLogger.logStatus(http.StatusBadRequest, "Invalid car-scope parameter")
 				res.WriteHeader(http.StatusBadRequest)
@@ -198,7 +213,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			close(bytesWritten)
 		}, true)
 
-		request, err := types.NewRequestForPath(store, rootCid, path.String(), carScope)
+		request, err := types.NewRequestForPath(store, rootCid, path.String(), dagScope)
 		request.Protocols = protocols
 		request.FixedPeers = fixedPeers
 		if err != nil {
@@ -231,7 +246,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			request.MaxBlocks = blockLimit
 		}
 
-		logger.Debugw("fetching CID", "retrievalId", retrievalId, "CID", rootCid.String(), "path", path.String(), "carScope", carScope)
+		logger.Debugw("fetching CID", "retrievalId", retrievalId, "CID", rootCid.String(), "path", path.String(), "dagScope", dagScope)
 		stats, err := lassie.Fetch(req.Context(), request, func(re types.RetrievalEvent) {
 			header := servertiming.FromContext(req.Context())
 			if header == nil {

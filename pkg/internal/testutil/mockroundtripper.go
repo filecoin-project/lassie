@@ -42,7 +42,7 @@ type MockRoundTripper struct {
 	clock               *clock.Mock
 	remoteBlockDuration time.Duration
 	expectedPath        map[cid.Cid]string
-	expectedScope       map[cid.Cid]types.CarScope
+	expectedScope       map[cid.Cid]types.DagScope
 	remotes             map[cid.Cid][]MockRoundTripRemote
 	startsCh            chan peer.ID
 	statsCh             chan RemoteStats
@@ -58,7 +58,7 @@ func NewMockRoundTripper(
 	clock *clock.Mock,
 	remoteBlockDuration time.Duration,
 	expectedPath map[cid.Cid]string,
-	expectedScope map[cid.Cid]types.CarScope,
+	expectedScope map[cid.Cid]types.DagScope,
 	remotes map[cid.Cid][]MockRoundTripRemote,
 ) *MockRoundTripper {
 	return &MockRoundTripper{
@@ -100,11 +100,15 @@ func (mrt *MockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 	} else {
 		require.Equal(mrt.t, path, expectedPath)
 	}
-	expectedScope := types.CarScopeAll
+	expectedScope := types.DagScopeAll
 	if scope, ok := mrt.expectedScope[root]; ok {
 		expectedScope = scope
 	}
-	require.Equal(mrt.t, req.URL.RawQuery, fmt.Sprintf("car-scope=%s", expectedScope))
+	legacyScope := string(expectedScope)
+	if legacyScope == string(types.DagScopeEntity) {
+		legacyScope = "file"
+	}
+	require.Equal(mrt.t, req.URL.RawQuery, fmt.Sprintf("dag-scope=%s&car-scope=%s", expectedScope, legacyScope))
 	ip := req.URL.Hostname()
 	port := req.URL.Port()
 	maddr := fmt.Sprintf("/ip4/%s/tcp/%s/http", ip, port)

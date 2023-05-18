@@ -287,31 +287,31 @@ func RetrievalIDFromContext(ctx context.Context) (RetrievalID, error) {
 	return id, nil
 }
 
-type CarScope string
+type DagScope string
 
-const CarScopeAll CarScope = "all"
-const CarScopeFile CarScope = "file"
-const CarScopeBlock CarScope = "block"
+const DagScopeAll DagScope = "all"
+const DagScopeEntity DagScope = "entity"
+const DagScopeBlock DagScope = "block"
 
 var matcherSelector = builder.NewSelectorSpecBuilder(basicnode.Prototype.Any).Matcher()
 
-func (cs CarScope) TerminalSelectorSpec() builder.SelectorSpec {
-	switch cs {
-	case CarScopeAll:
+func (ds DagScope) TerminalSelectorSpec() builder.SelectorSpec {
+	switch ds {
+	case DagScopeAll:
 		return unixfsnode.ExploreAllRecursivelySelector
-	case CarScopeFile:
+	case DagScopeEntity:
 		return unixfsnode.MatchUnixFSPreloadSelector // file
-	case CarScopeBlock:
+	case DagScopeBlock:
 		return matcherSelector
-	case CarScope(""):
-		return unixfsnode.ExploreAllRecursivelySelector // default to explore-all for zero-value CarScope
+	case DagScope(""):
+		return unixfsnode.ExploreAllRecursivelySelector // default to explore-all for zero-value DagScope
 	}
-	panic(fmt.Sprintf("unknown CarScope: [%s]", string(cs)))
+	panic(fmt.Sprintf("unknown DagScope: [%s]", string(ds)))
 }
 
-func (cs CarScope) AcceptHeader() string {
-	switch cs {
-	case CarScopeBlock:
+func (ds DagScope) AcceptHeader() string {
+	switch ds {
+	case DagScopeBlock:
 		return "application/vnd.ipld.block"
 	default:
 		return "application/vnd.ipld.car"
