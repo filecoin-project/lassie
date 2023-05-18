@@ -73,11 +73,12 @@ type activeRetrieval struct {
 }
 
 type storageProvider struct {
-	suspensionStart    time.Time
-	suspensionDuration time.Duration
-	failures           []time.Time // should be ordered, oldest to newest
-	concurrency        uint
-	connectTime        time.Duration
+	suspensionStart        time.Time
+	suspensionDuration     time.Duration
+	failures               []time.Time // should be ordered, oldest to newest
+	concurrency            uint
+	connectTimeInitialized bool // whether connectTime has >0 samples so we don't include initial 0 in the average
+	connectTime            time.Duration
 }
 
 func (status *storageProvider) isSuspended() bool {
@@ -259,7 +260,12 @@ func (spt *SessionState) RegisterConnectTime(storageProviderId peer.ID, current 
 
 	status := spt.spm[storageProviderId]
 	// EMA of connect time
-	status.connectTime = time.Duration((1-spt.config.ConnectTimeAlpha)*float64(current) + spt.config.ConnectTimeAlpha*float64(status.connectTime))
+	if !status.connectTimeInitialized {
+		status.connectTimeInitialized = true
+		status.connectTime = current
+	} else {
+		status.connectTime = time.Duration((1-spt.config.ConnectTimeAlpha)*float64(current) + spt.config.ConnectTimeAlpha*float64(status.connectTime))
+	}
 	spt.spm[storageProviderId] = status
 }
 
