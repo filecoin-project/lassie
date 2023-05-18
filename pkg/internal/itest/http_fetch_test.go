@@ -43,11 +43,11 @@ import (
 const DEBUG_DATA = true
 
 func TestHttpFetch(t *testing.T) {
-	fileQuery := func(q url.Values, _ []testpeer.TestPeer) {
-		q.Set("car-scope", "file")
+	entityQuery := func(q url.Values, _ []testpeer.TestPeer) {
+		q.Set("dag-scope", "entity")
 	}
 	blockQuery := func(q url.Values, _ []testpeer.TestPeer) {
-		q.Set("car-scope", "block")
+		q.Set("dag-scope", "block")
 	}
 
 	type queryModifier func(url.Values, []testpeer.TestPeer)
@@ -191,32 +191,32 @@ func TestHttpFetch(t *testing.T) {
 			}},
 		},
 		{
-			// car-scope file fetch should get the same DAG as full for a plain file
-			name:             "graphsync large sharded file, car-scope file",
+			// dag-scope entity fetch should get the same DAG as full for a plain file
+			name:             "graphsync large sharded file, dag-scope entity",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20)}
 			},
-			modifyQueries: []queryModifier{fileQuery},
+			modifyQueries: []queryModifier{entityQuery},
 		},
 		{
-			// car-scope file fetch should get the same DAG as full for a plain file
-			name:           "bitswap large sharded file, car-scope file",
+			// dag-scope entity fetch should get the same DAG as full for a plain file
+			name:           "bitswap large sharded file, dag-scope entity",
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20)}
 			},
-			modifyQueries: []queryModifier{fileQuery},
+			modifyQueries: []queryModifier{entityQuery},
 		},
 		{
-			name:             "graphsync nested large sharded file, with path, car-scope file",
+			name:             "graphsync nested large sharded file, with path, dag-scope entity",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := remotes[0].LinkSystem
 				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateFile(t, lsys, rndReader, 4<<20))}
 			},
 			paths:         []string{unixfs.WrapPath},
-			modifyQueries: []queryModifier{fileQuery},
+			modifyQueries: []queryModifier{entityQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
@@ -229,14 +229,14 @@ func TestHttpFetch(t *testing.T) {
 			}},
 		},
 		{
-			name:           "bitswap nested large sharded file, with path, car-scope file",
+			name:           "bitswap nested large sharded file, with path, dag-scope entity",
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := remotes[0].LinkSystem
 				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateFile(t, lsys, rndReader, 4<<20))}
 			},
 			paths:         []string{unixfs.WrapPath},
-			modifyQueries: []queryModifier{fileQuery},
+			modifyQueries: []queryModifier{entityQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
@@ -249,38 +249,38 @@ func TestHttpFetch(t *testing.T) {
 			}},
 		},
 		{
-			name:             "graphsync large directory, car-scope file",
+			name:             "graphsync large directory, dag-scope entity",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, false)}
 			},
-			modifyQueries: []queryModifier{fileQuery},
+			modifyQueries: []queryModifier{entityQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				// expect a CAR of one block, to represent the root directory we asked for
 				validateCarBody(t, body, srcData.Root, []cid.Cid{srcData.Root}, true)
 			}},
 		},
 		{
-			name:           "bitswap large directory, car-scope file",
+			name:           "bitswap large directory, dag-scope entity",
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, false)}
 			},
-			modifyQueries: []queryModifier{fileQuery},
+			modifyQueries: []queryModifier{entityQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				// expect a CAR of one block, to represent the root directory we asked for
 				validateCarBody(t, body, srcData.Root, []cid.Cid{srcData.Root}, true)
 			}},
 		},
 		{
-			name:             "graphsync nested large directory, with path, car-scope file",
+			name:             "graphsync nested large directory, with path, dag-scope entity",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := remotes[0].LinkSystem
 				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, false))}
 			},
 			paths:         []string{unixfs.WrapPath},
-			modifyQueries: []queryModifier{fileQuery},
+			modifyQueries: []queryModifier{entityQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
@@ -293,14 +293,14 @@ func TestHttpFetch(t *testing.T) {
 			}},
 		},
 		{
-			name:           "bitswap nested large directory, with path, car-scope file",
+			name:           "bitswap nested large directory, with path, dag-scope entity",
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := remotes[0].LinkSystem
 				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, false))}
 			},
 			paths:         []string{unixfs.WrapPath},
-			modifyQueries: []queryModifier{fileQuery},
+			modifyQueries: []queryModifier{entityQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
@@ -328,7 +328,7 @@ func TestHttpFetch(t *testing.T) {
 				},
 					srcData.Children[1].Children[1].Children[1].SelfCids..., // unixfs.WrapPath (full dir)
 				)
-				// validate we got the car-scope file form
+				// validate we got the dag-scope entity form
 				validateCarBody(t, body, srcData.Root, wantCids, false)
 				// validate that we got the full depth form under the path
 				gotDir := unixfs.CarToDirEntry(t, bytes.NewReader(body), srcData.Children[1].Children[1].Children[1].Root, true)
@@ -352,7 +352,7 @@ func TestHttpFetch(t *testing.T) {
 				},
 					srcData.Children[1].Children[1].Children[1].SelfCids..., // unixfs.WrapPath (full dir)
 				)
-				// validate we got the car-scope file form
+				// validate we got the dag-scope entity form
 				validateCarBody(t, body, srcData.Root, wantCids, false)
 				// validate that we got the full depth form under the path
 				gotDir := unixfs.CarToDirEntry(t, bytes.NewReader(body), srcData.Children[1].Children[1].Children[1].Root, true)
@@ -361,12 +361,12 @@ func TestHttpFetch(t *testing.T) {
 			}},
 		},
 		{
-			name:             "graphsync nested large sharded directory, car-scope file",
+			name:             "graphsync nested large sharded directory, dag-scope entity",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, true)}
 			},
-			modifyQueries: []queryModifier{fileQuery},
+			modifyQueries: []queryModifier{entityQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				// sharded directory contains multiple blocks, so we expect a CAR with
 				// exactly those blocks
@@ -374,12 +374,12 @@ func TestHttpFetch(t *testing.T) {
 			}},
 		},
 		{
-			name:           "bitswap nested large sharded directory, car-scope file",
+			name:           "bitswap nested large sharded directory, dag-scope entity",
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, true)}
 			},
-			modifyQueries: []queryModifier{fileQuery},
+			modifyQueries: []queryModifier{entityQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				// sharded directory contains multiple blocks, so we expect a CAR with
 				// exactly those blocks
@@ -387,14 +387,14 @@ func TestHttpFetch(t *testing.T) {
 			}},
 		},
 		{
-			name:             "graphsync nested large sharded directory, with path, car-scope file",
+			name:             "graphsync nested large sharded directory, with path, dag-scope entity",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := remotes[0].LinkSystem
 				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, true))}
 			},
 			paths:         []string{unixfs.WrapPath},
-			modifyQueries: []queryModifier{fileQuery},
+			modifyQueries: []queryModifier{entityQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
@@ -407,14 +407,14 @@ func TestHttpFetch(t *testing.T) {
 			}},
 		},
 		{
-			name:           "bitswap nested large sharded directory, with path, car-scope file",
+			name:           "bitswap nested large sharded directory, with path, dag-scope entity",
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := remotes[0].LinkSystem
 				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateDirectory(t, remotes[0].LinkSystem, rndReader, 16<<20, true))}
 			},
 			paths:         []string{unixfs.WrapPath},
-			modifyQueries: []queryModifier{fileQuery},
+			modifyQueries: []queryModifier{entityQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
@@ -442,7 +442,7 @@ func TestHttpFetch(t *testing.T) {
 				},
 					srcData.Children[1].Children[1].Children[1].SelfCids..., // unixfs.WrapPath (full dir)
 				)
-				// validate we got the car-scope file form
+				// validate we got the dag-scope entity form
 				validateCarBody(t, body, srcData.Root, wantCids, false)
 				// validate that we got the full depth form under the path
 				gotDir := unixfs.CarToDirEntry(t, bytes.NewReader(body), srcData.Children[1].Children[1].Children[1].Root, true)
@@ -466,7 +466,7 @@ func TestHttpFetch(t *testing.T) {
 				},
 					srcData.Children[1].Children[1].Children[1].SelfCids..., // unixfs.WrapPath (full dir)
 				)
-				// validate we got the car-scope file form
+				// validate we got the dag-scope entity form
 				validateCarBody(t, body, srcData.Root, wantCids, false)
 				// validate that we got the full depth form under the path
 				gotDir := unixfs.CarToDirEntry(t, bytes.NewReader(body), srcData.Children[1].Children[1].Children[1].Root, true)
@@ -479,7 +479,7 @@ func TestHttpFetch(t *testing.T) {
 			// then we also make sure the root is in all of them, so the CandidateFinder will return them
 			// all. The retriever should then form a swarm of 4 peers and fetch the content from across
 			// the set.
-			name:           "bitswap, nested large sharded directory, spread across multiple peers, with path, car-scope file",
+			name:           "bitswap, nested large sharded directory, spread across multiple peers, with path, dag-scope entity",
 			bitswapRemotes: 4,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				// rotating linksystem - each block will be written to a different remote
@@ -513,7 +513,7 @@ func TestHttpFetch(t *testing.T) {
 				return []unixfs.DirEntry{data}
 			},
 			paths:         []string{unixfs.WrapPath},
-			modifyQueries: []queryModifier{fileQuery},
+			modifyQueries: []queryModifier{entityQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := append([]cid.Cid{
 					srcData.Root,                         // "/""
@@ -569,8 +569,8 @@ func TestHttpFetch(t *testing.T) {
 			},
 		},
 		{
-			// car-scope block fetch should only get the the root node for a plain file
-			name:             "graphsync large sharded file, car-scope block",
+			// dag-scope block fetch should only get the the root node for a plain file
+			name:             "graphsync large sharded file, dag-scope block",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20)}
@@ -586,7 +586,7 @@ func TestHttpFetch(t *testing.T) {
 			},
 		},
 		{
-			name:             "graphsync nested large sharded file, with path, car-scope block",
+			name:             "graphsync nested large sharded file, with path, dag-scope block",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				lsys := remotes[0].LinkSystem

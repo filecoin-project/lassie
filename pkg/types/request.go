@@ -51,7 +51,7 @@ type RetrievalRequest struct {
 	LinkSystem        ipld.LinkSystem
 	Selector          ipld.Node
 	Path              string
-	Scope             CarScope
+	Scope             DagScope
 	Protocols         []multicodec.Code
 	PreloadLinkSystem ipld.LinkSystem
 	MaxBlocks         uint64
@@ -65,7 +65,7 @@ type RetrievalRequest struct {
 // and writing and it is explicitly set to be trusted (i.e. it will not
 // check CIDs match bytes). If the storage is not truested,
 // request.LinkSystem.TrustedStore should be set to false after this call.
-func NewRequestForPath(store ipldstorage.WritableStorage, cid cid.Cid, path string, carScope CarScope) (RetrievalRequest, error) {
+func NewRequestForPath(store ipldstorage.WritableStorage, cid cid.Cid, path string, dagScope DagScope) (RetrievalRequest, error) {
 	retrievalId, err := NewRetrievalID()
 	if err != nil {
 		return RetrievalRequest{}, err
@@ -83,7 +83,7 @@ func NewRequestForPath(store ipldstorage.WritableStorage, cid cid.Cid, path stri
 		RetrievalID: retrievalId,
 		Cid:         cid,
 		Path:        path,
-		Scope:       carScope,
+		Scope:       dagScope,
 		LinkSystem:  linkSystem,
 	}, nil
 }
@@ -108,9 +108,14 @@ func (r RetrievalRequest) GetUrlPath() (string, error) {
 	}
 	scope := r.Scope
 	if r.Scope == "" {
-		scope = CarScopeAll
+		scope = DagScopeAll
 	}
-	return fmt.Sprintf("%s?car-scope=%s", r.Path, scope), nil
+	// TODO: remove once relevant endpoints support dag-scope
+	legacyScope := string(scope)
+	if legacyScope == string(DagScopeEntity) {
+		legacyScope = "file"
+	}
+	return fmt.Sprintf("%s?dag-scope=%s&car-scope=%s", r.Path, scope, legacyScope), nil
 }
 
 // GetSupportedProtocols will safely return the supported protocols for a specific request.

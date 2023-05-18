@@ -55,17 +55,17 @@ var fetchCmd = &cli.Command{
 			Usage:   "print progress output",
 		},
 		&cli.StringFlag{
-			Name:        "car-scope",
-			Usage:       "describes the fetch behavior at the end of the traversal path. Valid values include [all, file, block].",
+			Name:        "dag-scope",
+			Usage:       "describes the fetch behavior at the end of the traversal path. Valid values include [all, entity, block].",
 			DefaultText: "defaults to all, the entire DAG at the end of the path will be fetched",
 			Value:       "all",
 			Action: func(cctx *cli.Context, v string) error {
 				switch v {
-				case string(types.CarScopeAll):
-				case string(types.CarScopeFile):
-				case string(types.CarScopeBlock):
+				case string(types.DagScopeAll):
+				case string(types.DagScopeEntity):
+				case string(types.DagScopeBlock):
 				default:
-					return fmt.Errorf("invalid car-scope parameter, must be of value [all, file, block]")
+					return fmt.Errorf("invalid dag-scope parameter, must be of value [all, entity, block]")
 				}
 
 				return nil
@@ -117,7 +117,7 @@ func Fetch(cctx *cli.Context) error {
 	progress := cctx.Bool("progress")
 	providerTimeout := cctx.Duration("provider-timeout")
 	globalTimeout := cctx.Duration("global-timeout")
-	carScope := cctx.String("car-scope")
+	dagScope := cctx.String("dag-scope")
 	tempDir := cctx.String("tempdir")
 	bitswapConcurrency := cctx.Int("bitswap-concurrency")
 	eventRecorderURL := cctx.String("event-recorder-url")
@@ -230,7 +230,7 @@ func Fetch(cctx *cli.Context) error {
 		}
 	}, false)
 
-	request, err := types.NewRequestForPath(carStore, rootCid, path, types.CarScope(carScope))
+	request, err := types.NewRequestForPath(carStore, rootCid, path, types.DagScope(dagScope))
 	if err != nil {
 		return err
 	}

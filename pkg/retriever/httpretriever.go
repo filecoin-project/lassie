@@ -25,6 +25,14 @@ var (
 	ErrBadPathForRequest   = errors.New("bad path for request")
 )
 
+type ErrHttpRequestFailure struct {
+	Code int
+}
+
+func (e ErrHttpRequestFailure) Error() string {
+	return fmt.Sprintf("HTTP request failed, remote response code: %d", e.Code)
+}
+
 const HttpDefaultInitialWait time.Duration = 0
 
 const DefaultUserAgent = "lassie"
@@ -115,6 +123,9 @@ func (ph *ProtocolHttp) Retrieve(
 
 	defer resp.Body.Close()
 
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, ErrHttpRequestFailure{Code: resp.StatusCode}
+	}
 	var ttfb time.Duration
 	rdr := newTimeToFirstByteReader(resp.Body, func() {
 		ttfb = retrieval.Clock.Since(phaseStartTime)

@@ -61,7 +61,7 @@ func TestHTTPRetriever(t *testing.T) {
 		name           string
 		requests       map[cid.Cid]types.RetrievalID
 		requestPath    map[cid.Cid]string
-		requestScope   map[cid.Cid]types.CarScope
+		requestScope   map[cid.Cid]types.DagScope
 		remotes        map[cid.Cid][]testutil.MockRoundTripRemote
 		expectedStats  map[cid.Cid]*types.RetrievalStats
 		expectedErrors map[cid.Cid]struct{}
