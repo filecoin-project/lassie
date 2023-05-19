@@ -163,6 +163,7 @@ func TestDeferredCarWriterPutCb(t *testing.T) {
 	cw.OnPut(func(ii int) {
 		switch pc1 {
 		case 0:
+			require.Equal(t, buf.Len(), 0) // called before first write
 			require.Equal(t, len(testData1), ii)
 		case 1:
 			require.Equal(t, len(testData2), ii)
@@ -175,6 +176,7 @@ func TestDeferredCarWriterPutCb(t *testing.T) {
 	cw.OnPut(func(ii int) {
 		switch pc2 {
 		case 0:
+			require.Equal(t, buf.Len(), 0) // called before first write
 			require.Equal(t, len(testData1), ii)
 		case 1:
 			require.Equal(t, len(testData2), ii)
@@ -187,6 +189,7 @@ func TestDeferredCarWriterPutCb(t *testing.T) {
 	cw.OnPut(func(ii int) {
 		switch pc3 {
 		case 0:
+			require.Equal(t, buf.Len(), 0) // called before first write
 			require.Equal(t, len(testData1), ii)
 		default:
 			require.Fail(t, "unexpected put callback")

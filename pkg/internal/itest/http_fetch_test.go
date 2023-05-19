@@ -22,6 +22,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/internal/itest/unixfs"
 	"github.com/filecoin-project/lassie/pkg/lassie"
 	httpserver "github.com/filecoin-project/lassie/pkg/server/http"
+	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/storage"
@@ -698,7 +699,7 @@ func TestHttpFetch(t *testing.T) {
 				responseChans = append(responseChans, responseChan)
 				go func(i int) {
 					// Make a request for our CID and read the complete CAR bytes
-					path := ""
+					var path string
 					if testCase.paths != nil && testCase.paths[i] != "" {
 						path = testCase.paths[i]
 					}
@@ -746,6 +747,21 @@ func TestHttpFetch(t *testing.T) {
 					req.Equal(http.StatusGatewayTimeout, resp.StatusCode)
 				} else {
 					req.Equal(http.StatusOK, resp.StatusCode)
+					req.Equal(fmt.Sprintf(`attachment; filename="%s.car"`, srcData[i].Root.String()), resp.Header.Get("Content-Disposition"))
+					req.Equal("none", resp.Header.Get("Accept-Ranges"))
+					req.Equal("public, max-age=29030400, immutable", resp.Header.Get("Cache-Control"))
+					req.Equal("application/vnd.ipld.car; version=1", resp.Header.Get("Content-Type"))
+					req.Equal("nosniff", resp.Header.Get("X-Content-Type-Options"))
+					req.Equal(fmt.Sprintf(`%s.car`, srcData[i].Root.String()), resp.Header.Get("ETag")) // TODO: needs scope and path too
+					var path string
+					if testCase.paths != nil && testCase.paths[i] != "" {
+						path = testCase.paths[i]
+					}
+					req.Equal(fmt.Sprintf("/ipfs/%s%s", srcData[i].Root.String(), path), resp.Header.Get("X-Ipfs-Path"))
+					requestId := resp.Header.Get("X-Trace-Id")
+					require.NotEmpty(t, requestId)
+					_, err := uuid.Parse(requestId)
+					req.NoError(err)
 					body, err := io.ReadAll(resp.Body)
 					req.NoError(err)
 					err = resp.Body.Close()
