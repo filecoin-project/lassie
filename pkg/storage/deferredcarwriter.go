@@ -87,11 +87,6 @@ func (dcw *DeferredCarWriter) Put(ctx context.Context, key string, content []byt
 	dcw.lk.Lock()
 	defer dcw.lk.Unlock()
 
-	writer, err := dcw.writer()
-	if err != nil {
-		return err
-	}
-
 	if dcw.putCb != nil {
 		// call all callbacks, remove those that were only needed once
 		for i := 0; i < len(dcw.putCb); i++ {
@@ -102,6 +97,12 @@ func (dcw *DeferredCarWriter) Put(ctx context.Context, key string, content []byt
 				i--
 			}
 		}
+	}
+
+	// first Put() call, initialise writer, which will write a CARv1 header
+	writer, err := dcw.writer()
+	if err != nil {
+		return err
 	}
 
 	return writer.Put(ctx, key, content)

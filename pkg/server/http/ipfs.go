@@ -13,6 +13,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/storage"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
+	"github.com/ipld/go-ipld-prime/datamodel"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p/core/peer"
 	servertiming "github.com/mitchellh/go-server-timing"
@@ -22,8 +23,8 @@ import (
 func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
 		statusLogger := newStatusLogger(req.Method, req.URL.Path)
-
-		urlPath := strings.Split(req.URL.Path, "/")[1:]
+		path := datamodel.ParsePath(req.URL.Path)
+		_, path = path.Shift() // remove /ipfs
 
 		// filter out everything but GET requests
 		switch req.Method {
@@ -37,7 +38,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		}
 
 		// check if CID path param is missing
-		if len(urlPath) < 2 {
+		if path.Len() == 0 {
 			// not a valid path to hit
 			statusLogger.logStatus(http.StatusNotFound, "Not found")
 			res.WriteHeader(http.StatusNotFound)
@@ -94,18 +95,13 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		}
 
 		// validate CID path parameter
-		cidStr := urlPath[1]
-		rootCid, err := cid.Parse(cidStr)
+		var cidSeg datamodel.PathSegment
+		cidSeg, path = path.Shift()
+		rootCid, err := cid.Parse(cidSeg.String())
 		if err != nil {
 			statusLogger.logStatus(http.StatusInternalServerError, "Failed to parse CID path parameter")
 			http.Error(res, "Failed to parse CID path parameter", http.StatusInternalServerError)
 			return
-		}
-
-		// Grab unixfs path if it exists
-		unixfsPath := ""
-		if len(urlPath) > 2 {
-			unixfsPath = "/" + strings.Join(urlPath[2:], "/")
 		}
 
 		carScope := types.CarScopeAll
@@ -187,13 +183,14 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 
 		carWriter.OnPut(func(int) {
 			// called once we start writing blocks into the CAR (on the first Put())
-			res.Header().Set("Content-Disposition", "attachment; filename="+filename)
+			res.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
 			res.Header().Set("Accept-Ranges", "none")
 			res.Header().Set("Cache-Control", "public, max-age=29030400, immutable")
 			res.Header().Set("Content-Type", "application/vnd.ipld.car; version=1")
+			// TODO: needs scope and path
 			res.Header().Set("Etag", fmt.Sprintf("%s.car", rootCid.String()))
 			res.Header().Set("X-Content-Type-Options", "nosniff")
-			res.Header().Set("X-Ipfs-Path", req.URL.Path)
+			res.Header().Set("X-Ipfs-Path", "/"+datamodel.ParsePath(req.URL.Path).String())
 			// TODO: set X-Ipfs-Roots header when we support root+path
 			// see https://github.com/ipfs/kubo/pull/8720
 			res.Header().Set("X-Trace-Id", requestId)
@@ -201,7 +198,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			close(bytesWritten)
 		}, true)
 
-		request, err := types.NewRequestForPath(store, rootCid, unixfsPath, carScope)
+		request, err := types.NewRequestForPath(store, rootCid, path.String(), carScope)
 		request.Protocols = protocols
 		request.FixedPeers = fixedPeers
 		if err != nil {
@@ -234,7 +231,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			request.MaxBlocks = blockLimit
 		}
 
-		logger.Debugw("fetching CID", "retrievalId", retrievalId, "CID", rootCid.String(), "path", unixfsPath, "carScope", carScope)
+		logger.Debugw("fetching CID", "retrievalId", retrievalId, "CID", rootCid.String(), "path", path.String(), "carScope", carScope)
 		stats, err := lassie.Fetch(req.Context(), request, func(re types.RetrievalEvent) {
 			header := servertiming.FromContext(req.Context())
 			if header == nil {
