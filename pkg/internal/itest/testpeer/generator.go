@@ -109,7 +109,7 @@ func (g *TestPeerGenerator) NextGraphsync() TestPeer {
 // NextHttp generates a new test peer with http + dependencies
 func (g *TestPeerGenerator) NextHttp() TestPeer {
 	g.seq++
-	p, err := p2ptestutil.RandTestBogusIdentity()
+	p, err := RandTestPeerIdentity()
 	require.NoError(g.t, err)
 	tp, err := NewTestHttpPeer(g.ctx, g.mn, p, g.t)
 	require.NoError(g.t, err)
@@ -251,28 +251,31 @@ func NewTestHttpPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity, t
 	httpAddr := p.Address().Encapsulate(ma.StringCast("/http"))
 	peer.Host.Peerstore().AddAddr(p.ID(), httpAddr, 10*time.Minute) // TODO: Look into ttl duration?
 
+	// Parse multiaddr IP and port, serve http server from address
+	port := strings.Split(p.Address().String(), "/")[4]
+	peerHttpServer, err := NewTestPeerHttpServer(ctx, "127.0.0.1", port)
+	if err != nil {
+		logger.Errorw("failed to make test peer http server", "err", err)
+		return TestPeer{}, err
+	}
+	peer.HttpServer = peerHttpServer
+	// Handle custom /ipfs/ endpoint
+	peerHttpServer.Mux.HandleFunc("/ipfs/", MockIpfsHandler(ctx, *peer.LinkSystem))
+	peer.Protocol = multicodec.TransportIpfsGatewayHttp
+
+	// Start the server
 	go func() {
-		// Parse multiaddr IP and port, serve http server from address
-		addrParts := strings.Split(p.Address().String(), "/")
-		peerHttpServer, err := NewTestPeerHttpServer(ctx, addrParts[2], addrParts[4])
-		if err != nil {
-			logger.Errorw("failed to make test peer http server", "err", err)
-			ctx.Done()
-		}
-		peer.HttpServer = peerHttpServer
-
-		// Handle custom /ipfs/ endpoint
-		peerHttpServer.Mux.HandleFunc("/ipfs/", MockIpfsHandler(ctx, *peer.LinkSystem))
-
-		// Start the server
 		peerHttpServer.Start()
-		if err != http.ErrServerClosed {
-			logger.Errorw("failed to start peer http server", "err", err)
-			ctx.Done()
+	}()
+
+	// Close the server when the context is done
+	go func() {
+		<-ctx.Done()
+		if err := peerHttpServer.Close(); err != nil {
+			logger.Errorw("failed to close peer http server", "err", err)
 		}
 	}()
 
-	peer.Protocol = multicodec.TransportIpfsGatewayHttp
 	return peer, nil
 }
 
