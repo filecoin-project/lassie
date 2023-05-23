@@ -38,20 +38,21 @@ type DeferredCarWriter struct {
 	f     *os.File
 	w     carstorage.WritableCar
 	putCb []putCb
+	opts  []carv2.Option
 }
 
 // NewDeferredCarWriterForPath creates a DeferredCarWriter that will write to a
 // file designated by the supplied path. The file will only be created on the
 // first Put() operation.
-func NewDeferredCarWriterForPath(root cid.Cid, outPath string) *DeferredCarWriter {
-	return &DeferredCarWriter{root: root, outPath: outPath}
+func NewDeferredCarWriterForPath(root cid.Cid, outPath string, opts ...carv2.Option) *DeferredCarWriter {
+	return &DeferredCarWriter{root: root, outPath: outPath, opts: opts}
 }
 
 // NewDeferredCarWriterForStream creates a DeferredCarWriter that will write to
 // the supplied stream. The stream will only be written to on the first Put()
 // operation.
-func NewDeferredCarWriterForStream(root cid.Cid, outStream io.Writer) *DeferredCarWriter {
-	return &DeferredCarWriter{root: root, outStream: outStream}
+func NewDeferredCarWriterForStream(root cid.Cid, outStream io.Writer, opts ...carv2.Option) *DeferredCarWriter {
+	return &DeferredCarWriter{root: root, outStream: outStream, opts: opts}
 }
 
 // OnPut will call a callback when each Put() operation is started. The argument
@@ -120,7 +121,7 @@ func (dcw *DeferredCarWriter) writer() (carstorage.WritableCar, error) {
 			dcw.f = openedFile
 			outStream = openedFile
 		}
-		w, err := carstorage.NewWritable(outStream, []cid.Cid{dcw.root}, carv2.WriteAsCarV1(true))
+		w, err := carstorage.NewWritable(outStream, []cid.Cid{dcw.root}, append([]carv2.Option{carv2.WriteAsCarV1(true)}, dcw.opts...)...)
 		if err != nil {
 			return nil, err
 		}
