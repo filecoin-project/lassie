@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 
 	"github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
@@ -33,9 +34,11 @@ var (
 var protoChooser = dagpb.AddSupportToChooser(basicnode.Chooser)
 
 type Config struct {
-	Root       cid.Cid           // The single root we expect to appear in the CAR and that we use to run our traversal against
-	AllowCARv2 bool              // If true, allow CARv2 files to be received, otherwise strictly only allow CARv1
-	Selector   selector.Selector // The selector to execute, starting at the provided Root, to verify the contents of the CAR
+	Root               cid.Cid           // The single root we expect to appear in the CAR and that we use to run our traversal against
+	AllowCARv2         bool              // If true, allow CARv2 files to be received, otherwise strictly only allow CARv1
+	Selector           selector.Selector // The selector to execute, starting at the provided Root, to verify the contents of the CAR
+	AllowDuplicatesIn  bool              // Handles whether the incoming stream has duplicates
+	WriteDuplicatesOut bool              // Handles whether duplicates should be written a second time as blocks
 }
 
 func visitNoop(p traversal.Progress, n datamodel.Node, r traversal.VisitReason) error { return nil }
@@ -75,11 +78,11 @@ func (cfg Config) Verify(ctx context.Context, rdr io.Reader, lsys linking.LinkSy
 	cr := &carReader{
 		cbr: cbr,
 	}
-
+	bt := &writeTracker{}
 	lsys.TrustedStorage = true // we can rely on the CAR decoder to check CID integrity
 	unixfsnode.AddUnixFSReificationToLinkSystem(&lsys)
 
-	lsys.StorageReadOpener = nextBlockReadOpener(ctx, cr, lsys)
+	lsys.StorageReadOpener = cfg.nextBlockReadOpener(ctx, cr, bt, lsys)
 
 	// run traversal in this goroutine
 	progress := traversal.Progress{
@@ -110,24 +113,44 @@ func (cfg Config) Verify(ctx context.Context, rdr io.Reader, lsys linking.LinkSy
 	}
 
 	// wait for parser to finish and provide errors or stats
-	return cr.blocks, cr.bytes, nil
+	return bt.blocks, bt.bytes, nil
 }
 
-func nextBlockReadOpener(ctx context.Context, cr *carReader, lsys linking.LinkSystem) linking.BlockReadOpener {
+func (cfg *Config) nextBlockReadOpener(ctx context.Context, cr *carReader, bt *writeTracker, lsys linking.LinkSystem) linking.BlockReadOpener {
 	seen := make(map[cid.Cid]struct{})
 	return func(lc linking.LinkContext, l datamodel.Link) (io.Reader, error) {
 		cid := l.(cidlink.Link).Cid
 
+		var data []byte
+		var err error
 		if _, ok := seen[cid]; ok {
-			// duplicate block, rely on the supplied LinkSystem to have stored this
-			return lsys.StorageReadOpener(lc, l)
+			if cfg.AllowDuplicatesIn {
+				data, err = cr.readNextBlock(ctx, cid)
+				if err != nil {
+					return nil, err
+				}
+				if !cfg.WriteDuplicatesOut {
+					return bytes.NewReader(data), nil
+				}
+			} else {
+				// duplicate block, rely on the supplied LinkSystem to have stored this
+				rdr, err := lsys.StorageReadOpener(lc, l)
+				if !cfg.WriteDuplicatesOut {
+					return rdr, err
+				}
+				data, err = ioutil.ReadAll(rdr)
+				if err != nil {
+					return nil, err
+				}
+			}
+		} else {
+			seen[cid] = struct{}{}
+			data, err = cr.readNextBlock(ctx, cid)
+			if err != nil {
+				return nil, err
+			}
 		}
-
-		seen[cid] = struct{}{}
-		data, err := cr.readNextBlock(ctx, cid)
-		if err != nil {
-			return nil, err
-		}
+		bt.recordBlock(data)
 		w, wc, err := lsys.StorageWriteOpener(lc)
 		if err != nil {
 			return nil, err
@@ -147,9 +170,7 @@ func nextBlockReadOpener(ctx context.Context, cr *carReader, lsys linking.LinkSy
 }
 
 type carReader struct {
-	cbr    *car.BlockReader
-	blocks uint64
-	bytes  uint64
+	cbr *car.BlockReader
 }
 
 func (cr *carReader) readNextBlock(ctx context.Context, expected cid.Cid) ([]byte, error) {
@@ -164,10 +185,17 @@ func (cr *carReader) readNextBlock(ctx context.Context, expected cid.Cid) ([]byt
 	if blk.Cid() != expected {
 		return nil, fmt.Errorf("%w: %s != %s", ErrUnexpectedBlock, blk.Cid(), expected)
 	}
-
-	cr.bytes += uint64(len(blk.RawData()))
-	cr.blocks++
 	return blk.RawData(), nil
+}
+
+type writeTracker struct {
+	blocks uint64
+	bytes  uint64
+}
+
+func (bt *writeTracker) recordBlock(data []byte) {
+	bt.blocks++
+	bt.bytes += uint64(len(data))
 }
 
 func traversalError(original error) error {

@@ -40,9 +40,9 @@ type CachingTempStore struct {
 	preloadKeys map[string]struct{}
 }
 
-func NewCachingTempStore(outWriter linking.BlockWriteOpener, tempDir string) *CachingTempStore {
+func NewCachingTempStore(outWriter linking.BlockWriteOpener, store *DeferredStorageCar) *CachingTempStore {
 	return &CachingTempStore{
-		store:       NewDeferredStorageCar(tempDir),
+		store:       store,
 		outWriter:   outWriter,
 		preloadKeys: make(map[string]struct{}),
 	}
