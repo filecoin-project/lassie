@@ -35,6 +35,9 @@ func ToBlocks(t *testing.T, lsys linking.LinkSystem, root cid.Cid, selNode datam
 			return nil, err
 		}
 		blk, err := blocks.NewBlockWithCid(byts, l.(cidlink.Link).Cid)
+		if err != nil {
+			return nil, err
+		}
 		traversedBlocks = append(traversedBlocks, blk)
 		return bytes.NewReader(byts), nil
 	}
