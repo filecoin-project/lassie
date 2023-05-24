@@ -15,7 +15,6 @@ import (
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/filecoin-project/lassie/pkg/verifiedcar"
 	"github.com/ipfs/go-cid"
-	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/multiformats/go-multicodec"
 )
@@ -114,15 +113,10 @@ func (ph *ProtocolHttp) Retrieve(
 		ttfb = retrieval.Clock.Since(phaseStartTime)
 		shared.sendEvent(events.FirstByte(retrieval.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, candidate))
 	})
-
-	sel, err := selector.CompileSelector(retrieval.request.GetSelector())
-	if err != nil {
-		return nil, err
-	}
-
 	cfg := verifiedcar.Config{
-		Root:     retrieval.request.Cid,
-		Selector: sel,
+		Root:              retrieval.request.Cid,
+		Selector:          retrieval.request.GetSelector(),
+		AllowDuplicatesIn: true,
 	}
 
 	blockCount, byteCount, err := cfg.Verify(ctx, rdr, retrieval.request.LinkSystem)

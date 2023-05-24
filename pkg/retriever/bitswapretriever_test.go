@@ -17,7 +17,6 @@ import (
 	"github.com/ipfs/go-cid"
 	gstestutil "github.com/ipfs/go-graphsync/testutil"
 	exchange "github.com/ipfs/go-ipfs-exchange-interface"
-	format "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-libipfs/blocks"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/linking"
@@ -32,7 +31,7 @@ import (
 func TestBitswapRetriever(t *testing.T) {
 	ctx := context.Background()
 
-	store := &correctedMemStore{&memstore.Store{
+	store := &testutil.CorrectedMemStore{&memstore.Store{
 		Bag: make(map[string][]byte),
 	}}
 	lsys := cidlink.DefaultLinkSystem()
@@ -514,7 +513,7 @@ func makeLsys(blocks []blocks.Block) *linking.LinkSystem {
 		bag[cidlink.Link{Cid: block.Cid()}.Binary()] = block.RawData()
 	}
 	lsys := cidlink.DefaultLinkSystem()
-	store := &correctedMemStore{&memstore.Store{Bag: bag}}
+	store := &testutil.CorrectedMemStore{&memstore.Store{Bag: bag}}
 	lsys.SetReadStorage(store)
 	lsys.SetWriteStorage(store)
 	return &lsys
@@ -526,27 +525,6 @@ func sizeOf(blocks []blocks.Block) uint64 {
 		total += uint64(len(block.RawData()))
 	}
 	return total
-}
-
-// TODO: remove when this is fixed in IPLD prime
-type correctedMemStore struct {
-	*memstore.Store
-}
-
-func (cms *correctedMemStore) Get(ctx context.Context, key string) ([]byte, error) {
-	data, err := cms.Store.Get(ctx, key)
-	if err != nil && err.Error() == "404" {
-		err = format.ErrNotFound{}
-	}
-	return data, err
-}
-
-func (cms *correctedMemStore) GetStream(ctx context.Context, key string) (io.ReadCloser, error) {
-	rc, err := cms.Store.GetStream(ctx, key)
-	if err != nil && err.Error() == "404" {
-		err = format.ErrNotFound{}
-	}
-	return rc, err
 }
 
 type mockInProgressCids struct {

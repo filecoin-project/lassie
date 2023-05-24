@@ -310,10 +310,5 @@ func (ds DagScope) TerminalSelectorSpec() builder.SelectorSpec {
 }
 
 func (ds DagScope) AcceptHeader() string {
-	switch ds {
-	case DagScopeBlock:
-		return "application/vnd.ipld.block"
-	default:
-		return "application/vnd.ipld.car"
-	}
+	return "application/vnd.ipld.car;version=1;order=dfs;dups=y"
 }

@@ -9,22 +9,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/filecoin-project/lassie/pkg/internal/testutil"
 	"github.com/filecoin-project/lassie/pkg/verifiedcar"
 	"github.com/ipfs/go-cid"
 	gstestutil "github.com/ipfs/go-graphsync/testutil"
-	format "github.com/ipfs/go-ipld-format"
+	"github.com/ipfs/go-libipfs/blocks"
 	"github.com/ipfs/go-unixfsnode"
 	unixfs "github.com/ipfs/go-unixfsnode/testutil"
 	"github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/storage"
-	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/storage/memstore"
-	"github.com/ipld/go-ipld-prime/traversal"
-	"github.com/ipld/go-ipld-prime/traversal/selector"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/stretchr/testify/require"
 )
@@ -38,7 +36,7 @@ func TestVerifiedCar(t *testing.T) {
 	t.Logf("random seed: %d", rndSeed)
 	var rndReader io.Reader = rand.New(rand.NewSource(rndSeed))
 
-	store := &correctedMemStore{&memstore.Store{
+	store := &testutil.CorrectedMemStore{&memstore.Store{
 		Bag: make(map[string][]byte),
 	}}
 	lsys := cidlink.DefaultLinkSystem()
@@ -48,65 +46,65 @@ func TestVerifiedCar(t *testing.T) {
 
 	tbc1 := gstestutil.SetupBlockChain(ctx, t, lsys, 1000, 100)
 	root1 := tbc1.TipLink.(cidlink.Link).Cid
-	allBlocks := make([]block, 0, 100)
-	for _, b := range tbc1.AllBlocks() {
-		allBlocks = append(allBlocks, block{b.Cid(), b.RawData()})
-	}
+	allBlocks := tbc1.AllBlocks()
 	extraneousLnk, err := lsys.Store(linking.LinkContext{}, cidlink.LinkPrototype{Prefix: cid.Prefix{Version: 1, Codec: 0x71, MhType: 0x12, MhLength: 32}}, basicnode.NewString("borp"))
 	req.NoError(err)
 	extraneousByts, err := lsys.LoadRaw(linking.LinkContext{}, extraneousLnk)
 	req.NoError(err)
+	extraneousBlk, err := blocks.NewBlockWithCid(extraneousByts, extraneousLnk.(cidlink.Link).Cid)
+	req.NoError(err)
 
-	allSelector := mustCompile(selectorparse.CommonSelector_ExploreAllRecursively)
+	allSelector := selectorparse.CommonSelector_ExploreAllRecursively
 
 	wrapPath := "/some/path/to/content"
 
 	unixfsFile := unixfs.GenerateFile(t, &lsys, rndReader, 4<<20)
-	unixfsFileBlocks := toBlocks(t, lsys, unixfsFile.Root, allSelector)
+	unixfsFileBlocks := testutil.ToBlocks(t, lsys, unixfsFile.Root, allSelector)
 
-	unixfsFileWithDups := unixfs.GenerateFile(t, &lsys, zeroReader{}, 4<<20)
-	unixfsFileWithDupsBlocks := toBlocks(t, lsys, unixfsFileWithDups.Root, allSelector)
+	unixfsFileWithDups := unixfs.GenerateFile(t, &lsys, testutil.ZeroReader{}, 4<<20)
+	unixfsFileWithDupsBlocks := testutil.ToBlocks(t, lsys, unixfsFileWithDups.Root, allSelector)
 	var unixfsDir unixfs.DirEntry
-	var unixfsDirBlocks []block
+	var unixfsDirBlocks []blocks.Block
 	for {
 		unixfsDir = unixfs.GenerateDirectory(t, &lsys, rndReader, 8<<20, false)
-		unixfsDirBlocks = toBlocks(t, lsys, unixfsDir.Root, allSelector)
+		unixfsDirBlocks = testutil.ToBlocks(t, lsys, unixfsDir.Root, allSelector)
 		if len(unixfsDir.Children) > 2 { // we want at least 3 children to test the path subset selector
 			break
 		}
 	}
 
 	unixfsShardedDir := unixfs.GenerateDirectory(t, &lsys, rndReader, 8<<20, true)
-	unixfsShardedDirBlocks := toBlocks(t, lsys, unixfsShardedDir.Root, allSelector)
+	unixfsShardedDirBlocks := testutil.ToBlocks(t, lsys, unixfsShardedDir.Root, allSelector)
 
-	unixfsPreloadSelector := mustCompile(unixfsnode.MatchUnixFSPreloadSelector.Node())
+	unixfsPreloadSelector := unixfsnode.MatchUnixFSPreloadSelector.Node()
 
-	unixfsPreloadDirBlocks := toBlocks(t, lsys, unixfsDir.Root, unixfsPreloadSelector)
-	unixfsPreloadShardedDirBlocks := toBlocks(t, lsys, unixfsShardedDir.Root, unixfsPreloadSelector)
+	unixfsPreloadDirBlocks := testutil.ToBlocks(t, lsys, unixfsDir.Root, unixfsPreloadSelector)
+	unixfsPreloadShardedDirBlocks := testutil.ToBlocks(t, lsys, unixfsShardedDir.Root, unixfsPreloadSelector)
 
-	unixfsDirSubsetSelector := mustCompile(unixfsnode.UnixFSPathSelectorBuilder(unixfsDir.Children[1].Path, unixfsnode.MatchUnixFSPreloadSelector, false))
+	unixfsDirSubsetSelector := unixfsnode.UnixFSPathSelectorBuilder(unixfsDir.Children[1].Path, unixfsnode.MatchUnixFSPreloadSelector, false)
 
-	unixfsWrappedPathSelector := mustCompile(unixfsnode.UnixFSPathSelectorBuilder(wrapPath, unixfsnode.ExploreAllRecursivelySelector, false))
-	unixfsWrappedPreloadPathSelector := mustCompile(unixfsnode.UnixFSPathSelectorBuilder(wrapPath, unixfsnode.MatchUnixFSPreloadSelector, false))
+	unixfsWrappedPathSelector := unixfsnode.UnixFSPathSelectorBuilder(wrapPath, unixfsnode.ExploreAllRecursivelySelector, false)
+	unixfsWrappedPreloadPathSelector := unixfsnode.UnixFSPathSelectorBuilder(wrapPath, unixfsnode.MatchUnixFSPreloadSelector, false)
 
 	unixfsWrappedFile := unixfs.WrapContent(t, rndReader, &lsys, unixfsFile, wrapPath, false)
-	unixfsWrappedFileBlocks := toBlocks(t, lsys, unixfsWrappedFile.Root, allSelector)
+	unixfsWrappedFileBlocks := testutil.ToBlocks(t, lsys, unixfsWrappedFile.Root, allSelector)
 	// "trimmed" is similar to "exclusive" except that "trimmed" is a subset
 	// of a larger DAG, whereas "exclusive" is a complete DAG.
-	unixfsTrimmedWrappedFileBlocks := toBlocks(t, lsys, unixfsWrappedFile.Root, unixfsWrappedPathSelector)
+	unixfsTrimmedWrappedFileBlocks := testutil.ToBlocks(t, lsys, unixfsWrappedFile.Root, unixfsWrappedPathSelector)
 	unixfsExclusiveWrappedFile := unixfs.WrapContent(t, rndReader, &lsys, unixfsFile, wrapPath, true)
-	unixfsExclusiveWrappedFileBlocks := toBlocks(t, lsys, unixfsExclusiveWrappedFile.Root, allSelector)
+	unixfsExclusiveWrappedFileBlocks := testutil.ToBlocks(t, lsys, unixfsExclusiveWrappedFile.Root, allSelector)
 
 	unixfsWrappedShardedDir := unixfs.WrapContent(t, rndReader, &lsys, unixfsShardedDir, wrapPath, false)
-	unixfsWrappedShardedDirBlocks := toBlocks(t, lsys, unixfsWrappedShardedDir.Root, allSelector)
+	unixfsWrappedShardedDirBlocks := testutil.ToBlocks(t, lsys, unixfsWrappedShardedDir.Root, allSelector)
 	// "trimmed" is similar to "exclusive" except that "trimmed" is a subset
 	// of a larger DAG, whereas "exclusive" is a complete DAG.
-	unixfsTrimmedWrappedShardedDirBlocks := toBlocks(t, lsys, unixfsWrappedShardedDir.Root, unixfsWrappedPathSelector)
-	unixfsTrimmedWrappedShardedDirOnlyBlocks := toBlocks(t, lsys, unixfsWrappedShardedDir.Root, unixfsWrappedPreloadPathSelector)
+	unixfsTrimmedWrappedShardedDirBlocks := testutil.ToBlocks(t, lsys, unixfsWrappedShardedDir.Root, unixfsWrappedPathSelector)
+	unixfsTrimmedWrappedShardedDirOnlyBlocks := testutil.ToBlocks(t, lsys, unixfsWrappedShardedDir.Root, unixfsWrappedPreloadPathSelector)
 	unixfsExclusiveWrappedShardedDir := unixfs.WrapContent(t, rndReader, &lsys, unixfsShardedDir, wrapPath, true)
-	unixfsExclusiveWrappedShardedDirBlocks := toBlocks(t, lsys, unixfsExclusiveWrappedShardedDir.Root, allSelector)
-	unixfsExclusiveWrappedShardedDirOnlyBlocks := toBlocks(t, lsys, unixfsExclusiveWrappedShardedDir.Root, unixfsWrappedPreloadPathSelector)
+	unixfsExclusiveWrappedShardedDirBlocks := testutil.ToBlocks(t, lsys, unixfsExclusiveWrappedShardedDir.Root, allSelector)
+	unixfsExclusiveWrappedShardedDirOnlyBlocks := testutil.ToBlocks(t, lsys, unixfsExclusiveWrappedShardedDir.Root, unixfsWrappedPreloadPathSelector)
 
+	mismatchedCidBlk, _ := blocks.NewBlockWithCid(extraneousByts, allBlocks[99].Cid())
 	testCases := []struct {
 		name            string
 		blocks          []expectedBlock
@@ -169,7 +167,7 @@ func TestVerifiedCar(t *testing.T) {
 		},
 		{
 			name:   "carv1 with extraneous trailing block errors",
-			blocks: append(consumedBlocks(append([]block{}, allBlocks...)), expectedBlock{block{extraneousLnk.(cidlink.Link).Cid, extraneousByts}, true}),
+			blocks: append(consumedBlocks(append([]blocks.Block{}, allBlocks...)), expectedBlock{extraneousBlk, true}),
 			roots:  []cid.Cid{root1},
 			err:    "extraneous block in CAR",
 			cfg: verifiedcar.Config{
@@ -179,9 +177,9 @@ func TestVerifiedCar(t *testing.T) {
 		},
 		{
 			name:   "carv1 with extraneous leading block errors",
-			blocks: append(consumedBlocks([]block{{extraneousLnk.(cidlink.Link).Cid, extraneousByts}}), consumedBlocks(allBlocks)...),
+			blocks: append(consumedBlocks([]blocks.Block{extraneousBlk}), consumedBlocks(allBlocks)...),
 			roots:  []cid.Cid{root1},
-			err:    "unexpected block in CAR: " + extraneousLnk.(cidlink.Link).Cid.String() + " != " + allBlocks[0].cid.String(),
+			err:    "unexpected block in CAR: " + extraneousLnk.(cidlink.Link).Cid.String() + " != " + allBlocks[0].Cid().String(),
 			cfg: verifiedcar.Config{
 				Root:     root1,
 				Selector: allSelector,
@@ -189,9 +187,9 @@ func TestVerifiedCar(t *testing.T) {
 		},
 		{
 			name:   "carv1 with out-of-order blocks errors",
-			blocks: consumedBlocks(append(append([]block{}, allBlocks[50:]...), allBlocks[0:50]...)),
+			blocks: consumedBlocks(append(append([]blocks.Block{}, allBlocks[50:]...), allBlocks[0:50]...)),
 			roots:  []cid.Cid{root1},
-			err:    "unexpected block in CAR: " + allBlocks[50].cid.String() + " != " + allBlocks[0].cid.String(),
+			err:    "unexpected block in CAR: " + allBlocks[50].Cid().String() + " != " + allBlocks[0].Cid().String(),
 			cfg: verifiedcar.Config{
 				Root:     root1,
 				Selector: allSelector,
@@ -199,7 +197,7 @@ func TestVerifiedCar(t *testing.T) {
 		},
 		{
 			name:   "carv1 with mismatching CID errors",
-			blocks: consumedBlocks(append(append([]block{}, allBlocks[0:99]...), block{allBlocks[99].cid, extraneousByts})),
+			blocks: consumedBlocks(append(append([]blocks.Block{}, allBlocks[0:99]...), mismatchedCidBlk)),
 			roots:  []cid.Cid{root1},
 			err:    "mismatch in content integrity",
 			cfg: verifiedcar.Config{
@@ -423,7 +421,7 @@ func TestVerifiedCar(t *testing.T) {
 		{
 			name:   "unixfs: file with dups, incoming has dups, not allowed",
 			blocks: append(append(consumedBlocks(unixfsFileWithDupsBlocks[:2]), skippedBlocks(unixfsFileWithDupsBlocks[2:len(unixfsFileWithDupsBlocks)-1])...), consumedBlocks(unixfsFileWithDupsBlocks[len(unixfsFileWithDupsBlocks)-1:])...),
-			err:    "unexpected block in CAR: " + unixfsFileWithDupsBlocks[2].cid.String() + " != " + unixfsFileWithDupsBlocks[len(unixfsFileWithDupsBlocks)-1].cid.String(),
+			err:    "unexpected block in CAR: " + unixfsFileWithDupsBlocks[2].Cid().String() + " != " + unixfsFileWithDupsBlocks[len(unixfsFileWithDupsBlocks)-1].Cid().String(),
 			roots:  []cid.Cid{unixfsFileWithDups.Root},
 			cfg: verifiedcar.Config{
 				Root:     unixfsFileWithDups.Root,
@@ -476,7 +474,7 @@ func TestVerifiedCar(t *testing.T) {
 
 			req := require.New(t)
 
-			store := &correctedMemStore{&memstore.Store{
+			store := &testutil.CorrectedMemStore{&memstore.Store{
 				Bag: make(map[string][]byte),
 			}}
 			lsys := cidlink.DefaultLinkSystem()
@@ -491,8 +489,8 @@ func TestVerifiedCar(t *testing.T) {
 					for testCase.blocks[writeCounter+skipped].skipped {
 						skipped++
 					}
-					req.Equal(testCase.blocks[writeCounter+skipped].cid, l.(cidlink.Link).Cid, "block %d", writeCounter)
-					req.Equal(testCase.blocks[writeCounter+skipped].data, buf.Bytes(), "block %d", writeCounter)
+					req.Equal(testCase.blocks[writeCounter+skipped].Cid(), l.(cidlink.Link).Cid, "block %d", writeCounter)
+					req.Equal(testCase.blocks[writeCounter+skipped].RawData(), buf.Bytes(), "block %d", writeCounter)
 					writeCounter++
 					w, wc, err := bwo(lc)
 					if err != nil {
@@ -560,7 +558,7 @@ func makeCarStream(
 			return
 		}
 		for _, block := range blocks {
-			err := carWriter.Put(ctx, block.cid.KeyString(), block.data)
+			err := carWriter.Put(ctx, block.Cid().KeyString(), block.RawData())
 			if !expectErrors {
 				req.NoError(err)
 			}
@@ -590,16 +588,12 @@ func makeCarStream(
 	return r
 }
 
-type block struct {
-	cid  cid.Cid
-	data []byte
-}
 type expectedBlock struct {
-	block
+	blocks.Block
 	skipped bool
 }
 
-func consumedBlocks(blocks []block) []expectedBlock {
+func consumedBlocks(blocks []blocks.Block) []expectedBlock {
 	expectedBlocks := make([]expectedBlock, 0, len(blocks))
 	for _, block := range blocks {
 		expectedBlocks = append(expectedBlocks, expectedBlock{block, false})
@@ -607,7 +601,7 @@ func consumedBlocks(blocks []block) []expectedBlock {
 	return expectedBlocks
 }
 
-func skippedBlocks(blocks []block) []expectedBlock {
+func skippedBlocks(blocks []blocks.Block) []expectedBlock {
 	expectedBlocks := make([]expectedBlock, 0, len(blocks))
 	for _, block := range blocks {
 		expectedBlocks = append(expectedBlocks, expectedBlock{block, true})
@@ -629,81 +623,8 @@ func sizeOf(blocks []expectedBlock) uint64 {
 	total := uint64(0)
 	for _, block := range blocks {
 		if !block.skipped {
-			total += uint64(len(block.data))
+			total += uint64(len(block.RawData()))
 		}
 	}
 	return total
-}
-
-func toBlocks(t *testing.T, lsys linking.LinkSystem, root cid.Cid, sel selector.Selector) []block {
-	blocks := make([]block, 0)
-	unixfsnode.AddUnixFSReificationToLinkSystem(&lsys)
-	osro := lsys.StorageReadOpener
-	lsys.StorageReadOpener = func(lc linking.LinkContext, l datamodel.Link) (io.Reader, error) {
-		r, err := osro(lc, l)
-		if err != nil {
-			return nil, err
-		}
-		byts, err := io.ReadAll(r)
-		if err != nil {
-			return nil, err
-		}
-		blocks = append(blocks, block{l.(cidlink.Link).Cid, byts})
-		return bytes.NewReader(byts), nil
-	}
-	var proto datamodel.NodePrototype = basicnode.Prototype.Any
-	if root.Prefix().Codec == cid.DagProtobuf {
-		proto = dagpb.Type.PBNode
-	}
-	rootNode, err := lsys.Load(linking.LinkContext{}, cidlink.Link{Cid: root}, proto)
-	require.NoError(t, err)
-	prog := traversal.Progress{
-		Cfg: &traversal.Config{
-			LinkSystem:                     lsys,
-			LinkTargetNodePrototypeChooser: dagpb.AddSupportToChooser(basicnode.Chooser),
-		},
-	}
-	vf := func(p traversal.Progress, n datamodel.Node, vr traversal.VisitReason) error { return nil }
-	err = prog.WalkAdv(rootNode, sel, vf)
-	require.NoError(t, err)
-
-	return blocks
-}
-
-// TODO: remove when this is fixed in IPLD prime
-type correctedMemStore struct {
-	*memstore.Store
-}
-
-func (cms *correctedMemStore) Get(ctx context.Context, key string) ([]byte, error) {
-	data, err := cms.Store.Get(ctx, key)
-	if err != nil && err.Error() == "404" {
-		err = format.ErrNotFound{}
-	}
-	return data, err
-}
-
-func (cms *correctedMemStore) GetStream(ctx context.Context, key string) (io.ReadCloser, error) {
-	rc, err := cms.Store.GetStream(ctx, key)
-	if err != nil && err.Error() == "404" {
-		err = format.ErrNotFound{}
-	}
-	return rc, err
-}
-
-func mustCompile(selNode datamodel.Node) selector.Selector {
-	sel, err := selector.CompileSelector(selNode)
-	if err != nil {
-		panic(err)
-	}
-	return sel
-}
-
-type zeroReader struct{}
-
-func (zeroReader) Read(b []byte) (n int, err error) {
-	for i := range b {
-		b[i] = 0
-	}
-	return len(b), nil
 }

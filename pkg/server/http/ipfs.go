@@ -50,13 +50,50 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		hasAccept := req.Header.Get("Accept") != ""
 		acceptTypes := strings.Split(req.Header.Get("Accept"), ",")
 		validAccept := false
+		includeDupes := true
 		for _, acceptType := range acceptTypes {
 			typeParts := strings.Split(acceptType, ";")
 			if typeParts[0] == "*/*" || typeParts[0] == "application/*" || typeParts[0] == "application/vnd.ipld.car" {
 				validAccept = true
-				break
+				if typeParts[0] == "application/vnd.ipld.car" {
+					// parse 412 car attributes
+					for _, nextPart := range typeParts[1:] {
+						pair := strings.Split(nextPart, "=")
+						if len(pair) == 2 {
+							attr := strings.TrimSpace(pair[0])
+							value := strings.TrimSpace(pair[1])
+							switch attr {
+							case "dups":
+								switch value {
+								case "y":
+								case "n":
+									includeDupes = false
+								default:
+									// don't accept un expected values
+									validAccept = false
+								}
+							case "version":
+								switch value {
+								case "1":
+								default:
+									// don't accept any version but 1
+									validAccept = false
+								}
+							case "order":
+								// for now, dfs traversal satisfies all known orders
+							default:
+								// ignore others
+							}
+						}
+					}
+				}
+				// only break if further validation didn't fail
+				if validAccept {
+					break
+				}
 			}
 		}
+
 		if hasAccept && !validAccept {
 			statusLogger.logStatus(http.StatusBadRequest, "No acceptable content type")
 			res.WriteHeader(http.StatusBadRequest)
@@ -188,9 +225,18 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		// the response writer. Once closed, no other content should be written.
 		bytesWritten := make(chan struct{}, 1)
 
-		carWriter := storage.NewDeferredCarWriterForStream(rootCid, res)
-		carStore := storage.NewCachingTempStore(carWriter.BlockWriteOpener(), cfg.TempDir)
+		tempStore := storage.NewDeferredStorageCar(cfg.TempDir)
+		var carWriter storage.DeferredWriter
+		if includeDupes {
+			carWriter = storage.NewDuplicateAdderCarForStream(req.Context(), rootCid, path.String(), dagScope, tempStore, res)
+		} else {
+			carWriter = storage.NewDeferredCarWriterForStream(rootCid, res)
+		}
+		carStore := storage.NewCachingTempStore(carWriter.BlockWriteOpener(), tempStore)
 		defer func() {
+			if err := carWriter.Close(); err != nil {
+				logger.Errorf("error closing car writer: %s", err)
+			}
 			if err := carStore.Close(); err != nil {
 				logger.Errorf("error closing temp store: %s", err)
 			}

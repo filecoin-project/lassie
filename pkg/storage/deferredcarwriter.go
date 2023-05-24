@@ -22,6 +22,13 @@ type putCb struct {
 var _ ipldstorage.WritableStorage = (*DeferredCarWriter)(nil)
 var _ io.Closer = (*DeferredCarWriter)(nil)
 
+type DeferredWriter interface {
+	ipldstorage.WritableStorage
+	io.Closer
+	BlockWriteOpener() linking.BlockWriteOpener
+	OnPut(cb func(int), once bool)
+}
+
 // DeferredCarWriter creates a write-only CARv1 either to an existing stream or
 // to a file designated by a supplied path. CARv1 content (including header)
 // only begins when the first Put() operation is performed. If the output is a

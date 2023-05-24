@@ -215,7 +215,8 @@ func Fetch(cctx *cli.Context) error {
 	} else {
 		carWriter = storage.NewDeferredCarWriterForPath(rootCid, outfile)
 	}
-	carStore := storage.NewCachingTempStore(carWriter.BlockWriteOpener(), tempDir)
+	tempStore := storage.NewDeferredStorageCar(tempDir)
+	carStore := storage.NewCachingTempStore(carWriter.BlockWriteOpener(), tempStore)
 	defer carStore.Close()
 
 	var blockCount int
