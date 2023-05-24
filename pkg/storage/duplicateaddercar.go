@@ -124,7 +124,11 @@ func (da *DuplicateAdderCar) Close() error {
 	case <-da.ctx.Done():
 		return da.ctx.Err()
 	case err := <-streamCompletion:
-		return err
+		if err != nil {
+			return err
+		}
+		da.DeferredCarWriter.Close()
+		return nil
 	}
 }
 
