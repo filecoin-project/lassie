@@ -62,6 +62,7 @@ func TestHttpFetch(t *testing.T) {
 		httpRemotes      int
 		disableGraphsync bool
 		expectFail       bool
+		expectUncleanEnd bool
 		modifyHttpConfig func(httpserver.HttpServerConfig) httpserver.HttpServerConfig
 		generate         func(*testing.T, io.Reader, []testpeer.TestPeer) []unixfs.DirEntry
 		paths            []string
@@ -134,6 +135,7 @@ func TestHttpFetch(t *testing.T) {
 		{
 			name:             "graphsync max block limit",
 			graphsyncRemotes: 1,
+			expectUncleanEnd: true,
 			modifyHttpConfig: func(cfg httpserver.HttpServerConfig) httpserver.HttpServerConfig {
 				cfg.MaxBlocksPerRequest = 3
 				return cfg
@@ -154,6 +156,7 @@ func TestHttpFetch(t *testing.T) {
 		{
 			name:             "graphsync max block limit in request",
 			graphsyncRemotes: 1,
+			expectUncleanEnd: true,
 			modifyQueries: []queryModifier{
 				func(values url.Values, _ []testpeer.TestPeer) {
 					values.Add("blockLimit", "3")
@@ -173,8 +176,9 @@ func TestHttpFetch(t *testing.T) {
 			}},
 		},
 		{
-			name:           "bitswap max block limit",
-			bitswapRemotes: 1,
+			name:             "bitswap max block limit",
+			bitswapRemotes:   1,
+			expectUncleanEnd: true,
 			modifyHttpConfig: func(cfg httpserver.HttpServerConfig) httpserver.HttpServerConfig {
 				cfg.MaxBlocksPerRequest = 3
 				return cfg
@@ -765,7 +769,9 @@ func TestHttpFetch(t *testing.T) {
 					_, err := uuid.Parse(requestId)
 					req.NoError(err)
 					body, err := io.ReadAll(resp.Body)
-					req.NoError(err)
+					if !testCase.expectUncleanEnd {
+						req.NoError(err)
+					}
 					err = resp.Body.Close()
 					req.NoError(err)
 
