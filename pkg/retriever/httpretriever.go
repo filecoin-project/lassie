@@ -119,7 +119,7 @@ func (ph *ProtocolHttp) Retrieve(
 		AllowDuplicatesIn: true,
 	}
 
-	blockCount, byteCount, err := cfg.Verify(ctx, rdr, retrieval.request.LinkSystem)
+	blockCount, byteCount, err := cfg.VerifyCar(ctx, rdr, retrieval.request.LinkSystem)
 	if err != nil {
 		return nil, err
 	}
