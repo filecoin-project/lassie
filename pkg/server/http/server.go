@@ -28,6 +28,16 @@ type HttpServerConfig struct {
 	MaxBlocksPerRequest uint64
 }
 
+type contextKey struct {
+	key string
+}
+
+var connContextKey = &contextKey{"http-conn"}
+
+func saveConnInCTX(ctx context.Context, c net.Conn) context.Context {
+	return context.WithValue(ctx, connContextKey, c)
+}
+
 // NewHttpServer creates a new HttpServer
 func NewHttpServer(ctx context.Context, lassie *lassie.Lassie, cfg HttpServerConfig) (*HttpServer, error) {
 	addr := fmt.Sprintf("%s:%d", cfg.Address, cfg.Port)
@@ -45,6 +55,7 @@ func NewHttpServer(ctx context.Context, lassie *lassie.Lassie, cfg HttpServerCon
 		Addr:        fmt.Sprintf(":%d", cfg.Port),
 		BaseContext: func(listener net.Listener) context.Context { return ctx },
 		Handler:     handler,
+		ConnContext: saveConnInCTX,
 	}
 
 	httpServer := &HttpServer{
