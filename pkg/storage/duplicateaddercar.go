@@ -32,7 +32,7 @@ type DuplicateAdderCar struct {
 }
 
 func NewDuplicateAdderCarForStream(ctx context.Context, root cid.Cid, path string, scope types.DagScope, store *DeferredStorageCar, outStream io.Writer) *DuplicateAdderCar {
-	blockStream := &blockStream{}
+	blockStream := &blockStream{ctx: ctx}
 	blockStream.blockBuffer = list.New()
 	blockStream.cond = sync.NewCond(&blockStream.mu)
 
@@ -120,16 +120,13 @@ func (da *DuplicateAdderCar) Close() error {
 	case <-da.ctx.Done():
 		return da.ctx.Err()
 	case err := <-streamCompletion:
-		if err != nil {
-			return err
-		}
-		da.DeferredCarWriter.Close()
-		return nil
+		return err
 	}
 }
 
 type blockStream struct {
 	done        bool
+	ctx         context.Context
 	mu          sync.Mutex
 	cond        *sync.Cond
 	blockBuffer *list.List
@@ -158,6 +155,11 @@ func (bs *blockStream) Next() (blocks.Block, error) {
 	defer bs.mu.Unlock()
 
 	for {
+		select {
+		case <-bs.ctx.Done():
+			return nil, bs.ctx.Err()
+		default:
+		}
 		if e := bs.blockBuffer.Front(); e != nil {
 			return bs.blockBuffer.Remove(e).(blocks.Block), nil
 		}
