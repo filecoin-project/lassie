@@ -771,6 +771,8 @@ func TestHttpFetch(t *testing.T) {
 					body, err := io.ReadAll(resp.Body)
 					if !testCase.expectUncleanEnd {
 						req.NoError(err)
+					} else {
+						req.Error(err)
 					}
 					err = resp.Body.Close()
 					req.NoError(err)
