@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 
 	"github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
@@ -154,7 +153,7 @@ func (cfg *Config) nextBlockReadOpener(ctx context.Context, cr *carReader, bt *w
 				if !cfg.WriteDuplicatesOut {
 					return rdr, err
 				}
-				data, err = ioutil.ReadAll(rdr)
+				data, err = io.ReadAll(rdr)
 				if err != nil {
 					return nil, err
 				}

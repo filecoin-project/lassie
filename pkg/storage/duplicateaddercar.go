@@ -12,15 +12,12 @@ import (
 	"github.com/filecoin-project/lassie/pkg/verifiedcar"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-libipfs/blocks"
-	log "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-unixfsnode"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 )
-
-var logger = log.Logger("lassie/storage")
 
 type DuplicateAdderCar struct {
 	*DeferredCarWriter
@@ -80,7 +77,6 @@ func (da *DuplicateAdderCar) addDupes() {
 
 	// run the verification
 	_, _, err = cfg.VerifyBlockStream(da.ctx, da.blockStream, lsys)
-	return
 }
 
 func (da *DuplicateAdderCar) BlockWriteOpener() linking.BlockWriteOpener {
