@@ -31,7 +31,7 @@ import (
 func TestBitswapRetriever(t *testing.T) {
 	ctx := context.Background()
 
-	store := &testutil.CorrectedMemStore{&memstore.Store{
+	store := &testutil.CorrectedMemStore{Store: &memstore.Store{
 		Bag: make(map[string][]byte),
 	}}
 	lsys := cidlink.DefaultLinkSystem()
@@ -513,7 +513,7 @@ func makeLsys(blocks []blocks.Block) *linking.LinkSystem {
 		bag[cidlink.Link{Cid: block.Cid()}.Binary()] = block.RawData()
 	}
 	lsys := cidlink.DefaultLinkSystem()
-	store := &testutil.CorrectedMemStore{&memstore.Store{Bag: bag}}
+	store := &testutil.CorrectedMemStore{Store: &memstore.Store{Bag: bag}}
 	lsys.SetReadStorage(store)
 	lsys.SetWriteStorage(store)
 	return &lsys
