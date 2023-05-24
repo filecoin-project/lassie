@@ -20,7 +20,7 @@ import (
 
 func TestDuplicateAdderCar(t *testing.T) {
 
-	setupStore := &testutil.CorrectedMemStore{&memstore.Store{
+	setupStore := &testutil.CorrectedMemStore{Store: &memstore.Store{
 		Bag: make(map[string][]byte),
 	}}
 	lsys := cidlink.DefaultLinkSystem()
