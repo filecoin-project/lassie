@@ -88,14 +88,18 @@ func NewRequestForPath(store ipldstorage.WritableStorage, cid cid.Cid, path stri
 	}, nil
 }
 
+func PathScopeSelector(path string, scope DagScope) ipld.Node {
+	// Turn the path / scope into a selector
+	return unixfsnode.UnixFSPathSelectorBuilder(path, scope.TerminalSelectorSpec(), false)
+}
+
 // GetSelector will safely return a selector for this request. If none has been
 // set, it will generate one for the path & scope.
 func (r RetrievalRequest) GetSelector() ipld.Node {
 	if r.Selector != nil { // custom selector
 		return r.Selector
 	}
-	// Turn the path / scope into a selector
-	return unixfsnode.UnixFSPathSelectorBuilder(r.Path, r.Scope.TerminalSelectorSpec(), false)
+	return PathScopeSelector(r.Path, r.Scope)
 }
 
 // GetUrlPath returns a URL path and query string valid with the Trusted HTTP

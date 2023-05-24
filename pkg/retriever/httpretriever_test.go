@@ -30,7 +30,7 @@ import (
 func TestHTTPRetriever(t *testing.T) {
 	ctx := context.Background()
 
-	store := &correctedMemStore{&memstore.Store{
+	store := &testutil.CorrectedMemStore{&memstore.Store{
 		Bag: make(map[string][]byte),
 	}}
 	lsys := cidlink.DefaultLinkSystem()

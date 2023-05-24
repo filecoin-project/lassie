@@ -34,11 +34,11 @@ var (
 var protoChooser = dagpb.AddSupportToChooser(basicnode.Chooser)
 
 type Config struct {
-	Root               cid.Cid           // The single root we expect to appear in the CAR and that we use to run our traversal against
-	AllowCARv2         bool              // If true, allow CARv2 files to be received, otherwise strictly only allow CARv1
-	Selector           selector.Selector // The selector to execute, starting at the provided Root, to verify the contents of the CAR
-	AllowDuplicatesIn  bool              // Handles whether the incoming stream has duplicates
-	WriteDuplicatesOut bool              // Handles whether duplicates should be written a second time as blocks
+	Root               cid.Cid        // The single root we expect to appear in the CAR and that we use to run our traversal against
+	AllowCARv2         bool           // If true, allow CARv2 files to be received, otherwise strictly only allow CARv1
+	Selector           datamodel.Node // The selector to execute, starting at the provided Root, to verify the contents of the CAR
+	AllowDuplicatesIn  bool           // Handles whether the incoming stream has duplicates
+	WriteDuplicatesOut bool           // Handles whether duplicates should be written a second time as blocks
 }
 
 func visitNoop(p traversal.Progress, n datamodel.Node, r traversal.VisitReason) error { return nil }
@@ -55,6 +55,10 @@ func visitNoop(p traversal.Progress, n datamodel.Node, r traversal.VisitReason) 
 //
 // * https://specs.ipfs.tech/http-gateways/path-gateway/
 func (cfg Config) Verify(ctx context.Context, rdr io.Reader, lsys linking.LinkSystem) (uint64, uint64, error) {
+	sel, err := selector.CompileSelector(cfg.Selector)
+	if err != nil {
+		return 0, 0, err
+	}
 
 	cbr, err := car.NewBlockReader(rdr, car.WithTrustedCAR(false))
 	if err != nil {
@@ -102,7 +106,7 @@ func (cfg Config) Verify(ctx context.Context, rdr io.Reader, lsys linking.LinkSy
 	if err != nil {
 		return 0, 0, err
 	}
-	if err := progress.WalkAdv(rootNode, cfg.Selector, visitNoop); err != nil {
+	if err := progress.WalkAdv(rootNode, sel, visitNoop); err != nil {
 		return 0, 0, traversalError(err)
 	}
 

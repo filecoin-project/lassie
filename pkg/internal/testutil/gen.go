@@ -139,3 +139,12 @@ func GenerateRetrievalIDs(t *testing.T, n int) []types.RetrievalID {
 	}
 	return retrievalIDs
 }
+
+type ZeroReader struct{}
+
+func (ZeroReader) Read(b []byte) (n int, err error) {
+	for i := range b {
+		b[i] = 0
+	}
+	return len(b), nil
+}
