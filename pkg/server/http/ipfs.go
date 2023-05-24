@@ -3,6 +3,7 @@ package httpserver
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -274,6 +275,11 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		if err != nil {
 			select {
 			case <-bytesWritten:
+				reqConn := req.Context().Value(connContextKey)
+				if conn, ok := reqConn.(net.Conn); ok {
+					res.(http.Flusher).Flush()
+					conn.Write([]byte("0\r\n"))
+				}
 				return
 			default:
 			}
