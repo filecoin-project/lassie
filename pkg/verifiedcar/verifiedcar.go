@@ -10,6 +10,7 @@ import (
 
 	"github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
+	"github.com/ipfs/go-libipfs/blocks"
 	"github.com/ipfs/go-unixfsnode"
 	"github.com/ipld/go-car/v2"
 	dagpb "github.com/ipld/go-codec-dagpb"
@@ -54,11 +55,7 @@ func visitNoop(p traversal.Progress, n datamodel.Node, r traversal.VisitReason) 
 // * https://specs.ipfs.tech/http-gateways/trustless-gateway/
 //
 // * https://specs.ipfs.tech/http-gateways/path-gateway/
-func (cfg Config) Verify(ctx context.Context, rdr io.Reader, lsys linking.LinkSystem) (uint64, uint64, error) {
-	sel, err := selector.CompileSelector(cfg.Selector)
-	if err != nil {
-		return 0, 0, err
-	}
+func (cfg Config) VerifyCar(ctx context.Context, rdr io.Reader, lsys linking.LinkSystem) (uint64, uint64, error) {
 
 	cbr, err := car.NewBlockReader(rdr, car.WithTrustedCAR(false))
 	if err != nil {
@@ -79,6 +76,20 @@ func (cfg Config) Verify(ctx context.Context, rdr io.Reader, lsys linking.LinkSy
 	if len(cbr.Roots) != 1 || cbr.Roots[0] != cfg.Root {
 		return 0, 0, ErrBadRoots
 	}
+	return cfg.VerifyBlockStream(ctx, cbr, lsys)
+}
+
+type BlockReader interface {
+	Next() (blocks.Block, error)
+}
+
+func (cfg Config) VerifyBlockStream(ctx context.Context, cbr BlockReader, lsys linking.LinkSystem) (uint64, uint64, error) {
+
+	sel, err := selector.CompileSelector(cfg.Selector)
+	if err != nil {
+		return 0, 0, err
+	}
+
 	cr := &carReader{
 		cbr: cbr,
 	}
@@ -129,6 +140,7 @@ func (cfg *Config) nextBlockReadOpener(ctx context.Context, cr *carReader, bt *w
 		var err error
 		if _, ok := seen[cid]; ok {
 			if cfg.AllowDuplicatesIn {
+				// duplicate block, but in this case we are expecting the stream to have it
 				data, err = cr.readNextBlock(ctx, cid)
 				if err != nil {
 					return nil, err
@@ -174,7 +186,7 @@ func (cfg *Config) nextBlockReadOpener(ctx context.Context, cr *carReader, bt *w
 }
 
 type carReader struct {
-	cbr *car.BlockReader
+	cbr BlockReader
 }
 
 func (cr *carReader) readNextBlock(ctx context.Context, expected cid.Cid) ([]byte, error) {

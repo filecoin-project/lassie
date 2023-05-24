@@ -19,8 +19,10 @@ import (
 	datatransfer "github.com/filecoin-project/go-data-transfer/v2"
 	"github.com/filecoin-project/lassie/pkg/internal/itest/mocknet"
 	"github.com/filecoin-project/lassie/pkg/internal/itest/testpeer"
+	"github.com/filecoin-project/lassie/pkg/internal/testutil"
 	"github.com/filecoin-project/lassie/pkg/lassie"
 	httpserver "github.com/filecoin-project/lassie/pkg/server/http"
+	"github.com/filecoin-project/lassie/pkg/verifiedcar"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	unixfs "github.com/ipfs/go-unixfsnode/testutil"
@@ -30,6 +32,8 @@ import (
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/storage/memstore"
+	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
 	"github.com/stretchr/testify/require"
@@ -49,7 +53,10 @@ func TestHttpFetch(t *testing.T) {
 	blockQuery := func(q url.Values, _ []testpeer.TestPeer) {
 		q.Set("dag-scope", "block")
 	}
-
+	noDups := func(header http.Header) {
+		header.Set("Accept", "application/vnd.ipld.car;order=dfs;version=1;dups=n;")
+	}
+	type headerSetter func(http.Header)
 	type queryModifier func(url.Values, []testpeer.TestPeer)
 	type bodyValidator func(*testing.T, unixfs.DirEntry, []byte)
 
@@ -66,6 +73,7 @@ func TestHttpFetch(t *testing.T) {
 		modifyHttpConfig func(httpserver.HttpServerConfig) httpserver.HttpServerConfig
 		generate         func(*testing.T, io.Reader, []testpeer.TestPeer) []unixfs.DirEntry
 		paths            []string
+		setHeader        headerSetter
 		modifyQueries    []queryModifier
 		validateBodies   []bodyValidator
 	}{
@@ -646,6 +654,43 @@ func TestHttpFetch(t *testing.T) {
 				v.Set("providers", strings.Join(maStrings, ","))
 			}},
 		},
+		{
+			name:        "http large sharded file with dups",
+			httpRemotes: 1,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, testutil.ZeroReader{}, 4<<20)}
+			},
+			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
+				store := &testutil.CorrectedMemStore{&memstore.Store{
+					Bag: make(map[string][]byte),
+				}}
+				lsys := cidlink.DefaultLinkSystem()
+				lsys.SetReadStorage(store)
+				lsys.SetWriteStorage(store)
+				_, _, err := verifiedcar.Config{
+					Root:              srcData.Root,
+					Selector:          selectorparse.CommonSelector_ExploreAllRecursively,
+					AllowDuplicatesIn: true,
+				}.VerifyCar(context.Background(), bytes.NewReader(body), lsys)
+				require.NoError(t, err)
+			}},
+		},
+		{
+			name:        "http large sharded file with dups, no dups response requested",
+			httpRemotes: 1,
+			setHeader:   noDups,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, testutil.ZeroReader{}, 4<<20)}
+			},
+			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
+				wantCids := []cid.Cid{
+					srcData.Root, // "/""
+					srcData.SelfCids[1],
+					srcData.SelfCids[len(srcData.SelfCids)-1],
+				}
+				validateCarBody(t, body, srcData.Root, wantCids, true)
+			}},
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -712,7 +757,11 @@ func TestHttpFetch(t *testing.T) {
 					addr := fmt.Sprintf("http://%s/ipfs/%s%s", httpServer.Addr(), srcData[i].Root.String(), path)
 					getReq, err := http.NewRequest("GET", addr, nil)
 					req.NoError(err)
-					getReq.Header.Add("Accept", "application/vnd.ipld.car")
+					if testCase.setHeader == nil {
+						getReq.Header.Add("Accept", "application/vnd.ipld.car")
+					} else {
+						testCase.setHeader(getReq.Header)
+					}
 					if testCase.modifyQueries != nil && testCase.modifyQueries[i] != nil {
 						q := getReq.URL.Query()
 						testCase.modifyQueries[i](q, mrn.Remotes)

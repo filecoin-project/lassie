@@ -355,6 +355,24 @@ func MockIpfsHandler(ctx context.Context, lsys linking.LinkSystem) func(http.Res
 			unixfsPath = "/" + strings.Join(urlPath[2:], "/")
 		}
 
+		acceptTypes := strings.Split(req.Header.Get("Accept"), ",")
+		includeDupes := false
+		for _, acceptType := range acceptTypes {
+			typeParts := strings.Split(acceptType, ";")
+			if typeParts[0] == "application/vnd.ipld.car" {
+				for _, nextPart := range typeParts[1:] {
+					pair := strings.Split(nextPart, "=")
+					if len(pair) == 2 {
+						attr := strings.TrimSpace(pair[0])
+						value := strings.TrimSpace(pair[1])
+						if attr == "dups" && value == "y" {
+							includeDupes = true
+						}
+					}
+				}
+			}
+		}
+
 		// We're always providing the dag-scope parameter, so add a failure case if we stop
 		// providing it in the future
 		if !req.URL.Query().Has("dag-scope") {
@@ -384,7 +402,7 @@ func MockIpfsHandler(ctx context.Context, lsys linking.LinkSystem) func(http.Res
 		}
 
 		// Write to response writer
-		carWriter, err := storage.NewWritable(res, []cid.Cid{rootCid}, car.WriteAsCarV1(true), car.AllowDuplicatePuts(false))
+		carWriter, err := storage.NewWritable(res, []cid.Cid{rootCid}, car.WriteAsCarV1(true), car.AllowDuplicatePuts(includeDupes))
 		if err != nil {
 			http.Error(res, fmt.Sprintf("Failed to create car writer: %v", err), http.StatusInternalServerError)
 			return

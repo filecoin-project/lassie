@@ -502,7 +502,7 @@ func TestVerifiedCar(t *testing.T) {
 			}
 
 			carStream := makeCarStream(t, ctx, testCase.roots, testCase.blocks, testCase.carv2, testCase.err != "", testCase.incomingHasDups)
-			blockCount, byteCount, err := testCase.cfg.Verify(ctx, carStream, lsys)
+			blockCount, byteCount, err := testCase.cfg.VerifyCar(ctx, carStream, lsys)
 
 			// read the rest of data
 			io.ReadAll(carStream)
