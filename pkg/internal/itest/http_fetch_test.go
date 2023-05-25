@@ -847,6 +847,7 @@ func TestHttpFetch(t *testing.T) {
 					req.NoError(err)
 
 					if DEBUG_DATA {
+						t.Logf("Creating CAR %s in temp dir", fmt.Sprintf("%s_received%d.car", testCase.name, i))
 						dstf, err := os.CreateTemp("", fmt.Sprintf("%s_received%d.car", testCase.name, i))
 						req.NoError(err)
 						t.Logf("Writing received data to CAR @ %s", dstf.Name())
