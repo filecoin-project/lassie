@@ -8,23 +8,20 @@ import (
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/multiformats/go-multicodec"
 )
 
 var _ State = nilstate{}
 
 type nilstate struct{}
 
-func (ns nilstate) RecordFailure(storageProviderId peer.ID, retrievalId types.RetrievalID) error {
+func (ns nilstate) RecordFailure(retrievalId types.RetrievalID, storageProviderId peer.ID) error {
 	return nil
 }
 
-func (ns nilstate) RemoveFromRetrieval(storageProviderId peer.ID, retrievalId types.RetrievalID) error {
-	return nil
-}
+func (ns nilstate) RecordSuccess(storageProviderId peer.ID) {}
 
-func (ns nilstate) IsSuspended(storageProviderId peer.ID) bool {
-	return false
+func (ns nilstate) RemoveFromRetrieval(retrievalId types.RetrievalID, storageProviderId peer.ID) error {
+	return nil
 }
 
 func (ns nilstate) GetConcurrency(storageProviderId peer.ID) uint {
@@ -43,8 +40,8 @@ func (ns nilstate) RegisterRetrieval(retrievalId types.RetrievalID, cid cid.Cid,
 	return true
 }
 
-func (ns nilstate) RegisterConnectTime(storageProviderId peer.ID, connectTime time.Duration) {}
+func (ns nilstate) RecordConnectTime(storageProviderId peer.ID, connectTime time.Duration) {}
 
-func (ns nilstate) CompareStorageProviders(protocol multicodec.Code, a, b peer.ID, mda, mdb metadata.Protocol) bool {
+func (ns nilstate) CompareStorageProviders(a, b peer.ID, mda, mdb metadata.Protocol) bool {
 	return false
 }

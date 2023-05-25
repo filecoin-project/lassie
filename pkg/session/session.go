@@ -4,13 +4,10 @@ import (
 	"time"
 
 	"github.com/filecoin-project/lassie/pkg/types"
-	"github.com/ipfs/go-log/v2"
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
 )
-
-var logger = log.Logger("lassie/session")
 
 // Session and State both deal with per-storage provider data and usage
 // questions. While State is responsible for gathering data of ongoing
@@ -95,11 +92,6 @@ func (session *Session) isAcceptableCandidate(storageProviderId peer.ID) bool {
 func (session *Session) isAcceptableCandidateForProtocol(storageProviderId peer.ID, protocol multicodec.Code) bool {
 	if protocol == multicodec.TransportBitswap {
 		return true
-	}
-
-	// has the candidate been suspended by ongoing state monitoring
-	if session.State.IsSuspended(storageProviderId) {
-		return false
 	}
 
 	// check if we are currently retrieving from the candidate with its maximum

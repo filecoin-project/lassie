@@ -38,14 +38,18 @@ var (
 )
 
 type Session interface {
-	RegisterRetrieval(retrievalId types.RetrievalID, cid cid.Cid, selector datamodel.Node) bool
-	EndRetrieval(retrievalId types.RetrievalID) error
-	AddToRetrieval(retrievalId types.RetrievalID, storageProviderIds []peer.ID) error
-	RecordFailure(storageProviderId peer.ID, retrievalId types.RetrievalID) error
-	FilterIndexerCandidate(candidate types.RetrievalCandidate) (bool, types.RetrievalCandidate)
 	GetStorageProviderTimeout(storageProviderId peer.ID) time.Duration
-	RegisterConnectTime(storageProviderId peer.ID, connectTime time.Duration)
-	CompareStorageProviders(protocol multicodec.Code, a, b peer.ID, mda, mdb metadata.Protocol) bool
+	FilterIndexerCandidate(candidate types.RetrievalCandidate) (bool, types.RetrievalCandidate)
+
+	RegisterRetrieval(retrievalId types.RetrievalID, cid cid.Cid, selector datamodel.Node) bool
+	AddToRetrieval(retrievalId types.RetrievalID, storageProviderIds []peer.ID) error
+	EndRetrieval(retrievalId types.RetrievalID) error
+
+	RecordFailure(retrievalId types.RetrievalID, storageProviderId peer.ID) error
+	RecordSuccess(storageProviderId peer.ID)
+	RecordConnectTime(storageProviderId peer.ID, connectTime time.Duration)
+
+	CompareStorageProviders(a, b peer.ID, mda, mdb metadata.Protocol) bool
 }
 
 type Retriever struct {
@@ -223,6 +227,8 @@ func makeOnRetrievalEvent(
 			handleCandidatesFilteredEvent(retrievalId, session, retrievalCid, ret)
 		case events.RetrievalEventStarted:
 			handleStartedEvent(ret)
+		case events.RetrievalEventSuccess:
+			handleSuccessEvent(session, ret)
 		case events.RetrievalEventFailed:
 			handleFailureEvent(ctx, session, retrievalId, eventStats, ret)
 		}
@@ -242,7 +248,7 @@ func handleFailureEvent(
 	event events.RetrievalEventFailed,
 ) {
 	if event.Phase() != types.IndexerPhase { // indexer failures don't have a storageProviderId
-		session.RecordFailure(event.StorageProviderId(), retrievalId)
+		session.RecordFailure(retrievalId, event.StorageProviderId())
 	}
 
 	msg := event.ErrorMessage()
@@ -282,6 +288,13 @@ func handleFailureEvent(
 		if !matched {
 			stats.Record(ctx, metrics.RetrievalErrorOtherCount.M(1))
 		}
+	}
+}
+
+// handleSuccessEvent is called only when a (singular) retrieval succeeds
+func handleSuccessEvent(session Session, event events.RetrievalEventSuccess) {
+	if event.StorageProviderId() != "" { // TODO: same check on other session reports for bitswap?
+		session.RecordSuccess(event.StorageProviderId())
 	}
 }
 

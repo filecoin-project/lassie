@@ -208,7 +208,7 @@ func (retrieval *retrieval) candidateCompare(a, b peer.ID) bool {
 		return true
 	}
 
-	return retrieval.Session.CompareStorageProviders(retrieval.Protocol.Code(), a, b, mdA, mdB)
+	return retrieval.Session.CompareStorageProviders(a, b, mdA, mdB)
 }
 
 // filterCandidates is needed because we can receive duplicate candidates in
@@ -312,7 +312,7 @@ func (retrieval *retrieval) runRetrievalCandidate(
 	} else {
 		shared.sendEvent(events.Connected(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate))
 
-		retrieval.Session.RegisterConnectTime(candidate.MinerPeer.ID, connectTime)
+		retrieval.Session.RecordConnectTime(candidate.MinerPeer.ID, connectTime)
 
 		// Form a queue and run retrieval in serial
 		done = shared.waitQueue.Wait(candidate.MinerPeer.ID)

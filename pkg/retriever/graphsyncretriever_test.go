@@ -512,12 +512,13 @@ func TestRetrievalRacing(t *testing.T) {
 				}
 				candidates = append(candidates, types.NewRetrievalCandidate(peer.ID(p), nil, cid.Undef, protocol))
 			}
-			session := session.NewSession(&session.Config{
-				DefaultProviderConfig: session.ProviderConfig{
+			scfg := session.DefaultConfig().
+				WithDefaultProviderConfig(session.ProviderConfig{
 					RetrievalTimeout: time.Second,
-				},
-				ConnectTimeAlpha: 0,
-			}, true)
+				}).
+				WithConnectTimeAlpha(0.0). // only use the last connect time
+				WithoutRandomness()
+			session := session.NewSession(scfg, true)
 			cfg := retriever.NewGraphsyncRetrieverWithConfig(session, mockClient, clock, initialPause)
 
 			rv := testutil.RetrievalVerifier{
@@ -583,12 +584,13 @@ func TestMultipleRetrievals(t *testing.T) {
 		clock,
 	)
 
-	session := session.NewSession(&session.Config{
-		DefaultProviderConfig: session.ProviderConfig{
+	scfg := session.DefaultConfig().
+		WithDefaultProviderConfig(session.ProviderConfig{
 			RetrievalTimeout: time.Second,
-		},
-		ConnectTimeAlpha: 0,
-	}, true)
+		}).
+		WithConnectTimeAlpha(0.0). // only use the last connect time
+		WithoutRandomness()
+	session := session.NewSession(scfg, true)
 	cfg := retriever.NewGraphsyncRetrieverWithConfig(session, mockClient, clock, initialPause)
 
 	expectedSequence := []testutil.ExpectedActionsAtTime{
@@ -706,12 +708,13 @@ func TestRetrievalSelector(t *testing.T) {
 		clock.New(),
 	)
 
-	session := session.NewSession(&session.Config{
-		DefaultProviderConfig: session.ProviderConfig{
+	scfg := session.DefaultConfig().
+		WithDefaultProviderConfig(session.ProviderConfig{
 			RetrievalTimeout: time.Second,
-		},
-		ConnectTimeAlpha: 0,
-	}, true)
+		}).
+		WithConnectTimeAlpha(0.0). // only use the last connect time
+		WithoutRandomness()
+	session := session.NewSession(scfg, true)
 	cfg := retriever.NewGraphsyncRetriever(session, mockClient)
 
 	selector := selectorparse.CommonSelector_MatchPoint
@@ -757,12 +760,13 @@ func TestDuplicateRetreivals(t *testing.T) {
 		clock,
 	)
 
-	session := session.NewSession(&session.Config{
-		DefaultProviderConfig: session.ProviderConfig{
+	scfg := session.DefaultConfig().
+		WithDefaultProviderConfig(session.ProviderConfig{
 			RetrievalTimeout: time.Second,
-		},
-		ConnectTimeAlpha: 0,
-	}, true)
+		}).
+		WithConnectTimeAlpha(0.0). // only use the last connect time
+		WithoutRandomness()
+	session := session.NewSession(scfg, true)
 	cfg := retriever.NewGraphsyncRetrieverWithConfig(session, mockClient, clock, initialPause)
 
 	expectedSequence := []testutil.ExpectedActionsAtTime{
