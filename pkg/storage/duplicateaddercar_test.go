@@ -37,7 +37,7 @@ func TestDuplicateAdderCar(t *testing.T) {
 	carWriter := storage.NewDuplicateAdderCarForStream(ctx, unixfsFileWithDups.Root, "", types.DagScopeAll, store, buf)
 	cachingTempStore := storage.NewCachingTempStore(carWriter.BlockWriteOpener(), store)
 
-	// write the root block
+	// write the root block, containing sharding metadata
 	cachingTempStore.Put(ctx, unixfsFileWithDupsBlocks[0].Cid().KeyString(), unixfsFileWithDupsBlocks[0].RawData())
 	// write the duped block
 	cachingTempStore.Put(ctx, unixfsFileWithDupsBlocks[1].Cid().KeyString(), unixfsFileWithDupsBlocks[1].RawData())
