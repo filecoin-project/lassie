@@ -689,9 +689,9 @@ func TestHttpFetch(t *testing.T) {
 				lsys.SetReadStorage(store)
 				lsys.SetWriteStorage(store)
 				_, _, err := verifiedcar.Config{
-					Root:              srcData.Root,
-					Selector:          selectorparse.CommonSelector_ExploreAllRecursively,
-					AllowDuplicatesIn: true,
+					Root:               srcData.Root,
+					Selector:           selectorparse.CommonSelector_ExploreAllRecursively,
+					ExpectDuplicatesIn: true,
 				}.VerifyCar(context.Background(), bytes.NewReader(body), lsys)
 				require.NoError(t, err)
 			}},
