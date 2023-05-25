@@ -451,7 +451,7 @@ func MockIpfsHandler(ctx context.Context, lsys linking.LinkSystem) func(http.Res
 
 		err = progress.WalkAdv(rootNode, sel, visitNoop)
 		if err != nil {
-			http.Error(res, fmt.Sprintf("Failed to traverse from root node: %v", err), http.StatusInternalServerError)
+			// if we loaded the first block, we can't write headers any more
 			return
 		}
 	}
