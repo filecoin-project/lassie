@@ -235,7 +235,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		carStore := storage.NewCachingTempStore(carWriter.BlockWriteOpener(), tempStore)
 		defer func() {
 			if err := carWriter.Close(); err != nil {
-				logger.Errorf("error closing car writer: %s", err)
+				logger.Infof("error closing car writer: %s", err)
 			}
 			if err := carStore.Close(); err != nil {
 				logger.Errorf("error closing temp store: %s", err)
