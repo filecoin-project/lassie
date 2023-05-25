@@ -32,110 +32,28 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		case http.MethodGet:
 			break
 		default:
-			statusLogger.logStatus(http.StatusMethodNotAllowed, "Method not allowed")
 			res.Header().Add("Allow", http.MethodGet)
-			res.WriteHeader(http.StatusMethodNotAllowed)
+			errorResponse(res, statusLogger, http.StatusMethodNotAllowed, errors.New("Method not allowed"))
 			return
 		}
 
 		// check if CID path param is missing
 		if path.Len() == 0 {
 			// not a valid path to hit
-			statusLogger.logStatus(http.StatusNotFound, "Not found")
-			res.WriteHeader(http.StatusNotFound)
+			errorResponse(res, statusLogger, http.StatusNotFound, errors.New("Not found"))
 			return
 		}
 
-		// check if Accept header includes application/vnd.ipld.car
-		hasAccept := req.Header.Get("Accept") != ""
-		acceptTypes := strings.Split(req.Header.Get("Accept"), ",")
-		validAccept := false
-		includeDupes := true
-		for _, acceptType := range acceptTypes {
-			typeParts := strings.Split(acceptType, ";")
-			if typeParts[0] == "*/*" || typeParts[0] == "application/*" || typeParts[0] == "application/vnd.ipld.car" {
-				validAccept = true
-				if typeParts[0] == "application/vnd.ipld.car" {
-					// parse https://github.com/ipfs/specs/pull/412 car attributes
-					for _, nextPart := range typeParts[1:] {
-						pair := strings.Split(nextPart, "=")
-						if len(pair) == 2 {
-							attr := strings.TrimSpace(pair[0])
-							value := strings.TrimSpace(pair[1])
-							switch attr {
-							case "dups":
-								switch value {
-								case "y":
-								case "n":
-									includeDupes = false
-								default:
-									// don't accept un expected values
-									validAccept = false
-								}
-							case "version":
-								switch value {
-								case "1":
-								default:
-									// don't accept any version but 1
-									validAccept = false
-								}
-							case "order":
-								switch value {
-								case "dfs":
-								case "unk":
-								default:
-									// we only do dfs, which also satisfies unk, future extensions are not yet supported
-									validAccept = false
-								}
-							default:
-								// ignore others
-							}
-						}
-					}
-				}
-				// only break if further validation didn't fail
-				if validAccept {
-					break
-				}
-			}
-		}
-
-		if hasAccept && !validAccept {
-			statusLogger.logStatus(http.StatusBadRequest, "No acceptable content type")
-			res.WriteHeader(http.StatusBadRequest)
+		includeDupes, err := checkFormat(req)
+		if err != nil {
+			errorResponse(res, statusLogger, http.StatusBadRequest, err)
 			return
 		}
 
-		// check if format is car
-		hasFormat := req.URL.Query().Has("format")
-		if hasFormat && req.URL.Query().Get("format") != "car" {
-			statusLogger.logStatus(http.StatusBadRequest, fmt.Sprintf("Requested non-supported format %s", req.URL.Query().Get("format")))
-			res.WriteHeader(http.StatusBadRequest)
+		fileName, err := parseFilename(req)
+		if err != nil {
+			errorResponse(res, statusLogger, http.StatusBadRequest, err)
 			return
-		}
-
-		// if neither are provided return
-		// one of them has to be given with a CAR type since we only return CAR data
-		if !validAccept && !hasFormat {
-			statusLogger.logStatus(http.StatusBadRequest, "Neither a valid accept header or format parameter were provided")
-			res.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		// check if provided filename query parameter has .car extension
-		if req.URL.Query().Has("filename") {
-			filename := req.URL.Query().Get("filename")
-			ext := filepath.Ext(filename)
-			if ext == "" {
-				statusLogger.logStatus(http.StatusBadRequest, "Filename missing extension")
-				res.WriteHeader(http.StatusBadRequest)
-				return
-			}
-			if ext != ".car" {
-				statusLogger.logStatus(http.StatusBadRequest, fmt.Sprintf("Filename uses non-supported extension %s", ext))
-				res.WriteHeader(http.StatusBadRequest)
-				return
-			}
 		}
 
 		// validate CID path parameter
@@ -143,76 +61,36 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		cidSeg, path = path.Shift()
 		rootCid, err := cid.Parse(cidSeg.String())
 		if err != nil {
-			statusLogger.logStatus(http.StatusInternalServerError, "Failed to parse CID path parameter")
-			http.Error(res, "Failed to parse CID path parameter", http.StatusInternalServerError)
+			errorResponse(res, statusLogger, http.StatusInternalServerError, errors.New("Failed to parse CID path parameter"))
 			return
 		}
 
-		dagScope := types.DagScopeAll
-
-		if req.URL.Query().Has("dag-scope") {
-			switch req.URL.Query().Get("dag-scope") {
-			case "all":
-			case "entity":
-				dagScope = types.DagScopeEntity
-			case "block":
-				dagScope = types.DagScopeBlock
-			default:
-				statusLogger.logStatus(http.StatusBadRequest, "Invalid dag-scope parameter")
-				res.WriteHeader(http.StatusBadRequest)
-				return
-			}
-		}
-		// check for legacy param name -- to do -- delete once we confirm this isn't used any more
-		if req.URL.Query().Has("car-scope") && !req.URL.Query().Has("dag-scope") {
-			switch req.URL.Query().Get("car-scope") {
-			case "all":
-			case "file":
-				dagScope = types.DagScopeEntity
-			case "block":
-				dagScope = types.DagScopeBlock
-			default:
-				statusLogger.logStatus(http.StatusBadRequest, "Invalid car-scope parameter")
-				res.WriteHeader(http.StatusBadRequest)
-				return
-			}
+		dagScope, err := parseScope(req)
+		if err != nil {
+			errorResponse(res, statusLogger, http.StatusBadRequest, err)
+			return
 		}
 
-		var protocols []multicodec.Code
-		if req.URL.Query().Has("protocols") {
-			var err error
-			protocols, err = types.ParseProtocolsString(req.URL.Query().Get("protocols"))
-			if err != nil {
-				statusLogger.logStatus(http.StatusBadRequest, "Invalid protocols parameter")
-				res.WriteHeader(http.StatusBadRequest)
-				return
-			}
+		protocols, err := parseProtocols(req)
+		if err != nil {
+			errorResponse(res, statusLogger, http.StatusBadRequest, err)
+			return
 		}
 
-		var fixedPeers []peer.AddrInfo
-		if req.URL.Query().Has("providers") {
-			var err error
-			fixedPeers, err = types.ParseProviderStrings(req.URL.Query().Get("providers"))
-			if err != nil {
-				statusLogger.logStatus(http.StatusBadRequest, "Invalid providers parameter")
-				res.WriteHeader(http.StatusBadRequest)
-				return
-			}
+		fixedPeers, err := parseProviders(req)
+		if err != nil {
+			errorResponse(res, statusLogger, http.StatusBadRequest, err)
+			return
 		}
 
 		// for setting Content-Disposition header based on filename url parameter
-		var filename string
-		if req.URL.Query().Has("filename") {
-			filename = req.URL.Query().Get("filename")
-		} else {
-			filename = fmt.Sprintf("%s.car", rootCid.String())
+		if fileName == "" {
+			fileName = fmt.Sprintf("%s.car", rootCid.String())
 		}
 
 		retrievalId, err := types.NewRetrievalID()
 		if err != nil {
-			msg := fmt.Sprintf("Failed to generate retrieval ID: %s", err.Error())
-			statusLogger.logStatus(http.StatusInternalServerError, msg)
-			http.Error(res, msg, http.StatusInternalServerError)
+			errorResponse(res, statusLogger, http.StatusInternalServerError, fmt.Errorf("Failed to generate retrieval ID: %w", err))
 			return
 		}
 
@@ -248,7 +126,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 
 		carWriter.OnPut(func(int) {
 			// called once we start writing blocks into the CAR (on the first Put())
-			res.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+			res.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", fileName))
 			res.Header().Set("Accept-Ranges", "none")
 			res.Header().Set("Cache-Control", "public, max-age=29030400, immutable")
 			res.Header().Set("Content-Type", "application/vnd.ipld.car; version=1")
@@ -264,14 +142,13 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		}, true)
 
 		request, err := types.NewRequestForPath(store, rootCid, path.String(), dagScope)
-		request.Protocols = protocols
-		request.FixedPeers = fixedPeers
+
 		if err != nil {
-			msg := fmt.Sprintf("Failed to create request: %s", err.Error())
-			statusLogger.logStatus(http.StatusInternalServerError, msg)
-			http.Error(res, msg, http.StatusInternalServerError)
+			errorResponse(res, statusLogger, http.StatusInternalServerError, fmt.Errorf("Failed to create request: %w", err))
 			return
 		}
+		request.Protocols = protocols
+		request.FixedPeers = fixedPeers
 		request.RetrievalID = retrievalId
 		// setup preload storage for bitswap, the temporary CAR store can set up a
 		// separate preload space in its storage
@@ -339,15 +216,10 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			default:
 			}
 			if errors.Is(err, retriever.ErrNoCandidates) {
-				msg := "No candidates found"
-				statusLogger.logStatus(http.StatusNotFound, msg)
-				http.Error(res, msg, http.StatusNotFound)
+				errorResponse(res, statusLogger, http.StatusNotFound, errors.New("No candidates found"))
 			} else {
-				msg := fmt.Sprintf("Failed to fetch CID: %s", err.Error())
-				statusLogger.logStatus(http.StatusGatewayTimeout, msg)
-				http.Error(res, msg, http.StatusGatewayTimeout)
+				errorResponse(res, statusLogger, http.StatusGatewayTimeout, fmt.Errorf("Failed to fetch CID: %w", err))
 			}
-
 			return
 		}
 		logger.Debugw("successfully fetched CID",
@@ -372,4 +244,150 @@ func newStatusLogger(method string, path string) *statusLogger {
 // logStatus logs the method, path, status code and message
 func (l statusLogger) logStatus(statusCode int, message string) {
 	logger.Infof("%s\t%s\t%d: %s\n", l.method, l.path, statusCode, message)
+}
+
+func checkFormat(req *http.Request) (bool, error) {
+	hasAccept := req.Header.Get("Accept") != ""
+	// check if Accept header includes application/vnd.ipld.car
+	validAccept, includeDupes := parceAccept(req.Header.Get("Accept"))
+
+	// check if format is car
+	hasFormat := req.URL.Query().Has("format")
+	if hasFormat && req.URL.Query().Get("format") != "car" {
+		return false, fmt.Errorf("Requested non-supported format %s", req.URL.Query().Get("format"))
+	}
+
+	if hasAccept && !validAccept {
+		return false, fmt.Errorf("No acceptable content type")
+	}
+	// if neither are provided return
+	// one of them has to be given with a CAR type since we only return CAR data
+	if !validAccept && !hasFormat {
+		return false, fmt.Errorf("Neither a valid accept header or format parameter were provided")
+	}
+
+	return includeDupes, nil
+}
+
+func parceAccept(acceptHeader string) (validAccept bool, includeDupes bool) {
+	acceptTypes := strings.Split(acceptHeader, ",")
+	validAccept = false
+	includeDupes = true
+	for _, acceptType := range acceptTypes {
+		typeParts := strings.Split(acceptType, ";")
+		if typeParts[0] == "*/*" || typeParts[0] == "application/*" || typeParts[0] == "application/vnd.ipld.car" {
+			validAccept = true
+			if typeParts[0] == "application/vnd.ipld.car" {
+                        // parse https://github.com/ipfs/specs/pull/412 car attributes
+				for _, nextPart := range typeParts[1:] {
+					pair := strings.Split(nextPart, "=")
+					if len(pair) == 2 {
+						attr := strings.TrimSpace(pair[0])
+						value := strings.TrimSpace(pair[1])
+						switch attr {
+						case "dups":
+							switch value {
+							case "y":
+							case "n":
+								includeDupes = false
+							default:
+								// don't accept un expected values
+								validAccept = false
+							}
+						case "version":
+							switch value {
+							case "1":
+							default:
+								// don't accept any version but 1
+								validAccept = false
+							}
+						case "order":
+							switch value {
+							case "dfs":
+							case "unk":
+							default:
+								// we only do dfs, which also satisfies unk, future extensions are not yet supported
+								validAccept = false
+							}
+						default:
+							// ignore others
+						}
+					}
+				}
+			}
+			// only break if further validation didn't fail
+			if validAccept {
+				break
+			}
+		}
+	}
+	return
+}
+
+func parseFilename(req *http.Request) (string, error) {
+	// check if provided filename query parameter has .car extension
+	if req.URL.Query().Has("filename") {
+		filename := req.URL.Query().Get("filename")
+		ext := filepath.Ext(filename)
+		if ext == "" {
+			return "", errors.New("Filename missing extension")
+		}
+		if ext != ".car" {
+			return "", fmt.Errorf("Filename uses non-supported extension %s", ext)
+		}
+		return filename, nil
+	}
+	return "", nil
+}
+
+func parseProtocols(req *http.Request) ([]multicodec.Code, error) {
+	if req.URL.Query().Has("protocols") {
+		return types.ParseProtocolsString(req.URL.Query().Get("protocols"))
+	}
+	return nil, nil
+}
+
+func parseScope(req *http.Request) (types.DagScope, error) {
+	if req.URL.Query().Has("dag-scope") {
+		switch req.URL.Query().Get("dag-scope") {
+		case "all":
+			return types.DagScopeAll, nil
+		case "entity":
+			return types.DagScopeEntity, nil
+		case "block":
+			return types.DagScopeBlock, nil
+		default:
+			return types.DagScopeAll, errors.New("Invalid dag-scope parameter")
+		}
+	}
+	// check for legacy param name -- to do -- delete once we confirm this isn't used any more
+	if req.URL.Query().Has("car-scope") {
+		switch req.URL.Query().Get("car-scope") {
+		case "all":
+			return types.DagScopeAll, nil
+		case "file":
+			return types.DagScopeEntity, nil
+		case "block":
+			return types.DagScopeBlock, nil
+		default:
+			return types.DagScopeAll, errors.New("Invalid car-scope parameter")
+		}
+	}
+	return types.DagScopeAll, nil
+}
+
+func parseProviders(req *http.Request) ([]peer.AddrInfo, error) {
+	if req.URL.Query().Has("providers") {
+		fixedPeers, err := types.ParseProviderStrings(req.URL.Query().Get("providers"))
+		if err != nil {
+			return nil, errors.New("Invalid providers parameter")
+		}
+		return fixedPeers, nil
+	}
+	return nil, nil
+}
+
+func errorResponse(res http.ResponseWriter, statusLogger *statusLogger, code int, err error) {
+	statusLogger.logStatus(code, err.Error())
+	http.Error(res, err.Error(), code)
 }
