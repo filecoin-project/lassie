@@ -51,10 +51,7 @@ func NewDuplicateAdderCarForStream(ctx context.Context, root cid.Cid, path strin
 func (da *DuplicateAdderCar) addDupes() {
 	var err error
 	defer func() {
-		select {
-		case <-da.ctx.Done():
-		case da.streamCompletion <- err:
-		}
+		da.streamCompletion <- err
 	}()
 	sel := types.PathScopeSelector(da.path, da.scope)
 
@@ -114,12 +111,7 @@ func (da *DuplicateAdderCar) Close() error {
 	if streamCompletion == nil {
 		return nil
 	}
-	select {
-	case <-da.ctx.Done():
-		return da.ctx.Err()
-	case err := <-streamCompletion:
-		return err
-	}
+	return <-streamCompletion
 }
 
 type blockStream struct {
