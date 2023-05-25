@@ -337,6 +337,7 @@ func (retrieval *retrieval) runRetrievalCandidate(
 					stats.Duration,
 					stats.TotalPayment,
 					0,
+					retrieval.Protocol.Code(),
 				),
 				)
 			}
