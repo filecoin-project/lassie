@@ -117,6 +117,7 @@ func (ph *ProtocolHttp) Retrieve(
 		Root:              retrieval.request.Cid,
 		Selector:          retrieval.request.GetSelector(),
 		AllowDuplicatesIn: true,
+		MaxBlocks:         retrieval.request.MaxBlocks,
 	}
 
 	blockCount, byteCount, err := cfg.VerifyCar(ctx, rdr, retrieval.request.LinkSystem)

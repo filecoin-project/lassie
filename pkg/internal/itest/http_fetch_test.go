@@ -205,6 +205,26 @@ func TestHttpFetch(t *testing.T) {
 			}},
 		},
 		{
+			name:        "http max block limit",
+			httpRemotes: 1,
+			modifyHttpConfig: func(cfg httpserver.HttpServerConfig) httpserver.HttpServerConfig {
+				cfg.MaxBlocksPerRequest = 3
+				return cfg
+			},
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20)}
+			},
+			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
+				// 3 blocks max, start at the root and then two blocks into the sharded data
+				wantCids := []cid.Cid{
+					srcData.Root,
+					srcData.SelfCids[0],
+					srcData.SelfCids[1],
+				}
+				validateCarBody(t, body, srcData.Root, wantCids, true)
+			}},
+		},
+		{
 			// dag-scope entity fetch should get the same DAG as full for a plain file
 			name:             "graphsync large sharded file, dag-scope entity",
 			graphsyncRemotes: 1,
