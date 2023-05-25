@@ -3,6 +3,9 @@ on:
   release:
     types: [ published ]
   workflow_dispatch:
+  workflow_run:
+    workflows: [Releaser]
+    types: [completed]
 jobs:
   bin-releaser:
     name: Release Binaries
