@@ -234,9 +234,6 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		}
 		carStore := storage.NewCachingTempStore(carWriter.BlockWriteOpener(), tempStore)
 		defer func() {
-			if err := carWriter.Close(); err != nil {
-				logger.Infof("error closing car writer: %s", err)
-			}
 			if err := carStore.Close(); err != nil {
 				logger.Errorf("error closing temp store: %s", err)
 			}
@@ -318,6 +315,9 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			metric := header.NewMetric(string(re.Phase()))
 			metric.Duration = re.Time().Sub(re.PhaseStartTime())
 		})
+		if cerr := carWriter.Close(); cerr != nil {
+			logger.Infof("error closing car writer: %s", cerr)
+		}
 		if err != nil {
 			select {
 			case <-bytesWritten:
