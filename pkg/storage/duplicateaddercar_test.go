@@ -41,7 +41,7 @@ func TestDuplicateAdderCar(t *testing.T) {
 	cachingTempStore.Put(ctx, unixfsFileWithDupsBlocks[0].Cid().KeyString(), unixfsFileWithDupsBlocks[0].RawData())
 	// write the duped block
 	cachingTempStore.Put(ctx, unixfsFileWithDupsBlocks[1].Cid().KeyString(), unixfsFileWithDupsBlocks[1].RawData())
-	// write the last block
+	// write the last block, which will be unique because of a different length
 	cachingTempStore.Put(ctx, unixfsFileWithDupsBlocks[len(unixfsFileWithDupsBlocks)-1].Cid().KeyString(), unixfsFileWithDupsBlocks[len(unixfsFileWithDupsBlocks)-1].RawData())
 	err := carWriter.Close()
 	require.NoError(t, err)
