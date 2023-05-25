@@ -56,7 +56,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			if typeParts[0] == "*/*" || typeParts[0] == "application/*" || typeParts[0] == "application/vnd.ipld.car" {
 				validAccept = true
 				if typeParts[0] == "application/vnd.ipld.car" {
-					// parse 412 car attributes
+					// parse https://github.com/ipfs/specs/pull/412 car attributes
 					for _, nextPart := range typeParts[1:] {
 						pair := strings.Split(nextPart, "=")
 						if len(pair) == 2 {
