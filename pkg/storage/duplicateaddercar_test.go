@@ -39,7 +39,7 @@ func TestDuplicateAdderCar(t *testing.T) {
 
 	// write the root block, containing sharding metadata
 	cachingTempStore.Put(ctx, unixfsFileWithDupsBlocks[0].Cid().KeyString(), unixfsFileWithDupsBlocks[0].RawData())
-	// write the duped block
+	// write the duped block that the root points to for all but the last block
 	cachingTempStore.Put(ctx, unixfsFileWithDupsBlocks[1].Cid().KeyString(), unixfsFileWithDupsBlocks[1].RawData())
 	// write the last block, which will be unique because of a different length
 	cachingTempStore.Put(ctx, unixfsFileWithDupsBlocks[len(unixfsFileWithDupsBlocks)-1].Cid().KeyString(), unixfsFileWithDupsBlocks[len(unixfsFileWithDupsBlocks)-1].RawData())
