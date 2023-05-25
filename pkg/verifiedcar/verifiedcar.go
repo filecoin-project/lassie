@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 
 	"github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
@@ -39,6 +40,7 @@ type Config struct {
 	Selector           datamodel.Node // The selector to execute, starting at the provided Root, to verify the contents of the CAR
 	AllowDuplicatesIn  bool           // Handles whether the incoming stream has duplicates
 	WriteDuplicatesOut bool           // Handles whether duplicates should be written a second time as blocks
+	MaxBlocks          uint64         // set a budget for the traversal
 }
 
 func visitNoop(p traversal.Progress, n datamodel.Node, r traversal.VisitReason) error { return nil }
@@ -105,6 +107,12 @@ func (cfg Config) VerifyBlockStream(ctx context.Context, cbr BlockReader, lsys l
 			LinkSystem:                     lsys,
 			LinkTargetNodePrototypeChooser: protoChooser,
 		},
+	}
+	if cfg.MaxBlocks > 0 {
+		progress.Budget = &traversal.Budget{
+			LinkBudget: int64(cfg.MaxBlocks) - 1, // first block is already loaded
+			NodeBudget: math.MaxInt64,
+		}
 	}
 	lc := linking.LinkContext{Ctx: ctx}
 	lnk := cidlink.Link{Cid: cfg.Root}

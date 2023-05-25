@@ -23,6 +23,7 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/storage/memstore"
+	"github.com/ipld/go-ipld-prime/traversal"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/stretchr/testify/require"
 )
@@ -203,6 +204,21 @@ func TestVerifiedCar(t *testing.T) {
 			cfg: verifiedcar.Config{
 				Root:     root1,
 				Selector: allSelector,
+			},
+		},
+		{
+			name:   "carv1 over budget errors",
+			blocks: consumedBlocks(allBlocks),
+			roots:  []cid.Cid{root1},
+			err: (&traversal.ErrBudgetExceeded{
+				BudgetKind: "link",
+				Path:       datamodel.ParsePath("Parents/0/Parents/0/Parents/0"),
+				Link:       tbc1.LinkTipIndex(3),
+			}).Error(),
+			cfg: verifiedcar.Config{
+				Root:      root1,
+				Selector:  allSelector,
+				MaxBlocks: 3,
 			},
 		},
 		{
