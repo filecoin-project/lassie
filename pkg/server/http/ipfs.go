@@ -80,7 +80,13 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 									validAccept = false
 								}
 							case "order":
-								// for now, dfs traversal satisfies all known orders
+								switch value {
+									case "dfs":
+									case "unk":
+									default:
+										// we only do dfs, which also satisfies unk, future extensions are not yet supported
+										validAccept = false
+									}
 							default:
 								// ignore others
 							}
