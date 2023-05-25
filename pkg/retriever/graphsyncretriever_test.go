@@ -19,6 +19,7 @@ import (
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multicodec"
 	"github.com/stretchr/testify/require"
 )
 
@@ -74,7 +75,7 @@ func TestRetrievalRacing(t *testing.T) {
 						events.Proposed(startTime.Add(time.Millisecond*40+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
 						events.Accepted(startTime.Add(time.Millisecond*40+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
 						events.FirstByte(startTime.Add(time.Millisecond*40+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
-						events.Success(startTime.Add(time.Millisecond*40+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}, 1, 0, 0, big.Zero(), 0),
+						events.Success(startTime.Add(time.Millisecond*40+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}, 1, 0, 0, big.Zero(), 0, multicodec.TransportGraphsyncFilecoinv1),
 					},
 				},
 			},
@@ -125,7 +126,7 @@ func TestRetrievalRacing(t *testing.T) {
 						events.Proposed(startTime.Add(time.Millisecond*520+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
 						events.Accepted(startTime.Add(time.Millisecond*520+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
 						events.FirstByte(startTime.Add(time.Millisecond*520+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}),
-						events.Success(startTime.Add(time.Millisecond*520+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}, 1, 0, 0, big.Zero(), 0),
+						events.Success(startTime.Add(time.Millisecond*520+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("foo")}}, 1, 0, 0, big.Zero(), 0, multicodec.TransportGraphsyncFilecoinv1),
 					},
 				},
 			},
@@ -216,7 +217,7 @@ func TestRetrievalRacing(t *testing.T) {
 						events.Proposed(startTime.Add(time.Millisecond*80), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
 						events.Accepted(startTime.Add(time.Millisecond*80), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
 						events.FirstByte(startTime.Add(time.Millisecond*80), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
-						events.Success(startTime.Add(time.Millisecond*80), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}, 2, 0, 0, big.Zero(), 0),
+						events.Success(startTime.Add(time.Millisecond*80), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}, 2, 0, 0, big.Zero(), 0, multicodec.TransportGraphsyncFilecoinv1),
 					},
 				},
 			},
@@ -356,7 +357,7 @@ func TestRetrievalRacing(t *testing.T) {
 						events.Proposed(startTime.Add(time.Millisecond*221+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}),
 						events.Accepted(startTime.Add(time.Millisecond*221+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}),
 						events.FirstByte(startTime.Add(time.Millisecond*221+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}),
-						events.Success(startTime.Add(time.Millisecond*221+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}, 2, 0, 0, big.Zero(), 0),
+						events.Success(startTime.Add(time.Millisecond*221+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}, 2, 0, 0, big.Zero(), 0, multicodec.TransportGraphsyncFilecoinv1),
 					},
 				},
 			},
@@ -409,7 +410,7 @@ func TestRetrievalRacing(t *testing.T) {
 						events.Proposed(startTime.Add(time.Millisecond*120+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}),
 						events.Accepted(startTime.Add(time.Millisecond*120+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}),
 						events.FirstByte(startTime.Add(time.Millisecond*120+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}),
-						events.Success(startTime.Add(time.Millisecond*120+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}, 2, 0, 0, big.Zero(), 0),
+						events.Success(startTime.Add(time.Millisecond*120+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("baz")}}, 2, 0, 0, big.Zero(), 0, multicodec.TransportGraphsyncFilecoinv1),
 					},
 				},
 			},
@@ -486,7 +487,7 @@ func TestRetrievalRacing(t *testing.T) {
 						events.Proposed(startTime.Add(time.Millisecond*421+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bang")}}),
 						events.Accepted(startTime.Add(time.Millisecond*421+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bang")}}),
 						events.FirstByte(startTime.Add(time.Millisecond*421+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bang")}}),
-						events.Success(startTime.Add(time.Millisecond*421+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bang")}}, 4, 0, 0, big.Zero(), 0),
+						events.Success(startTime.Add(time.Millisecond*421+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bang")}}, 4, 0, 0, big.Zero(), 0, multicodec.TransportGraphsyncFilecoinv1),
 					},
 				},
 			},
@@ -642,7 +643,7 @@ func TestMultipleRetrievals(t *testing.T) {
 				events.Proposed(startTime.Add(time.Millisecond*300), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
 				events.Accepted(startTime.Add(time.Millisecond*300), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
 				events.FirstByte(startTime.Add(time.Millisecond*300), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}),
-				events.Success(startTime.Add(time.Millisecond*300), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}, 2, 0, 0, big.Zero(), 0),
+				events.Success(startTime.Add(time.Millisecond*300), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bar")}}, 2, 0, 0, big.Zero(), 0, multicodec.TransportGraphsyncFilecoinv1),
 			},
 		},
 		{
@@ -651,7 +652,7 @@ func TestMultipleRetrievals(t *testing.T) {
 				events.Proposed(startTime.Add(time.Millisecond*301+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bing")}}),
 				events.Accepted(startTime.Add(time.Millisecond*301+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bing")}}),
 				events.FirstByte(startTime.Add(time.Millisecond*301+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bing")}}),
-				events.Success(startTime.Add(time.Millisecond*301+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bing")}}, 3, 0, 0, big.Zero(), 0),
+				events.Success(startTime.Add(time.Millisecond*301+initialPause), retrievalID, startTime, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peer.ID("bing")}}, 3, 0, 0, big.Zero(), 0, multicodec.TransportGraphsyncFilecoinv1),
 			},
 		},
 	}
@@ -810,7 +811,7 @@ func TestDuplicateRetreivals(t *testing.T) {
 				events.Proposed(startTime.Add(time.Millisecond*400+initialPause), retrievalID, startTime, types.NewRetrievalCandidate(peer.ID("bar"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false})),
 				events.Accepted(startTime.Add(time.Millisecond*400+initialPause), retrievalID, startTime, types.NewRetrievalCandidate(peer.ID("bar"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false})),
 				events.FirstByte(startTime.Add(time.Millisecond*400+initialPause), retrievalID, startTime, types.NewRetrievalCandidate(peer.ID("bar"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false})),
-				events.Success(startTime.Add(time.Millisecond*400+initialPause), retrievalID, startTime, types.NewRetrievalCandidate(peer.ID("bar"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false}), 2, 0, 0, big.Zero(), 0),
+				events.Success(startTime.Add(time.Millisecond*400+initialPause), retrievalID, startTime, types.NewRetrievalCandidate(peer.ID("bar"), nil, cid.Undef, &metadata.GraphsyncFilecoinV1{PieceCID: cid.Cid{}, VerifiedDeal: true, FastRetrieval: false}), 2, 0, 0, big.Zero(), 0, multicodec.TransportGraphsyncFilecoinv1),
 			},
 		},
 	}

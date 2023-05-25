@@ -31,6 +31,7 @@ type tempData struct {
 	bytesTransferred         uint64
 	allowedProtocols         []string
 	attemptedProtocolSet     map[string]struct{}
+	successfulProtocol       string
 	retrievalAttempts        map[string]*RetrievalAttempt
 }
 
@@ -55,6 +56,7 @@ type AggregateEvent struct {
 	IndexerCandidatesFiltered int                          `json:"indexerCandidatesFiltered"`          // The number of candidates that made it through the filtering stage
 	ProtocolsAllowed          []string                     `json:"protocolsAllowed,omitempty"`         // The available protocols that could be used for this retrieval
 	ProtocolsAttempted        []string                     `json:"protocolsAttempted,omitempty"`       // The protocols that were used to attempt this retrieval
+	ProtocolSucceeded         string                       `json:"protocolSucceeded,omitempty"`        // The protocol used for a successful event
 	RetrievalAttempts         map[string]*RetrievalAttempt `json:"retrievalAttempts,omitempty"`        // All of the retrieval attempts, indexed by their SP ID
 }
 
@@ -139,6 +141,7 @@ func (a *aggregateEventRecorder) ingestEvents() {
 					timeToFirstIndexerResult: "",
 					allowedProtocols:         allowedProtocols,
 					attemptedProtocolSet:     make(map[string]struct{}),
+					successfulProtocol:       "",
 					retrievalAttempts:        make(map[string]*RetrievalAttempt),
 				}
 				continue
@@ -201,6 +204,7 @@ func (a *aggregateEventRecorder) ingestEvents() {
 				}
 			case types.SuccessCode:
 				tempData.success = true
+				tempData.successfulProtocol = event.(events.RetrievalEventSuccess).Protocol().String()
 				tempData.spId = types.Identifier(event)
 
 				// Calculate bandwidth
@@ -235,6 +239,7 @@ func (a *aggregateEventRecorder) ingestEvents() {
 					IndexerCandidatesFiltered: tempData.candidatesFiltered,
 					ProtocolsAllowed:          tempData.allowedProtocols,
 					ProtocolsAttempted:        protocolsAttempted,
+					ProtocolSucceeded:         tempData.successfulProtocol,
 					RetrievalAttempts:         tempData.retrievalAttempts,
 				}
 

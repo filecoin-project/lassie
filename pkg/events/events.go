@@ -159,10 +159,11 @@ type RetrievalEventSuccess struct {
 	duration                time.Duration
 	totalPayment            big.Int
 	bitswapPreloadedPercent uint64
+	protocol                multicodec.Code
 }
 
-func Success(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.Time, candidate types.RetrievalCandidate, receivedSize uint64, receivedCids uint64, duration time.Duration, totalPayment big.Int, bitswapPreloadedPercent uint64) RetrievalEventSuccess {
-	return RetrievalEventSuccess{spBaseEvent{baseEvent{at, retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}, receivedSize, receivedCids, duration, totalPayment, bitswapPreloadedPercent}
+func Success(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.Time, candidate types.RetrievalCandidate, receivedSize uint64, receivedCids uint64, duration time.Duration, totalPayment big.Int, bitswapPreloadedPercent uint64, successfulProtocol multicodec.Code) RetrievalEventSuccess {
+	return RetrievalEventSuccess{spBaseEvent{baseEvent{at, retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}, receivedSize, receivedCids, duration, totalPayment, bitswapPreloadedPercent, successfulProtocol}
 }
 
 // RetrievalEventFinished describes when an entire fetch finishes
@@ -223,6 +224,7 @@ func (r RetrievalEventSuccess) Phase() types.Phase              { return types.R
 func (r RetrievalEventSuccess) Duration() time.Duration         { return r.duration }
 func (r RetrievalEventSuccess) TotalPayment() big.Int           { return r.totalPayment }
 func (r RetrievalEventSuccess) BitswapPreloadedPercent() uint64 { return r.bitswapPreloadedPercent }
+func (r RetrievalEventSuccess) Protocol() multicodec.Code       { return r.protocol }
 
 // ReceivedSize returns the number of bytes received
 func (r RetrievalEventSuccess) ReceivedSize() uint64 { return r.receivedSize }

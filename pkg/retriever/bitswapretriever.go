@@ -32,6 +32,7 @@ import (
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multicodec"
 	"go.opencensus.io/stats"
 )
 
@@ -264,6 +265,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		duration,
 		big.Zero(),
 		preloadedPercent,
+		multicodec.TransportBitswap,
 	))
 
 	stats.Record(ctx, metrics.BitswapPreloadedPercent.M(int64(preloadedPercent)))

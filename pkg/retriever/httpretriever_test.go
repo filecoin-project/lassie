@@ -24,6 +24,7 @@ import (
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multicodec"
 	"github.com/stretchr/testify/require"
 )
 
@@ -116,7 +117,7 @@ func TestHTTPRetriever(t *testing.T) {
 				{
 					AfterStart: initialPause + time.Millisecond*40 + remoteBlockDuration*100,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.Success(startTime.Add(initialPause+time.Millisecond*40+remoteBlockDuration*100), rid1, startTime, toCandidate(cid1, cid1Cands[0].MinerPeer), sizeOf(tbc2.AllBlocks()), 100, initialPause+40*time.Millisecond+remoteBlockDuration*100, big.Zero(), 0),
+						events.Success(startTime.Add(initialPause+time.Millisecond*40+remoteBlockDuration*100), rid1, startTime, toCandidate(cid1, cid1Cands[0].MinerPeer), sizeOf(tbc2.AllBlocks()), 100, initialPause+40*time.Millisecond+remoteBlockDuration*100, big.Zero(), 0, multicodec.TransportIpfsGatewayHttp),
 					},
 					ServedRetrievals: []testutil.RemoteStats{
 						{
@@ -205,7 +206,7 @@ func TestHTTPRetriever(t *testing.T) {
 				{
 					AfterStart: initialPause + time.Millisecond*10 + remoteBlockDuration*100,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.Success(startTime.Add(initialPause+time.Millisecond*10+remoteBlockDuration*100), rid2, startTime, toCandidate(cid2, cid2Cands[0].MinerPeer), sizeOf(tbc2.AllBlocks()), 100, initialPause+10*time.Millisecond+remoteBlockDuration*100, big.Zero(), 0),
+						events.Success(startTime.Add(initialPause+time.Millisecond*10+remoteBlockDuration*100), rid2, startTime, toCandidate(cid2, cid2Cands[0].MinerPeer), sizeOf(tbc2.AllBlocks()), 100, initialPause+10*time.Millisecond+remoteBlockDuration*100, big.Zero(), 0, multicodec.TransportIpfsGatewayHttp),
 					},
 					ServedRetrievals: []testutil.RemoteStats{
 						{
@@ -220,7 +221,7 @@ func TestHTTPRetriever(t *testing.T) {
 				{
 					AfterStart: initialPause + time.Millisecond*40 + remoteBlockDuration*100,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.Success(startTime.Add(initialPause+time.Millisecond*40+remoteBlockDuration*100), rid1, startTime, toCandidate(cid1, cid1Cands[0].MinerPeer), sizeOf(tbc2.AllBlocks()), 100, initialPause+40*time.Millisecond+remoteBlockDuration*100, big.Zero(), 0),
+						events.Success(startTime.Add(initialPause+time.Millisecond*40+remoteBlockDuration*100), rid1, startTime, toCandidate(cid1, cid1Cands[0].MinerPeer), sizeOf(tbc2.AllBlocks()), 100, initialPause+40*time.Millisecond+remoteBlockDuration*100, big.Zero(), 0, multicodec.TransportIpfsGatewayHttp),
 					},
 					ServedRetrievals: []testutil.RemoteStats{
 						{
@@ -433,7 +434,7 @@ func TestHTTPRetriever(t *testing.T) {
 				{
 					AfterStart: initialPause + time.Millisecond*30 + remoteBlockDuration*100,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.Success(startTime.Add(initialPause+time.Millisecond*30+remoteBlockDuration*100), rid1, startTime, toCandidate(cid1, cid1Cands[2].MinerPeer), sizeOf(tbc2.AllBlocks()), 100, initialPause+30*time.Millisecond+remoteBlockDuration*100, big.Zero(), 0),
+						events.Success(startTime.Add(initialPause+time.Millisecond*30+remoteBlockDuration*100), rid1, startTime, toCandidate(cid1, cid1Cands[2].MinerPeer), sizeOf(tbc2.AllBlocks()), 100, initialPause+30*time.Millisecond+remoteBlockDuration*100, big.Zero(), 0, multicodec.TransportIpfsGatewayHttp),
 					},
 					CompletedRetrievals: []peer.ID{cid1Cands[2].MinerPeer.ID},
 					ServedRetrievals: []testutil.RemoteStats{

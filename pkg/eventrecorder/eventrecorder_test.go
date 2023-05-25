@@ -18,6 +18,7 @@ import (
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multicodec"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/context"
 )
@@ -46,7 +47,7 @@ func TestEventRecorder(t *testing.T) {
 		{
 			name: "RetrievalSuccess",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
-				er.RecordEvent(events.Success(time.Now(), id, ptime, types.NewRetrievalCandidate(spid, nil, testCid1), uint64(2020), 3030, 4*time.Second, big.Zero(), 50))
+				er.RecordEvent(events.Success(time.Now(), id, ptime, types.NewRetrievalCandidate(spid, nil, testCid1), uint64(2020), 3030, 4*time.Second, big.Zero(), 50, multicodec.TransportGraphsyncFilecoinv1))
 
 				select {
 				case <-ctx.Done():
@@ -81,7 +82,7 @@ func TestEventRecorder(t *testing.T) {
 		{
 			name: "RetrievalSuccess, bitswap",
 			exec: func(t *testing.T, ctx context.Context, er *eventrecorder.EventRecorder, id types.RetrievalID, etime, ptime time.Time, spid peer.ID) {
-				er.RecordEvent(events.Success(time.Now(), id, ptime, types.NewRetrievalCandidate(peer.ID(""), nil, testCid1, metadata.Bitswap{}), uint64(2020), 3030, 4*time.Second, big.Zero(), 50))
+				er.RecordEvent(events.Success(time.Now(), id, ptime, types.NewRetrievalCandidate(peer.ID(""), nil, testCid1, metadata.Bitswap{}), uint64(2020), 3030, 4*time.Second, big.Zero(), 50, multicodec.TransportBitswap))
 
 				select {
 				case <-ctx.Done():

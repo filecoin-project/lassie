@@ -72,7 +72,7 @@ func TestAggregateEventRecorder(t *testing.T) {
 				clock.Add(20 * time.Millisecond)
 				subscriber(events.FirstByte(clock.Now(), id, graphsyncCandidateStartTime, graphsyncCandidates[1]))
 				clock.Add(30 * time.Millisecond)
-				subscriber(events.Success(clock.Now(), id, bitswapCandidateStartTime, bitswapPeer, uint64(10000), 3030, 4*time.Second, big.Zero(), 55))
+				subscriber(events.Success(clock.Now(), id, bitswapCandidateStartTime, bitswapPeer, uint64(10000), 3030, 4*time.Second, big.Zero(), 55, multicodec.TransportBitswap))
 				subscriber(events.Finished(clock.Now(), id, fetchPhaseStartTime, bitswapPeer))
 
 				select {
@@ -84,7 +84,7 @@ func TestAggregateEventRecorder(t *testing.T) {
 				require.Equal(t, int64(1), req.Length())
 				eventList := verifyListNode(t, req, "events", 1)
 				event := verifyListElement(t, eventList, 0)
-				require.Equal(t, int64(15), event.Length())
+				require.Equal(t, int64(16), event.Length())
 				verifyStringNode(t, event, "instanceId", "test-instance")
 				verifyStringNode(t, event, "retrievalId", id.String())
 				verifyStringNode(t, event, "storageProviderId", types.BitswapIndentifier)
@@ -101,6 +101,7 @@ func TestAggregateEventRecorder(t *testing.T) {
 				verifyStringListElementsMatch(t, protocolsAllowed, []string{"transport-graphsync-filecoinv1", "transport-bitswap"})
 				protocolsAttempted := verifyListNode(t, event, "protocolsAttempted", 2)
 				verifyStringListElementsMatch(t, protocolsAttempted, []string{"transport-graphsync-filecoinv1", "transport-bitswap"})
+				verifyStringNode(t, event, "protocolSucceeded", "transport-bitswap")
 				retrievalAttempts, err := event.LookupByString("retrievalAttempts")
 				require.NoError(t, err)
 				require.Equal(t, int64(3), retrievalAttempts.Length())
@@ -253,7 +254,7 @@ func BenchmarkAggregateEventRecorderSubscriber(b *testing.B) {
 		b.StartTimer()
 		subscriber(events.Started(time.Now(), id, fetchStartTime, types.FetchPhase, types.NewRetrievalCandidate(spid, nil, testCid1)))
 		subscriber(events.FirstByte(time.Now(), id, ptime, types.NewRetrievalCandidate(spid, nil, testCid1)))
-		subscriber(events.Success(time.Now(), id, ptime, types.NewRetrievalCandidate(spid, nil, testCid1), uint64(2020), 3030, 4*time.Second, big.Zero(), 55))
+		subscriber(events.Success(time.Now(), id, ptime, types.NewRetrievalCandidate(spid, nil, testCid1), uint64(2020), 3030, 4*time.Second, big.Zero(), 55, multicodec.TransportGraphsyncFilecoinv1))
 		subscriber(events.Finished(time.Now(), id, fetchStartTime, types.RetrievalCandidate{RootCid: testCid1}))
 		b.StopTimer()
 
