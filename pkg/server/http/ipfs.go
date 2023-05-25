@@ -315,9 +315,12 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			metric := header.NewMetric(string(re.Phase()))
 			metric.Duration = re.Time().Sub(re.PhaseStartTime())
 		})
+
+		// force all blocks to flush
 		if cerr := carWriter.Close(); cerr != nil {
 			logger.Infof("error closing car writer: %s", cerr)
 		}
+
 		if err != nil {
 			select {
 			case <-bytesWritten:
