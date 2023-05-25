@@ -38,7 +38,7 @@ type Config struct {
 	Root               cid.Cid        // The single root we expect to appear in the CAR and that we use to run our traversal against
 	AllowCARv2         bool           // If true, allow CARv2 files to be received, otherwise strictly only allow CARv1
 	Selector           datamodel.Node // The selector to execute, starting at the provided Root, to verify the contents of the CAR
-	AllowDuplicatesIn  bool           // Handles whether the incoming stream has duplicates
+	ExpectDuplicatesIn bool           // Handles whether the incoming stream has duplicates
 	WriteDuplicatesOut bool           // Handles whether duplicates should be written a second time as blocks
 	MaxBlocks          uint64         // set a budget for the traversal
 }
@@ -146,7 +146,7 @@ func (cfg *Config) nextBlockReadOpener(ctx context.Context, cr *carReader, bt *w
 		var data []byte
 		var err error
 		if _, ok := seen[cid]; ok {
-			if cfg.AllowDuplicatesIn {
+			if cfg.ExpectDuplicatesIn {
 				// duplicate block, but in this case we are expecting the stream to have it
 				data, err = cr.readNextBlock(ctx, cid)
 				if err != nil {
