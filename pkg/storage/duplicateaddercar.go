@@ -73,7 +73,6 @@ func (da *DuplicateAdderCar) addDupes() {
 	// to serve
 	lsys.SetReadStorage(da.store)
 	lsys.TrustedStorage = true
-	unixfsnode.AddUnixFSReificationToLinkSystem(&lsys)
 
 	// run the verification
 	_, _, err = cfg.VerifyBlockStream(da.ctx, da.blockStream, lsys)
