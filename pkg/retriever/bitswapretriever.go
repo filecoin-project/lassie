@@ -166,7 +166,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		return nil, nil
 	}
 
-	br.events(events.Started(br.clock.Now(), br.request.RetrievalID, phaseStartTime, types.RetrievalPhase, bitswapCandidate))
+	br.events(events.Started(br.clock.Now(), br.request.RetrievalID, phaseStartTime, types.RetrievalPhase, bitswapCandidate, multicodec.TransportBitswap))
 
 	// set initial providers, then start a goroutine to add more as they come in
 	br.routing.AddProviders(br.request.RetrievalID, nextCandidates)
