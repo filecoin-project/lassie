@@ -293,7 +293,7 @@ func (retrieval *retrieval) runRetrievalCandidate(
 	var retrievalErr error
 	var done func()
 
-	shared.sendEvent(events.Started(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate))
+	shared.sendEvent(events.Started(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate, retrieval.Protocol.Code()))
 	connectCtx := ctx
 	if timeout != 0 {
 		var timeoutFunc func()

@@ -38,6 +38,7 @@ type tempData struct {
 type RetrievalAttempt struct {
 	Error           string `json:"error,omitempty"`
 	TimeToFirstByte string `json:"timeToFirstByte,omitempty"`
+	Protocol        string `json:"protocol,omitempty"`
 }
 
 type AggregateEvent struct {
@@ -163,6 +164,9 @@ func (a *aggregateEventRecorder) ingestEvents() {
 				case types.RetrievalPhase:
 					// Create a retrieval attempt
 					var attempt RetrievalAttempt
+					if len(event.Protocols()) > 0 {
+						attempt.Protocol = event.Protocols()[0].String()
+					}
 					spid := types.Identifier(event)
 
 					// Save the retrieval attempt
