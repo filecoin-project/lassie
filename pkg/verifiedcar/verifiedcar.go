@@ -32,6 +32,10 @@ var (
 	ErrMissingBlock    = errors.New("missing block in CAR")
 )
 
+type BlockReader interface {
+	Next() (blocks.Block, error)
+}
+
 var protoChooser = dagpb.AddSupportToChooser(basicnode.Chooser)
 
 type Config struct {
@@ -78,10 +82,6 @@ func (cfg Config) VerifyCar(ctx context.Context, rdr io.Reader, lsys linking.Lin
 		return 0, 0, ErrBadRoots
 	}
 	return cfg.VerifyBlockStream(ctx, cbr, lsys)
-}
-
-type BlockReader interface {
-	Next() (blocks.Block, error)
 }
 
 func (cfg Config) VerifyBlockStream(ctx context.Context, cbr BlockReader, lsys linking.LinkSystem) (uint64, uint64, error) {
