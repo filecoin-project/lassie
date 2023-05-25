@@ -205,8 +205,9 @@ func TestHttpFetch(t *testing.T) {
 			}},
 		},
 		{
-			name:        "http max block limit",
-			httpRemotes: 1,
+			name:             "http max block limit",
+			httpRemotes:      1,
+			expectUncleanEnd: true,
 			modifyHttpConfig: func(cfg httpserver.HttpServerConfig) httpserver.HttpServerConfig {
 				cfg.MaxBlocksPerRequest = 3
 				return cfg
