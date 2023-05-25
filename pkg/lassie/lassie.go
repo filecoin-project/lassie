@@ -75,14 +75,13 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 		}
 	}
 
-	sessionConfig := &session.Config{
-		ProviderBlockList: cfg.ProviderBlockList,
-		ProviderAllowList: cfg.ProviderAllowList,
-		DefaultProviderConfig: session.ProviderConfig{
+	sessionConfig := session.DefaultConfig().
+		WithProviderBlockList(cfg.ProviderBlockList).
+		WithProviderAllowList(cfg.ProviderAllowList).
+		WithDefaultProviderConfig(session.ProviderConfig{
 			RetrievalTimeout:        cfg.ProviderTimeout,
 			MaxConcurrentRetrievals: cfg.ConcurrentSPRetrievals,
-		},
-	}
+		})
 	session := session.NewSession(sessionConfig, true)
 
 	if len(cfg.Protocols) == 0 {
