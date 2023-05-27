@@ -33,14 +33,14 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			break
 		default:
 			res.Header().Add("Allow", http.MethodGet)
-			errorResponse(res, statusLogger, http.StatusMethodNotAllowed, errors.New("Method not allowed"))
+			errorResponse(res, statusLogger, http.StatusMethodNotAllowed, errors.New("method not allowed"))
 			return
 		}
 
 		// check if CID path param is missing
 		if path.Len() == 0 {
 			// not a valid path to hit
-			errorResponse(res, statusLogger, http.StatusNotFound, errors.New("Not found"))
+			errorResponse(res, statusLogger, http.StatusNotFound, errors.New("not found"))
 			return
 		}
 
@@ -61,7 +61,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		cidSeg, path = path.Shift()
 		rootCid, err := cid.Parse(cidSeg.String())
 		if err != nil {
-			errorResponse(res, statusLogger, http.StatusInternalServerError, errors.New("Failed to parse CID path parameter"))
+			errorResponse(res, statusLogger, http.StatusInternalServerError, errors.New("failed to parse CID path parameter"))
 			return
 		}
 
@@ -90,7 +90,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 
 		retrievalId, err := types.NewRetrievalID()
 		if err != nil {
-			errorResponse(res, statusLogger, http.StatusInternalServerError, fmt.Errorf("Failed to generate retrieval ID: %w", err))
+			errorResponse(res, statusLogger, http.StatusInternalServerError, fmt.Errorf("failed to generate retrieval ID: %w", err))
 			return
 		}
 
@@ -144,7 +144,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		request, err := types.NewRequestForPath(store, rootCid, path.String(), dagScope)
 
 		if err != nil {
-			errorResponse(res, statusLogger, http.StatusInternalServerError, fmt.Errorf("Failed to create request: %w", err))
+			errorResponse(res, statusLogger, http.StatusInternalServerError, fmt.Errorf("failed to create request: %w", err))
 			return
 		}
 		request.Protocols = protocols
@@ -216,9 +216,9 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			default:
 			}
 			if errors.Is(err, retriever.ErrNoCandidates) {
-				errorResponse(res, statusLogger, http.StatusNotFound, errors.New("No candidates found"))
+				errorResponse(res, statusLogger, http.StatusNotFound, errors.New("no candidates found"))
 			} else {
-				errorResponse(res, statusLogger, http.StatusGatewayTimeout, fmt.Errorf("Failed to fetch CID: %w", err))
+				errorResponse(res, statusLogger, http.StatusGatewayTimeout, fmt.Errorf("failed to fetch CID: %w", err))
 			}
 			return
 		}
@@ -254,16 +254,16 @@ func checkFormat(req *http.Request) (bool, error) {
 	// check if format is car
 	hasFormat := req.URL.Query().Has("format")
 	if hasFormat && req.URL.Query().Get("format") != "car" {
-		return false, fmt.Errorf("Requested non-supported format %s", req.URL.Query().Get("format"))
+		return false, fmt.Errorf("requested non-supported format %s", req.URL.Query().Get("format"))
 	}
 
 	if hasAccept && !validAccept {
-		return false, fmt.Errorf("No acceptable content type")
+		return false, fmt.Errorf("no acceptable content type")
 	}
 	// if neither are provided return
 	// one of them has to be given with a CAR type since we only return CAR data
 	if !validAccept && !hasFormat {
-		return false, fmt.Errorf("Neither a valid accept header or format parameter were provided")
+		return false, fmt.Errorf("neither a valid accept header or format parameter were provided")
 	}
 
 	return includeDupes, nil
@@ -278,7 +278,7 @@ func parceAccept(acceptHeader string) (validAccept bool, includeDupes bool) {
 		if typeParts[0] == "*/*" || typeParts[0] == "application/*" || typeParts[0] == "application/vnd.ipld.car" {
 			validAccept = true
 			if typeParts[0] == "application/vnd.ipld.car" {
-                        // parse https://github.com/ipfs/specs/pull/412 car attributes
+				// parse https://github.com/ipfs/specs/pull/412 car attributes
 				for _, nextPart := range typeParts[1:] {
 					pair := strings.Split(nextPart, "=")
 					if len(pair) == 2 {
@@ -330,10 +330,10 @@ func parseFilename(req *http.Request) (string, error) {
 		filename := req.URL.Query().Get("filename")
 		ext := filepath.Ext(filename)
 		if ext == "" {
-			return "", errors.New("Filename missing extension")
+			return "", errors.New("filename missing extension")
 		}
 		if ext != ".car" {
-			return "", fmt.Errorf("Filename uses non-supported extension %s", ext)
+			return "", fmt.Errorf("filename uses non-supported extension %s", ext)
 		}
 		return filename, nil
 	}
@@ -357,7 +357,7 @@ func parseScope(req *http.Request) (types.DagScope, error) {
 		case "block":
 			return types.DagScopeBlock, nil
 		default:
-			return types.DagScopeAll, errors.New("Invalid dag-scope parameter")
+			return types.DagScopeAll, errors.New("invalid dag-scope parameter")
 		}
 	}
 	// check for legacy param name -- to do -- delete once we confirm this isn't used any more
@@ -370,7 +370,7 @@ func parseScope(req *http.Request) (types.DagScope, error) {
 		case "block":
 			return types.DagScopeBlock, nil
 		default:
-			return types.DagScopeAll, errors.New("Invalid car-scope parameter")
+			return types.DagScopeAll, errors.New("invalid car-scope parameter")
 		}
 	}
 	return types.DagScopeAll, nil
@@ -380,7 +380,7 @@ func parseProviders(req *http.Request) ([]peer.AddrInfo, error) {
 	if req.URL.Query().Has("providers") {
 		fixedPeers, err := types.ParseProviderStrings(req.URL.Query().Get("providers"))
 		if err != nil {
-			return nil, errors.New("Invalid providers parameter")
+			return nil, errors.New("invalid providers parameter")
 		}
 		return fixedPeers, nil
 	}
