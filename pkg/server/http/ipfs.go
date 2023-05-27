@@ -21,6 +21,20 @@ import (
 	"github.com/multiformats/go-multicodec"
 )
 
+var (
+	MimeTypeCar        = "application/vnd.ipld.var" // The only accepted MIME type
+	MimeTypeCarVersion = "1"                        // We only accept version 1 of the MIME type
+	FormatParameterCar = "car"                      // The only valid format parameter value
+	FilenameExtCar     = ".car"                     // The only valid filename extension
+
+	DefaultIncludeDupes = true // The default value for an unspecified "dups" parameter. See https://github.com/ipfs/specs/pull/412.
+
+	ResponseAcceptRangesHeader = "none"                                // We currently don't accept range requests
+	ResponseCacheControlHeader = "public, max-age=29030400, immutable" // Magic cache control values
+	ResponseChunkDelimeter     = []byte("0\r\n")                       // An http/1.1 chunk delimeter, used for specifying an early end to the response
+	ResponseContentTypeHeader  = fmt.Sprintf("%s; version=%s", MimeTypeCar, MimeTypeCarVersion)
+)
+
 func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
 		statusLogger := newStatusLogger(req.Method, req.URL.Path)
@@ -85,7 +99,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 
 		// for setting Content-Disposition header based on filename url parameter
 		if fileName == "" {
-			fileName = fmt.Sprintf("%s.car", rootCid.String())
+			fileName = fmt.Sprintf("%s%s", rootCid.String(), FilenameExtCar)
 		}
 
 		retrievalId, err := types.NewRetrievalID()
@@ -127,9 +141,9 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		carWriter.OnPut(func(int) {
 			// called once we start writing blocks into the CAR (on the first Put())
 			res.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", fileName))
-			res.Header().Set("Accept-Ranges", "none")
-			res.Header().Set("Cache-Control", "public, max-age=29030400, immutable")
-			res.Header().Set("Content-Type", "application/vnd.ipld.car; version=1")
+			res.Header().Set("Accept-Ranges", ResponseAcceptRangesHeader)
+			res.Header().Set("Cache-Control", ResponseCacheControlHeader)
+			res.Header().Set("Content-Type", ResponseContentTypeHeader)
 			// TODO: needs scope and path
 			res.Header().Set("Etag", fmt.Sprintf("%s.car", rootCid.String()))
 			res.Header().Set("X-Content-Type-Options", "nosniff")
@@ -210,7 +224,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 				reqConn := req.Context().Value(connContextKey)
 				if conn, ok := reqConn.(net.Conn); ok {
 					res.(http.Flusher).Flush()
-					conn.Write([]byte("0\r\n"))
+					conn.Write(ResponseChunkDelimeter)
 				}
 				return
 			default:
@@ -246,20 +260,34 @@ func (l statusLogger) logStatus(statusCode int, message string) {
 	logger.Infof("%s\t%s\t%d: %s\n", l.method, l.path, statusCode, message)
 }
 
+// checkFormat validates that the data being requested is of the type CAR.
+// We do this validation because the http gateway path spec allows for additional
+// response formats that Lassie does not currently support, so we throw an error in
+// the cases where the request is requesting one of Lassie's unsupported response
+// formats. Lassie only supports returning CAR data.
+//
+// The spec outlines that the requesting format can be provided
+// via the Accept header or the format query parameter.
+//
+// Lassie only allows the application/vnd.ipld.car Accept header
+// https://specs.ipfs.tech/http-gateways/path-gateway/#accept-request-header
+//
+// Lassie only allows the "car" format query parameter
+// https://specs.ipfs.tech/http-gateways/path-gateway/#format-request-query-parameter
 func checkFormat(req *http.Request) (bool, error) {
 	hasAccept := req.Header.Get("Accept") != ""
 	// check if Accept header includes application/vnd.ipld.car
 	validAccept, includeDupes := parceAccept(req.Header.Get("Accept"))
-
-	// check if format is car
-	hasFormat := req.URL.Query().Has("format")
-	if hasFormat && req.URL.Query().Get("format") != "car" {
-		return false, fmt.Errorf("requested non-supported format %s", req.URL.Query().Get("format"))
-	}
-
 	if hasAccept && !validAccept {
 		return false, fmt.Errorf("no acceptable content type")
 	}
+
+	// check if format is "car"
+	hasFormat := req.URL.Query().Has("format")
+	if hasFormat && req.URL.Query().Get("format") != FormatParameterCar {
+		return false, fmt.Errorf("requested non-supported format %s", req.URL.Query().Get("format"))
+	}
+
 	// if neither are provided return
 	// one of them has to be given with a CAR type since we only return CAR data
 	if !validAccept && !hasFormat {
@@ -269,16 +297,19 @@ func checkFormat(req *http.Request) (bool, error) {
 	return includeDupes, nil
 }
 
+// parseAccept validates that the request Accept header is of the type CAR and
+// returns whether or not duplicate blocks are allowed in the response via
+// IPIP-412: https://github.com/ipfs/specs/pull/412.
 func parceAccept(acceptHeader string) (validAccept bool, includeDupes bool) {
 	acceptTypes := strings.Split(acceptHeader, ",")
 	validAccept = false
-	includeDupes = true
+	includeDupes = DefaultIncludeDupes
 	for _, acceptType := range acceptTypes {
 		typeParts := strings.Split(acceptType, ";")
-		if typeParts[0] == "*/*" || typeParts[0] == "application/*" || typeParts[0] == "application/vnd.ipld.car" {
+		if typeParts[0] == "*/*" || typeParts[0] == "application/*" || typeParts[0] == MimeTypeCar {
 			validAccept = true
-			if typeParts[0] == "application/vnd.ipld.car" {
-				// parse https://github.com/ipfs/specs/pull/412 car attributes
+			if typeParts[0] == MimeTypeCar {
+				// parse additional car attributes outlined in IPIP-412: https://github.com/ipfs/specs/pull/412
 				for _, nextPart := range typeParts[1:] {
 					pair := strings.Split(nextPart, "=")
 					if len(pair) == 2 {
@@ -288,17 +319,17 @@ func parceAccept(acceptHeader string) (validAccept bool, includeDupes bool) {
 						case "dups":
 							switch value {
 							case "y":
+								includeDupes = true
 							case "n":
 								includeDupes = false
 							default:
-								// don't accept un expected values
+								// don't accept unexpected values
 								validAccept = false
 							}
 						case "version":
 							switch value {
-							case "1":
+							case MimeTypeCarVersion:
 							default:
-								// don't accept any version but 1
 								validAccept = false
 							}
 						case "order":
@@ -324,6 +355,9 @@ func parceAccept(acceptHeader string) (validAccept bool, includeDupes bool) {
 	return
 }
 
+// parseFilename returns the filename query parameter or an error if the filename
+// extension is not ".car". Lassie only supports returning CAR data.
+// See https://specs.ipfs.tech/http-gateways/path-gateway/#filename-request-query-parameter
 func parseFilename(req *http.Request) (string, error) {
 	// check if provided filename query parameter has .car extension
 	if req.URL.Query().Has("filename") {
@@ -332,7 +366,7 @@ func parseFilename(req *http.Request) (string, error) {
 		if ext == "" {
 			return "", errors.New("filename missing extension")
 		}
-		if ext != ".car" {
+		if ext != FilenameExtCar {
 			return "", fmt.Errorf("filename uses non-supported extension %s", ext)
 		}
 		return filename, nil
@@ -387,6 +421,7 @@ func parseProviders(req *http.Request) ([]peer.AddrInfo, error) {
 	return nil, nil
 }
 
+// errorResponse logs and replies to the request with the status code and error
 func errorResponse(res http.ResponseWriter, statusLogger *statusLogger, code int, err error) {
 	statusLogger.logStatus(code, err.Error())
 	http.Error(res, err.Error(), code)
