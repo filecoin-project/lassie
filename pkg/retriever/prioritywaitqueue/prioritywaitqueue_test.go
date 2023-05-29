@@ -33,8 +33,14 @@ func runWorker(wg *sync.WaitGroup, id, sleep, work int, queue prioritywaitqueue.
 	go w.run()
 }
 
-var workerCmp prioritywaitqueue.ComparePriority[*worker] = func(a *worker, b *worker) bool {
-	return a.id < b.id
+var workerChoose prioritywaitqueue.Chooser[*worker] = func(w []*worker) int {
+	min := 0
+	for i := 1; i < len(w); i++ {
+		if w[i].id < w[min].id {
+			min = i
+		}
+	}
+	return min
 }
 
 func TestPriorityWaitQueue(t *testing.T) {
@@ -119,7 +125,7 @@ func TestPriorityWaitQueue(t *testing.T) {
 			if tc.initialPause > 0 {
 				opts = append(opts, prioritywaitqueue.WithInitialPause[*worker](tc.initialPause))
 			}
-			queue := prioritywaitqueue.New(workerCmp, opts...)
+			queue := prioritywaitqueue.New(workerChoose, opts...)
 			out := make([]int, 0)
 			lk := sync.Mutex{}
 			doneWg := sync.WaitGroup{}
