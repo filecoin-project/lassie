@@ -147,7 +147,7 @@ func (retrieval *retrieval) RetrieveFromAsyncCandidates(asyncCandidates types.In
 	shared := &retrievalShared{
 		resultChan: make(chan retrievalResult),
 		finishChan: make(chan struct{}),
-		waitQueue:  prioritywaitqueue.New(retrieval.candidateCompare, pwqOpts...),
+		waitQueue:  prioritywaitqueue.New(retrieval.candidateChooser, pwqOpts...),
 	}
 
 	// start retrievals
@@ -191,24 +191,21 @@ func (retrieval *retrieval) RetrieveFromAsyncCandidates(asyncCandidates types.In
 	return stats, err
 }
 
-// candidateCompare compares two peer.IDs and returns true if the first is
-// preferable to the second. This is used for the PriorityWaitQueue that will
-// prioritise execution of retrievals if two candidates are available to compare
-// at the same time.
-func (retrieval *retrieval) candidateCompare(a, b peer.ID) bool {
+// candidateChooser selects the candidate to run next from a list of candidates.
+// This is used for the PriorityWaitQueue that manages the order of candidates
+// to run.
+// PriorityWaitQueue should only call this when there are >1 candidates to
+// choose from.
+func (retrieval *retrieval) candidateChooser(peers []peer.ID) int {
+	metadata := make([]metadata.Protocol, 0, len(peers))
 	retrieval.candidateMetdataLk.RLock()
-	defer retrieval.candidateMetdataLk.RUnlock()
-
-	mdA, ok := retrieval.candidateMetadata[a]
-	if !ok {
-		return false
+	for _, p := range peers {
+		md := retrieval.candidateMetadata[p]
+		metadata = append(metadata, md)
 	}
-	mdB, ok := retrieval.candidateMetadata[b]
-	if !ok {
-		return true
-	}
+	retrieval.candidateMetdataLk.RUnlock()
 
-	return retrieval.Session.CompareStorageProviders(a, b, mdA, mdB)
+	return retrieval.Session.ChooseNextProvider(peers, metadata)
 }
 
 // filterCandidates is needed because we can receive duplicate candidates in

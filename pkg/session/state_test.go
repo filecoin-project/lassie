@@ -382,18 +382,34 @@ func TestCandidateComparison(t *testing.T) {
 			for _, action := range tc.actions {
 				action.execute(t, state)
 			}
-			for i := 1; i < len(tc.expectedOrder); i++ {
-				a := tc.expectedOrder[i-1]
-				b := tc.expectedOrder[i]
-				var mda metadata.Protocol = metadata.IpfsGatewayHttp{}
-				var mdb metadata.Protocol = metadata.IpfsGatewayHttp{}
-				if len(tc.metadata) > 0 {
-					mda = tc.metadata[a]
-					mdb = tc.metadata[b]
+
+			// list of peers we're working with, build it in the same order as
+			// the peers array so we don't bias with 'expectedOrder' ordering
+			tp := make([]peer.ID, 0, len(tc.expectedOrder))
+			mda := make([]metadata.Protocol, 0, len(tc.expectedOrder))
+			for len(tp) < len(tc.expectedOrder) {
+				for _, p := range tc.expectedOrder {
+					if p == peers[len(tp)] {
+						if len(tc.metadata) > 0 {
+							mda = append(mda, tc.metadata[p])
+						} else {
+							mda = append(mda, metadata.IpfsGatewayHttp{})
+						}
+						tp = append(tp, p)
+						break
+					}
 				}
-				require.True(t, state.CompareStorageProviders(a, b, mda, mdb), "%d: expected %s to be better than %s", i, string(a), string(b))
-				require.False(t, state.CompareStorageProviders(b, a, mdb, mda), "%d: expected %s to be worse than %s", i, string(b), string(tc.expectedOrder[i-1]))
 			}
+
+			// choose next provider until we've exhausted the list
+			gotOrder := make([]peer.ID, 0, len(tc.expectedOrder))
+			for len(gotOrder) < len(tc.expectedOrder) {
+				next := state.ChooseNextProvider(tp, mda)
+				gotOrder = append(gotOrder, tp[next])
+				tp = append(tp[:next], tp[next+1:]...)
+			}
+
+			require.Equal(t, tc.expectedOrder, gotOrder)
 		})
 	}
 }
