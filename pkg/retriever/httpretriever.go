@@ -164,7 +164,7 @@ func makeRequest(ctx context.Context, request types.RetrievalRequest, candidate 
 		return nil, fmt.Errorf("%w: %v", ErrBadPathForRequest, err)
 	}
 
-	reqURL := fmt.Sprintf("%s/ipfs/%s%s", candidateURL, request.Cid, path)
+	reqURL := fmt.Sprintf("%s/ipfs/%s/%s", candidateURL, request.Cid, path)
 	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
 		logger.Warnf("Couldn't construct a http request %s: %v", candidate.MinerPeer.ID, err)
