@@ -59,7 +59,7 @@ func TestVerifiedCar(t *testing.T) {
 
 	wrapPath := "/some/path/to/content"
 
-	unixfsFile := unixfs.GenerateFile(t, &lsys, rndReader, 4<<20)
+	unixfsFile := testutil.GenerateNoDupes(func() unixfs.DirEntry { return unixfs.GenerateFile(t, &lsys, rndReader, 4<<20) })
 	unixfsFileBlocks := testutil.ToBlocks(t, lsys, unixfsFile.Root, allSelector)
 
 	unixfsFileWithDups := unixfs.GenerateFile(t, &lsys, testutil.ZeroReader{}, 4<<20)
@@ -67,14 +67,14 @@ func TestVerifiedCar(t *testing.T) {
 	var unixfsDir unixfs.DirEntry
 	var unixfsDirBlocks []blocks.Block
 	for {
-		unixfsDir = unixfs.GenerateDirectory(t, &lsys, rndReader, 8<<20, false)
+		unixfsDir = testutil.GenerateNoDupes(func() unixfs.DirEntry { return unixfs.GenerateDirectory(t, &lsys, rndReader, 8<<20, false) })
 		unixfsDirBlocks = testutil.ToBlocks(t, lsys, unixfsDir.Root, allSelector)
 		if len(unixfsDir.Children) > 2 { // we want at least 3 children to test the path subset selector
 			break
 		}
 	}
 
-	unixfsShardedDir := unixfs.GenerateDirectory(t, &lsys, rndReader, 8<<20, true)
+	unixfsShardedDir := testutil.GenerateNoDupes(func() unixfs.DirEntry { return unixfs.GenerateDirectory(t, &lsys, rndReader, 8<<20, true) })
 	unixfsShardedDirBlocks := testutil.ToBlocks(t, lsys, unixfsShardedDir.Root, allSelector)
 
 	unixfsPreloadSelector := unixfsnode.MatchUnixFSPreloadSelector.Node()
@@ -87,21 +87,25 @@ func TestVerifiedCar(t *testing.T) {
 	unixfsWrappedPathSelector := unixfsnode.UnixFSPathSelectorBuilder(wrapPath, unixfsnode.ExploreAllRecursivelySelector, false)
 	unixfsWrappedPreloadPathSelector := unixfsnode.UnixFSPathSelectorBuilder(wrapPath, unixfsnode.MatchUnixFSPreloadSelector, false)
 
-	unixfsWrappedFile := unixfs.WrapContent(t, rndReader, &lsys, unixfsFile, wrapPath, false)
+	unixfsWrappedFile := testutil.GenerateNoDupes(func() unixfs.DirEntry { return unixfs.WrapContent(t, rndReader, &lsys, unixfsFile, wrapPath, false) })
 	unixfsWrappedFileBlocks := testutil.ToBlocks(t, lsys, unixfsWrappedFile.Root, allSelector)
 	// "trimmed" is similar to "exclusive" except that "trimmed" is a subset
 	// of a larger DAG, whereas "exclusive" is a complete DAG.
 	unixfsTrimmedWrappedFileBlocks := testutil.ToBlocks(t, lsys, unixfsWrappedFile.Root, unixfsWrappedPathSelector)
-	unixfsExclusiveWrappedFile := unixfs.WrapContent(t, rndReader, &lsys, unixfsFile, wrapPath, true)
+	unixfsExclusiveWrappedFile := testutil.GenerateNoDupes(func() unixfs.DirEntry { return unixfs.WrapContent(t, rndReader, &lsys, unixfsFile, wrapPath, true) })
 	unixfsExclusiveWrappedFileBlocks := testutil.ToBlocks(t, lsys, unixfsExclusiveWrappedFile.Root, allSelector)
 
-	unixfsWrappedShardedDir := unixfs.WrapContent(t, rndReader, &lsys, unixfsShardedDir, wrapPath, false)
+	unixfsWrappedShardedDir := testutil.GenerateNoDupes(func() unixfs.DirEntry {
+		return unixfs.WrapContent(t, rndReader, &lsys, unixfsShardedDir, wrapPath, false)
+	})
 	unixfsWrappedShardedDirBlocks := testutil.ToBlocks(t, lsys, unixfsWrappedShardedDir.Root, allSelector)
 	// "trimmed" is similar to "exclusive" except that "trimmed" is a subset
 	// of a larger DAG, whereas "exclusive" is a complete DAG.
 	unixfsTrimmedWrappedShardedDirBlocks := testutil.ToBlocks(t, lsys, unixfsWrappedShardedDir.Root, unixfsWrappedPathSelector)
 	unixfsTrimmedWrappedShardedDirOnlyBlocks := testutil.ToBlocks(t, lsys, unixfsWrappedShardedDir.Root, unixfsWrappedPreloadPathSelector)
-	unixfsExclusiveWrappedShardedDir := unixfs.WrapContent(t, rndReader, &lsys, unixfsShardedDir, wrapPath, true)
+	unixfsExclusiveWrappedShardedDir := testutil.GenerateNoDupes(func() unixfs.DirEntry {
+		return unixfs.WrapContent(t, rndReader, &lsys, unixfsShardedDir, wrapPath, true)
+	})
 	unixfsExclusiveWrappedShardedDirBlocks := testutil.ToBlocks(t, lsys, unixfsExclusiveWrappedShardedDir.Root, allSelector)
 	unixfsExclusiveWrappedShardedDirOnlyBlocks := testutil.ToBlocks(t, lsys, unixfsExclusiveWrappedShardedDir.Root, unixfsWrappedPreloadPathSelector)
 
@@ -505,7 +509,7 @@ func TestVerifiedCar(t *testing.T) {
 					for testCase.blocks[writeCounter+skipped].skipped {
 						skipped++
 					}
-					req.Equal(testCase.blocks[writeCounter+skipped].Cid(), l.(cidlink.Link).Cid, "block %d", writeCounter)
+					req.Equal(testCase.blocks[writeCounter+skipped].Cid().String(), l.(cidlink.Link).Cid.String(), "block %d", writeCounter)
 					req.Equal(testCase.blocks[writeCounter+skipped].RawData(), buf.Bytes(), "block %d", writeCounter)
 					writeCounter++
 					w, wc, err := bwo(lc)

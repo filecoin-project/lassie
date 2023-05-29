@@ -10,6 +10,7 @@ import (
 	"github.com/ipfs/go-cid"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
 	"github.com/ipfs/go-libipfs/blocks"
+	unixfs "github.com/ipfs/go-unixfsnode/testutil"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipni/go-libipni/metadata"
 	crypto "github.com/libp2p/go-libp2p/core/crypto"
@@ -147,4 +148,33 @@ func (ZeroReader) Read(b []byte) (n int, err error) {
 		b[i] = 0
 	}
 	return len(b), nil
+}
+
+// TODO: this should probably be an option in unixfsnode/testutil, for
+// generators to strictly not return a DAG with duplicates
+
+func GenerateNoDupes(gen func() unixfs.DirEntry) unixfs.DirEntry {
+	var check func(unixfs.DirEntry) bool
+	var seen map[cid.Cid]struct{}
+	check = func(e unixfs.DirEntry) bool {
+		for _, c := range e.SelfCids {
+			if _, ok := seen[c]; ok {
+				return false
+			}
+			seen[c] = struct{}{}
+		}
+		for _, c := range e.Children {
+			if !check(c) {
+				return false
+			}
+		}
+		return true
+	}
+	for {
+		seen = make(map[cid.Cid]struct{})
+		gend := gen()
+		if check(gend) {
+			return gend
+		}
+	}
 }
