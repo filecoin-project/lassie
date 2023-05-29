@@ -55,15 +55,15 @@ func WithClock[T interface{}](clock clock.Clock) Option[T] {
 	}
 }
 
-// ComparePriority should return true if a has a higher priority, and therefore
-// should run, BEFORE b.
-type ComparePriority[T interface{}] func(a T, b T) bool
+// Chooser should return the index of the highest-priority item in the list of
+// waiters. The list of waiters is guaranteed to be > 1 in length.
+type Chooser[T interface{}] func(waiters []T) int
 
 // New creates a new PriorityWaitQueue with the provided ComparePriority
 // function for type T.
-func New[T interface{}](cmp ComparePriority[T], options ...Option[T]) PriorityWaitQueue[T] {
+func New[T interface{}](choose Chooser[T], options ...Option[T]) PriorityWaitQueue[T] {
 	pwq := &priorityWaitQueue[T]{
-		cmp:     cmp,
+		choose:  choose,
 		cond:    sync.NewCond(&sync.Mutex{}),
 		waiters: make([]*T, 0),
 		clock:   clock.New(),
@@ -77,10 +77,11 @@ func New[T interface{}](cmp ComparePriority[T], options ...Option[T]) PriorityWa
 var _ PriorityWaitQueue[int] = &priorityWaitQueue[int]{}
 
 type priorityWaitQueue[T interface{}] struct {
-	cmp                   ComparePriority[T]
+	choose                Chooser[T]
 	cond                  *sync.Cond
 	waiters               []*T
 	running               *T
+	next                  *T
 	clock                 clock.Clock
 	initialPause          time.Duration
 	initialPauseDoneCh    chan struct{}
@@ -137,17 +138,16 @@ func (pwq *priorityWaitQueue[T]) Wait(waitWith T) func() {
 		pwq.cond.L.Lock()
 	}
 
+	// after initialPause collection and no 'next' has been selected, select one
+	if pwq.next == nil && len(pwq.waiters) > 1 {
+		pwq.chooseNext()
+	}
+
 	for {
-		if pwq.running == nil { // none currently running, check if we can
-			canRun := true
-			// is there another waiter in the queue with higher priority than us?
-			for _, waiter := range pwq.waiters {
-				if waiter != waitWithPtr && pwq.cmp(*waiter, waitWith) {
-					canRun = false
-				}
-			}
-			if canRun { // didn't find a higher-priority waiter, we can run
-				// remove us from the wait list
+		if pwq.running == nil { // else someone is already running
+			// if we're the only waiter, or we have been chosen to run
+			if len(pwq.waiters) == 1 || pwq.next == waitWithPtr {
+				// remove from list of waiters
 				removed := false
 				for i, waiter := range pwq.waiters {
 					if waiter == waitWithPtr {
@@ -159,18 +159,26 @@ func (pwq *priorityWaitQueue[T]) Wait(waitWith T) func() {
 				if !removed {
 					panic("didn't find current waiter in the wait list")
 				}
+
+				// we're now running
 				pwq.running = waitWithPtr
+
 				// done() must be called when the work is complete and another job
 				// can be run
 				done := func() {
 					pwq.cond.L.Lock()
 					defer pwq.cond.L.Unlock()
-					if pwq.running != waitWithPtr {
+					// check that we are the current runner
+					if len(pwq.waiters) > 0 && pwq.running != waitWithPtr {
 						panic(fmt.Sprintf("Done() was called with a runner that was not expected to be running: %v <> %v", pwq.running, &waitWith))
 					}
 					pwq.running = nil
-					// notify all to check whether they are next to run
-					pwq.cond.Broadcast()
+					// choose the next runner if necessary
+					pwq.chooseNext()
+					if len(pwq.waiters) > 0 {
+						// notify all to check whether they are next to run
+						pwq.cond.Broadcast()
+					}
 				}
 				return done
 			}
@@ -178,5 +186,19 @@ func (pwq *priorityWaitQueue[T]) Wait(waitWith T) func() {
 
 		// unlock and wait until we get a broadcast
 		pwq.cond.Wait()
+	}
+}
+
+// chooseNext chooses the next runner from the list of waiters. It is assumed
+// that the caller holds the lock.
+func (pwq *priorityWaitQueue[T]) chooseNext() {
+	if len(pwq.waiters) > 1 {
+		ws := make([]T, len(pwq.waiters))
+		for i, w := range pwq.waiters {
+			ws[i] = *w
+		}
+		pwq.next = pwq.waiters[pwq.choose(ws)]
+	} else {
+		pwq.next = nil
 	}
 }
