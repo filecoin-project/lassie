@@ -170,4 +170,4 @@ var _ Random = nonRandom{}
 
 type nonRandom struct{}
 
-func (nonRandom) Float64() float64 { return 0.5 }
+func (nonRandom) Float64() float64 { return 0 }

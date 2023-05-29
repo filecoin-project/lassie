@@ -169,16 +169,14 @@ func (pwq *priorityWaitQueue[T]) Wait(waitWith T) func() {
 					pwq.cond.L.Lock()
 					defer pwq.cond.L.Unlock()
 					// check that we are the current runner
-					if len(pwq.waiters) > 0 && pwq.running != waitWithPtr {
+					if pwq.running != waitWithPtr {
 						panic(fmt.Sprintf("Done() was called with a runner that was not expected to be running: %v <> %v", pwq.running, &waitWith))
 					}
 					pwq.running = nil
 					// choose the next runner if necessary
 					pwq.chooseNext()
-					if len(pwq.waiters) > 0 {
-						// notify all to check whether they are next to run
-						pwq.cond.Broadcast()
-					}
+					// notify all to check whether they are next to run
+					pwq.cond.Broadcast()
 				}
 				return done
 			}

@@ -49,7 +49,7 @@ type Session interface {
 	RecordSuccess(storageProviderId peer.ID)
 	RecordConnectTime(storageProviderId peer.ID, connectTime time.Duration)
 
-	CompareStorageProviders(a, b peer.ID, mda, mdb metadata.Protocol) bool
+	ChooseNextProvider(peers []peer.ID, metadata []metadata.Protocol) int
 }
 
 type Retriever struct {

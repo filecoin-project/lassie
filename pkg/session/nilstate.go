@@ -42,6 +42,6 @@ func (ns nilstate) RegisterRetrieval(retrievalId types.RetrievalID, cid cid.Cid,
 
 func (ns nilstate) RecordConnectTime(storageProviderId peer.ID, connectTime time.Duration) {}
 
-func (ns nilstate) CompareStorageProviders(a, b peer.ID, mda, mdb metadata.Protocol) bool {
-	return false
+func (ns nilstate) ChooseNextProvider(peers []peer.ID, mda []metadata.Protocol) int {
+	return 0
 }

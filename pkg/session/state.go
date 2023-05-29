@@ -3,6 +3,7 @@ package session
 import (
 	"fmt"
 	"math"
+	"sort"
 	"sync"
 	"time"
 
@@ -58,11 +59,11 @@ type State interface {
 	// recorded with a decay according to SessionStateConfig#ConnectTimeAlpha.
 	RecordConnectTime(storageProviderId peer.ID, connectTime time.Duration)
 
-	// CompareStorageProviders compares two storage providers and returns true
-	// if the first storage provider is preferred over the second storage
-	// provider. This uses both historically collected state and information
-	// contained within the metadata, depending on protocol.
-	CompareStorageProviders(a, b peer.ID, mda, mdb metadata.Protocol) bool
+	// ChooseNextProvider compares a list of storage providers and returns the
+	// index of the next storage provider to use. This uses both historically
+	// collected state and information contained within the metadata, depending
+	// on protocol.
+	ChooseNextProvider(peers []peer.ID, metadata []metadata.Protocol) int
 }
 
 type activeRetrieval struct {
@@ -258,20 +259,35 @@ func (spt *SessionState) RecordConnectTime(storageProviderId peer.ID, current ti
 	}
 }
 
-func (spt *SessionState) CompareStorageProviders(a, b peer.ID, mda, mdb metadata.Protocol) bool {
+func (spt *SessionState) ChooseNextProvider(peers []peer.ID, mda []metadata.Protocol) int {
 	spt.lk.Lock()
 	defer spt.lk.Unlock()
 
-	// score both peers, a float >=0, higher is better
-	gsmda, _ := mda.(*metadata.GraphsyncFilecoinV1)
-	sas := spt.scoreProvider(a, gsmda)
-	gsmdb, _ := mdb.(*metadata.GraphsyncFilecoinV1)
-	sbs := spt.scoreProvider(b, gsmdb)
-	// a's score as a fraction of the total combined score
-	sasf := sas / (sas + sbs)
-	// random dice roll to decide, biasing toward the higher score
-	// DEBUG: fmt.Printf("a(%s)=%f<>b(%s)=%f\n", string(a), sas, string(b), sbs)
-	return spt.config.roll() < sasf
+	// score all peers, a float >=0 each, higher is better
+	scores := make([]float64, len(peers))
+	var tot float64
+	ind := make([]int, len(peers)) // index into peers that we can sort without changing peers
+	for ii, p := range peers {
+		ind[ii] = ii
+		gsmd, _ := mda[ii].(*metadata.GraphsyncFilecoinV1)
+		scores[ii] = spt.scoreProvider(p, gsmd)
+		tot += scores[ii]
+	}
+	// sort so that the non-random selection choose the first (best)
+	sort.Slice(ind, func(i, j int) bool {
+		return scores[ind[i]] > scores[ind[j]]
+	})
+
+	// choose a random peer, weighted by score
+	r := tot * spt.config.roll()
+	for _, pi := range ind {
+		s := scores[pi]
+		if r <= s {
+			return pi
+		}
+		r -= s
+	}
+	panic("unreachable")
 }
 
 // scoreProvider returns a score for a given provider, higher is better.
