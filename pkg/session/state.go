@@ -283,11 +283,11 @@ func (spt *SessionState) scoreProvider(id peer.ID, md *metadata.GraphsyncFilecoi
 	// graphsync metadata weighting
 	if md != nil {
 		if md.VerifiedDeal {
-			score += spt.config.VerifiedDealWeight
+			score += spt.config.GraphsyncVerifiedDealWeight
 			// v = true
 		}
 		if md.FastRetrieval {
-			score += spt.config.FastRetrievalWeight
+			score += spt.config.GraphsyncFastRetrievalWeight
 			// f = true
 		}
 	}
