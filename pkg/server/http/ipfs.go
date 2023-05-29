@@ -22,7 +22,7 @@ import (
 )
 
 var (
-	MimeTypeCar        = "application/vnd.ipld.var" // The only accepted MIME type
+	MimeTypeCar        = "application/vnd.ipld.car" // The only accepted MIME type
 	MimeTypeCarVersion = "1"                        // We only accept version 1 of the MIME type
 	FormatParameterCar = "car"                      // The only valid format parameter value
 	FilenameExtCar     = ".car"                     // The only valid filename extension
