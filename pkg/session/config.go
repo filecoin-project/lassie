@@ -22,7 +22,6 @@ type Config struct {
 	ProviderAllowList     map[peer.ID]bool
 	DefaultProviderConfig ProviderConfig
 	ProviderConfigs       map[peer.ID]ProviderConfig
-	PaidRetrievals        bool
 
 	// --- Dynamic state config
 
@@ -49,22 +48,22 @@ type Config struct {
 	// Random is an optional rng, if nil, math/rand will be used.
 	Random Random
 
-	VerifiedDealWeight  float64
-	FastRetrievalWeight float64
-	ConnectTimeWeight   float64
-	SuccessWeight       float64
+	GraphsyncVerifiedDealWeight  float64
+	GraphsyncFastRetrievalWeight float64
+	ConnectTimeWeight            float64
+	SuccessWeight                float64
 }
 
 // DefaultConfig returns a default config with usable alpha and weight values.
 func DefaultConfig() *Config {
 	return &Config{
-		ConnectTimeAlpha:        0.5,
-		OverallConnectTimeAlpha: 0.8,
-		SuccessAlpha:            0.5,
-		VerifiedDealWeight:      3.0,
-		FastRetrievalWeight:     2.0,
-		ConnectTimeWeight:       1.0,
-		SuccessWeight:           1.0,
+		ConnectTimeAlpha:             0.5,
+		OverallConnectTimeAlpha:      0.8,
+		SuccessAlpha:                 0.5,
+		GraphsyncVerifiedDealWeight:  3.0,
+		GraphsyncFastRetrievalWeight: 2.0,
+		ConnectTimeWeight:            1.0,
+		SuccessWeight:                1.0,
 	}
 }
 
@@ -83,6 +82,12 @@ func (cfg Config) WithProviderAllowList(allowlist map[peer.ID]bool) *Config {
 // WithDefaultProviderConfig sets the default provider config.
 func (cfg Config) WithDefaultProviderConfig(providerConfig ProviderConfig) *Config {
 	cfg.DefaultProviderConfig = providerConfig
+	return &cfg
+}
+
+// WithProviderConfigs sets the provider configs.
+func (cfg Config) WithProviderConfigs(providerConfigs map[peer.ID]ProviderConfig) *Config {
+	cfg.ProviderConfigs = providerConfigs
 	return &cfg
 }
 
@@ -108,6 +113,30 @@ func (cfg Config) WithSuccessAlpha(alpha float64) *Config {
 // set, it will always choose the peer with the highest score.
 func (cfg Config) WithoutRandomness() *Config {
 	cfg.Random = nonRandom{}
+	return &cfg
+}
+
+// WithGraphsyncVerifiedDealWeight sets the verified deal weight.
+func (cfg Config) WithGraphsyncVerifiedDealWeight(weight float64) *Config {
+	cfg.GraphsyncVerifiedDealWeight = weight
+	return &cfg
+}
+
+// WithGraphsyncFastRetrievalWeight sets the fast retrieval weight.
+func (cfg Config) WithGraphsyncFastRetrievalWeight(weight float64) *Config {
+	cfg.GraphsyncFastRetrievalWeight = weight
+	return &cfg
+}
+
+// WithConnectTimeWeight sets the connect time weight.
+func (cfg Config) WithConnectTimeWeight(weight float64) *Config {
+	cfg.ConnectTimeWeight = weight
+	return &cfg
+}
+
+// WithSuccessWeight sets the success weight.
+func (cfg Config) WithSuccessWeight(weight float64) *Config {
+	cfg.SuccessWeight = weight
 	return &cfg
 }
 
