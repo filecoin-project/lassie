@@ -32,11 +32,36 @@ type Config struct {
 	// previous connect times, a lower value will give more weight to recent
 	// connect times. A value of 0 will only use the most recent connect time.
 	ConnectTimeAlpha float64
+	// FirstByteTimeAlpha is the alpha value for the exponential moving average
+	// of the time to first byte for a storage provider. The time to first byte
+	// is the time it takes to receive the first byte of data from a storage
+	// provider, it is used to determine the prioritisation of storage
+	// providers. The value determines the weight of previous time to first
+	// bytes, a lower value will give more weight to recent time to first bytes.
+	// A value of 0 will only use the most recent time to first byte.
+	FirstByteTimeAlpha float64
 	// OverallConnectTimeAlpha is the alpha value for the exponential moving
 	// average of the overall connect time. The overall connect time is the
 	// average connect time of *all* storage providers, used to normalise the
 	// connect time metric.
 	OverallConnectTimeAlpha float64
+	// OverallFirstByteTimeAlpha is the alpha value for the exponential moving
+	// average of the overall time to first byte. The overall time to first byte
+	// is the average time to first byte of *all* storage providers, used to
+	// normalise the time to first byte metric.
+	OverallFirstByteTimeAlpha float64
+	// BandwidthAlpha is the alpha value for the exponential moving average of
+	// the bandwidth metric for a storage provider. The bandwidth metric is
+	// measured in bytes per second. The value of BandwidthAlpha determines the
+	// weight of previous bandwidth metrics, a lower value will give more weight
+	// to recent bandwidth metrics. A value of 0 will only use the most recent
+	// bandwidth metric.
+	BandwidthAlpha float64
+	// OverallBandwidthAlpha is the alpha value for the exponential moving
+	// average of the overall bandwidth metric. The overall bandwidth metric is
+	// the average bandwidth of *all* storage providers, used to normalise the
+	// bandwidth metric.
+	OverallBandwidthAlpha float64
 	// SuccessAlpha is the alpha value for the exponential moving average of
 	// the success metric for a storage provider. The success metric is the
 	// ratio of successful retrievals to total retrievals. The value determines
@@ -44,13 +69,16 @@ type Config struct {
 	// weight to recent success metrics. A value of 0 will only use the most
 	// recent success metric.
 	SuccessAlpha float64
-
 	// Random is an optional rng, if nil, math/rand will be used.
 	Random Random
+
+	// TODO: comment these
 
 	GraphsyncVerifiedDealWeight  float64
 	GraphsyncFastRetrievalWeight float64
 	ConnectTimeWeight            float64
+	FirstByteTimeWeight          float64
+	BandwidthWeight              float64
 	SuccessWeight                float64
 }
 
@@ -59,10 +87,16 @@ func DefaultConfig() *Config {
 	return &Config{
 		ConnectTimeAlpha:             0.5,
 		OverallConnectTimeAlpha:      0.8,
+		FirstByteTimeAlpha:           0.5,
+		OverallFirstByteTimeAlpha:    0.8,
+		BandwidthAlpha:               0.5,
+		OverallBandwidthAlpha:        0.8,
 		SuccessAlpha:                 0.5,
 		GraphsyncVerifiedDealWeight:  3.0,
 		GraphsyncFastRetrievalWeight: 2.0,
 		ConnectTimeWeight:            1.0,
+		FirstByteTimeWeight:          1.0,
+		BandwidthWeight:              0.5,
 		SuccessWeight:                1.0,
 	}
 }
@@ -103,6 +137,18 @@ func (cfg Config) WithOverallConnectTimeAlpha(alpha float64) *Config {
 	return &cfg
 }
 
+// WithFirstByteTimeAlpha sets the time to first byte alpha.
+func (cfg Config) WithFirstByteTimeAlpha(alpha float64) *Config {
+	cfg.FirstByteTimeAlpha = alpha
+	return &cfg
+}
+
+// WithOverallFirstByteTimeAlpha sets the overall time to first byte alpha.
+func (cfg Config) WithOverallFirstByteTimeAlpha(alpha float64) *Config {
+	cfg.OverallFirstByteTimeAlpha = alpha
+	return &cfg
+}
+
 // WithSuccessAlpha sets the success alpha.
 func (cfg Config) WithSuccessAlpha(alpha float64) *Config {
 	cfg.SuccessAlpha = alpha
@@ -131,6 +177,12 @@ func (cfg Config) WithGraphsyncFastRetrievalWeight(weight float64) *Config {
 // WithConnectTimeWeight sets the connect time weight.
 func (cfg Config) WithConnectTimeWeight(weight float64) *Config {
 	cfg.ConnectTimeWeight = weight
+	return &cfg
+}
+
+// WithFirstByteTimeWeight sets the time to first byte weight.
+func (cfg Config) WithFirstByteTimeWeight(weight float64) *Config {
+	cfg.FirstByteTimeWeight = weight
 	return &cfg
 }
 

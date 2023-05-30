@@ -45,9 +45,10 @@ type Session interface {
 	AddToRetrieval(retrievalId types.RetrievalID, storageProviderIds []peer.ID) error
 	EndRetrieval(retrievalId types.RetrievalID) error
 
-	RecordFailure(retrievalId types.RetrievalID, storageProviderId peer.ID) error
-	RecordSuccess(storageProviderId peer.ID)
 	RecordConnectTime(storageProviderId peer.ID, connectTime time.Duration)
+	RecordFirstByteTime(storageProviderId peer.ID, firstByteTime time.Duration)
+	RecordFailure(retrievalId types.RetrievalID, storageProviderId peer.ID) error
+	RecordSuccess(storageProviderId peer.ID, bandwidthBytesPerSecond uint64)
 
 	ChooseNextProvider(peers []peer.ID, metadata []metadata.Protocol) int
 }
@@ -227,8 +228,6 @@ func makeOnRetrievalEvent(
 			handleCandidatesFilteredEvent(retrievalId, session, retrievalCid, ret)
 		case events.RetrievalEventStarted:
 			handleStartedEvent(ret)
-		case events.RetrievalEventSuccess:
-			handleSuccessEvent(session, ret)
 		case events.RetrievalEventFailed:
 			handleFailureEvent(ctx, session, retrievalId, eventStats, ret)
 		}
@@ -247,10 +246,6 @@ func handleFailureEvent(
 	eventStats *eventStats,
 	event events.RetrievalEventFailed,
 ) {
-	if event.Phase() != types.IndexerPhase { // indexer failures don't have a storageProviderId
-		session.RecordFailure(retrievalId, event.StorageProviderId())
-	}
-
 	msg := event.ErrorMessage()
 
 	switch event.Phase() {
@@ -288,13 +283,6 @@ func handleFailureEvent(
 		if !matched {
 			stats.Record(ctx, metrics.RetrievalErrorOtherCount.M(1))
 		}
-	}
-}
-
-// handleSuccessEvent is called only when a (singular) retrieval succeeds
-func handleSuccessEvent(session Session, event events.RetrievalEventSuccess) {
-	if event.StorageProviderId() != "" { // TODO: same check on other session reports for bitswap?
-		session.RecordSuccess(event.StorageProviderId())
 	}
 }
 

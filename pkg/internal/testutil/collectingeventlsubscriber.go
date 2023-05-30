@@ -104,9 +104,11 @@ func VerifyContainsCollectedEvent(t *testing.T, afterStart time.Duration, expect
 			VerifyCollectedEvent(t, actual, expected)
 			return actual.Code()
 		}
-		if actual.Code() == expected.Code() {
-			t.Logf("non-matching event: %s <> %s\n", actual, expected)
-		}
+		/*
+			if actual.Code() == expected.Code() {
+				t.Logf("non-matching event: %s <> %s\n", actual, expected)
+			}
+		*/
 	}
 	require.Failf(t, "unexpected event", "got '%s' @ %s", actual.Code(), afterStart)
 	return ""
@@ -138,6 +140,13 @@ func VerifyCollectedEvent(t *testing.T, actual types.RetrievalEvent, expected ty
 			}
 		} else {
 			require.Fail(t, "wrong event type, no Candidates", expected.Code())
+		}
+	}
+	if efb, ok := expected.(events.RetrievalEventFirstByte); ok {
+		if afb, ok := actual.(events.RetrievalEventFirstByte); ok {
+			require.Equal(t, efb.Duration(), afb.Duration(), fmt.Sprintf("duration for %s", expected.Code()))
+		} else {
+			require.Fail(t, "wrong event type", expected.Code())
 		}
 	}
 	if efail, ok := expected.(events.RetrievalEventFailed); ok {

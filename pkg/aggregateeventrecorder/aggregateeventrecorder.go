@@ -191,11 +191,12 @@ func (a *aggregateEventRecorder) ingestEvents() {
 			case types.FirstByteCode:
 				// Calculate time to first byte
 				spid := types.Identifier(event)
-				timeToFirstByte := event.Time().Sub(tempData.startTime).String()
-				tempData.retrievalAttempts[spid].TimeToFirstByte = timeToFirstByte
+				retrievalTtfb := event.Time().Sub(tempData.startTime).String()
+				spTtfb := event.(events.RetrievalEventFirstByte).Duration().String()
+				tempData.retrievalAttempts[spid].TimeToFirstByte = spTtfb
 				if tempData.ttfb == "" {
 					tempData.firstByteTime = event.Time()
-					tempData.ttfb = timeToFirstByte
+					tempData.ttfb = retrievalTtfb
 				}
 			case types.FailedCode:
 				switch event.Phase() {
