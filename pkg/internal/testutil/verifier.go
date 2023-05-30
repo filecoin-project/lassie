@@ -20,6 +20,7 @@ type ExpectedActionsAtTime struct {
 	CompletedRetrievals  []peer.ID
 	CandidatesDiscovered []DiscoveredCandidate
 	ExpectedEvents       []types.RetrievalEvent
+	ExpectedMetrics      []SessionMetric
 }
 
 type RemoteStats struct {
@@ -48,6 +49,7 @@ func (rv RetrievalVerifier) RunWithVerification(ctx context.Context,
 	clock *clock.Mock,
 	client VerifierClient,
 	mockCandidateFinder *MockCandidateFinder,
+	mockSession *MockSession,
 	runRetrievals []RunRetrieval,
 ) []types.RetrievalResult {
 
@@ -66,6 +68,9 @@ func (rv RetrievalVerifier) RunWithVerification(ctx context.Context,
 		currentTime = expectedActionsAtTime.AfterStart
 		t.Logf("current time: %s", clock.Now())
 		asyncCollectingEventsListener.VerifyNextEvents(t, expectedActionsAtTime.AfterStart, expectedActionsAtTime.ExpectedEvents)
+		if mockSession != nil {
+			mockSession.VerifyMetricsAt(ctx, t, expectedActionsAtTime.AfterStart, expectedActionsAtTime.ExpectedMetrics)
+		}
 		if mockCandidateFinder != nil {
 			mockCandidateFinder.VerifyCandidatesDiscovered(ctx, t, expectedActionsAtTime.AfterStart, expectedActionsAtTime.CandidatesDiscovered)
 		}

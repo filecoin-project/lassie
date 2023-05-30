@@ -134,10 +134,11 @@ func Accepted(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.T
 // RetrievalEventFirstByte describes when the first byte of data was received during the RetrievalPhase
 type RetrievalEventFirstByte struct {
 	spBaseEvent
+	duration time.Duration
 }
 
-func FirstByte(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.Time, candidate types.RetrievalCandidate) RetrievalEventFirstByte {
-	return RetrievalEventFirstByte{spBaseEvent{baseEvent{at, retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}}
+func FirstByte(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.Time, candidate types.RetrievalCandidate, duration time.Duration) RetrievalEventFirstByte {
+	return RetrievalEventFirstByte{spBaseEvent{baseEvent{at, retrievalId, phaseStartTime, candidate.RootCid, candidate.Metadata.Protocols()}, candidate.MinerPeer.ID}, duration}
 }
 
 // RetrievalEventFailed describes a phase agnostic failure
@@ -205,8 +206,9 @@ func (r RetrievalEventAccepted) Phase() types.Phase    { return types.RetrievalP
 func (r RetrievalEventAccepted) String() string {
 	return fmt.Sprintf("AcceptedEvent<%s, %s, %s, %s, %v>", r.eventTime, r.retrievalId, r.payloadCid, r.storageProviderId, r.protocols)
 }
-func (r RetrievalEventFirstByte) Code() types.EventCode { return types.FirstByteCode }
-func (r RetrievalEventFirstByte) Phase() types.Phase    { return types.RetrievalPhase }
+func (r RetrievalEventFirstByte) Code() types.EventCode   { return types.FirstByteCode }
+func (r RetrievalEventFirstByte) Phase() types.Phase      { return types.RetrievalPhase }
+func (r RetrievalEventFirstByte) Duration() time.Duration { return r.duration }
 func (r RetrievalEventFirstByte) String() string {
 	return fmt.Sprintf("FirstByteEvent<%s, %s, %s, %s, %v>", r.eventTime, r.retrievalId, r.payloadCid, r.storageProviderId, r.protocols)
 }
