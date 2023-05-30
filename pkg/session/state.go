@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,20 +38,6 @@ type State interface {
 	// until the retrieval has finished.
 	AddToRetrieval(retrievalId types.RetrievalID, storageProviderIds []peer.ID) error
 
-	// RemoveFromRetrieval removes a storage provider from a an active
-	// retrieval, decreasing the concurrency for that storage provider. Used in
-	// both the case of a retrieval failure (RecordFailure) and when a
-	// QueryResponse is unacceptable.
-	RemoveFromRetrieval(retrievalId types.RetrievalID, storageProviderId peer.ID) error
-
-	// RecordFailure records a failure for a storage provider, contributing to
-	// the success metric for this provider.
-	RecordFailure(retrievalId types.RetrievalID, storageProviderId peer.ID) error
-
-	// RecordSuccess records a success for a storage provider, contributing to
-	// the success metric for this provider.
-	RecordSuccess(storageProviderId peer.ID)
-
 	// EndRetrieval cleans up an existing retrieval.
 	EndRetrieval(retrievalId types.RetrievalID) error
 
@@ -58,6 +45,24 @@ type State interface {
 	// provider. This is used for prioritisation of storage providers and is
 	// recorded with a decay according to SessionStateConfig#ConnectTimeAlpha.
 	RecordConnectTime(storageProviderId peer.ID, connectTime time.Duration)
+
+	// RecordFirstByteTime records the time it took to receive the first byte
+	// from a storage provider. This is used for prioritisation of storage
+	// providers and is recorded with a decay according to
+	// SessionStateConfig#FirstByteTimeAlpha.
+	RecordFirstByteTime(storageProviderId peer.ID, firstByteTime time.Duration)
+
+	// RecordFailure records a failure for a storage provider. This is used for
+	// prioritisation of storage providers and is recorded as a success=0 with a
+	// decay according to SessionStateConfig#SuccessAlpha.
+	RecordFailure(retrievalId types.RetrievalID, storageProviderId peer.ID) error
+
+	// RecordSuccess records a success for a storage provider. This is used for
+	// prioritisation of storage providers and is recorded as a success=1 with a
+	// decay according to SessionStateConfig#SuccessAlpha. Bandwidth is also
+	// used for prioritisation and is recorded with a decay according to
+	// SessionStateConfig#BandwidthAlpha.
+	RecordSuccess(storageProviderId peer.ID, bandwidthBytesPerSecond uint64)
 
 	// ChooseNextProvider compares a list of storage providers and returns the
 	// index of the next storage provider to use. This uses both historically
@@ -85,9 +90,11 @@ func (m metric[T]) getValue(def T) T {
 }
 
 type storageProvider struct {
-	concurrency   uint
-	connectTimeMs metric[uint64]
-	success       metric[float64]
+	concurrency     uint
+	connectTimeMs   metric[uint64]
+	firstByteTimeMs metric[uint64]
+	bandwidthBps    metric[uint64]
+	success         metric[float64]
 }
 
 type SessionState struct {
@@ -96,8 +103,10 @@ type SessionState struct {
 	// active retrievals
 	arm map[types.RetrievalID]activeRetrieval
 	// failures and concurrency of storage providers
-	spm                  map[peer.ID]storageProvider
-	overallConnectTimeMs metric[uint64]
+	spm                    map[peer.ID]storageProvider
+	overallConnectTimeMs   metric[uint64]
+	overallFirstByteTimeMs metric[uint64]
+	overallBandwidthBps    metric[uint64]
 }
 
 // NewSessionState creates a new SessionState with the given config. If the config is
@@ -175,10 +184,7 @@ func (spt *SessionState) GetConcurrency(storageProviderId peer.ID) uint {
 	return 0
 }
 
-func (spt *SessionState) RemoveFromRetrieval(retrievalId types.RetrievalID, storageProviderId peer.ID) error {
-	spt.lk.Lock()
-	defer spt.lk.Unlock()
-
+func (spt *SessionState) removeFromRetrieval(retrievalId types.RetrievalID, storageProviderId peer.ID) error {
 	if ar, has := spt.arm[retrievalId]; has {
 		var foundSp bool
 		for ii, id := range ar.storageProviderIds {
@@ -207,23 +213,19 @@ func (spt *SessionState) RemoveFromRetrieval(retrievalId types.RetrievalID, stor
 }
 
 func (spt *SessionState) RecordFailure(retrievalId types.RetrievalID, storageProviderId peer.ID) error {
-	// remove from this retrieval to free up the SP to be tried again for a future retrieval
-	if err := spt.RemoveFromRetrieval(retrievalId, storageProviderId); err != nil {
-		return err
-	}
-
-	spt.recordSuccess(storageProviderId, 0)
-	return nil
-}
-
-func (spt *SessionState) RecordSuccess(storageProviderId peer.ID) {
-	spt.recordSuccess(storageProviderId, 1)
-}
-
-func (spt *SessionState) recordSuccess(storageProviderId peer.ID, current float64) {
 	spt.lk.Lock()
 	defer spt.lk.Unlock()
 
+	// remove from this retrieval to free up the SP to be tried again for a future retrieval
+	if err := spt.removeFromRetrieval(retrievalId, storageProviderId); err != nil {
+		return err
+	}
+
+	spt.recordSuccessMetric(storageProviderId, 0)
+	return nil
+}
+
+func (spt *SessionState) recordSuccessMetric(storageProviderId peer.ID, current float64) {
 	status := spt.spm[storageProviderId]
 	// EMA of successes (0.0 & 1.0)
 	if !status.success.initialized {
@@ -233,6 +235,29 @@ func (spt *SessionState) recordSuccess(storageProviderId peer.ID, current float6
 		status.success.value = (1-spt.config.SuccessAlpha)*current + spt.config.SuccessAlpha*status.success.value
 	}
 	spt.spm[storageProviderId] = status
+}
+func (spt *SessionState) RecordSuccess(storageProviderId peer.ID, bandwidthBytesPerSecond uint64) {
+	spt.lk.Lock()
+	defer spt.lk.Unlock()
+
+	spt.recordSuccessMetric(storageProviderId, 1)
+
+	status := spt.spm[storageProviderId]
+	// EMA of bandwidth
+	if !status.bandwidthBps.initialized {
+		status.bandwidthBps.initialized = true
+		status.bandwidthBps.value = bandwidthBytesPerSecond
+	} else {
+		status.bandwidthBps.value = uint64((1-spt.config.BandwidthAlpha)*float64(bandwidthBytesPerSecond) + spt.config.BandwidthAlpha*float64(status.bandwidthBps.value))
+	}
+	spt.spm[storageProviderId] = status
+
+	if !spt.overallBandwidthBps.initialized {
+		spt.overallBandwidthBps.initialized = true
+		spt.overallBandwidthBps.value = bandwidthBytesPerSecond
+	} else {
+		spt.overallBandwidthBps.value = uint64((1-spt.config.OverallBandwidthAlpha)*float64(bandwidthBytesPerSecond) + spt.config.OverallBandwidthAlpha*float64(spt.overallBandwidthBps.value))
+	}
 }
 
 func (spt *SessionState) RecordConnectTime(storageProviderId peer.ID, current time.Duration) {
@@ -256,6 +281,30 @@ func (spt *SessionState) RecordConnectTime(storageProviderId peer.ID, current ti
 		spt.overallConnectTimeMs.value = currentMs
 	} else {
 		spt.overallConnectTimeMs.value = uint64((1-spt.config.OverallConnectTimeAlpha)*float64(currentMs) + spt.config.OverallConnectTimeAlpha*float64(spt.overallConnectTimeMs.value))
+	}
+}
+
+func (spt *SessionState) RecordFirstByteTime(storageProviderId peer.ID, current time.Duration) {
+	spt.lk.Lock()
+	defer spt.lk.Unlock()
+
+	currentMs := uint64(current.Milliseconds())
+
+	status := spt.spm[storageProviderId]
+	// EMA of firstByte time
+	if !status.firstByteTimeMs.initialized {
+		status.firstByteTimeMs.initialized = true
+		status.firstByteTimeMs.value = currentMs
+	} else {
+		status.firstByteTimeMs.value = uint64((1-spt.config.FirstByteTimeAlpha)*float64(currentMs) + spt.config.FirstByteTimeAlpha*float64(status.firstByteTimeMs.value))
+	}
+	spt.spm[storageProviderId] = status
+
+	if !spt.overallFirstByteTimeMs.initialized {
+		spt.overallFirstByteTimeMs.initialized = true
+		spt.overallFirstByteTimeMs.value = currentMs
+	} else {
+		spt.overallFirstByteTimeMs.value = uint64((1-spt.config.OverallFirstByteTimeAlpha)*float64(currentMs) + spt.config.OverallFirstByteTimeAlpha*float64(spt.overallFirstByteTimeMs.value))
 	}
 }
 
@@ -287,7 +336,13 @@ func (spt *SessionState) ChooseNextProvider(peers []peer.ID, mda []metadata.Prot
 		}
 		r -= s
 	}
-	panic("unreachable")
+	sb := strings.Builder{}
+	sb.WriteString("internal error - failed to choose a provider from: ")
+	for _, pi := range ind {
+		sb.WriteString(fmt.Sprintf("%s: %f, ", peers[pi], scores[pi]))
+	}
+	sb.WriteString(fmt.Sprintf("with roll of %f", r))
+	panic(sb.String())
 }
 
 // scoreProvider returns a score for a given provider, higher is better.
@@ -311,20 +366,35 @@ func (spt *SessionState) scoreProvider(id peer.ID, md *metadata.GraphsyncFilecoi
 	// collected metrics scoring
 	sp := spt.spm[id]
 
-	// Exponential decay of connect time `f(x) = exp(-λx)` where λ is our
-	// exponential decay constant that we use to normalise the decay curve by
-	// observed connect time over all providers; giving us a stronger signal
-	// for relatively fast providers, but a long-tail toward a zero value for
-	// slow providers.
-	// https://en.wikipedia.org/wiki/Exponential_decay
-	// If we have no connect time data, use the average, if we have no average
-	// use 1.
-	λ := 1 / float64(spt.overallConnectTimeMs.getValue(1))
-	score += spt.config.ConnectTimeWeight * math.Exp(-λ*float64(sp.connectTimeMs.getValue(spt.overallConnectTimeMs.getValue(1))))
+	score += expDecay(spt.overallConnectTimeMs, sp.connectTimeMs, spt.config.ConnectTimeWeight)
+	score += expDecay(spt.overallFirstByteTimeMs, sp.firstByteTimeMs, spt.config.FirstByteTimeWeight)
+	score += expDecay(spt.overallBandwidthBps, sp.bandwidthBps, spt.config.BandwidthWeight)
 
 	// if we have no success data, treat it as fully successful
 	score += spt.config.SuccessWeight * sp.success.getValue(1)
 
-	// DEBUG: fmt.Printf("%s v=%v, f=%v, oconn=%d, conn=%d, success=%f, score=%f\n", string(id), v, f, spt.overallConnectTimeMs.value, sp.connectTimeMs.value, sp.success.value, score)
 	return score
+}
+
+// expDecay calculates the exponential decay of metric `x`: `f(x) =
+// exp(-λx)` where λ is our exponential decay constant that we use to
+// normalise the decay curve by observed values over all providers; giving us a
+// stronger signal for providers with lower values of `x`, but a long-tail
+// toward a zero value for providers with higher values of `x`.
+//
+// The function takes in three parameters:
+// - overall: the overall `x` of all providers
+// - current: the `x` of the current provider
+// - weight: the weight to be applied to the exponential decay
+//
+// We use this for each of the metrics that we don't have a good pre-defined
+// normalisation method for. Timing metrics will depend on client conditions so
+// we can't use a fixed normalisation for them.
+func expDecay(overall metric[uint64], current metric[uint64], weight float64) float64 {
+	o := overall.getValue(1)
+	if o == 0 { // avoid divide by zero
+		o = 1
+	}
+	λ := 1 / float64(o)
+	return weight * math.Exp(-λ*float64(current.getValue(o)))
 }

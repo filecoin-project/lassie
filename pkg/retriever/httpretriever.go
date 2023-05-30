@@ -41,6 +41,7 @@ var _ TransportProtocol = &ProtocolHttp{}
 
 type ProtocolHttp struct {
 	Client *http.Client
+	Clock  clock.Clock
 }
 
 // NewHttpRetriever makes a new CandidateRetriever for verified CAR HTTP
@@ -57,7 +58,10 @@ func NewHttpRetrieverWithDeps(
 	initialPause time.Duration,
 ) types.CandidateRetriever {
 	return &parallelPeerRetriever{
-		Protocol:                &ProtocolHttp{Client: client},
+		Protocol: &ProtocolHttp{
+			Client: client,
+			Clock:  clock,
+		},
 		Session:                 session,
 		Clock:                   clock,
 		QueueInitialPause:       initialPause,
@@ -98,6 +102,9 @@ func (ph *ProtocolHttp) Retrieve(
 	// to parallelise connections if we have confidence in not wasting server time
 	// by requesting but not reading bodies (or delayed reading which may result in
 	// timeouts).
+
+	retrievalStart := ph.Clock.Now()
+
 	resp, err := ph.beginRequest(ctx, retrieval.request, candidate)
 	if err != nil {
 		return nil, err
@@ -110,8 +117,8 @@ func (ph *ProtocolHttp) Retrieve(
 	}
 	var ttfb time.Duration
 	rdr := newTimeToFirstByteReader(resp.Body, func() {
-		ttfb = retrieval.Clock.Since(phaseStartTime)
-		shared.sendEvent(events.FirstByte(retrieval.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, candidate))
+		ttfb = retrieval.Clock.Since(retrievalStart)
+		shared.sendEvent(events.FirstByte(retrieval.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, candidate, ttfb))
 	})
 	cfg := verifiedcar.Config{
 		Root:               retrieval.request.Cid,
@@ -125,7 +132,7 @@ func (ph *ProtocolHttp) Retrieve(
 		return nil, err
 	}
 
-	duration := retrieval.Clock.Since(phaseStartTime)
+	duration := retrieval.Clock.Since(retrievalStart)
 	speed := uint64(float64(byteCount) / duration.Seconds())
 
 	return &types.RetrievalStats{

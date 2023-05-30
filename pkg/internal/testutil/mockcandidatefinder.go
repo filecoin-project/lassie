@@ -36,7 +36,7 @@ func (me *MockCandidateFinder) VerifyCandidatesDiscovered(ctx context.Context, t
 		case candidate := <-me.discoveredCandidates:
 			candidatesDiscovered = append(candidatesDiscovered, candidate)
 		case <-ctx.Done():
-			require.FailNowf(t, "failed to receive expected candidates", "expected %d, received %d @", len(expectedCandidatesDiscovered), i, afterStart)
+			require.FailNowf(t, "failed to receive expected candidates", "expected %d, received %d @ %s", len(expectedCandidatesDiscovered), i, afterStart)
 		}
 	}
 	require.ElementsMatch(t, expectedCandidatesDiscovered, candidatesDiscovered)

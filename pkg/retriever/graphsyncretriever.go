@@ -126,59 +126,7 @@ func (pg *ProtocolGraphsync) Retrieve(
 	candidate types.RetrievalCandidate,
 ) (*types.RetrievalStats, error) {
 
-	eventsCallback := makeEventsCallback(
-		shared,
-		retrieval.parallelPeerRetriever.Clock,
-		retrieval.request.RetrievalID,
-		phaseStartTime,
-		candidate,
-	)
-	return pg.retrievalPhase(
-		ctx,
-		retrieval,
-		timeout,
-		candidate,
-		eventsCallback,
-	)
-}
-
-func makeEventsCallback(
-	shared *retrievalShared,
-	clock clock.Clock,
-	retrievalId types.RetrievalID,
-	phaseStartTime time.Time,
-	candidate types.RetrievalCandidate) datatransfer.Subscriber {
-
-	var receivedFirstByte bool
-	return func(event datatransfer.Event, channelState datatransfer.ChannelState) {
-		switch event.Code {
-		case datatransfer.Open:
-			shared.sendEvent(events.Proposed(clock.Now(), retrievalId, phaseStartTime, candidate))
-		case datatransfer.NewVoucherResult:
-			lastVoucher := channelState.LastVoucherResult()
-			resType, err := retrievaltypes.DealResponseFromNode(lastVoucher.Voucher)
-			if err != nil {
-				return
-			}
-			if resType.Status == retrievaltypes.DealStatusAccepted {
-				shared.sendEvent(events.Accepted(clock.Now(), retrievalId, phaseStartTime, candidate))
-			}
-		case datatransfer.DataReceivedProgress:
-			if !receivedFirstByte {
-				receivedFirstByte = true
-				shared.sendEvent(events.FirstByte(clock.Now(), retrievalId, phaseStartTime, candidate))
-			}
-		}
-	}
-}
-
-func (pg *ProtocolGraphsync) retrievalPhase(
-	ctx context.Context,
-	retrieval *retrieval,
-	timeout time.Duration,
-	candidate types.RetrievalCandidate,
-	eventsCallback datatransfer.Subscriber,
-) (*types.RetrievalStats, error) {
+	retrievalStart := pg.Clock.Now()
 
 	ss := "*"
 	selector := retrieval.request.GetSelector()
@@ -230,8 +178,25 @@ func (pg *ProtocolGraphsync) retrievalPhase(
 		})
 	}
 
+	var receivedFirstByte bool
 	eventsSubscriber := func(event datatransfer.Event, channelState datatransfer.ChannelState) {
-		if event.Code == datatransfer.DataReceivedProgress {
+		switch event.Code {
+		case datatransfer.Open:
+			shared.sendEvent(events.Proposed(retrieval.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, candidate))
+		case datatransfer.NewVoucherResult:
+			lastVoucher := channelState.LastVoucherResult()
+			resType, err := retrievaltypes.DealResponseFromNode(lastVoucher.Voucher)
+			if err != nil {
+				return
+			}
+			if resType.Status == retrievaltypes.DealStatusAccepted {
+				shared.sendEvent(events.Accepted(retrieval.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, candidate))
+			}
+		case datatransfer.DataReceivedProgress:
+			if !receivedFirstByte {
+				receivedFirstByte = true
+				shared.sendEvent(events.FirstByte(retrieval.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, candidate, retrieval.Clock.Since(retrievalStart)))
+			}
 			if lastBytesReceivedTimer != nil {
 				doneLk.Lock()
 				if !done {
@@ -243,7 +208,6 @@ func (pg *ProtocolGraphsync) retrievalPhase(
 				doneLk.Unlock()
 			}
 		}
-		eventsCallback(event, channelState)
 	}
 
 	stats, err := pg.Client.RetrieveFromPeer(

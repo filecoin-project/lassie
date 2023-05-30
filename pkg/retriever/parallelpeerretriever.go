@@ -180,7 +180,15 @@ func (retrieval *retrieval) RetrieveFromAsyncCandidates(asyncCandidates types.In
 		finishAll <- struct{}{}
 	}()
 
-	stats, err := collectResults(ctx, shared, retrieval.eventsCallback)
+	eventsCallback := func(evt types.RetrievalEvent) {
+		switch ret := evt.(type) {
+		case events.RetrievalEventFirstByte:
+			retrieval.Session.RecordFirstByteTime(evt.StorageProviderId(), ret.Duration())
+		}
+		retrieval.eventsCallback(evt)
+	}
+
+	stats, err := collectResults(ctx, shared, eventsCallback)
 	cancelCtx()
 	// optimistically try to wait for all routines to finish
 	select {
@@ -304,6 +312,9 @@ func (retrieval *retrieval) runRetrievalCandidate(
 		if ctx.Err() == nil { // not cancelled, maybe timed out though
 			logger.Warnf("Failed to connect to SP %s: %v", candidate.MinerPeer.ID, err)
 			retrievalErr = fmt.Errorf("%w: %v", ErrConnectFailed, err)
+			if err := retrieval.Session.RecordFailure(retrieval.request.RetrievalID, candidate.MinerPeer.ID); err != nil {
+				logger.Errorf("Error recording retrieval failure: %v", err)
+			}
 			shared.sendEvent(events.Failed(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate, retrievalErr.Error()))
 		}
 	} else {
@@ -323,6 +334,9 @@ func (retrieval *retrieval) runRetrievalCandidate(
 					msg = fmt.Sprintf("timeout after %s", timeout)
 				}
 				shared.sendEvent(events.Failed(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate, msg))
+				if err := retrieval.Session.RecordFailure(retrieval.request.RetrievalID, candidate.MinerPeer.ID); err != nil {
+					logger.Errorf("Error recording retrieval failure: %v", err)
+				}
 			} else {
 				shared.sendEvent(events.Success(
 					retrieval.parallelPeerRetriever.Clock.Now(),
@@ -335,8 +349,13 @@ func (retrieval *retrieval) runRetrievalCandidate(
 					stats.TotalPayment,
 					0,
 					retrieval.Protocol.Code(),
-				),
-				)
+				))
+				seconds := stats.Duration.Seconds()
+				if seconds == 0 { // avoid a divide by zero
+					seconds = 1
+				}
+				bandwidthBytesPerSecond := float64(stats.Size) / seconds
+				retrieval.Session.RecordSuccess(candidate.MinerPeer.ID, uint64(bandwidthBytesPerSecond))
 			}
 		} // else we didn't get to retrieval phase because we were cancelled
 	}

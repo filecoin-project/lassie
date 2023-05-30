@@ -148,7 +148,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	cb := func(bytesWritten uint64) {
 		// record first byte received
 		if totalWritten.Load() == 0 {
-			br.events(events.FirstByte(br.clock.Now(), br.request.RetrievalID, phaseStartTime, bitswapCandidate))
+			br.events(events.FirstByte(br.clock.Now(), br.request.RetrievalID, phaseStartTime, bitswapCandidate, br.clock.Since(phaseStartTime)))
 		}
 		totalWritten.Add(bytesWritten)
 		blockCount.Add(1)

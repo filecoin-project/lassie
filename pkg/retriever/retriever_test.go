@@ -3,6 +3,7 @@ package retriever
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -55,7 +56,7 @@ func TestRetriever(t *testing.T) {
 	startTime := time.Now().Add(time.Hour)
 	tc := []struct {
 		name               string
-		setup              func(*session.Config)
+		setup              func(*testutil.MockSession)
 		candidates         []types.RetrievalCandidate
 		returns_connected  map[string]testutil.DelayedConnectReturn
 		returns_retrievals map[string]testutil.DelayedClientReturn
@@ -105,6 +106,9 @@ func TestRetriever(t *testing.T) {
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Connected(startTime.Add(20*time.Millisecond), rid, startTime, types.RetrievalPhase, types.NewRetrievalCandidate(peerA, nil, cid1)),
 					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_Connect, Provider: peerA, Duration: 20 * time.Millisecond},
+					},
 				},
 				{
 					AfterStart:         20*time.Millisecond + initialPause,
@@ -115,9 +119,14 @@ func TestRetriever(t *testing.T) {
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Proposed(startTime.Add(25*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerA, nil, cid1)),
 						events.Accepted(startTime.Add(25*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerA, nil, cid1)),
-						events.FirstByte(startTime.Add(25*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerA, nil, cid1)),
+						events.FirstByte(startTime.Add(25*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerA, nil, cid1), 5*time.Millisecond),
 						events.Success(startTime.Add(25*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerA, nil, cid1), 1, 2, 3*time.Second, big.Zero(), 55, multicodec.TransportGraphsyncFilecoinv1),
-						events.Finished(startTime.Add(25*time.Millisecond+initialPause), rid, startTime, types.RetrievalCandidate{RootCid: cid1})},
+						events.Finished(startTime.Add(25*time.Millisecond+initialPause), rid, startTime, types.RetrievalCandidate{RootCid: cid1}),
+					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_FirstByte, Provider: peerA, Duration: 5 * time.Millisecond},
+						{Type: testutil.SessionMetric_Success, Provider: peerA, Value: math.Trunc(1.0 / float64((3 * time.Second).Milliseconds()))},
+					},
 				},
 			},
 		},
@@ -170,6 +179,9 @@ func TestRetriever(t *testing.T) {
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Connected(startTime.Add(5*time.Millisecond), rid, startTime, types.RetrievalPhase, types.NewRetrievalCandidate(peerB, nil, cid1)),
 					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_Connect, Provider: peerB, Duration: 5 * time.Millisecond},
+					},
 				},
 				{
 					AfterStart:         5*time.Millisecond + initialPause,
@@ -180,14 +192,22 @@ func TestRetriever(t *testing.T) {
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Proposed(startTime.Add(10*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, nil, cid1)),
 						events.Accepted(startTime.Add(10*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, nil, cid1)),
-						events.FirstByte(startTime.Add(10*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, nil, cid1)),
+						events.FirstByte(startTime.Add(10*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, nil, cid1), 5*time.Millisecond),
 						events.Success(startTime.Add(10*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, nil, cid1), 10, 11, 12*time.Second, big.Zero(), 50, multicodec.TransportGraphsyncFilecoinv1),
-						events.Finished(startTime.Add(10*time.Millisecond+initialPause), rid, startTime, types.RetrievalCandidate{RootCid: cid1})},
+						events.Finished(startTime.Add(10*time.Millisecond+initialPause), rid, startTime, types.RetrievalCandidate{RootCid: cid1}),
+					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_FirstByte, Provider: peerB, Duration: 5 * time.Millisecond},
+						{Type: testutil.SessionMetric_Success, Provider: peerB, Value: math.Trunc(10.0 / float64((12 * time.Second).Milliseconds()))},
+					},
 				},
 			},
 		},
 		{
 			name: "blacklisted candidate",
+			setup: func(ms *testutil.MockSession) {
+				ms.SetBlockList(map[peer.ID]bool{blacklistedPeer: true})
+			},
 			candidates: []types.RetrievalCandidate{
 				{MinerPeer: peer.AddrInfo{ID: blacklistedPeer}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
 				{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
@@ -235,6 +255,9 @@ func TestRetriever(t *testing.T) {
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Connected(startTime.Add(50*time.Millisecond), rid, startTime, types.RetrievalPhase, types.NewRetrievalCandidate(peerA, nil, cid1)),
 					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_Connect, Provider: peerA, Duration: 50 * time.Millisecond},
+					},
 				},
 				{
 					AfterStart:         50*time.Millisecond + initialPause,
@@ -245,9 +268,14 @@ func TestRetriever(t *testing.T) {
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Proposed(startTime.Add(55*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerA, nil, cid1)),
 						events.Accepted(startTime.Add(55*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerA, nil, cid1)),
-						events.FirstByte(startTime.Add(55*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerA, nil, cid1)),
+						events.FirstByte(startTime.Add(55*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerA, nil, cid1), 5*time.Millisecond),
 						events.Success(startTime.Add(55*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerA, nil, cid1), 1, 2, 3*time.Second, big.Zero(), 55, multicodec.TransportGraphsyncFilecoinv1),
-						events.Finished(startTime.Add(55*time.Millisecond+initialPause), rid, startTime, types.RetrievalCandidate{RootCid: cid1})},
+						events.Finished(startTime.Add(55*time.Millisecond+initialPause), rid, startTime, types.RetrievalCandidate{RootCid: cid1}),
+					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_FirstByte, Provider: peerA, Duration: 5 * time.Millisecond},
+						{Type: testutil.SessionMetric_Success, Provider: peerA, Value: math.Trunc(1.0 / float64((3 * time.Second).Milliseconds()))},
+					},
 				},
 			},
 		},
@@ -301,11 +329,17 @@ func TestRetriever(t *testing.T) {
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Failed(startTime.Add(5*time.Millisecond), rid, startTime, types.RetrievalPhase, types.NewRetrievalCandidate(peerA, nil, cid1), "unable to connect to provider: blip"),
 					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_Failure, Provider: peerA},
+					},
 				},
 				{
 					AfterStart: 50 * time.Millisecond,
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Connected(startTime.Add(50*time.Millisecond), rid, startTime, types.RetrievalPhase, types.NewRetrievalCandidate(peerB, nil, cid1)),
+					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_Connect, Provider: peerB, Duration: 50 * time.Millisecond},
 					},
 				},
 				{
@@ -317,9 +351,14 @@ func TestRetriever(t *testing.T) {
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Proposed(startTime.Add(55*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, nil, cid1)),
 						events.Accepted(startTime.Add(55*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, nil, cid1)),
-						events.FirstByte(startTime.Add(55*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, nil, cid1)),
+						events.FirstByte(startTime.Add(55*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, nil, cid1), 5*time.Millisecond),
 						events.Success(startTime.Add(55*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, nil, cid1), 1, 2, 3*time.Second, big.Zero(), 55, multicodec.TransportGraphsyncFilecoinv1),
-						events.Finished(startTime.Add(55*time.Millisecond+initialPause), rid, startTime, types.RetrievalCandidate{RootCid: cid1})},
+						events.Finished(startTime.Add(55*time.Millisecond+initialPause), rid, startTime, types.RetrievalCandidate{RootCid: cid1}),
+					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_FirstByte, Provider: peerB, Duration: 5 * time.Millisecond},
+						{Type: testutil.SessionMetric_Success, Provider: peerB, Value: math.Trunc(1.0 / float64((3 * time.Second).Milliseconds()))},
+					},
 				},
 			},
 		},
@@ -374,6 +413,9 @@ func TestRetriever(t *testing.T) {
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Connected(startTime.Add(5*time.Millisecond), rid, startTime, types.RetrievalPhase, types.NewRetrievalCandidate(peerB, nil, cid1)),
 					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_Connect, Provider: peerB, Duration: 5 * time.Millisecond},
+					},
 				},
 				{
 					AfterStart:         5*time.Millisecond + initialPause,
@@ -385,6 +427,9 @@ func TestRetriever(t *testing.T) {
 						events.Proposed(startTime.Add(10*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, nil, cid1)),
 						events.Failed(startTime.Add(10*time.Millisecond+initialPause), rid, startTime, types.RetrievalPhase, types.NewRetrievalCandidate(peerB, nil, cid1), "retrieval failed: bork!"),
 					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_Failure, Provider: peerB},
+					},
 				},
 				{
 					AfterStart:         500 * time.Millisecond,
@@ -392,23 +437,31 @@ func TestRetriever(t *testing.T) {
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Connected(startTime.Add(500*time.Millisecond), rid, startTime, types.RetrievalPhase, types.NewRetrievalCandidate(peerA, nil, cid1)),
 					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_Connect, Provider: peerA, Duration: 500 * time.Millisecond},
+					},
 				},
 				{
 					AfterStart: 505 * time.Millisecond,
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Proposed(startTime.Add(505*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerA, nil, cid1)),
 						events.Accepted(startTime.Add(505*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerA, nil, cid1)),
-						events.FirstByte(startTime.Add(505*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerA, nil, cid1)),
+						events.FirstByte(startTime.Add(505*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerA, nil, cid1), 5*time.Millisecond),
 						events.Success(startTime.Add(505*time.Millisecond), rid, startTime, types.NewRetrievalCandidate(peerA, nil, cid1), 10, 20, 30*time.Second, big.Zero(), 44, multicodec.TransportGraphsyncFilecoinv1),
-						events.Finished(startTime.Add(505*time.Millisecond), rid, startTime, types.RetrievalCandidate{RootCid: cid1})},
+						events.Finished(startTime.Add(505*time.Millisecond), rid, startTime, types.RetrievalCandidate{RootCid: cid1}),
+					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_FirstByte, Provider: peerA, Duration: 5 * time.Millisecond},
+						{Type: testutil.SessionMetric_Success, Provider: peerA, Value: math.Trunc(10.0 / float64((30 * time.Second).Milliseconds()))},
+					},
 				},
 			},
 		},
 
 		{
 			name: "two candidates, first times out retrieval",
-			setup: func(rc *session.Config) {
-				rc.DefaultProviderConfig.RetrievalTimeout = time.Millisecond * 200
+			setup: func(ms *testutil.MockSession) {
+				ms.SetProviderTimeout(time.Millisecond * 200)
 			},
 			candidates: []types.RetrievalCandidate{
 				{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
@@ -465,6 +518,9 @@ func TestRetriever(t *testing.T) {
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Connected(startTime.Add(1*time.Millisecond), rid, startTime, types.RetrievalPhase, types.NewRetrievalCandidate(peerA, nil, cid1)),
 					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_Connect, Provider: peerA, Duration: time.Millisecond},
+					},
 				},
 				{
 					AfterStart:         1*time.Millisecond + initialPause,
@@ -475,6 +531,9 @@ func TestRetriever(t *testing.T) {
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Connected(startTime.Add(100*time.Millisecond), rid, startTime, types.RetrievalPhase, types.NewRetrievalCandidate(peerB, nil, cid1)),
 					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_Connect, Provider: peerB, Duration: 100 * time.Millisecond},
+					},
 				},
 				{
 					AfterStart:         201*time.Millisecond + initialPause,
@@ -482,23 +541,31 @@ func TestRetriever(t *testing.T) {
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Failed(startTime.Add(201*time.Millisecond+initialPause), rid, startTime, types.RetrievalPhase, types.NewRetrievalCandidate(peerA, nil, cid1), "timeout after 200ms"),
 					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_Failure, Provider: peerA},
+					},
 				},
 				{
 					AfterStart: 202*time.Millisecond + initialPause,
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Proposed(startTime.Add(202*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, nil, cid1)),
 						events.Accepted(startTime.Add(202*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, nil, cid1)),
-						events.FirstByte(startTime.Add(202*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, nil, cid1)),
+						events.FirstByte(startTime.Add(202*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, nil, cid1), 1*time.Millisecond),
 						events.Success(startTime.Add(202*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerB, nil, cid1), 20, 30, 40*time.Second, big.Zero(), 50, multicodec.TransportGraphsyncFilecoinv1),
-						events.Finished(startTime.Add(202*time.Millisecond+initialPause), rid, startTime, types.RetrievalCandidate{RootCid: cid1})},
+						events.Finished(startTime.Add(202*time.Millisecond+initialPause), rid, startTime, types.RetrievalCandidate{RootCid: cid1}),
+					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_FirstByte, Provider: peerB, Duration: time.Millisecond},
+						{Type: testutil.SessionMetric_Success, Provider: peerB, Value: math.Trunc(20.0 / float64((34 * time.Second).Milliseconds()))},
+					},
 				},
 			},
 		},
 
 		{
 			name: "no candidates",
-			setup: func(rc *session.Config) {
-				rc.DefaultProviderConfig.RetrievalTimeout = time.Millisecond * 100
+			setup: func(ms *testutil.MockSession) {
+				ms.SetProviderTimeout(time.Millisecond * 100)
 			},
 			candidates:         []types.RetrievalCandidate{},
 			returns_connected:  map[string]testutil.DelayedConnectReturn{},
@@ -520,8 +587,9 @@ func TestRetriever(t *testing.T) {
 		},
 		{
 			name: "no acceptable candidates",
-			setup: func(rc *session.Config) {
-				rc.DefaultProviderConfig.RetrievalTimeout = time.Millisecond * 100
+			setup: func(ms *testutil.MockSession) {
+				ms.SetProviderTimeout(time.Millisecond * 100)
+				ms.SetBlockList(map[peer.ID]bool{blacklistedPeer: true})
 			},
 			candidates: []types.RetrievalCandidate{
 				{MinerPeer: peer.AddrInfo{ID: blacklistedPeer}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
@@ -562,15 +630,11 @@ func TestRetriever(t *testing.T) {
 			// --- setup ---
 			candidateFinder := testutil.NewMockCandidateFinder(nil, map[cid.Cid][]types.RetrievalCandidate{cid1: tc.candidates})
 			client := testutil.NewMockClient(tc.returns_connected, tc.returns_retrievals, clock)
-			config := session.DefaultConfig()
-			config.ProviderBlockList = map[peer.ID]bool{blacklistedPeer: true}
+			session := testutil.NewMockSession(ctx)
 			if tc.setup != nil {
-				tc.setup(config)
+				tc.setup(session)
 			}
-			session := session.NewSession(config, true)
-			gsretriever := NewGraphsyncRetriever(session, client)
-			gsretriever.(*parallelPeerRetriever).Clock = clock
-			gsretriever.(*parallelPeerRetriever).QueueInitialPause = initialPause
+			gsretriever := NewGraphsyncRetrieverWithConfig(session, client, clock, initialPause)
 
 			// --- create ---
 			ret, err := NewRetrieverWithClock(context.Background(), session, candidateFinder, map[multicodec.Code]types.CandidateRetriever{
@@ -585,7 +649,7 @@ func TestRetriever(t *testing.T) {
 			require.NoError(t, err)
 			results := testutil.RetrievalVerifier{
 				ExpectedSequence: tc.expectedSequence,
-			}.RunWithVerification(ctx, t, clock, client, candidateFinder, []testutil.RunRetrieval{func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
+			}.RunWithVerification(ctx, t, clock, client, candidateFinder, session, []testutil.RunRetrieval{func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
 				return ret.Retrieve(context.Background(), types.RetrievalRequest{
 					LinkSystem:  cidlink.DefaultLinkSystem(),
 					RetrievalID: rid,
@@ -656,9 +720,7 @@ func TestLinkSystemPerRequest(t *testing.T) {
 	candidateFinder := testutil.NewMockCandidateFinder(nil, map[cid.Cid][]types.RetrievalCandidate{cid1: candidates})
 	client := testutil.NewMockClient(returnsConnected, returnsRetrievals, clock)
 	session := session.NewSession(nil, true)
-	gsretriever := NewGraphsyncRetriever(session, client)
-	gsretriever.(*parallelPeerRetriever).Clock = clock
-	gsretriever.(*parallelPeerRetriever).QueueInitialPause = initialPause
+	gsretriever := NewGraphsyncRetrieverWithConfig(session, client, clock, initialPause)
 
 	// --- create ---
 	ret, err := NewRetrieverWithClock(context.Background(), session, candidateFinder, map[multicodec.Code]types.CandidateRetriever{
@@ -717,12 +779,12 @@ func TestLinkSystemPerRequest(t *testing.T) {
 				ExpectedEvents: []types.RetrievalEvent{
 					events.Proposed(startTime.Add(10*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerA, nil, cid1)),
 					events.Accepted(startTime.Add(10*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerA, nil, cid1)),
-					events.FirstByte(startTime.Add(10*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerA, nil, cid1)),
+					events.FirstByte(startTime.Add(10*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerA, nil, cid1), 5*time.Millisecond),
 					events.Success(startTime.Add(10*time.Millisecond+initialPause), rid, startTime, types.NewRetrievalCandidate(peerA, nil, cid1), 1, 2, 3*time.Second, big.Zero(), 55, multicodec.TransportGraphsyncFilecoinv1),
 					events.Finished(startTime.Add(10*time.Millisecond+initialPause), rid, startTime, types.RetrievalCandidate{RootCid: cid1})},
 			},
 		},
-	}.RunWithVerification(ctx, t, clock, client, candidateFinder, []testutil.RunRetrieval{
+	}.RunWithVerification(ctx, t, clock, client, candidateFinder, nil, []testutil.RunRetrieval{
 		func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
 			return ret.Retrieve(context.Background(), types.RetrievalRequest{
 				LinkSystem:  lsA,
@@ -783,12 +845,12 @@ func TestLinkSystemPerRequest(t *testing.T) {
 				ExpectedEvents: []types.RetrievalEvent{
 					events.Proposed(startTime.Add((10*time.Millisecond+initialPause)*2), rid, startTime.Add(10*time.Millisecond+initialPause), types.NewRetrievalCandidate(peerB, nil, cid1)),
 					events.Accepted(startTime.Add((10*time.Millisecond+initialPause)*2), rid, startTime.Add(10*time.Millisecond+initialPause), types.NewRetrievalCandidate(peerB, nil, cid1)),
-					events.FirstByte(startTime.Add((10*time.Millisecond+initialPause)*2), rid, startTime.Add(10*time.Millisecond+initialPause), types.NewRetrievalCandidate(peerB, nil, cid1)),
+					events.FirstByte(startTime.Add((10*time.Millisecond+initialPause)*2), rid, startTime.Add(10*time.Millisecond+initialPause), types.NewRetrievalCandidate(peerB, nil, cid1), 5*time.Millisecond),
 					events.Success(startTime.Add((10*time.Millisecond+initialPause)*2), rid, startTime.Add(10*time.Millisecond+initialPause), types.NewRetrievalCandidate(peerB, nil, cid1), 10, 11, 12*time.Second, big.Zero(), 50, multicodec.TransportGraphsyncFilecoinv1),
 					events.Finished(startTime.Add((10*time.Millisecond+initialPause)*2), rid, startTime.Add(10*time.Millisecond+initialPause), types.RetrievalCandidate{RootCid: cid1})},
 			},
 		},
-	}.RunWithVerification(ctx, t, clock, client, candidateFinder, []testutil.RunRetrieval{
+	}.RunWithVerification(ctx, t, clock, client, candidateFinder, nil, []testutil.RunRetrieval{
 		func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
 			return ret.Retrieve(context.Background(), types.RetrievalRequest{
 				LinkSystem:  lsB,
