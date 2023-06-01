@@ -31,7 +31,7 @@ type DuplicateAdderCar struct {
 }
 
 func NewDuplicateAdderCarForStream(ctx context.Context, root cid.Cid, path string, scope types.DagScope, store *DeferredStorageCar, outStream io.Writer) *DuplicateAdderCar {
-	blockStream := &blockStream{ctx: ctx}
+	blockStream := &blockStream{ctx: ctx, seen: make(map[cid.Cid]struct{})}
 	blockStream.blockBuffer = list.New()
 	blockStream.cond = sync.NewCond(&blockStream.mu)
 
@@ -120,6 +120,7 @@ type blockStream struct {
 	mu          sync.Mutex
 	cond        *sync.Cond
 	blockBuffer *list.List
+	seen        map[cid.Cid]struct{}
 }
 
 func (bs *blockStream) Close() {
@@ -135,6 +136,10 @@ func (bs *blockStream) WriteBlock(blk blocks.Block) error {
 	if bs.done {
 		return errClosed
 	}
+	if _, ok := bs.seen[blk.Cid()]; ok {
+		return nil
+	}
+	bs.seen[blk.Cid()] = struct{}{}
 	bs.blockBuffer.PushBack(blk)
 	bs.cond.Signal()
 	return nil
