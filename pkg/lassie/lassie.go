@@ -55,7 +55,7 @@ func NewLassie(ctx context.Context, opts ...LassieOption) (*Lassie, error) {
 func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error) {
 	if cfg.Finder == nil {
 		var err error
-		cfg.Finder, err = indexerlookup.NewCandidateFinder()
+		cfg.Finder, err = indexerlookup.NewCandidateFinder(indexerlookup.WithHttpClient(&http.Client{}))
 		if err != nil {
 			return nil, err
 		}
