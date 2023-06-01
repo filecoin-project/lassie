@@ -33,7 +33,9 @@ func (e ErrHttpRequestFailure) Error() string {
 	return fmt.Sprintf("HTTP request failed, remote response code: %d", e.Code)
 }
 
-const HttpDefaultInitialWait time.Duration = 0
+// Connect() is currently a noop, so this simply allows parallel goroutines to
+// queue and the scoring logic to select one to start.
+const HttpDefaultInitialWait time.Duration = 2 * time.Millisecond
 
 const DefaultUserAgent = "lassie"
 
