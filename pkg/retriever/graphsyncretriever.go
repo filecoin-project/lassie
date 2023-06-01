@@ -22,6 +22,9 @@ import (
 	"go.uber.org/multierr"
 )
 
+// Connect() may be a near-noop for already-connect libp2p connections, so this
+// allows parallel goroutines of already-connected peers to queue and have the
+// scoring logic to select one to start.
 const GraphsyncDefaultInitialWait = 2 * time.Millisecond
 
 type GraphsyncClient interface {
