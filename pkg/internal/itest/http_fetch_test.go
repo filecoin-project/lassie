@@ -247,6 +247,27 @@ func TestHttpFetch(t *testing.T) {
 			}},
 		},
 		{
+			name:           "same content, http missing block, bitswap completes",
+			bitswapRemotes: 1,
+			httpRemotes:    1,
+			lassieOpts:     []lassie.LassieOption{lassie.WithProviderTimeout(500 * time.Millisecond)},
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				file := unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20)
+				for _, c := range file.SelfCids {
+					blk, err := remotes[0].Blockstore().Get(context.Background(), c)
+					require.NoError(t, err)
+					writer, commit, err := remotes[1].LinkSystem.StorageWriteOpener(linking.LinkContext{Ctx: context.Background()})
+					require.NoError(t, err)
+					_, err = writer.Write(blk.RawData())
+					require.NoError(t, err)
+					err = commit(cidlink.Link{Cid: c})
+					require.NoError(t, err)
+				}
+				remotes[1].Blockstore().DeleteBlock(context.Background(), file.SelfCids[3])
+				return []unixfs.DirEntry{file}
+			},
+		},
+		{
 			// dag-scope entity fetch should get the same DAG as full for a plain file
 			name:             "graphsync large sharded file, dag-scope entity",
 			graphsyncRemotes: 1,
