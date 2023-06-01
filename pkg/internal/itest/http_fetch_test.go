@@ -44,7 +44,7 @@ import (
 // DEBUG_DATA, when true, will write source and received data to CARs
 // for inspection if tests fail; otherwise they are cleaned up as tests
 // proceed.
-const DEBUG_DATA = true
+const DEBUG_DATA = false
 
 func TestHttpFetch(t *testing.T) {
 	entityQuery := func(q url.Values, _ []testpeer.TestPeer) {
