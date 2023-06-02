@@ -51,7 +51,7 @@ func TestAggregateEventRecorder(t *testing.T) {
 			exec: func(t *testing.T, ctx context.Context, subscriber types.RetrievalEventSubscriber, id types.RetrievalID) {
 				clock := clock.NewMock()
 
-				subscriber(events.Started(clock.Now(), id, clock.Now(), types.FetchPhase, types.RetrievalCandidate{RootCid: testCid1}, multicodec.TransportGraphsyncFilecoinv1, multicodec.TransportBitswap))
+				subscriber(events.StartedFetch(clock.Now(), id, clock.Now(), testCid1, "/applesauce", multicodec.TransportGraphsyncFilecoinv1, multicodec.TransportBitswap))
 				fetchPhaseStartTime := clock.Now()
 				indexerStartTime := clock.Now()
 				clock.Add(10 * time.Millisecond)
@@ -128,7 +128,7 @@ func TestAggregateEventRecorder(t *testing.T) {
 			exec: func(t *testing.T, ctx context.Context, subscriber types.RetrievalEventSubscriber, id types.RetrievalID) {
 				clock := clock.NewMock()
 				fetchPhaseStartTime := clock.Now()
-				subscriber(events.Started(clock.Now(), id, fetchPhaseStartTime, types.FetchPhase, types.RetrievalCandidate{RootCid: testCid1}))
+				subscriber(events.StartedFetch(clock.Now(), id, fetchPhaseStartTime, testCid1, "/applesauce"))
 				subscriber(events.Finished(clock.Now(), id, fetchPhaseStartTime, types.RetrievalCandidate{RootCid: testCid1}))
 
 				select {

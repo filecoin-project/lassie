@@ -94,7 +94,7 @@ func TestRetriever(t *testing.T) {
 					},
 					ReceivedConnections: []peer.ID{peerA},
 					ExpectedEvents: []types.RetrievalEvent{
-						events.Started(startTime, rid, startTime, types.FetchPhase, types.RetrievalCandidate{RootCid: cid1}),
+						events.StartedFetch(startTime, rid, startTime, cid1, ""),
 						events.Started(startTime, rid, startTime, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid1}),
 						events.CandidatesFound(startTime, rid, startTime, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1)}),
 						events.CandidatesFiltered(startTime, rid, startTime, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1)}),
@@ -166,7 +166,7 @@ func TestRetriever(t *testing.T) {
 					},
 					ReceivedConnections: []peer.ID{peerA, peerB},
 					ExpectedEvents: []types.RetrievalEvent{
-						events.Started(startTime, rid, startTime, types.FetchPhase, types.RetrievalCandidate{RootCid: cid1}),
+						events.StartedFetch(startTime, rid, startTime, cid1, ""),
 						events.Started(startTime, rid, startTime, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid1}),
 						events.CandidatesFound(startTime, rid, startTime, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1), types.NewRetrievalCandidate(peerB, nil, cid1)}),
 						events.CandidatesFiltered(startTime, rid, startTime, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1), types.NewRetrievalCandidate(peerB, nil, cid1)}),
@@ -243,7 +243,7 @@ func TestRetriever(t *testing.T) {
 					},
 					ReceivedConnections: []peer.ID{peerA},
 					ExpectedEvents: []types.RetrievalEvent{
-						events.Started(startTime, rid, startTime, types.FetchPhase, types.RetrievalCandidate{RootCid: cid1}),
+						events.StartedFetch(startTime, rid, startTime, cid1, ""),
 						events.Started(startTime, rid, startTime, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid1}),
 						events.CandidatesFound(startTime, rid, startTime, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(blacklistedPeer, nil, cid1), types.NewRetrievalCandidate(peerA, nil, cid1)}),
 						events.CandidatesFiltered(startTime, rid, startTime, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1)}),
@@ -316,7 +316,7 @@ func TestRetriever(t *testing.T) {
 					},
 					ReceivedConnections: []peer.ID{peerA, peerB},
 					ExpectedEvents: []types.RetrievalEvent{
-						events.Started(startTime, rid, startTime, types.FetchPhase, types.RetrievalCandidate{RootCid: cid1}),
+						events.StartedFetch(startTime, rid, startTime, cid1, ""),
 						events.Started(startTime, rid, startTime, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid1}),
 						events.CandidatesFound(startTime, rid, startTime, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1), types.NewRetrievalCandidate(peerB, nil, cid1)}),
 						events.CandidatesFiltered(startTime, rid, startTime, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1), types.NewRetrievalCandidate(peerB, nil, cid1)}),
@@ -400,7 +400,7 @@ func TestRetriever(t *testing.T) {
 					},
 					ReceivedConnections: []peer.ID{peerA, peerB},
 					ExpectedEvents: []types.RetrievalEvent{
-						events.Started(startTime, rid, startTime, types.FetchPhase, types.RetrievalCandidate{RootCid: cid1}),
+						events.StartedFetch(startTime, rid, startTime, cid1, ""),
 						events.Started(startTime, rid, startTime, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid1}),
 						events.CandidatesFound(startTime, rid, startTime, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1), types.NewRetrievalCandidate(peerB, nil, cid1)}),
 						events.CandidatesFiltered(startTime, rid, startTime, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1), types.NewRetrievalCandidate(peerB, nil, cid1)}),
@@ -505,7 +505,7 @@ func TestRetriever(t *testing.T) {
 					},
 					ReceivedConnections: []peer.ID{peerA, peerB},
 					ExpectedEvents: []types.RetrievalEvent{
-						events.Started(startTime, rid, startTime, types.FetchPhase, types.RetrievalCandidate{RootCid: cid1}),
+						events.StartedFetch(startTime, rid, startTime, cid1, ""),
 						events.Started(startTime, rid, startTime, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid1}),
 						events.CandidatesFound(startTime, rid, startTime, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1), types.NewRetrievalCandidate(peerB, nil, cid1)}),
 						events.CandidatesFiltered(startTime, rid, startTime, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1), types.NewRetrievalCandidate(peerB, nil, cid1)}),
@@ -577,7 +577,7 @@ func TestRetriever(t *testing.T) {
 					AfterStart:           0,
 					CandidatesDiscovered: []testutil.DiscoveredCandidate{},
 					ExpectedEvents: []types.RetrievalEvent{
-						events.Started(startTime, rid, startTime, types.FetchPhase, types.RetrievalCandidate{RootCid: cid1}),
+						events.StartedFetch(startTime, rid, startTime, cid1, ""),
 						events.Started(startTime, rid, startTime, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid1}),
 						events.Failed(startTime, rid, startTime, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid1}, "no candidates"),
 						events.Finished(startTime, rid, startTime, types.RetrievalCandidate{RootCid: cid1}),
@@ -608,7 +608,7 @@ func TestRetriever(t *testing.T) {
 						},
 					},
 					ExpectedEvents: []types.RetrievalEvent{
-						events.Started(startTime, rid, startTime, types.FetchPhase, types.RetrievalCandidate{RootCid: cid1}),
+						events.StartedFetch(startTime, rid, startTime, cid1, ""),
 						events.Started(startTime, rid, startTime, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid1}),
 						events.CandidatesFound(startTime, rid, startTime, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(blacklistedPeer, nil, cid1)}),
 						events.Failed(startTime, rid, startTime, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid1}, "no candidates"),
@@ -756,7 +756,7 @@ func TestLinkSystemPerRequest(t *testing.T) {
 				},
 				ReceivedConnections: []peer.ID{peerA, peerB},
 				ExpectedEvents: []types.RetrievalEvent{
-					events.Started(startTime, rid, startTime, types.FetchPhase, types.RetrievalCandidate{RootCid: cid1}),
+					events.StartedFetch(startTime, rid, startTime, cid1, ""),
 					events.Started(startTime, rid, startTime, types.IndexerPhase, types.RetrievalCandidate{RootCid: cid1}),
 					events.CandidatesFound(startTime, rid, startTime, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1), types.NewRetrievalCandidate(peerB, nil, cid1)}),
 					events.CandidatesFiltered(startTime, rid, startTime, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1), types.NewRetrievalCandidate(peerB, nil, cid1)}),
@@ -822,7 +822,7 @@ func TestLinkSystemPerRequest(t *testing.T) {
 				},
 				ReceivedConnections: []peer.ID{peerA, peerB},
 				ExpectedEvents: []types.RetrievalEvent{
-					events.Started(startTime.Add(10*time.Millisecond+initialPause), rid, startTime.Add(10*time.Millisecond+initialPause), types.FetchPhase, types.RetrievalCandidate{RootCid: cid1}),
+					events.StartedFetch(startTime.Add(10*time.Millisecond+initialPause), rid, startTime.Add(10*time.Millisecond+initialPause), cid1, ""),
 					events.Started(startTime.Add(10*time.Millisecond+initialPause), rid, startTime.Add(10*time.Millisecond+initialPause), types.IndexerPhase, types.RetrievalCandidate{RootCid: cid1}),
 					events.CandidatesFound(startTime.Add(10*time.Millisecond+initialPause), rid, startTime.Add(10*time.Millisecond+initialPause), cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1), types.NewRetrievalCandidate(peerB, nil, cid1)}),
 					events.CandidatesFiltered(startTime.Add(10*time.Millisecond+initialPause), rid, startTime.Add(10*time.Millisecond+initialPause), cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1), types.NewRetrievalCandidate(peerB, nil, cid1)}),
