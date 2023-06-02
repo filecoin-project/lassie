@@ -138,6 +138,16 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		}()
 		var store types.ReadableWritableStorage = carStore
 
+		request, err := types.NewRequestForPath(store, rootCid, path.String(), dagScope)
+		if err != nil {
+			errorResponse(res, statusLogger, http.StatusInternalServerError, fmt.Errorf("failed to create request: %w", err))
+			return
+		}
+		request.Protocols = protocols
+		request.FixedPeers = fixedPeers
+		request.RetrievalID = retrievalId
+		request.Duplicates = includeDupes // needed for etag
+
 		carWriter.OnPut(func(int) {
 			// called once we start writing blocks into the CAR (on the first Put())
 			res.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", fileName))
@@ -145,7 +155,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			res.Header().Set("Cache-Control", ResponseCacheControlHeader)
 			res.Header().Set("Content-Type", ResponseContentTypeHeader)
 			// TODO: needs scope and path
-			res.Header().Set("Etag", fmt.Sprintf("%s.car", rootCid.String()))
+			res.Header().Set("Etag", request.Etag())
 			res.Header().Set("X-Content-Type-Options", "nosniff")
 			res.Header().Set("X-Ipfs-Path", "/"+datamodel.ParsePath(req.URL.Path).String())
 			// TODO: set X-Ipfs-Roots header when we support root+path
@@ -155,15 +165,6 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			close(bytesWritten)
 		}, true)
 
-		request, err := types.NewRequestForPath(store, rootCid, path.String(), dagScope)
-
-		if err != nil {
-			errorResponse(res, statusLogger, http.StatusInternalServerError, fmt.Errorf("failed to create request: %w", err))
-			return
-		}
-		request.Protocols = protocols
-		request.FixedPeers = fixedPeers
-		request.RetrievalID = retrievalId
 		// setup preload storage for bitswap, the temporary CAR store can set up a
 		// separate preload space in its storage
 		request.PreloadLinkSystem = cidlink.DefaultLinkSystem()
