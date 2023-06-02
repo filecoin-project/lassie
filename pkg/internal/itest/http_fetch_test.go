@@ -1003,7 +1003,10 @@ func TestHttpFetch(t *testing.T) {
 					req.Equal("public, max-age=29030400, immutable", resp.Header.Get("Cache-Control"))
 					req.Equal("application/vnd.ipld.car; version=1", resp.Header.Get("Content-Type"))
 					req.Equal("nosniff", resp.Header.Get("X-Content-Type-Options"))
-					req.Equal(fmt.Sprintf(`%s.car`, srcData[i].Root.String()), resp.Header.Get("ETag")) // TODO: needs scope and path too
+					etagStart := fmt.Sprintf(`"%s.car.`, srcData[i].Root.String())
+					etagGot := resp.Header.Get("ETag")
+					req.True(strings.HasPrefix(etagGot, etagStart), "ETag should start with [%s], got [%s]", etagStart, etagGot)
+					req.Equal(`"`, etagGot[len(etagGot)-1:], "ETag should end with a quote")
 					var path string
 					if testCase.paths != nil && testCase.paths[i] != "" {
 						path = testCase.paths[i]

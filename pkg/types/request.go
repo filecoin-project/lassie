@@ -3,12 +3,15 @@ package types
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-unixfsnode"
 	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/datamodel"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	ipldstorage "github.com/ipld/go-ipld-prime/storage"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -52,6 +55,7 @@ type RetrievalRequest struct {
 	Selector          ipld.Node
 	Path              string
 	Scope             DagScope
+	Duplicates        bool
 	Protocols         []multicodec.Code
 	PreloadLinkSystem ipld.LinkSystem
 	MaxBlocks         uint64
@@ -140,6 +144,29 @@ func (r RetrievalRequest) GetSupportedProtocols(allSupportedProtocols []multicod
 		}
 	}
 	return supportedProtocols
+}
+
+func (r RetrievalRequest) Etag() string {
+	// https://github.com/ipfs/boxo/pull/303/commits/f61f95481041406df46a1781b1daab34b6605650#r1213918777
+	sb := strings.Builder{}
+	sb.WriteString("/ipfs/")
+	sb.WriteString(r.Cid.String())
+	if r.Path != "" {
+		sb.WriteString("/")
+		sb.WriteString(datamodel.ParsePath(r.Path).String())
+	}
+	if r.Scope != DagScopeAll {
+		sb.WriteString(".")
+		sb.WriteString(string(r.Scope))
+	}
+	if r.Duplicates {
+		sb.WriteString(".dups")
+	}
+	sb.WriteString(".dfs")
+	// range bytes would go here: `.from.to`
+	suffix := strconv.FormatUint(xxhash.Sum64([]byte(sb.String())), 32)
+	fmt.Println("sb.String()", sb.String(), xxhash.Sum64([]byte(sb.String())))
+	return `"` + r.Cid.String() + ".car." + suffix + `"`
 }
 
 func ParseProtocolsString(v string) ([]multicodec.Code, error) {
