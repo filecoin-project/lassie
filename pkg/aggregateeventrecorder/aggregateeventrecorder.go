@@ -26,6 +26,8 @@ type tempData struct {
 	firstByteTime            time.Time
 	ttfb                     string
 	success                  bool
+	rootCid                  string
+	urlPath                  string
 	spId                     string
 	bandwidth                uint64
 	bytesTransferred         uint64
@@ -44,6 +46,8 @@ type RetrievalAttempt struct {
 type AggregateEvent struct {
 	InstanceID        string    `json:"instanceId"`                  // The ID of the Lassie instance generating the event
 	RetrievalID       string    `json:"retrievalId"`                 // The unique ID of the retrieval
+	RootCid           string    `json:"rootCid"`                     // The root cid being fetched
+	URLPath           string    `json:"urlPath"`                     // The path url after the root cid, including scope
 	StorageProviderID string    `json:"storageProviderId,omitempty"` // The ID of the storage provider that served the retrieval content
 	TimeToFirstByte   string    `json:"timeToFirstByte,omitempty"`   // The time it took to receive the first byte in milliseconds
 	Bandwidth         uint64    `json:"bandwidth,omitempty"`         // The bandwidth of the retrieval in bytes per second
@@ -136,6 +140,8 @@ func (a *aggregateEventRecorder) ingestEvents() {
 					candidatesFiltered:       0,
 					firstByteTime:            time.Time{},
 					spId:                     "",
+					rootCid:                  event.PayloadCid().String(),
+					urlPath:                  event.(events.RetrievalEventStarted).UrlPath(),
 					success:                  false,
 					bandwidth:                0,
 					ttfb:                     "",
@@ -231,6 +237,8 @@ func (a *aggregateEventRecorder) ingestEvents() {
 				aggregatedEvent := AggregateEvent{
 					InstanceID:        a.instanceID,
 					RetrievalID:       id.String(),
+					RootCid:           tempData.rootCid,
+					URLPath:           tempData.urlPath,
 					StorageProviderID: tempData.spId,
 					TimeToFirstByte:   tempData.ttfb,
 					Bandwidth:         tempData.bandwidth,
