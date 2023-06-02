@@ -161,8 +161,9 @@ func (retriever *Retriever) Retrieve(
 		eventsCB,
 	)
 
+	urlPath, _ := request.GetUrlPath()
 	// Emit a Started event denoting that the entire fetch phase has started
-	onRetrievalEvent(events.Started(retriever.clock.Now(), request.RetrievalID, startTime, types.FetchPhase, types.RetrievalCandidate{RootCid: request.Cid}, request.GetSupportedProtocols(retriever.protocols)...))
+	onRetrievalEvent(events.StartedFetch(retriever.clock.Now(), request.RetrievalID, startTime, request.Cid, urlPath, request.GetSupportedProtocols(retriever.protocols)...))
 
 	// retrieve, note that we could get a successful retrieval
 	// (retrievalStats!=nil) _and_ also an error return because there may be

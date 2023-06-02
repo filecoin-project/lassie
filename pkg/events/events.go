@@ -112,14 +112,19 @@ func Proposed(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.T
 // RetrievalEventStarted describes when a phase starts
 type RetrievalEventStarted struct {
 	spBaseEvent
-	phase types.Phase
+	phase   types.Phase
+	urlPath string
+}
+
+func StartedFetch(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.Time, rootCid cid.Cid, urlPath string, protocols ...multicodec.Code) RetrievalEventStarted {
+	return RetrievalEventStarted{spBaseEvent{baseEvent{at, retrievalId, phaseStartTime, rootCid, protocols}, peer.ID("")}, types.FetchPhase, urlPath}
 }
 
 func Started(at time.Time, retrievalId types.RetrievalID, phaseStartTime time.Time, phase types.Phase, candidate types.RetrievalCandidate, protocols ...multicodec.Code) RetrievalEventStarted {
 	if len(protocols) == 0 {
 		protocols = candidate.Metadata.Protocols()
 	}
-	return RetrievalEventStarted{spBaseEvent{baseEvent{at, retrievalId, phaseStartTime, candidate.RootCid, protocols}, candidate.MinerPeer.ID}, phase}
+	return RetrievalEventStarted{spBaseEvent{baseEvent{at, retrievalId, phaseStartTime, candidate.RootCid, protocols}, candidate.MinerPeer.ID}, phase, ""}
 }
 
 // RetrievalEventFirstByte describes when the first byte of data was received during the RetrievalPhase
@@ -191,6 +196,10 @@ func (r RetrievalEventStarted) Phase() types.Phase    { return r.phase }
 func (r RetrievalEventStarted) String() string {
 	return fmt.Sprintf("StartedEvent<%s, %s, %s, %s, %s, %v>", r.phase, r.eventTime, r.retrievalId, r.payloadCid, r.storageProviderId, r.protocols)
 }
+func (r RetrievalEventStarted) UrlPath() string {
+	return r.urlPath
+}
+
 func (r RetrievalEventConnected) Code() types.EventCode { return types.ConnectedCode }
 func (r RetrievalEventConnected) Phase() types.Phase    { return r.phase }
 func (r RetrievalEventConnected) String() string {
