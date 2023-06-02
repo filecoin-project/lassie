@@ -235,7 +235,21 @@ func (cs *PreloadCachingStorage) Loader(linkCtx linking.LinkContext, link ipld.L
 
 	logger.Debugw("load link", "link", link)
 
-	// check parent
+	// 1. Check the parent LinkSystem: we may already have the the block we need
+	//    next in the traversal; allow for duplicates or a pre-filled parent
+	//    LinkSystem.
+	// 2. Check the cache LinkSystem: we may have already fully preloaded the
+	//    block we need, but not consumed it into the parent LinkSystem yet.
+	// 3. Check the notFound list: we may have tried to load, or preload this
+	//    block before and it was not found and flagged as such.
+	// 4. Check the preloads list
+	//   4a. If the block is not in the preload list, load it directly from the
+	//	     fetcher and write it to both the the cache and parent LinkSystem.
+	//   4b. If the block is in the preload list, wait for it to be loaded and
+	//       then write it to the parent LinkSystem (it will already be in the
+	//       cache).
+
+	// 1. Check the parent LinkSystem
 	if r, err := linkSystemGetStream(cs.parentLinkSystem, linkCtx, link); r != nil && err == nil {
 		return r, nil // found in parent, return
 	} else if err != nil {
@@ -244,7 +258,7 @@ func (cs *PreloadCachingStorage) Loader(linkCtx linking.LinkContext, link ipld.L
 		}
 	} // else not found
 
-	// check cache
+	// 2. Check the cache LinkSystem
 	if r, err := linkSystemGetStream(cs.cacheLinkSystem, linkCtx, link); r != nil && err == nil {
 		// have a preloaded block
 		cs.preloadedHits++
@@ -261,13 +275,15 @@ func (cs *PreloadCachingStorage) Loader(linkCtx linking.LinkContext, link ipld.L
 		}
 	} // else not found
 
-	// hit the preloader
 	cs.preloadsLk.Lock()
+
+	// 3. Check the notFound list
 	if _, nf := cs.notFound[string(link.(cidlink.Link).Cid.Hash())]; nf {
 		cs.preloadsLk.Unlock()
 		return nil, carstorage.ErrNotFound{Cid: link.(cidlink.Link).Cid}
 	}
 
+	// 4. Check the preloads list
 	pl, ok := cs.preloads[link]
 	if ok {
 		pl.refCnt--
@@ -276,9 +292,11 @@ func (cs *PreloadCachingStorage) Loader(linkCtx linking.LinkContext, link ipld.L
 		}
 	}
 	cs.preloadsLk.Unlock()
+
 	if !ok {
+		// 4a. If the block is not in the preload list
 		cs.preloadMisses++
-		// load from fetcher, if it can be fetched
+		// load directly from the fetcher, if it can be fetched
 		r, err := cs.fetcher(linkCtx, link)
 		if err != nil {
 			if nf, ok := err.(interface{ NotFound() bool }); ok && nf.NotFound() {
@@ -297,8 +315,15 @@ func (cs *PreloadCachingStorage) Loader(linkCtx linking.LinkContext, link ipld.L
 			linkCtx,
 			link)
 	}
+
+	// 4b. If the block is in the preload list
 	cs.preloadingHits++
+	// the block may be in progress, or it may be in the queue, calling
+	// preloadLink() will process it right now if it's in the queue, or be a
+	// noop if it's in progress with the preloader; either way we wait on
+	// pl.loaded.
 	cs.preloadLink(pl, linkCtx, link)
+
 	select {
 	case <-linkCtx.Ctx.Done():
 		return nil, linkCtx.Ctx.Err()
@@ -313,7 +338,9 @@ func (cs *PreloadCachingStorage) Loader(linkCtx linking.LinkContext, link ipld.L
 		// noop because we'll need it for the life of the traversal anyway.
 		r, err := linkSystemGetStream(cs.cacheLinkSystem, linkCtx, link)
 		if err != nil {
-			// this can occur if cache LS + parent LS share a store and another retriever fills the block in the parent store
+			// this can occur if cache LS + parent LS share a store and another
+			// retriever fills the block in the parent store, so we repeat the
+			// parent store check here.
 			if r, err := linkSystemGetStream(cs.parentLinkSystem, linkCtx, link); r != nil && err == nil {
 				logger.Debugw("load link successfully from after cache hit from main store", "link", link)
 				return r, nil // found in parent, return
