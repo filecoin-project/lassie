@@ -15,7 +15,6 @@ import (
 	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/linking/preload"
-	"go.uber.org/multierr"
 )
 
 type preloadingLink struct {
@@ -263,12 +262,8 @@ func (cs *PreloadCachingStorage) Loader(linkCtx linking.LinkContext, link ipld.L
 		// have a preloaded block
 		cs.preloadedHits++
 		logger.Debugw("load link successfully from preload cache", "link", link)
-		// load from cache, write to parent
-		return loadTo(
-			r,
-			[]linking.BlockWriteOpener{cs.parentLinkSystem.StorageWriteOpener},
-			linkCtx,
-			link)
+		// loaded from cache, write to parent and return
+		return cs.loadToParent(r, linkCtx, link)
 	} else if err != nil {
 		if nf, ok := err.(interface{ NotFound() bool }); !ok || !nf.NotFound() {
 			return nil, err // real error
@@ -306,14 +301,9 @@ func (cs *PreloadCachingStorage) Loader(linkCtx linking.LinkContext, link ipld.L
 			}
 			return nil, err
 		}
-		logger.Debugw("load link successfully from after cache misss", "link", link)
-
-		// write to parent and cache and return
-		return loadTo(
-			r,
-			[]linking.BlockWriteOpener{cs.cacheLinkSystem.StorageWriteOpener, cs.parentLinkSystem.StorageWriteOpener},
-			linkCtx,
-			link)
+		logger.Debugw("load link successfully from after cache miss", "link", link)
+		// loaded from fetcher, write to parent and return
+		return cs.loadToParent(r, linkCtx, link)
 	}
 
 	// 4b. If the block is in the preload list
@@ -349,39 +339,26 @@ func (cs *PreloadCachingStorage) Loader(linkCtx linking.LinkContext, link ipld.L
 			}
 		}
 		logger.Debugw("load link successfully from after cache hit", "link", link)
-		return loadTo(
-			r,
-			[]linking.BlockWriteOpener{cs.parentLinkSystem.StorageWriteOpener},
-			linkCtx,
-			link)
+		// loaded from cache, write to parent and return
+		return cs.loadToParent(r, linkCtx, link)
 	}
 }
 
-// Load a block from a reader and pipe it to multiple destinations block writers
-func loadTo(
-	reader io.Reader,
-	destination []linking.BlockWriteOpener,
-	linkCtx linking.LinkContext,
-	link ipld.Link) (io.Reader, error) {
-
-	blc := make([]linking.BlockWriteCommitter, 0, len(destination))
-	for _, blo := range destination {
-		writer, c, err := blo(linkCtx)
-		if err != nil {
-			return nil, err
-		}
-		blc = append(blc, c)
-		reader = io.TeeReader(reader, writer)
-	}
-	byts, err := io.ReadAll(reader) // slurp it in so the writers can commit
+// Load a block from a reader and pipe it to the parent LinkSystem and return as
+// a reader for the traverser.
+func (cs *PreloadCachingStorage) loadToParent(reader io.Reader, linkCtx linking.LinkContext, link ipld.Link) (io.Reader, error) {
+	writer, c, err := cs.parentLinkSystem.StorageWriteOpener(linkCtx)
 	if err != nil {
 		return nil, err
 	}
-	err = nil
-	for _, c := range blc {
-		err = multierr.Append(err, c(link))
+	byts, err := io.ReadAll(io.TeeReader(reader, writer)) // slurp it in so the writer can commit
+	if err != nil {
+		return nil, err
 	}
-	return bytes.NewBuffer(byts), err
+	if err = c(link); err != nil {
+		return nil, err
+	}
+	return bytes.NewBuffer(byts), nil
 }
 
 func (cs *PreloadCachingStorage) preloadLink(pl *preloadingLink, linkCtx linking.LinkContext, link ipld.Link) {
