@@ -174,6 +174,8 @@ func (cs *PreloadCachingStorage) Preloader(preloadCtx preload.PreloadContext, li
 	cs.preloadsLk.Lock()
 	defer cs.preloadsLk.Unlock()
 
+	logger.Debugw("preload link", "link", link)
+
 	// links coming in here aren't necessarily deduplicated and may be ones we've
 	// already attempted to load or are queued for loading, so we have to check
 	// all the places we might have seen this link before before queueing it up.
@@ -231,6 +233,8 @@ func (cs *PreloadCachingStorage) Preloader(preloadCtx preload.PreloadContext, li
 func (cs *PreloadCachingStorage) Loader(linkCtx linking.LinkContext, link ipld.Link) (io.Reader, error) {
 	cs.loadCount++
 
+	logger.Debugw("load link", "link", link)
+
 	// check parent
 	if r, err := linkSystemGetStream(cs.parentLinkSystem, linkCtx, link); r != nil && err == nil {
 		return r, nil // found in parent, return
@@ -244,6 +248,7 @@ func (cs *PreloadCachingStorage) Loader(linkCtx linking.LinkContext, link ipld.L
 	if r, err := linkSystemGetStream(cs.cacheLinkSystem, linkCtx, link); r != nil && err == nil {
 		// have a preloaded block
 		cs.preloadedHits++
+		logger.Debugw("load link successfully from preload cache", "link", link)
 		// load from cache, write to parent
 		return loadTo(
 			r,
@@ -283,6 +288,8 @@ func (cs *PreloadCachingStorage) Loader(linkCtx linking.LinkContext, link ipld.L
 			}
 			return nil, err
 		}
+		logger.Debugw("load link successfully from after cache misss", "link", link)
+
 		// write to parent and cache and return
 		return loadTo(
 			r,
@@ -306,8 +313,15 @@ func (cs *PreloadCachingStorage) Loader(linkCtx linking.LinkContext, link ipld.L
 		// noop because we'll need it for the life of the traversal anyway.
 		r, err := linkSystemGetStream(cs.cacheLinkSystem, linkCtx, link)
 		if err != nil {
-			return nil, err
+			// this can occur if cache LS + parent LS share a store and another retriever fills the block in the parent store
+			if r, err := linkSystemGetStream(cs.parentLinkSystem, linkCtx, link); r != nil && err == nil {
+				logger.Debugw("load link successfully from after cache hit from main store", "link", link)
+				return r, nil // found in parent, return
+			} else if err != nil {
+				return nil, err
+			}
 		}
+		logger.Debugw("load link successfully from after cache hit", "link", link)
 		return loadTo(
 			r,
 			[]linking.BlockWriteOpener{cs.parentLinkSystem.StorageWriteOpener},
