@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/dustin/go-humanize"
 	"github.com/filecoin-project/lassie/pkg/events"
@@ -36,18 +35,6 @@ var fetchCmd = &cli.Command{
 			Aliases:   []string{"o"},
 			Usage:     "the CAR file to write to, may be an existing or a new CAR, or use '-' to write to stdout",
 			TakesFile: true,
-		},
-		&cli.DurationFlag{
-			Name:    "provider-timeout",
-			Aliases: []string{"pt"},
-			Usage:   "consider it an error after not receiving a response from a storage provider after this amount of time",
-			Value:   20 * time.Second,
-		},
-		&cli.DurationFlag{
-			Name:    "global-timeout",
-			Aliases: []string{"gt"},
-			Usage:   "consider it an error after not completing the retrieval after this amount of time",
-			Value:   0,
 		},
 		&cli.BoolFlag{
 			Name:    "progress",
@@ -102,6 +89,8 @@ var fetchCmd = &cli.Command{
 		FlagExcludeProviders,
 		FlagTempDir,
 		FlagBitswapConcurrency,
+		FlagGlobalTimeout,
+		FlagProviderTimeout,
 	},
 }
 
@@ -114,29 +103,25 @@ func Fetch(cctx *cli.Context) error {
 	msgWriter := cctx.App.ErrWriter
 	dataWriter := cctx.App.Writer
 
-	progress := cctx.Bool("progress")
-	providerTimeout := cctx.Duration("provider-timeout")
-	globalTimeout := cctx.Duration("global-timeout")
 	dagScope := cctx.String("dag-scope")
 	tempDir := cctx.String("tempdir")
-	bitswapConcurrency := cctx.Int("bitswap-concurrency")
 	eventRecorderURL := cctx.String("event-recorder-url")
 	authToken := cctx.String("event-recorder-auth")
 	instanceID := cctx.String("event-recorder-instance-id")
+	progress := cctx.Bool("progress")
 
 	rootCid, path, err := parseCidPath(cctx.Args().Get(0))
 	if err != nil {
 		return err
 	}
 
-	providerTimeoutOpt := lassie.WithProviderTimeout(providerTimeout)
+	lassieOpts := []lassie.LassieOption{}
 
 	host, err := host.InitHost(ctx, []libp2p.Option{})
 	if err != nil {
 		return err
 	}
-	hostOpt := lassie.WithHost(host)
-	var lassieOpts = []lassie.LassieOption{providerTimeoutOpt, hostOpt}
+	lassieOpts = append(lassieOpts, lassie.WithHost(host))
 
 	if len(fetchProviderAddrInfos) > 0 {
 		finderOpt := lassie.WithFinder(retriever.NewDirectCandidateFinder(host, fetchProviderAddrInfos))
@@ -160,29 +145,13 @@ func Fetch(cctx *cli.Context) error {
 		logger.Debug("Using explicit IPNI endpoint to find candidates", "endpoint", endpoint)
 	}
 
-	if len(providerBlockList) > 0 {
-		lassieOpts = append(lassieOpts, lassie.WithProviderBlockList(providerBlockList))
-	}
-
-	if len(protocols) > 0 {
-		lassieOpts = append(lassieOpts, lassie.WithProtocols(protocols))
-	}
-
-	if globalTimeout > 0 {
-		lassieOpts = append(lassieOpts, lassie.WithGlobalTimeout(globalTimeout))
-	}
-
 	if tempDir != "" {
 		lassieOpts = append(lassieOpts, lassie.WithTempDir(tempDir))
 	} else {
 		tempDir = os.TempDir()
 	}
 
-	if bitswapConcurrency > 0 {
-		lassieOpts = append(lassieOpts, lassie.WithBitswapConcurrency(bitswapConcurrency))
-	}
-
-	lassie, err := lassie.NewLassie(ctx, lassieOpts...)
+	lassie, err := BuildLassieFromCLIContext(cctx, lassieOpts)
 	if err != nil {
 		return err
 	}

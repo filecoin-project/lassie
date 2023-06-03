@@ -85,6 +85,45 @@ func before(cctx *cli.Context) error {
 	return nil
 }
 
+func BuildLassieFromCLIContext(cctx *cli.Context, lassieOpts []lassie.LassieOption) (*lassie.Lassie, error) {
+	ctx := cctx.Context
+
+	tempDir := cctx.String("tempdir")
+	providerTimeout := cctx.Duration("provider-timeout")
+	globalTimeout := cctx.Duration("global-timeout")
+	bitswapConcurrency := cctx.Int("bitswap-concurrency")
+
+	lassieOpts = append(lassieOpts, lassie.WithProviderTimeout(providerTimeout))
+
+	if globalTimeout > 0 {
+		lassieOpts = append(lassieOpts, lassie.WithGlobalTimeout(globalTimeout))
+	}
+
+	if len(protocols) > 0 {
+		lassieOpts = append(lassieOpts, lassie.WithProtocols(protocols))
+	}
+
+	if len(providerBlockList) > 0 {
+		lassieOpts = append(lassieOpts, lassie.WithProviderBlockList(providerBlockList))
+	}
+
+	if tempDir != "" {
+		lassieOpts = append(lassieOpts, lassie.WithTempDir(tempDir))
+	}
+
+	if bitswapConcurrency > 0 {
+		lassieOpts = append(lassieOpts, lassie.WithBitswapConcurrency(bitswapConcurrency))
+	}
+
+	// create a lassie instance
+	lassie, err := lassie.NewLassie(ctx, lassieOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	return lassie, nil
+}
+
 // setupLassieEventRecorder creates and subscribes an EventRecorder if an event recorder URL is given
 func setupLassieEventRecorder(
 	ctx context.Context,

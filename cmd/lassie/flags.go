@@ -2,6 +2,7 @@ package main
 
 import (
 	"strings"
+	"time"
 
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -90,7 +91,6 @@ var FlagMetricsPort = &cli.UintFlag{
 }
 
 var providerBlockList map[peer.ID]bool
-
 var FlagExcludeProviders = &cli.StringFlag{
 	Name:        "exclude-providers",
 	DefaultText: "All providers allowed",
@@ -147,4 +147,20 @@ var FlagBitswapConcurrency = &cli.IntFlag{
 	Usage:   "maximum number of concurrent bitswap requests per retrieval",
 	Value:   6,
 	EnvVars: []string{"LASSIE_BITSWAP_CONCURRENCY"},
+}
+
+var FlagGlobalTimeout = &cli.DurationFlag{
+	Name:    "global-timeout",
+	Aliases: []string{"gt"},
+	Usage:   "consider it an error after not completing a retrieval after this amount of time",
+	Value:   0,
+	EnvVars: []string{"LASSIE_GLOBAL_TIMEOUT"},
+}
+
+var FlagProviderTimeout = &cli.DurationFlag{
+	Name:    "provider-timeout",
+	Aliases: []string{"pt"},
+	Usage:   "consider it an error after not receiving a response from a storage provider after this amount of time",
+	Value:   20 * time.Second,
+	EnvVars: []string{"LASSIE_PROVIDER_TIMEOUT"},
 }

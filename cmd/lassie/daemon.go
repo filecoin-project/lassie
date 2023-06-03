@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/filecoin-project/lassie/pkg/lassie"
 	"github.com/filecoin-project/lassie/pkg/metrics"
@@ -61,20 +60,6 @@ var daemonFlags = []cli.Flag{
 		DefaultText: "no limit",
 		EnvVars:     []string{"LASSIE_CONCURRENT_SP_RETRIEVALS"},
 	},
-	&cli.DurationFlag{
-		Name:    "provider-timeout",
-		Aliases: []string{"pt"},
-		Usage:   "consider it an error after not receiving a response from a storage provider after this amount of time",
-		Value:   20 * time.Second,
-		EnvVars: []string{"LASSIE_PROVIDER_TIMEOUT"},
-	},
-	&cli.DurationFlag{
-		Name:    "global-timeout",
-		Aliases: []string{"gt"},
-		Usage:   "consider it an error after not completing a retrieval after this amount of time",
-		Value:   0,
-		EnvVars: []string{"LASSIE_GLOBAL_TIMEOUT"},
-	},
 	FlagEventRecorderAuth,
 	FlagEventRecorderInstanceId,
 	FlagEventRecorderUrl,
@@ -87,6 +72,8 @@ var daemonFlags = []cli.Flag{
 	FlagExcludeProviders,
 	FlagTempDir,
 	FlagBitswapConcurrency,
+	FlagGlobalTimeout,
+	FlagProviderTimeout,
 }
 
 var daemonCmd = &cli.Command{
@@ -103,24 +90,21 @@ func daemonCommand(cctx *cli.Context) error {
 	address := cctx.String("address")
 	port := cctx.Uint("port")
 	tempDir := cctx.String("tempdir")
-	maxBlocks := cctx.Uint64("maxblocks")
 	libp2pLowWater := cctx.Int("libp2p-conns-lowwater")
 	libp2pHighWater := cctx.Int("libp2p-conns-highwater")
+	concurrentSPRetrievals := cctx.Uint("concurrent-sp-retrievals")
+	maxBlocks := cctx.Uint64("maxblocks")
+
 	exposeMetrics := cctx.Bool("expose-metrics")
 	metricsPort := cctx.Uint("metrics-port")
 	metricsAddress := cctx.String("metrics-address")
-	concurrentSPRetrievals := cctx.Uint("concurrent-sp-retrievals")
-	providerTimeout := cctx.Duration("provider-timeout")
-	globalTimeout := cctx.Duration("global-timeout")
-	bitswapConcurrency := cctx.Int("bitswap-concurrency")
+
 	eventRecorderURL := cctx.String("event-recorder-url")
 	authToken := cctx.String("event-recorder-auth")
 	instanceID := cctx.String("event-recorder-instance-id")
 
-	lassieOpts := []lassie.LassieOption{lassie.WithProviderTimeout(providerTimeout)}
-	if globalTimeout > 0 {
-		lassieOpts = append(lassieOpts, lassie.WithGlobalTimeout(globalTimeout))
-	}
+	lassieOpts := []lassie.LassieOption{}
+
 	if libp2pHighWater != 0 || libp2pLowWater != 0 {
 		connManager, err := connmgr.NewConnManager(libp2pLowWater, libp2pHighWater)
 		if err != nil {
@@ -132,22 +116,10 @@ func daemonCommand(cctx *cli.Context) error {
 			lassie.WithConcurrentSPRetrievals(concurrentSPRetrievals),
 		)
 	}
-	if len(protocols) > 0 {
-		lassieOpts = append(lassieOpts, lassie.WithProtocols(protocols))
-	}
-	if len(providerBlockList) > 0 {
-		lassieOpts = append(lassieOpts, lassie.WithProviderBlockList(providerBlockList))
-	}
-	if tempDir != "" {
-		lassieOpts = append(lassieOpts, lassie.WithTempDir(tempDir))
-	}
-	if bitswapConcurrency > 0 {
-		lassieOpts = append(lassieOpts, lassie.WithBitswapConcurrency(bitswapConcurrency))
-	}
-	// create a lassie instance
-	lassie, err := lassie.NewLassie(ctx, lassieOpts...)
+
+	lassie, err := BuildLassieFromCLIContext(cctx, lassieOpts)
 	if err != nil {
-		return err
+		return nil
 	}
 
 	// create and subscribe an event recorder API if configured
