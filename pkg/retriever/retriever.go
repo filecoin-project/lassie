@@ -10,7 +10,6 @@ import (
 	"github.com/benbjohnson/clock"
 	"github.com/dustin/go-humanize"
 	"github.com/filecoin-project/lassie/pkg/events"
-	"github.com/filecoin-project/lassie/pkg/metrics"
 	"github.com/filecoin-project/lassie/pkg/retriever/combinators"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
@@ -18,7 +17,6 @@ import (
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
-	"go.opencensus.io/stats"
 )
 
 var (
@@ -68,9 +66,7 @@ type CandidateFinder interface {
 }
 
 type eventStats struct {
-	failedCount        int64
-	queryCount         int64
-	filteredQueryCount int64
+	failedCount int64
 }
 
 func NewRetriever(
@@ -194,15 +190,6 @@ func (retriever *Retriever) Retrieve(
 		types.FIL(retrievalStats.TotalPayment),
 	)
 
-	stats.Record(ctx, metrics.RetrievalDealActiveCount.M(-1))
-	stats.Record(ctx, metrics.RetrievalDealSuccessCount.M(1))
-	stats.Record(ctx, metrics.RetrievalDealDuration.M(retrievalStats.Duration.Seconds()))
-	stats.Record(ctx, metrics.RetrievalDealSize.M(int64(retrievalStats.Size)))
-	stats.Record(ctx, metrics.RetrievalDealCost.M(retrievalStats.TotalPayment.Int64()))
-	stats.Record(ctx, metrics.FailedRetrievalsPerRequestCount.M(eventStats.failedCount))
-	stats.Record(ctx, metrics.SuccessfulQueriesPerRequestCount.M(eventStats.queryCount))
-	stats.Record(ctx, metrics.SuccessfulQueriesPerRequestFilteredCount.M(eventStats.filteredQueryCount))
-
 	return retrievalStats, nil
 }
 
@@ -222,12 +209,8 @@ func makeOnRetrievalEvent(
 		logEvent(event)
 
 		switch ret := event.(type) {
-		case events.RetrievalEventCandidatesFound:
-			handleCandidatesFoundEvent(ret)
 		case events.RetrievalEventCandidatesFiltered:
 			handleCandidatesFilteredEvent(retrievalId, session, retrievalCid, ret)
-		case events.RetrievalEventStarted:
-			handleStartedEvent(ret)
 		case events.RetrievalEventFailed:
 			handleFailureEvent(ctx, session, retrievalId, eventStats, ret)
 		}
@@ -246,21 +229,7 @@ func handleFailureEvent(
 	eventStats *eventStats,
 	event events.RetrievalEventFailed,
 ) {
-	msg := event.ErrorMessage()
-
 	switch event.Phase() {
-	case types.QueryPhase:
-		var matched bool
-		for substr, metric := range metrics.QueryErrorMetricMatches {
-			if strings.Contains(msg, substr) {
-				stats.Record(ctx, metric.M(1))
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			stats.Record(ctx, metrics.QueryErrorOtherCount.M(1))
-		}
 	case types.RetrievalPhase:
 		eventStats.failedCount++
 		logger.Warnf(
@@ -269,27 +238,6 @@ func handleFailureEvent(
 			event.PayloadCid(),
 			event.ErrorMessage(),
 		)
-		stats.Record(context.Background(), metrics.RetrievalDealFailCount.M(1))
-		stats.Record(context.Background(), metrics.RetrievalDealActiveCount.M(-1))
-
-		var matched bool
-		for substr, metric := range metrics.ErrorMetricMatches {
-			if strings.Contains(msg, substr) {
-				stats.Record(ctx, metric.M(1))
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			stats.Record(ctx, metrics.RetrievalErrorOtherCount.M(1))
-		}
-	}
-}
-
-func handleStartedEvent(event events.RetrievalEventStarted) {
-	if event.Phase() == types.RetrievalPhase {
-		stats.Record(context.Background(), metrics.RetrievalRequestCount.M(1))
-		stats.Record(context.Background(), metrics.RetrievalDealActiveCount.M(1))
 	}
 }
 
@@ -300,7 +248,6 @@ func handleCandidatesFilteredEvent(
 	event events.RetrievalEventCandidatesFiltered,
 ) {
 	if len(event.Candidates()) > 0 {
-		stats.Record(context.Background(), metrics.RequestWithIndexerCandidatesFilteredCount.M(1))
 		ids := make([]peer.ID, 0)
 		for _, c := range event.Candidates() {
 			ids = append(ids, c.MinerPeer.ID)
@@ -309,13 +256,6 @@ func handleCandidatesFilteredEvent(
 			logger.Errorf("failed to add storage providers to tracked retrieval for %s: %s", retrievalCid, err.Error())
 		}
 	}
-}
-
-func handleCandidatesFoundEvent(event events.RetrievalEventCandidatesFound) {
-	if len(event.Candidates()) > 0 {
-		stats.Record(context.Background(), metrics.RequestWithIndexerCandidatesCount.M(1))
-	}
-	stats.Record(context.Background(), metrics.IndexerCandidatesPerRequestCount.M(int64(len(event.Candidates()))))
 }
 
 func logEvent(event types.RetrievalEvent) {
