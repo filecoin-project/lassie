@@ -43,11 +43,17 @@ type LassieOption func(cfg *LassieConfig)
 
 // NewLassie creates a new Lassie instance.
 func NewLassie(ctx context.Context, opts ...LassieOption) (*Lassie, error) {
+	cfg := NewLassieConfig(opts...)
+	return NewLassieWithConfig(ctx, cfg)
+}
+
+// NewLassieConfig creates a new LassieConfig instance with the given LassieOptions.
+func NewLassieConfig(opts ...LassieOption) *LassieConfig {
 	cfg := &LassieConfig{}
 	for _, opt := range opts {
 		opt(cfg)
 	}
-	return NewLassieWithConfig(ctx, cfg)
+	return cfg
 }
 
 // NewLassieWithConfig creates a new Lassie instance with a custom

@@ -3,14 +3,19 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/filecoin-project/lassie/pkg/aggregateeventrecorder"
+	"github.com/filecoin-project/lassie/pkg/indexerlookup"
 	"github.com/filecoin-project/lassie/pkg/lassie"
+	"github.com/filecoin-project/lassie/pkg/net/host"
+	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-log/v2"
+	"github.com/libp2p/go-libp2p/config"
 	"github.com/urfave/cli/v2"
 )
 
@@ -85,29 +90,85 @@ func before(cctx *cli.Context) error {
 	return nil
 }
 
+func buildLassieConfigFromCLIContext(cctx *cli.Context, lassieOpts []lassie.LassieOption, libp2pOpts []config.Option) (*lassie.LassieConfig, error) {
+	providerTimeout := cctx.Duration("provider-timeout")
+	globalTimeout := cctx.Duration("global-timeout")
+	bitswapConcurrency := cctx.Int("bitswap-concurrency")
+
+	lassieOpts = append(lassieOpts, lassie.WithProviderTimeout(providerTimeout))
+
+	if globalTimeout > 0 {
+		lassieOpts = append(lassieOpts, lassie.WithGlobalTimeout(globalTimeout))
+	}
+
+	if len(protocols) > 0 {
+		lassieOpts = append(lassieOpts, lassie.WithProtocols(protocols))
+	}
+
+	host, err := host.InitHost(cctx.Context, libp2pOpts)
+	if err != nil {
+		return nil, err
+	}
+	lassieOpts = append(lassieOpts, lassie.WithHost(host))
+
+	if len(fetchProviderAddrInfos) > 0 {
+		finderOpt := lassie.WithFinder(retriever.NewDirectCandidateFinder(host, fetchProviderAddrInfos))
+		if cctx.IsSet("ipni-endpoint") {
+			logger.Warn("Ignoring ipni-endpoint flag since direct provider is specified")
+		}
+		lassieOpts = append(lassieOpts, finderOpt)
+	} else if cctx.IsSet("ipni-endpoint") {
+		endpoint := cctx.String("ipni-endpoint")
+		endpointUrl, err := url.Parse(endpoint)
+		if err != nil {
+			logger.Errorw("Failed to parse IPNI endpoint as URL", "err", err)
+			return nil, fmt.Errorf("cannot parse given IPNI endpoint %s as valid URL: %w", endpoint, err)
+		}
+		finder, err := indexerlookup.NewCandidateFinder(indexerlookup.WithHttpEndpoint(endpointUrl))
+		if err != nil {
+			logger.Errorw("Failed to instantiate IPNI candidate finder", "err", err)
+			return nil, err
+		}
+		lassieOpts = append(lassieOpts, lassie.WithFinder(finder))
+		logger.Debug("Using explicit IPNI endpoint to find candidates", "endpoint", endpoint)
+	}
+
+	if len(providerBlockList) > 0 {
+		lassieOpts = append(lassieOpts, lassie.WithProviderBlockList(providerBlockList))
+	}
+
+	if bitswapConcurrency > 0 {
+		lassieOpts = append(lassieOpts, lassie.WithBitswapConcurrency(bitswapConcurrency))
+	}
+
+	return lassie.NewLassieConfig(lassieOpts...), nil
+}
+
+func getEventRecorderConfig(endpointURL string, authToken string, instanceID string) *aggregateeventrecorder.EventRecorderConfig {
+	return &aggregateeventrecorder.EventRecorderConfig{
+		InstanceID:            instanceID,
+		EndpointURL:           endpointURL,
+		EndpointAuthorization: authToken,
+	}
+}
+
 // setupLassieEventRecorder creates and subscribes an EventRecorder if an event recorder URL is given
 func setupLassieEventRecorder(
 	ctx context.Context,
-	eventRecorderURL string,
-	authToken string,
-	instanceID string,
+	cfg *aggregateeventrecorder.EventRecorderConfig,
 	lassie *lassie.Lassie,
 ) {
-	if eventRecorderURL != "" {
-		if instanceID == "" {
+	if cfg.EndpointURL != "" {
+		if cfg.InstanceID == "" {
 			uuid, err := uuid.NewRandom()
 			if err != nil {
 				logger.Warnw("failed to generate default event recorder instance ID UUID, no instance ID will be provided", "err", err)
 			}
-			instanceID = uuid.String() // returns "" if uuid is invalid
+			cfg.InstanceID = uuid.String() // returns "" if uuid is invalid
 		}
 
-		eventRecorder := aggregateeventrecorder.NewAggregateEventRecorder(ctx, aggregateeventrecorder.EventRecorderConfig{
-			InstanceID:            instanceID,
-			EndpointURL:           eventRecorderURL,
-			EndpointAuthorization: authToken,
-		})
+		eventRecorder := aggregateeventrecorder.NewAggregateEventRecorder(ctx, *cfg)
 		lassie.RegisterSubscriber(eventRecorder.RetrievalEventSubscriber())
-		logger.Infow("Reporting retrieval events to event recorder API", "url", eventRecorderURL, "instance_id", instanceID)
+		logger.Infow("Reporting retrieval events to event recorder API", "url", cfg.EndpointURL, "instance_id", cfg.InstanceID)
 	}
 }
