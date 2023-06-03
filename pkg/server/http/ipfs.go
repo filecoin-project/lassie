@@ -154,7 +154,6 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			res.Header().Set("Accept-Ranges", ResponseAcceptRangesHeader)
 			res.Header().Set("Cache-Control", ResponseCacheControlHeader)
 			res.Header().Set("Content-Type", ResponseContentTypeHeader)
-			// TODO: needs scope and path
 			res.Header().Set("Etag", request.Etag())
 			res.Header().Set("X-Content-Type-Options", "nosniff")
 			res.Header().Set("X-Ipfs-Path", "/"+datamodel.ParsePath(req.URL.Path).String())
