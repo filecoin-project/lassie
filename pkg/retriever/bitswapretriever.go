@@ -13,7 +13,6 @@ import (
 	"github.com/benbjohnson/clock"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/events"
-	"github.com/filecoin-project/lassie/pkg/metrics"
 	"github.com/filecoin-project/lassie/pkg/retriever/bitswaphelpers"
 	"github.com/filecoin-project/lassie/pkg/storage"
 	"github.com/filecoin-project/lassie/pkg/types"
@@ -33,7 +32,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
-	"go.opencensus.io/stats"
 )
 
 const DefaultConcurrency = 6
@@ -267,8 +265,6 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		preloadedPercent,
 		multicodec.TransportBitswap,
 	))
-
-	stats.Record(ctx, metrics.BitswapPreloadedPercent.M(int64(preloadedPercent)))
 
 	// return stats
 	return &types.RetrievalStats{

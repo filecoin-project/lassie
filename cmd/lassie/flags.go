@@ -63,32 +63,6 @@ var FlagEventRecorderUrl = &cli.StringFlag{
 	EnvVars: []string{"LASSIE_EVENT_RECORDER_URL"},
 }
 
-// FlagExposeMetrics exposes prometheus metrics at /metrics on the daemon http
-// server.
-var FlagExposeMetrics = &cli.BoolFlag{
-	Name:    "expose-metrics",
-	Usage:   "expose metrics at /metrics",
-	EnvVars: []string{"LASSIE_EXPOSE_METRICS"},
-}
-
-// FlagMetricsAddress sets the address on which to expose metrics and pprof information
-var FlagMetricsAddress = &cli.StringFlag{
-	Name:        "metrics-address",
-	Usage:       "the address to expose metrics for prometheus and pprof when expose metrics is true",
-	Value:       "127.0.0.1",
-	DefaultText: "127.0.0.1",
-	EnvVars:     []string{"LASSIE_METRICS_ADDRESS"},
-}
-
-// FlagMetricsPort sets the port on which to expose metrics and pprof information
-var FlagMetricsPort = &cli.UintFlag{
-	Name:        "metrics-port",
-	Usage:       "the port to expose metrics for prometheus and pprof when expose metrics is true",
-	Value:       0,
-	DefaultText: "random",
-	EnvVars:     []string{"LASSIE_METRICS_PORT"},
-}
-
 var providerBlockList map[peer.ID]bool
 
 var FlagExcludeProviders = &cli.StringFlag{
