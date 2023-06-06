@@ -997,7 +997,11 @@ func TestHttpFetch(t *testing.T) {
 				if testCase.expectFail {
 					req.Equal(http.StatusGatewayTimeout, resp.StatusCode)
 				} else {
-					req.Equal(http.StatusOK, resp.StatusCode)
+					if resp.StatusCode != http.StatusOK {
+						body, err := io.ReadAll(resp.Body)
+						req.NoError(err)
+						req.Failf("200 response code not received", "got code: %d, body: %s", resp.StatusCode, string(body))
+					}
 					req.Equal(fmt.Sprintf(`attachment; filename="%s.car"`, srcData[i].Root.String()), resp.Header.Get("Content-Disposition"))
 					req.Equal("none", resp.Header.Get("Accept-Ranges"))
 					req.Equal("public, max-age=29030400, immutable", resp.Header.Get("Cache-Control"))
