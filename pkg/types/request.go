@@ -46,20 +46,52 @@ func (id *RetrievalID) UnmarshalText(data []byte) error {
 	return (*uuid.UUID)(id).UnmarshalText(data)
 }
 
-// RetrievalRequest is the top level parameters for a request --
-// this should be left unchanged as you move down a retriever tree
+// RetrievalRequest describes the parameters of a request. It is intended to be
+// immutable.
 type RetrievalRequest struct {
-	RetrievalID       RetrievalID
-	Cid               cid.Cid
-	LinkSystem        ipld.LinkSystem
-	Selector          ipld.Node
-	Path              string
-	Scope             DagScope
-	Duplicates        bool
-	Protocols         []multicodec.Code
+	// RetrievalID is a unique identifier for this request.
+	RetrievalID RetrievalID
+
+	// Cid is the root CID to fetch.
+	Cid cid.Cid
+
+	// LinkSystem is the destination for the blocks to fetch, it may be
+	// pre-populated with existing blocks in the DAG, in which case they may
+	// be used to satisfy the request (except in the case of an HTTP retrieval,
+	// which will fetch the entire DAG, regardless).
+	LinkSystem ipld.LinkSystem
+
+	// Selector is the IPLD selector to use when fetching the DAG. If nil, the
+	// Path and Scope will be used to generate a selector.
+	Selector ipld.Node
+
+	// Path is the optional path within the DAG to fetch.
+	Path string
+
+	// Scope describes the scope of the DAG to fetch. If the Selector parameter
+	// is not set, Scope and Path will be used to construct a selector.
+	Scope DagScope
+
+	// Duplicates is a flag that indicates whether duplicate blocks should be
+	// stored into the LinkSystem where they occur in the traversal.
+	Duplicates bool
+
+	// Protocols is an optional list of protocols to use when fetching the DAG.
+	// If nil, the default protocols will be used.
+	Protocols []multicodec.Code
+
+	// PreloadLinkSystem must be setup to enable Bitswap preload behavior. This
+	// LinkSystem must be thread-safe as multiple goroutines may be using it to
+	// store and retrieve blocks concurrently.
 	PreloadLinkSystem ipld.LinkSystem
-	MaxBlocks         uint64
-	FixedPeers        []peer.AddrInfo
+
+	// MaxBlocks optionally specifies the maximum number of blocks to fetch.
+	// If zero, no limit is applied.
+	MaxBlocks uint64
+
+	// FixedPeers optionally specifies a list of peers to use when fetching
+	// blocks. If nil, the default peer discovery mechanism will be used.
+	FixedPeers []peer.AddrInfo
 }
 
 // NewRequestForPath creates a new RetrievalRequest from the provided parameters
@@ -170,6 +202,10 @@ func (r RetrievalRequest) Etag() string {
 	// range bytes would go here: `.from.to`
 	suffix := strconv.FormatUint(xxhash.Sum64([]byte(sb.String())), 32)
 	return `"` + r.Cid.String() + ".car." + suffix + `"`
+}
+
+func (r RetrievalRequest) HasPreloadLinkSystem() bool {
+	return r.PreloadLinkSystem.StorageReadOpener != nil && r.PreloadLinkSystem.StorageWriteOpener != nil
 }
 
 func ParseProtocolsString(v string) ([]multicodec.Code, error) {

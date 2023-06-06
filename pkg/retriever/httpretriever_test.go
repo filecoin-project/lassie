@@ -31,7 +31,7 @@ import (
 func TestHTTPRetriever(t *testing.T) {
 	ctx := context.Background()
 
-	store := &testutil.CorrectedMemStore{Store: &memstore.Store{
+	store := &testutil.CorrectedMemStore{ParentStore: &memstore.Store{
 		Bag: make(map[string][]byte),
 	}}
 	lsys := cidlink.DefaultLinkSystem()
@@ -76,7 +76,7 @@ func TestHTTPRetriever(t *testing.T) {
 				cid1: {
 					{
 						Peer:       cid1Cands[0].MinerPeer,
-						LinkSystem: *makeLsys(tbc1.AllBlocks()),
+						LinkSystem: *makeLsys(tbc1.AllBlocks(), false),
 						Selector:   allSelector,
 						RespondAt:  startTime.Add(initialPause + time.Millisecond*40),
 					},
@@ -144,7 +144,7 @@ func TestHTTPRetriever(t *testing.T) {
 				cid1: {
 					{
 						Peer:       cid1Cands[0].MinerPeer,
-						LinkSystem: *makeLsys(tbc1.AllBlocks()),
+						LinkSystem: *makeLsys(tbc1.AllBlocks(), false),
 						Selector:   allSelector,
 						RespondAt:  startTime.Add(initialPause + time.Millisecond*40),
 					},
@@ -152,7 +152,7 @@ func TestHTTPRetriever(t *testing.T) {
 				cid2: {
 					{
 						Peer:       cid2Cands[0].MinerPeer,
-						LinkSystem: *makeLsys(tbc2.AllBlocks()),
+						LinkSystem: *makeLsys(tbc2.AllBlocks(), false),
 						Selector:   allSelector,
 						RespondAt:  startTime.Add(initialPause + time.Millisecond*10),
 					},
@@ -264,21 +264,21 @@ func TestHTTPRetriever(t *testing.T) {
 				cid1: {
 					{
 						Peer:       cid1Cands[0].MinerPeer,
-						LinkSystem: *makeLsys(nil),
+						LinkSystem: *makeLsys(nil, false),
 						Selector:   allSelector,
 						RespondAt:  startTime.Add(initialPause + time.Millisecond*10),
 						Malformed:  true,
 					},
 					{
 						Peer:       cid1Cands[1].MinerPeer,
-						LinkSystem: *makeLsys(nil),
+						LinkSystem: *makeLsys(nil, false),
 						Selector:   allSelector,
 						RespondAt:  startTime.Add(initialPause + time.Millisecond*20),
 						Malformed:  true,
 					},
 					{
 						Peer:       cid1Cands[2].MinerPeer,
-						LinkSystem: *makeLsys(nil),
+						LinkSystem: *makeLsys(nil, false),
 						Selector:   allSelector,
 						RespondAt:  startTime.Add(initialPause + time.Millisecond*30),
 						Malformed:  true,
@@ -380,21 +380,21 @@ func TestHTTPRetriever(t *testing.T) {
 				cid1: {
 					{
 						Peer:       cid1Cands[0].MinerPeer,
-						LinkSystem: *makeLsys(nil),
+						LinkSystem: *makeLsys(nil, false),
 						Selector:   allSelector,
 						RespondAt:  startTime.Add(initialPause + time.Millisecond*10),
 						Malformed:  true,
 					},
 					{
 						Peer:       cid1Cands[1].MinerPeer,
-						LinkSystem: *makeLsys(nil),
+						LinkSystem: *makeLsys(nil, false),
 						Selector:   allSelector,
 						RespondAt:  startTime.Add(initialPause + time.Millisecond*20),
 						Malformed:  true,
 					},
 					{
 						Peer:       cid1Cands[2].MinerPeer,
-						LinkSystem: *makeLsys(tbc1.AllBlocks()),
+						LinkSystem: *makeLsys(tbc1.AllBlocks(), false),
 						Selector:   allSelector,
 						RespondAt:  startTime.Add(initialPause + time.Millisecond*30),
 					},
@@ -516,7 +516,7 @@ func TestHTTPRetriever(t *testing.T) {
 				cid1: {
 					{
 						Peer:       cid1Cands[0].MinerPeer,
-						LinkSystem: *makeLsys(tbc1.AllBlocks()[0:50]),
+						LinkSystem: *makeLsys(tbc1.AllBlocks()[0:50], false),
 						Selector:   allSelector,
 						RespondAt:  startTime.Add(initialPause + time.Millisecond*40),
 					},
@@ -609,7 +609,7 @@ func TestHTTPRetriever(t *testing.T) {
 				expectedCids = append(expectedCids, ec)
 				expectedStats = append(expectedStats, testCase.expectedStats[c])
 				expectedErrors = append(expectedErrors, testCase.expectedErrors[c])
-				lsys := makeLsys(nil)
+				lsys := makeLsys(nil, false)
 				blockAccounting = append(blockAccounting, NewBlockAccounter(lsys))
 				retrievals = append(retrievals, func(eventsCb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
 					request := types.RetrievalRequest{

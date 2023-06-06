@@ -37,7 +37,7 @@ func TestVerifiedCar(t *testing.T) {
 	t.Logf("random seed: %d", rndSeed)
 	var rndReader io.Reader = rand.New(rand.NewSource(rndSeed))
 
-	store := &testutil.CorrectedMemStore{Store: &memstore.Store{
+	store := &testutil.CorrectedMemStore{ParentStore: &memstore.Store{
 		Bag: make(map[string][]byte),
 	}}
 	lsys := cidlink.DefaultLinkSystem()
@@ -505,7 +505,7 @@ func TestVerifiedCar(t *testing.T) {
 
 			req := require.New(t)
 
-			store := &testutil.CorrectedMemStore{Store: &memstore.Store{
+			store := &testutil.CorrectedMemStore{ParentStore: &memstore.Store{
 				Bag: make(map[string][]byte),
 			}}
 			lsys := cidlink.DefaultLinkSystem()

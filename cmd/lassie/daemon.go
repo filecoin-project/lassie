@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/filecoin-project/lassie/pkg/lassie"
@@ -142,8 +143,8 @@ func daemonCommand(cctx *cli.Context) error {
 	if len(providerBlockList) > 0 {
 		lassieOpts = append(lassieOpts, lassie.WithProviderBlockList(providerBlockList))
 	}
-	if tempDir != "" {
-		lassieOpts = append(lassieOpts, lassie.WithTempDir(tempDir))
+	if tempDir == "" {
+		tempDir = os.TempDir()
 	}
 	if bitswapConcurrency > 0 {
 		lassieOpts = append(lassieOpts, lassie.WithBitswapConcurrency(bitswapConcurrency))

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"os"
 	"sync/atomic"
 	"time"
 
@@ -14,7 +13,6 @@ import (
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/retriever/bitswaphelpers"
-	"github.com/filecoin-project/lassie/pkg/storage"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/boxo/bitswap/client"
 	"github.com/ipfs/boxo/bitswap/network"
@@ -75,7 +73,6 @@ const shortenedDelay = 4 * time.Millisecond
 // BitswapConfig contains configurable parameters for bitswap fetching
 type BitswapConfig struct {
 	BlockTimeout time.Duration
-	TempDir      string
 	Concurrency  int
 }
 
@@ -143,7 +140,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 
 	totalWritten := atomic.Uint64{}
 	blockCount := atomic.Uint64{}
-	cb := func(bytesWritten uint64) {
+	bytesWrittenCb := func(bytesWritten uint64) {
 		// record first byte received
 		if totalWritten.Load() == 0 {
 			br.events(events.FirstByte(br.clock.Now(), br.request.RetrievalID, phaseStartTime, bitswapCandidate, br.clock.Since(phaseStartTime)))
@@ -187,57 +184,58 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	// loader that can work with bitswap just for this session
 	loader := loaderForSession(br.request.RetrievalID, br.inProgressCids, br.bsGetter)
 
-	// set up the storage system, including the preloader
-	concurrency := br.BitswapRetriever.cfg.Concurrency
-	if concurrency <= 0 {
-		concurrency = DefaultConcurrency
-	}
-	cacheLinkSys := br.request.PreloadLinkSystem
-	if cacheLinkSys.StorageReadOpener == nil || cacheLinkSys.StorageWriteOpener == nil {
-		// An uninitialised LinkSystem, i.e. likely the request didn't provide a
-		// PreloadLinkSystem. So we'll create a new one. This will result in a new
-		// temporary file being created for the retrieval.
-		tmpDir := br.BitswapRetriever.cfg.TempDir
-		if tmpDir == "" {
-			tmpDir = os.TempDir()
-		}
-		cacheStore := storage.NewDeferredStorageCar(tmpDir)
-		cacheLinkSys = cidlink.DefaultLinkSystem()
-		cacheLinkSys.SetReadStorage(cacheStore)
-		cacheLinkSys.SetWriteStorage(cacheStore)
-		cacheLinkSys.TrustedStorage = true
-		defer cacheStore.Close()
-	}
-	storage, err := bitswaphelpers.NewPreloadCachingStorage(
-		br.request.LinkSystem,
-		cacheLinkSys,
-		loader,
-		concurrency,
-	)
-	if err == nil {
-		err = storage.Start(ctx)
-	}
-	if err != nil {
-		cancel()
-		return nil, err
-	}
+	// set up the storage system, including the preloader if configured
+	var preloader preload.Loader
+	traversalLinkSys := br.request.LinkSystem
+	var storage *bitswaphelpers.PreloadCachingStorage
 
-	// setup providers linksystem for this retrieval
-	br.bstore.AddLinkSystem(
-		br.request.RetrievalID,
-		bitswaphelpers.NewByteCountingLinkSystem(storage.BitswapLinkSystem, cb),
-	)
+	if br.request.HasPreloadLinkSystem() {
+		concurrency := br.BitswapRetriever.cfg.Concurrency
+		if concurrency <= 0 {
+			concurrency = DefaultConcurrency
+		}
+
+		var err error
+		storage, err = bitswaphelpers.NewPreloadCachingStorage(
+			br.request.LinkSystem,
+			br.request.PreloadLinkSystem,
+			loader,
+			concurrency,
+		)
+		if err == nil {
+			err = storage.Start(ctx)
+		}
+		if err != nil {
+			cancel()
+			return nil, err
+		}
+		preloader = storage.Preloader
+		traversalLinkSys = *storage.TraversalLinkSystem
+
+		br.bstore.AddLinkSystem(
+			br.request.RetrievalID,
+			bitswaphelpers.NewByteCountingLinkSystem(storage.BitswapLinkSystem, bytesWrittenCb),
+		)
+	} else {
+		br.bstore.AddLinkSystem(
+			br.request.RetrievalID,
+			bitswaphelpers.NewByteCountingLinkSystem(&br.request.LinkSystem, bytesWrittenCb),
+		)
+		traversalLinkSys.StorageReadOpener = loader
+	}
 
 	// run the retrieval
 	err = easyTraverse(
 		ctx,
 		cidlink.Link{Cid: br.request.Cid},
 		selector,
-		storage.TraversalLinkSystem,
-		storage.Preloader,
+		&traversalLinkSys,
+		preloader,
 		br.request.MaxBlocks,
 	)
-	storage.Stop()
+	if storage != nil {
+		storage.Stop()
+	}
 	cancel()
 
 	// unregister relevant provider records & LinkSystem
@@ -250,7 +248,10 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	}
 	duration := br.clock.Since(phaseStartTime)
 	speed := uint64(float64(totalWritten.Load()) / duration.Seconds())
-	preloadedPercent := storage.GetStats().PreloadedPercent()
+	var preloadedPercent uint64
+	if storage != nil {
+		preloadedPercent = storage.GetStats().PreloadedPercent()
+	}
 
 	// record success
 	br.events(events.Success(
