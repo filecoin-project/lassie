@@ -90,7 +90,7 @@ func (session *Session) isAcceptableCandidate(storageProviderId peer.ID) bool {
 }
 
 func (session *Session) isAcceptableCandidateForProtocol(storageProviderId peer.ID, protocol multicodec.Code) bool {
-	if protocol == multicodec.TransportBitswap {
+	if protocol == multicodec.TransportBitswap || protocol == multicodec.TransportIpfsGatewayHttp {
 		return true
 	}
 
