@@ -104,7 +104,6 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 		case multicodec.TransportBitswap:
 			protocolRetrievers[protocol] = retriever.NewBitswapRetrieverFromHost(ctx, cfg.Host, retriever.BitswapConfig{
 				BlockTimeout: cfg.ProviderTimeout,
-				TempDir:      cfg.TempDir,
 				Concurrency:  cfg.BitswapConcurrency,
 			})
 		case multicodec.TransportIpfsGatewayHttp:
@@ -193,15 +192,6 @@ func WithProviderBlockList(providerBlockList map[peer.ID]bool) LassieOption {
 func WithProviderAllowList(providerAllowList map[peer.ID]bool) LassieOption {
 	return func(cfg *LassieConfig) {
 		cfg.ProviderAllowList = providerAllowList
-	}
-}
-
-// WithTempDir allows you to specify a custom temp directory for bitswap
-// retrievals, used for a temporary block store for the preloader. The default
-// is the system temp directory.
-func WithTempDir(tempDir string) LassieOption {
-	return func(cfg *LassieConfig) {
-		cfg.TempDir = tempDir
 	}
 }
 

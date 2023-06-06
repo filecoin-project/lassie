@@ -172,9 +172,7 @@ func Fetch(cctx *cli.Context) error {
 		lassieOpts = append(lassieOpts, lassie.WithGlobalTimeout(globalTimeout))
 	}
 
-	if tempDir != "" {
-		lassieOpts = append(lassieOpts, lassie.WithTempDir(tempDir))
-	} else {
+	if tempDir == "" {
 		tempDir = os.TempDir()
 	}
 

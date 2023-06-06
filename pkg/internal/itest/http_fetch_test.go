@@ -857,7 +857,7 @@ func TestHttpFetch(t *testing.T) {
 				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, testutil.ZeroReader{}, 4<<20)}
 			},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
-				store := &testutil.CorrectedMemStore{Store: &memstore.Store{
+				store := &testutil.CorrectedMemStore{ParentStore: &memstore.Store{
 					Bag: make(map[string][]byte),
 				}}
 				lsys := cidlink.DefaultLinkSystem()
