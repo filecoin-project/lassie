@@ -165,7 +165,6 @@ func (r RetrievalRequest) Etag() string {
 	sb.WriteString(".dfs")
 	// range bytes would go here: `.from.to`
 	suffix := strconv.FormatUint(xxhash.Sum64([]byte(sb.String())), 32)
-	fmt.Println("sb.String()", sb.String(), xxhash.Sum64([]byte(sb.String())))
 	return `"` + r.Cid.String() + ".car." + suffix + `"`
 }
 
