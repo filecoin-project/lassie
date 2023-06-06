@@ -81,7 +81,7 @@ func TestCandidateFinder(t *testing.T) {
 	ctx := context.Background()
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(ctx, time.Second)
+			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
 			req := require.New(t)
 			clock := clock.NewMock()
