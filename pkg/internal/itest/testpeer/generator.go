@@ -3,8 +3,10 @@ package testpeer
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -87,7 +89,7 @@ func (g *TestPeerGenerator) Close() error {
 // NextBitswap generates a new test peer with bitswap + dependencies
 func (g *TestPeerGenerator) NextBitswap() TestPeer {
 	g.seq++
-	p, err := p2ptestutil.RandTestBogusIdentity()
+	p, err := RandTestPeerIdentity()
 	require.NoError(g.t, err)
 	tp, err := NewTestBitswapPeer(g.ctx, g.mn, p, g.netOptions, g.bsOptions)
 	require.NoError(g.t, err)
@@ -455,6 +457,30 @@ func MockIpfsHandler(ctx context.Context, lsys linking.LinkSystem) func(http.Res
 			return
 		}
 	}
+}
+
+// RandTestPeerIdentity is a wrapper around
+// github.com/libp2p/go-libp2p-testing/netutil/RandTestBogusIdentity that
+// ensures the returned identity has an available port. The identity generated
+// by netutil/RandTestBogusIdentity is not guaranteed to have an available port,
+// so we use a net.Listen to check if the port is available and try again if
+// it's not.
+func RandTestPeerIdentity() (tnet.Identity, error) {
+	for i := 0; i < 10; i++ {
+		id, err := p2ptestutil.RandTestBogusIdentity()
+		if err != nil {
+			return nil, err
+		}
+		addr := id.Address()
+		port := strings.Split(addr.String(), "/")[4]
+		// check if 127.0.0.1:port is available or not
+		ln, err := net.Listen("tcp4", "127.0.0.1:"+port)
+		if err == nil {
+			ln.Close()
+			return id, nil
+		} // else assume it's in use and try again
+	}
+	return nil, errors.New("failed to find an available port")
 }
 
 func visitNoop(p traversal.Progress, n datamodel.Node, vr traversal.VisitReason) error { return nil }
