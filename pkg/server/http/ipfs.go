@@ -3,7 +3,6 @@ package httpserver
 import (
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -221,10 +220,9 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		if err != nil {
 			select {
 			case <-bytesWritten:
-				reqConn := req.Context().Value(connContextKey)
-				if conn, ok := reqConn.(net.Conn); ok {
-					res.(http.Flusher).Flush()
-					conn.Write(ResponseChunkDelimeter)
+				logger.Debugw("unclean close", "cid", request.Cid, "retrievalID", request.RetrievalID)
+				if err := closeWithUnterminatedChunk(res); err != nil {
+					logger.Infow("unable to send early termination", "err", err)
 				}
 				return
 			default:
@@ -425,4 +423,27 @@ func parseProviders(req *http.Request) ([]peer.AddrInfo, error) {
 func errorResponse(res http.ResponseWriter, statusLogger *statusLogger, code int, err error) {
 	statusLogger.logStatus(code, err.Error())
 	http.Error(res, err.Error(), code)
+}
+
+// closeWithUnterminatedChunk attempts to take control of the the http conn and terminate the stream early
+func closeWithUnterminatedChunk(res http.ResponseWriter) error {
+	hijacker, ok := res.(http.Hijacker)
+	if !ok {
+		return errors.New("unable to access hijack interface")
+	}
+	conn, buf, err := hijacker.Hijack()
+	if err != nil {
+		return fmt.Errorf("unable to access conn through hijack interface: %w", err)
+	}
+	if _, err := buf.Write(ResponseChunkDelimeter); err != nil {
+		return fmt.Errorf("writing response chunk delimiter: %w", err)
+	}
+	if err := buf.Flush(); err != nil {
+		return fmt.Errorf("flushing buff: %w", err)
+	}
+	// attempt to close just the write side
+	if err := conn.Close(); err != nil {
+		return fmt.Errorf("closing write conn: %w", err)
+	}
+	return nil
 }
