@@ -22,9 +22,18 @@ type MockIndexer struct {
 	listener       net.Listener
 	server         *http.Server
 	clock          clock.Clock
+	connectCh      chan<- string
 }
 
-func NewMockIndexer(ctx context.Context, address string, port uint64, cidProviders map[cid.Cid][]model.ProviderResult, clock clock.Clock) (*MockIndexer, error) {
+func NewMockIndexer(
+	ctx context.Context,
+	address string,
+	port uint64,
+	cidProviders map[cid.Cid][]model.ProviderResult,
+	clock clock.Clock,
+	connectCh chan<- string,
+) (*MockIndexer, error) {
+
 	addr := fmt.Sprintf("%s:%d", address, port)
 	listener, err := net.Listen("tcp", addr) // assigns a port if port is 0
 	if err != nil {
@@ -52,6 +61,7 @@ func NewMockIndexer(ctx context.Context, address string, port uint64, cidProvide
 		server:         server,
 		returnedValues: returnedValues,
 		clock:          clock,
+		connectCh:      connectCh,
 	}
 
 	// Routes
@@ -81,6 +91,10 @@ func (s *MockIndexer) Close() error {
 }
 
 func (s *MockIndexer) handleMultihash(res http.ResponseWriter, req *http.Request) {
+	if s.connectCh != nil {
+		s.connectCh <- req.URL.String()
+	}
+
 	urlPath := strings.Split(req.URL.Path, "/")[1:]
 
 	// check if CID path param is missing
@@ -106,38 +120,39 @@ func (s *MockIndexer) handleMultihash(res http.ResponseWriter, req *http.Request
 
 	// check if Accept header includes applica
 	isNDJson := false
-	hasAccept := req.Header.Get("Accept") != ""
-	acceptTypes := strings.Split(req.Header.Get("Accept"), ",")
-	if hasAccept {
-		for _, acceptType := range acceptTypes {
-			if acceptType == "application/x-ndjson" {
-				isNDJson = true
-				break
-			}
+	for _, acceptType := range strings.Split(req.Header.Get("Accept"), ",") {
+		if acceptType == "application/x-ndjson" {
+			isNDJson = true
+			break
 		}
 	}
 
-	if !isNDJson {
+	encoder := json.NewEncoder(res)
 
-		err := json.NewEncoder(res).Encode(model.FindResponse{
+	if !isNDJson {
+		findResp := model.FindResponse{
 			MultihashResults: []model.MultihashResult{
 				{
 					Multihash:       mh,
 					ProviderResults: returnResults,
 				},
 			},
-		})
-		if err != nil {
+		}
+		if err := encoder.Encode(findResp); err != nil {
 			http.Error(res, err.Error(), http.StatusInternalServerError)
-			return
 		}
 		return
 	}
 
-	encoder := json.NewEncoder(res)
 	for _, result := range returnResults {
-		encoder.Encode(result)
-		res.Write([]byte("\n"))
+		if err := encoder.Encode(result); err != nil {
+			http.Error(res, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if _, err := res.Write([]byte("\n")); err != nil {
+			http.Error(res, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		s.clock.Sleep(1 * time.Second)
 	}
 }
