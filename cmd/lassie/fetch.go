@@ -208,7 +208,7 @@ type fetchRunFunc func(
 
 var fetchRun fetchRunFunc = defaultFetchRun
 
-// fetchCommandHandler is the handler for the fetch command.
+// defaultFetchRun is the handler for the fetch command.
 // This abstraction allows the fetch command to be invoked
 // programmatically for testing.
 func defaultFetchRun(
