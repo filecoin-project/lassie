@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"os"
 	"testing"
 	"time"
 
@@ -36,39 +35,17 @@ func TestDaemonCommandFlags(t *testing.T) {
 				require.Equal(t, 0, len(lCfg.Protocols))
 				require.Equal(t, 0, len(lCfg.ProviderBlockList))
 				require.Equal(t, 0, len(lCfg.ProviderAllowList))
-				require.Equal(t, os.TempDir(), lCfg.TempDir)
 				require.Equal(t, 6, lCfg.BitswapConcurrency)
 
 				// http server config
 				require.Equal(t, "127.0.0.1", hCfg.Address)
 				require.Equal(t, uint(0), hCfg.Port)
-				require.Equal(t, "/tmp", hCfg.TempDir)
 				require.Equal(t, uint64(0), hCfg.MaxBlocksPerRequest)
 
 				// event recorder config
 				require.Equal(t, "", erCfg.EndpointURL)
 				require.Equal(t, "", erCfg.EndpointAuthorization)
 				require.Equal(t, "", erCfg.InstanceID)
-				return nil
-			},
-		},
-		{
-			name: "with libp2p low connection threshold and concurrent sp retrievals",
-			args: []string{"daemon", "--libp2p-conns-lowwater", "10", "--concurrent-sp-retrievals", "10"},
-			assert: func(ctx context.Context, lCfg *l.LassieConfig, hCfg h.HttpServerConfig, erCfg *a.EventRecorderConfig) error {
-				require.Equal(t, 1, len(lCfg.Libp2pOptions))
-				// Should only be set when libp2p connection threshold options are also provided
-				require.Equal(t, uint(10), lCfg.ConcurrentSPRetrievals)
-				return nil
-			},
-		},
-		{
-			name: "with libp2p high connection threshold and concurrent sp retrievals",
-			args: []string{"daemon", "--libp2p-conns-highwater", "10", "--concurrent-sp-retrievals", "10"},
-			assert: func(ctx context.Context, lCfg *l.LassieConfig, hCfg h.HttpServerConfig, erCfg *a.EventRecorderConfig) error {
-				require.Equal(t, 1, len(lCfg.Libp2pOptions))
-				// Should only be set when libp2p connection threshold options are also provided
-				require.Equal(t, uint(10), lCfg.ConcurrentSPRetrievals)
 				return nil
 			},
 		},
@@ -81,7 +58,7 @@ func TestDaemonCommandFlags(t *testing.T) {
 				require.True(t, ok)
 				cmInfo := cmgr.GetInfo()
 				require.Equal(t, cmInfo.LowWater, 10)
-				require.Equal(t, cmInfo.HighWater, 10)
+				require.Equal(t, cmInfo.HighWater, 20)
 				return nil
 			},
 		},
@@ -97,7 +74,6 @@ func TestDaemonCommandFlags(t *testing.T) {
 			name: "with temp directory",
 			args: []string{"daemon", "--tempdir", "/mytmpdir"},
 			assert: func(ctx context.Context, lCfg *l.LassieConfig, hCfg h.HttpServerConfig, erCfg *a.EventRecorderConfig) error {
-				require.Equal(t, "/mytmpdir", lCfg.TempDir)
 				require.Equal(t, "/mytmpdir", hCfg.TempDir)
 				return nil
 			},

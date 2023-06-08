@@ -35,7 +35,6 @@ type LassieConfig struct {
 	Protocols              []multicodec.Code
 	ProviderBlockList      map[peer.ID]bool
 	ProviderAllowList      map[peer.ID]bool
-	TempDir                string
 	BitswapConcurrency     int
 }
 
