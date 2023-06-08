@@ -90,6 +90,11 @@ func before(cctx *cli.Context) error {
 	return nil
 }
 
+func after(cctx *cli.Context) error {
+	ResetGlobalFlags()
+	return nil
+}
+
 func buildLassieConfigFromCLIContext(cctx *cli.Context, lassieOpts []lassie.LassieOption, libp2pOpts []config.Option) (*lassie.LassieConfig, error) {
 	providerTimeout := cctx.Duration("provider-timeout")
 	globalTimeout := cctx.Duration("global-timeout")

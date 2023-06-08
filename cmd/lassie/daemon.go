@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/filecoin-project/lassie/pkg/aggregateeventrecorder"
@@ -79,38 +80,40 @@ var daemonCmd = &cli.Command{
 	Name:   "daemon",
 	Usage:  "Starts a lassie daemon, accepting http requests",
 	Before: before,
+	After:  after,
 	Flags:  daemonFlags,
-	Action: daemonCommand,
+	Action: daemonAction,
 }
 
-// daemonCommand is the action for the daemon command. It sets up the
-// lassie daemon and starts the http server. It is intentionally not
-// performing any logic itself, but delegates to the DaemonCommandHandler
-// function for testability.
-func daemonCommand(cctx *cli.Context) error {
-	address := cctx.String("address")
-	port := cctx.Uint("port")
-	tempDir := cctx.String("tempdir")
+// daemonAction is the cli action for the daemon command. This function is
+// called by the cli framework when the daemon command is invoked. It translates
+// the cli context into the appropriate config objects and then calls the
+// daemonRun function.
+func daemonAction(cctx *cli.Context) error {
+	// lassie config
 	libp2pLowWater := cctx.Int("libp2p-conns-lowwater")
 	libp2pHighWater := cctx.Int("libp2p-conns-highwater")
 	concurrentSPRetrievals := cctx.Uint("concurrent-sp-retrievals")
-	maxBlocks := cctx.Uint64("maxblocks")
-
-	eventRecorderURL := cctx.String("event-recorder-url")
-	authToken := cctx.String("event-recorder-auth")
-	instanceID := cctx.String("event-recorder-instance-id")
-
 	lassieCfg, err := getLassieConfigForDaemon(cctx, libp2pLowWater, libp2pHighWater, concurrentSPRetrievals)
 	if err != nil {
 		return cli.Exit(err, 1)
 	}
 
+	// http server config
+	address := cctx.String("address")
+	port := cctx.Uint("port")
+	tempDir := cctx.String("tempdir")
+	maxBlocks := cctx.Uint64("maxblocks")
 	httpServerCfg := getHttpServerConfigForDaemon(address, port, tempDir, maxBlocks)
 
+	// event recorder config
+	eventRecorderURL := cctx.String("event-recorder-url")
+	authToken := cctx.String("event-recorder-auth")
+	instanceID := cctx.String("event-recorder-instance-id")
 	eventRecorderCfg := getEventRecorderConfig(eventRecorderURL, authToken, instanceID)
 
-	err = daemonCommandHandler(
-		cctx,
+	err = daemonRun(
+		cctx.Context,
 		lassieCfg,
 		httpServerCfg,
 		eventRecorderCfg,
@@ -122,18 +125,28 @@ func daemonCommand(cctx *cli.Context) error {
 	return nil
 }
 
-// DeamonCommandHandler is the handler for the daemon command.
-// This abstraction allows the daemon to be invoked programmatically
-// for testing.
-func daemonCommandHandler(
-	cctx *cli.Context,
+// daemonRunFunc is the function signature for the daemonRun function.
+type daemonRunFunc func(
+	ctx context.Context,
+	lassieCfg *lassie.LassieConfig,
+	httpServerCfg httpserver.HttpServerConfig,
+	eventRecorderCfg *aggregateeventrecorder.EventRecorderConfig,
+) error
+
+// daemonRun is the instance of a daemonRunFunc function that will
+// execute when running the daemon command. It is set to
+// defaultDaemonRun by default, but can be replaced for testing.
+var daemonRun daemonRunFunc = defaultDaemonRun
+
+// defaultDaemonRun is the default implementation for the daemonRun function.
+func defaultDaemonRun(
+	ctx context.Context,
 	lassieCfg *lassie.LassieConfig,
 	httpServerCfg httpserver.HttpServerConfig,
 	eventRecorderCfg *aggregateeventrecorder.EventRecorderConfig,
 ) error {
-	ctx := cctx.Context
 
-	lassie, err := lassie.NewLassieWithConfig(cctx.Context, lassieCfg)
+	lassie, err := lassie.NewLassieWithConfig(ctx, lassieCfg)
 	if err != nil {
 		return nil
 	}

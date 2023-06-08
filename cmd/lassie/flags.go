@@ -166,3 +166,11 @@ var FlagIPNIEndpoint = &cli.StringFlag{
 	DefaultText: "Defaults to https://cid.contact",
 	Usage:       "HTTP endpoint of the IPNI instance used to discover providers.",
 }
+
+func ResetGlobalFlags() {
+	// Reset global variables here so that they are not used
+	// in subsequent calls to commands during testing.
+	fetchProviderAddrInfos = make([]peer.AddrInfo, 0)
+	protocols = make([]multicodec.Code, 0)
+	providerBlockList = make(map[peer.ID]bool)
+}
