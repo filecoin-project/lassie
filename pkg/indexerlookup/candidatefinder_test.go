@@ -85,7 +85,8 @@ func TestCandidateFinder(t *testing.T) {
 			defer cancel()
 			req := require.New(t)
 			clock := clock.NewMock()
-			mockIndexer, err := mockindexer.NewMockIndexer(ctx, "127.0.0.1", 0, testCase.cidReturns, clock)
+			connectCh := make(chan string, 1)
+			mockIndexer, err := mockindexer.NewMockIndexer(ctx, "127.0.0.1", 0, testCase.cidReturns, clock, connectCh)
 			req.NoError(err)
 			closeErr := make(chan error, 1)
 			go func() {
@@ -103,16 +104,27 @@ func TestCandidateFinder(t *testing.T) {
 					syncCandidates = []types.RetrievalCandidate{}
 				}
 				req.Equal(expectedReturns, syncCandidates)
+				select {
+				case <-ctx.Done():
+					req.FailNow("cancelled")
+				case recv := <-connectCh:
+					req.Regexp("^/multihash/"+cid.Hash().B58String(), recv)
+				}
 				gatheredCandidates := []types.RetrievalCandidate{}
 				asyncCandidatesErr := make(chan error, 1)
 				go func() {
 					asyncCandidatesErr <- candidateFinder.FindCandidatesAsync(ctx, cid, func(candidate types.RetrievalCandidate) {
 						gatheredCandidates = append(gatheredCandidates, candidate)
 					})
-
 				}()
+				select {
+				case <-ctx.Done():
+					req.FailNow("cancelled")
+				case recv := <-connectCh:
+					req.Regexp("^/multihash/"+cid.Hash().B58String(), recv)
+				}
 				for range expectedReturns {
-					clock.Add(time.Minute)
+					clock.Add(5 * time.Second)
 				}
 				select {
 				case <-ctx.Done():
