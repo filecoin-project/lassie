@@ -25,6 +25,9 @@ type Config struct {
 
 	// --- Dynamic state config
 
+	// Random is an optional rng, if nil, math/rand will be used.
+	Random Random
+
 	// ConnectTimeAlpha is the alpha value for the exponential moving average
 	// of the connect time for a storage provider. The connect time is the time
 	// it takes to connect to a storage provider, it is used to determine the
@@ -69,17 +72,36 @@ type Config struct {
 	// weight to recent success metrics. A value of 0 will only use the most
 	// recent success metric.
 	SuccessAlpha float64
-	// Random is an optional rng, if nil, math/rand will be used.
-	Random Random
 
-	// TODO: comment these
-
-	GraphsyncVerifiedDealWeight  float64
+	// GraphsyncVerifiedDealWeight is the scoring weight applied when a
+	// graphsync candidate has a VerifiedDeal metadata. The weight is a
+	// multiplier of the base value of `1.0` when VerifiedDeal is found.
+	GraphsyncVerifiedDealWeight float64
+	// GraphsyncFastRetrievalWeight is the scoring weight applied when a
+	// graphsync candidate has a FastRetrieval metadata. The weight is a
+	// multiplier of the base value of `1.0` when FastRetrieval is found.
 	GraphsyncFastRetrievalWeight float64
-	ConnectTimeWeight            float64
-	FirstByteTimeWeight          float64
-	BandwidthWeight              float64
-	SuccessWeight                float64
+	// ConnectTimeWeight is the scoring weight applied to the connect time
+	// exponential moving average for the candidate at time of scoring. The
+	// weight is a multiplier the base value, which should be a normalised
+	// score in the range of [0, 1].
+	ConnectTimeWeight float64
+	// FirstByteTimeWeight is the scoring weight applied to the time to first
+	// byte exponential moving average for the candidate at time of scoring. The
+	// weight is a multiplier the base value, which should be a normalised
+	// score in the range of [0, 1].
+	FirstByteTimeWeight float64
+	// BandwidthWeight is the scoring weight applied to the bandwidth
+	// exponential moving average for the candidate at time of scoring. The
+	// weight is a multiplier the base value, which should be a normalised
+	// score in the range of [0, 1].
+	BandwidthWeight float64
+	// SuccessWeight is the scoring weight applied to the success exponential
+	// moving average for the candidate at time of scoring. The weight is a
+	// multiplier the base value, which should be a normalised score in the
+	// range of [0, 1] (where each failure contributes a 0 and each success
+	// contributes a 1).
+	SuccessWeight float64
 }
 
 // DefaultConfig returns a default config with usable alpha and weight values.
