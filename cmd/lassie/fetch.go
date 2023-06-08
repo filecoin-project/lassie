@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"strings"
@@ -16,57 +17,60 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+var fetchFlags = []cli.Flag{
+	&cli.StringFlag{
+		Name:      "output",
+		Aliases:   []string{"o"},
+		Usage:     "the CAR file to write to, may be an existing or a new CAR, or use '-' to write to stdout",
+		TakesFile: true,
+	},
+	&cli.BoolFlag{
+		Name:    "progress",
+		Aliases: []string{"p"},
+		Usage:   "print progress output",
+	},
+	&cli.StringFlag{
+		Name:        "dag-scope",
+		Usage:       "describes the fetch behavior at the end of the traversal path. Valid values include [all, entity, block].",
+		DefaultText: "defaults to all, the entire DAG at the end of the path will be fetched",
+		Value:       "all",
+		Action: func(cctx *cli.Context, v string) error {
+			switch v {
+			case string(types.DagScopeAll):
+			case string(types.DagScopeEntity):
+			case string(types.DagScopeBlock):
+			default:
+				return fmt.Errorf("invalid dag-scope parameter, must be of value [all, entity, block]")
+			}
+
+			return nil
+		},
+	},
+	FlagIPNIEndpoint,
+	FlagEventRecorderAuth,
+	FlagEventRecorderInstanceId,
+	FlagEventRecorderUrl,
+	FlagVerbose,
+	FlagVeryVerbose,
+	FlagProtocols,
+	FlagAllowProviders,
+	FlagExcludeProviders,
+	FlagTempDir,
+	FlagBitswapConcurrency,
+	FlagGlobalTimeout,
+	FlagProviderTimeout,
+}
+
 var fetchCmd = &cli.Command{
 	Name:   "fetch",
 	Usage:  "Fetches content from the IPFS and Filecoin network",
 	Before: before,
-	Action: Fetch,
-	Flags: []cli.Flag{
-		&cli.StringFlag{
-			Name:      "output",
-			Aliases:   []string{"o"},
-			Usage:     "the CAR file to write to, may be an existing or a new CAR, or use '-' to write to stdout",
-			TakesFile: true,
-		},
-		&cli.BoolFlag{
-			Name:    "progress",
-			Aliases: []string{"p"},
-			Usage:   "print progress output",
-		},
-		&cli.StringFlag{
-			Name:        "dag-scope",
-			Usage:       "describes the fetch behavior at the end of the traversal path. Valid values include [all, entity, block].",
-			DefaultText: "defaults to all, the entire DAG at the end of the path will be fetched",
-			Value:       "all",
-			Action: func(cctx *cli.Context, v string) error {
-				switch v {
-				case string(types.DagScopeAll):
-				case string(types.DagScopeEntity):
-				case string(types.DagScopeBlock):
-				default:
-					return fmt.Errorf("invalid dag-scope parameter, must be of value [all, entity, block]")
-				}
-
-				return nil
-			},
-		},
-		FlagIPNIEndpoint,
-		FlagEventRecorderAuth,
-		FlagEventRecorderInstanceId,
-		FlagEventRecorderUrl,
-		FlagVerbose,
-		FlagVeryVerbose,
-		FlagProtocols,
-		FlagAllowProviders,
-		FlagExcludeProviders,
-		FlagTempDir,
-		FlagBitswapConcurrency,
-		FlagGlobalTimeout,
-		FlagProviderTimeout,
-	},
+	After:  after,
+	Action: fetchAction,
+	Flags:  fetchFlags,
 }
 
-func Fetch(cctx *cli.Context) error {
+func fetchAction(cctx *cli.Context) error {
 	if cctx.Args().Len() != 1 {
 		return fmt.Errorf("usage: lassie fetch [-o <CAR file>] [-t <timeout>] <CID>[/path/to/content]")
 	}
@@ -76,9 +80,6 @@ func Fetch(cctx *cli.Context) error {
 
 	dagScope := cctx.String("dag-scope")
 	tempDir := cctx.String("tempdir")
-	eventRecorderURL := cctx.String("event-recorder-url")
-	authToken := cctx.String("event-recorder-auth")
-	instanceID := cctx.String("event-recorder-instance-id")
 	progress := cctx.Bool("progress")
 
 	rootCid, path, err := parseCidPath(cctx.Args().Get(0))
@@ -86,15 +87,24 @@ func Fetch(cctx *cli.Context) error {
 		return err
 	}
 
+	output := cctx.String("output")
+	outfile := fmt.Sprintf("%s.car", rootCid)
+	if output != "" {
+		outfile = output
+	}
+
 	lassieCfg, err := buildLassieConfigFromCLIContext(cctx, nil, nil)
 	if err != nil {
 		return err
 	}
 
+	eventRecorderURL := cctx.String("event-recorder-url")
+	authToken := cctx.String("event-recorder-auth")
+	instanceID := cctx.String("event-recorder-instance-id")
 	eventRecorderCfg := getEventRecorderConfig(eventRecorderURL, authToken, instanceID)
 
-	err = fetchCommandHandler(
-		cctx,
+	err = fetchRun(
+		cctx.Context,
 		lassieCfg,
 		eventRecorderCfg,
 		msgWriter,
@@ -104,6 +114,7 @@ func Fetch(cctx *cli.Context) error {
 		dagScope,
 		tempDir,
 		progress,
+		outfile,
 	)
 	if err != nil {
 		return cli.Exit(err, 1)
@@ -181,11 +192,8 @@ func (ow *onlyWriter) Write(p []byte) (n int, err error) {
 	return ow.w.Write(p)
 }
 
-// fetchCommandHandler is the handler for the fetch command.
-// This abstraction allows the fetch command to be invoked
-// programmatically for testing.
-func fetchCommandHandler(
-	cctx *cli.Context,
+type fetchRunFunc func(
+	ctx context.Context,
 	lassieCfg *lassie.LassieConfig,
 	eventRecorderCfg *aggregateeventrecorder.EventRecorderConfig,
 	msgWriter io.Writer,
@@ -195,10 +203,28 @@ func fetchCommandHandler(
 	dagScope string,
 	tempDir string,
 	progress bool,
-) error {
-	ctx := cctx.Context
+	outfile string,
+) error
 
-	lassie, err := lassie.NewLassieWithConfig(cctx.Context, lassieCfg)
+var fetchRun fetchRunFunc = defaultFetchRun
+
+// fetchCommandHandler is the handler for the fetch command.
+// This abstraction allows the fetch command to be invoked
+// programmatically for testing.
+func defaultFetchRun(
+	ctx context.Context,
+	lassieCfg *lassie.LassieConfig,
+	eventRecorderCfg *aggregateeventrecorder.EventRecorderConfig,
+	msgWriter io.Writer,
+	dataWriter io.Writer,
+	rootCid cid.Cid,
+	path string,
+	dagScope string,
+	tempDir string,
+	progress bool,
+	outfile string,
+) error {
+	lassie, err := lassie.NewLassieWithConfig(ctx, lassieCfg)
 	if err != nil {
 		return err
 	}
@@ -217,11 +243,6 @@ func fetchCommandHandler(
 		fmt.Fprintln(msgWriter)
 		pp := &progressPrinter{writer: msgWriter}
 		lassie.RegisterSubscriber(pp.subscriber)
-	}
-
-	outfile := fmt.Sprintf("%s.car", rootCid)
-	if cctx.IsSet("output") {
-		outfile = cctx.String("output")
 	}
 
 	var carWriter *storage.DeferredCarWriter
