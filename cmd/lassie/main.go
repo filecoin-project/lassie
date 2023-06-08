@@ -124,7 +124,7 @@ func buildLassieConfigFromCLIContext(cctx *cli.Context, lassieOpts []lassie.Lass
 		lassieOpts = append(lassieOpts, finderOpt)
 	} else if cctx.IsSet("ipni-endpoint") {
 		endpoint := cctx.String("ipni-endpoint")
-		endpointUrl, err := url.Parse(endpoint)
+		endpointUrl, err := url.ParseRequestURI(endpoint)
 		if err != nil {
 			logger.Errorw("Failed to parse IPNI endpoint as URL", "err", err)
 			return nil, fmt.Errorf("cannot parse given IPNI endpoint %s as valid URL: %w", endpoint, err)
