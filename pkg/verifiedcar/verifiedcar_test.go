@@ -25,6 +25,7 @@ import (
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/storage/memstore"
 	"github.com/ipld/go-ipld-prime/traversal"
+	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	mh "github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/require"
@@ -63,6 +64,17 @@ func TestVerifiedCar(t *testing.T) {
 
 	unixfsFile := testutil.GenerateNoDupes(func() unixfs.DirEntry { return unixfs.GenerateFile(t, &lsys, rndReader, 4<<20) })
 	unixfsFileBlocks := testutil.ToBlocks(t, lsys, unixfsFile.Root, allSelector)
+
+	unixfsFileRange0_1048576Blocks := unixfsFileBlocks[0:6]
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
+	ss := ssb.ExploreInterpretAs("unixfs", ssb.MatcherSubset(0, 1<<20))
+	unixfsFileRange0_1048576Selector := ss.Node()
+
+	// need the root plus the byte range of 1M->2M, which happens to include the
+	// block of the 0->1M range because of overlapping data
+	unixfsFileRange1048576_2097152Blocks := append(append([]blocks.Block{}, unixfsFileBlocks[0]), unixfsFileBlocks[5:10]...)
+	ss = ssb.ExploreInterpretAs("unixfs", ssb.MatcherSubset(1<<20, 2<<20))
+	unixfsFileRange1048576_2097152Selector := ss.Node()
 
 	unixfsFileWithDups := unixfs.GenerateFile(t, &lsys, testutil.ZeroReader{}, 4<<20)
 	unixfsFileWithDupsBlocks := testutil.ToBlocks(t, lsys, unixfsFileWithDups.Root, allSelector)
@@ -550,6 +562,24 @@ func TestVerifiedCar(t *testing.T) {
 				Selector: allSelector,
 			},
 			carAsCIDv0: true,
+		},
+		{
+			name:   "unixfs: large sharded file byte range [0:1M]",
+			blocks: consumedBlocks(unixfsFileRange0_1048576Blocks),
+			roots:  []cid.Cid{unixfsFile.Root},
+			cfg: verifiedcar.Config{
+				Root:     unixfsFile.Root,
+				Selector: unixfsFileRange0_1048576Selector,
+			},
+		},
+		{
+			name:   "unixfs: large sharded file byte range [1M:2M]",
+			blocks: consumedBlocks(unixfsFileRange1048576_2097152Blocks),
+			roots:  []cid.Cid{unixfsFile.Root},
+			cfg: verifiedcar.Config{
+				Root:     unixfsFile.Root,
+				Selector: unixfsFileRange1048576_2097152Selector,
+			},
 		},
 	}
 
