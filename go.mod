@@ -4,8 +4,10 @@ go 1.19
 
 require (
 	github.com/benbjohnson/clock v1.3.0
+	github.com/cespare/xxhash/v2 v2.2.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/filecoin-project/go-data-transfer/v2 v2.0.0-rc7
+	github.com/filecoin-project/go-retrieval-types v1.2.0
 	github.com/filecoin-project/go-state-types v0.10.0
 	github.com/google/uuid v1.3.0
 	github.com/hannahhoward/go-pubsub v1.0.0
@@ -41,19 +43,8 @@ require (
 )
 
 require (
-	github.com/felixge/httpsnoop v1.0.0 // indirect
-	github.com/filecoin-project/go-address v1.1.0 // indirect
-	github.com/golang/gddo v0.0.0-20180823221919-9d8ff1c67be5 // indirect
-	github.com/gopherjs/gopherjs v1.17.2 // indirect
-	github.com/gorilla/websocket v1.5.0 // indirect
-	github.com/libp2p/go-mplex v0.7.0 // indirect
-	github.com/prometheus/client_golang v1.14.0 // indirect
-)
-
-require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
-	github.com/cespare/xxhash/v2 v2.2.0
 	github.com/containerd/cgroups v1.1.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect
@@ -63,11 +54,12 @@ require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.1.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/elastic/gosigar v0.14.2 // indirect
+	github.com/felixge/httpsnoop v1.0.0 // indirect
+	github.com/filecoin-project/go-address v1.1.0 // indirect
 	github.com/filecoin-project/go-amt-ipld/v4 v4.1.0 // indirect
 	github.com/filecoin-project/go-cbor-util v0.0.1 // indirect
 	github.com/filecoin-project/go-ds-versioning v0.1.2 // indirect
 	github.com/filecoin-project/go-hamt-ipld/v3 v3.2.0 // indirect
-	github.com/filecoin-project/go-retrieval-types v1.2.0
 	github.com/filecoin-project/go-statemachine v1.0.3 // indirect
 	github.com/filecoin-project/go-statestore v0.2.0 // indirect
 	github.com/flynn/noise v1.0.0 // indirect
@@ -77,10 +69,13 @@ require (
 	github.com/go-task/slim-sprig v0.0.0-20230315185526-52ccab3ef572 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/golang/gddo v0.0.0-20180823221919-9d8ff1c67be5 // indirect
 	github.com/golang/mock v1.6.0 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/google/pprof v0.0.0-20230405160723-4a4c7d95572b // indirect
+	github.com/gopherjs/gopherjs v1.17.2 // indirect
+	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/hannahhoward/cbor-gen-for v0.0.0-20230214144701-5d17c9d5243c // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
@@ -113,6 +108,7 @@ require (
 	github.com/libp2p/go-flow-metrics v0.1.0 // indirect
 	github.com/libp2p/go-libp2p-asn-util v0.3.0 // indirect
 	github.com/libp2p/go-libp2p-record v0.2.0 // indirect
+	github.com/libp2p/go-mplex v0.7.0 // indirect
 	github.com/libp2p/go-msgio v0.3.0 // indirect
 	github.com/libp2p/go-nat v0.1.0 // indirect
 	github.com/libp2p/go-netroute v0.2.1 // indirect
@@ -142,6 +138,7 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/polydawn/refmt v0.89.0 // indirect
+	github.com/prometheus/client_golang v1.14.0 // indirect
 	github.com/prometheus/client_model v0.3.0 // indirect
 	github.com/prometheus/common v0.42.0 // indirect
 	github.com/prometheus/procfs v0.9.0 // indirect
