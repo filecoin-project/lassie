@@ -9,7 +9,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/internal/testutil"
 	"github.com/filecoin-project/lassie/pkg/storage"
 	"github.com/filecoin-project/lassie/pkg/types"
-	"github.com/ipfs/go-libipfs/blocks"
+	blocks "github.com/ipfs/go-block-format"
 	unixfs "github.com/ipfs/go-unixfsnode/testutil"
 	carv2 "github.com/ipld/go-car/v2"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"

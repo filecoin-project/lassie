@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	"github.com/filecoin-project/lassie/pkg/types"
+	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
-	"github.com/ipfs/go-libipfs/blocks"
 	unixfs "github.com/ipfs/go-unixfsnode/testutil"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipni/go-libipni/metadata"
