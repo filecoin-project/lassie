@@ -19,11 +19,8 @@ import (
 	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/urfave/cli/v2"
 )
-
-var fetchProviderAddrInfos []peer.AddrInfo
 
 var fetchCmd = &cli.Command{
 	Name:   "fetch",
@@ -72,22 +69,6 @@ var fetchCmd = &cli.Command{
 			},
 		},
 		&cli.StringFlag{
-			Name:        "providers",
-			Aliases:     []string{"provider"},
-			DefaultText: "Providers will be discovered automatically",
-			Usage:       "Addresses of providers, including peer IDs, to use instead of automatic discovery, seperated by a comma. All protocols will be attempted when connecting to these providers. Example: /ip4/1.2.3.4/tcp/1234/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4",
-			Action: func(cctx *cli.Context, v string) error {
-				// Do nothing if given an empty string
-				if v == "" {
-					return nil
-				}
-
-				var err error
-				fetchProviderAddrInfos, err = types.ParseProviderStrings(v)
-				return err
-			},
-		},
-		&cli.StringFlag{
 			Name:        "ipni-endpoint",
 			Aliases:     []string{"ipni"},
 			DefaultText: "Defaults to https://cid.contact",
@@ -99,6 +80,7 @@ var fetchCmd = &cli.Command{
 		FlagVerbose,
 		FlagVeryVerbose,
 		FlagProtocols,
+		FlagAllowProviders,
 		FlagExcludeProviders,
 		FlagTempDir,
 		FlagBitswapConcurrency,
