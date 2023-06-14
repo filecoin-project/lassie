@@ -21,6 +21,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/internal/itest/testpeer"
 	"github.com/filecoin-project/lassie/pkg/internal/testutil"
 	"github.com/filecoin-project/lassie/pkg/lassie"
+	"github.com/filecoin-project/lassie/pkg/retriever"
 	httpserver "github.com/filecoin-project/lassie/pkg/server/http"
 	"github.com/filecoin-project/lassie/pkg/verifiedcar"
 	"github.com/google/uuid"
@@ -59,7 +60,7 @@ func TestHttpFetch(t *testing.T) {
 	type headerSetter func(http.Header)
 	type queryModifier func(url.Values, []testpeer.TestPeer)
 	type bodyValidator func(*testing.T, unixfs.DirEntry, []byte)
-
+	type lassieOptsGen func(*testing.T, *mocknet.MockRetrievalNet) []lassie.LassieOption
 	wrapPath := "/want2/want1/want0"
 
 	testCases := []struct {
@@ -76,7 +77,7 @@ func TestHttpFetch(t *testing.T) {
 		setHeader        headerSetter
 		modifyQueries    []queryModifier
 		validateBodies   []bodyValidator
-		lassieOpts       []lassie.LassieOption
+		lassieOpts       lassieOptsGen
 	}{
 		{
 			name:             "graphsync large sharded file",
@@ -230,7 +231,9 @@ func TestHttpFetch(t *testing.T) {
 			name:             "bitswap block timeout from missing block",
 			bitswapRemotes:   1,
 			expectUncleanEnd: true,
-			lassieOpts:       []lassie.LassieOption{lassie.WithProviderTimeout(500 * time.Millisecond)},
+			lassieOpts: func(t *testing.T, mrn *mocknet.MockRetrievalNet) []lassie.LassieOption {
+				return []lassie.LassieOption{lassie.WithProviderTimeout(500 * time.Millisecond)}
+			},
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				file := unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20)
 				remotes[0].Blockstore().DeleteBlock(context.Background(), file.SelfCids[2])
@@ -250,7 +253,9 @@ func TestHttpFetch(t *testing.T) {
 			name:           "same content, http missing block, bitswap completes",
 			bitswapRemotes: 1,
 			httpRemotes:    1,
-			lassieOpts:     []lassie.LassieOption{lassie.WithProviderTimeout(500 * time.Millisecond)},
+			lassieOpts: func(t *testing.T, mrn *mocknet.MockRetrievalNet) []lassie.LassieOption {
+				return []lassie.LassieOption{lassie.WithProviderTimeout(500 * time.Millisecond)}
+			},
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				file := unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20)
 				for _, c := range file.SelfCids {
@@ -833,6 +838,19 @@ func TestHttpFetch(t *testing.T) {
 			}},
 		},
 		{
+			name:             "graphsync large sharded file, fixedPeer through startup opts",
+			graphsyncRemotes: 1,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				fileEntry := unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20)
+				// wipe content routing information for remote
+				remotes[0].Cids = make(map[cid.Cid]struct{})
+				return []unixfs.DirEntry{fileEntry}
+			},
+			lassieOpts: func(t *testing.T, mrn *mocknet.MockRetrievalNet) []lassie.LassieOption {
+				return []lassie.LassieOption{lassie.WithFinder(retriever.NewDirectCandidateFinder(mrn.Self, []peer.AddrInfo{*mrn.Remotes[0].AddrInfo()}))}
+			},
+		},
+		{
 			name:           "bitswap large sharded file, fixedPeer",
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
@@ -849,6 +867,19 @@ func TestHttpFetch(t *testing.T) {
 				}
 				v.Set("providers", strings.Join(maStrings, ","))
 			}},
+		},
+		{
+			name:           "bitswap large sharded file, fixedPeer through startup opts",
+			bitswapRemotes: 1,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				fileEntry := unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20)
+				// wipe content routing information for remote
+				remotes[0].Cids = make(map[cid.Cid]struct{})
+				return []unixfs.DirEntry{fileEntry}
+			},
+			lassieOpts: func(t *testing.T, mrn *mocknet.MockRetrievalNet) []lassie.LassieOption {
+				return []lassie.LassieOption{lassie.WithFinder(retriever.NewDirectCandidateFinder(mrn.Self, []peer.AddrInfo{*mrn.Remotes[0].AddrInfo()}))}
+			},
 		},
 		{
 			name:        "http large sharded file with dups",
@@ -915,10 +946,14 @@ func TestHttpFetch(t *testing.T) {
 
 			// Setup a new lassie
 			req := require.New(t)
+			var customOpts []lassie.LassieOption
+			if testCase.lassieOpts != nil {
+				customOpts = testCase.lassieOpts(t, mrn)
+			}
 			opts := append([]lassie.LassieOption{lassie.WithProviderTimeout(20 * time.Second),
 				lassie.WithHost(mrn.Self),
 				lassie.WithFinder(mrn.Finder),
-			}, testCase.lassieOpts...)
+			}, customOpts...)
 			if testCase.disableGraphsync {
 				opts = append(opts, lassie.WithProtocols([]multicodec.Code{multicodec.TransportBitswap}))
 			}
