@@ -15,7 +15,8 @@ var (
 	// Set with ldflags in .goreleaser.yaml via -ldflags="-X github.com/filecoin-project/lassie/pkg/build.version=v{{.Version}}".
 	version string
 	// Version returns the current version of the Lassie application
-	Version string
+	Version   string
+	UserAgent string
 )
 
 func init() {
@@ -30,6 +31,7 @@ func init() {
 	}
 
 	Version = fmt.Sprintf("%s-%s", version, revision.Revision)
+	UserAgent = fmt.Sprintf("lassie/%s", Version)
 }
 
 // versionJson is used to read the local version.json file

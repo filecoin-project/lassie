@@ -123,7 +123,11 @@ func (r RetrievalRequest) GetUrlPath() (string, error) {
 	if legacyScope == string(DagScopeEntity) {
 		legacyScope = "file"
 	}
-	return fmt.Sprintf("%s?dag-scope=%s&car-scope=%s", r.Path, scope, legacyScope), nil
+	path := r.Path
+	if path != "" {
+		path = "/" + path
+	}
+	return fmt.Sprintf("%s?dag-scope=%s&car-scope=%s", path, scope, legacyScope), nil
 }
 
 // GetSupportedProtocols will safely return the supported protocols for a specific request.

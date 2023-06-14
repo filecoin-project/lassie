@@ -588,23 +588,7 @@ func TestHTTPRetriever(t *testing.T) {
 			awaitReceivedCandidates := make(chan struct{}, 1)
 			roundTripper := testutil.NewMockRoundTripper(t, ctx, clock, remoteBlockDuration, testCase.requestPath, testCase.requestScope, testCase.remotes)
 			client := &http.Client{Transport: roundTripper}
-			/*
-					scfg := session.DefaultConfig().
-						WithDefaultProviderConfig(session.ProviderConfig{
-							RetrievalTimeout: 5 * time.Second,
-						}).
-						WithConnectTimeAlpha(0.9999). // bias to the most recent connect time (that we are about to register below)
-						WithoutRandomness()
-					session := session.NewSession(scfg, true)
-				// pre-bias the session with some connect times so we get deterministic
-				// ordering of candidates being chosen for retrieval
-				for ii, c := range cid1Cands {
-					session.RecordConnectTime(c.MinerPeer.ID, time.Minute*time.Duration(ii))
-				}
-				for ii, c := range cid2Cands {
-					session.RecordConnectTime(c.MinerPeer.ID, time.Minute*time.Duration(ii))
-				}
-			*/
+
 			mockSession := testutil.NewMockSession(ctx)
 			mockSession.SetCandidatePreferenceOrder(append(cid1Cands, cid2Cands...))
 			mockSession.SetProviderTimeout(5 * time.Second)
