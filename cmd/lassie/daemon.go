@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/filecoin-project/lassie/pkg/lassie"
+	"github.com/filecoin-project/lassie/pkg/net/host"
+	"github.com/filecoin-project/lassie/pkg/retriever"
 	httpserver "github.com/filecoin-project/lassie/pkg/server/http"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
@@ -80,6 +82,7 @@ var daemonFlags = []cli.Flag{
 	FlagVerbose,
 	FlagVeryVerbose,
 	FlagProtocols,
+	FlagAllowProviders,
 	FlagExcludeProviders,
 	FlagTempDir,
 	FlagBitswapConcurrency,
@@ -127,6 +130,14 @@ func daemonCommand(cctx *cli.Context) error {
 	}
 	if len(protocols) > 0 {
 		lassieOpts = append(lassieOpts, lassie.WithProtocols(protocols))
+	}
+	if len(fetchProviderAddrInfos) > 0 {
+		host, err := host.InitHost(ctx, []libp2p.Option{})
+		if err != nil {
+			return err
+		}
+		finderOpt := lassie.WithFinder(retriever.NewDirectCandidateFinder(host, fetchProviderAddrInfos))
+		lassieOpts = append(lassieOpts, finderOpt)
 	}
 	if len(providerBlockList) > 0 {
 		lassieOpts = append(lassieOpts, lassie.WithProviderBlockList(providerBlockList))
