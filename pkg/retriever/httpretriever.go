@@ -37,8 +37,6 @@ func (e ErrHttpRequestFailure) Error() string {
 // queue and the scoring logic to select one to start.
 const HttpDefaultInitialWait time.Duration = 2 * time.Millisecond
 
-const DefaultUserAgent = "lassie"
-
 var _ TransportProtocol = &ProtocolHttp{}
 
 type ProtocolHttp struct {
@@ -173,17 +171,16 @@ func makeRequest(ctx context.Context, request types.RetrievalRequest, candidate 
 		return nil, fmt.Errorf("%w: %v", ErrBadPathForRequest, err)
 	}
 
-	reqURL := fmt.Sprintf("%s/ipfs/%s/%s", candidateURL, request.Cid, path)
+	reqURL := fmt.Sprintf("%s/ipfs/%s%s", candidateURL, request.Cid, path)
 	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
 		logger.Warnf("Couldn't construct a http request %s: %v", candidate.MinerPeer.ID, err)
 		return nil, fmt.Errorf("%w for peer %s: %v", ErrBadPathForRequest, candidate.MinerPeer.ID, err)
 	}
 	req.Header.Add("Accept", request.Scope.AcceptHeader())
-	req.Header.Add("User-Agent", DefaultUserAgent)
 	req.Header.Add("X-Request-Id", request.RetrievalID.String())
-
 	req.Header.Add("User-Agent", build.UserAgent)
+
 	return req, nil
 }
 

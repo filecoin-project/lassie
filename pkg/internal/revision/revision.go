@@ -11,12 +11,13 @@ import (
 var Revision string
 
 func init() {
-	var revision string
+	revision := "unknown"
 	var dirty bool
 
 	// Get the revision from the build info
 	bi, ok := debug.ReadBuildInfo()
 	if !ok {
+		Revision = revision
 		return
 	}
 

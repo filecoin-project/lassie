@@ -13,6 +13,7 @@ import (
 
 	"github.com/benbjohnson/clock"
 	"github.com/filecoin-project/lassie/pkg/types"
+	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/storage"
@@ -93,7 +94,7 @@ func (mrt *MockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 	require.Equal(mrt.t, us[1], "ipfs")
 	root, err := cid.Parse(us[2])
 	require.NoError(mrt.t, err)
-	path := strings.Join(us[3:], "/")
+	path := strings.TrimSuffix(req.URL.Path, "/ipfs/"+root.String())
 	expectedPath, ok := mrt.expectedPath[root]
 	if !ok {
 		require.Equal(mrt.t, path, "")
@@ -109,6 +110,15 @@ func (mrt *MockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 		legacyScope = "file"
 	}
 	require.Equal(mrt.t, req.URL.RawQuery, fmt.Sprintf("dag-scope=%s&car-scope=%s", expectedScope, legacyScope))
+	require.Equal(mrt.t, req.Header["Accept"], []string{"application/vnd.ipld.car;version=1;order=dfs;dups=y"})
+	reqId := req.Header["X-Request-Id"]
+	require.Len(mrt.t, reqId, 1)
+	_, err = uuid.Parse(reqId[0])
+	require.NoError(mrt.t, err)
+	ua := req.Header["User-Agent"]
+	require.Len(mrt.t, ua, 1)
+	require.Regexp(mrt.t, `^lassie\/`, ua[0])
+
 	ip := req.URL.Hostname()
 	port := req.URL.Port()
 	maddr := fmt.Sprintf("/ip4/%s/tcp/%s/http", ip, port)
