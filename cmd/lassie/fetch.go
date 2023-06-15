@@ -175,7 +175,7 @@ func Fetch(cctx *cli.Context) error {
 	if len(fetchProviderAddrInfos) == 0 {
 		fmt.Fprintf(msgWriter, "Fetching %s", rootCid.String()+path)
 	} else {
-		fmt.Fprintf(msgWriter, "Fetching %s from %v", rootCid.String()+path, fetchProviderAddrInfos)
+		fmt.Fprintf(msgWriter, "Fetching %s from specified provider(s)", rootCid.String()+path)
 	}
 	if progress {
 		fmt.Fprintln(msgWriter)
@@ -286,16 +286,10 @@ func (pp *progressPrinter) subscriber(event types.RetrievalEvent) {
 	case events.RetrievalEventCandidatesFound:
 		pp.candidatesFound = len(ret.Candidates())
 	case events.RetrievalEventCandidatesFiltered:
-		num := "all of them"
-		if pp.candidatesFound != len(ret.Candidates()) {
-			num = fmt.Sprintf("%d of them", len(ret.Candidates()))
-		} else if pp.candidatesFound == 1 {
-			num = "it"
-		}
-		if len(fetchProviderAddrInfos) > 0 {
-			fmt.Fprintf(pp.writer, "Found %d storage providers candidates from the indexer, querying %s:\n", pp.candidatesFound, num)
+		if len(fetchProviderAddrInfos) == 0 {
+			fmt.Fprintf(pp.writer, "Found %d storage provider candidate(s) in the indexer:\n", pp.candidatesFound)
 		} else {
-			fmt.Fprintf(pp.writer, "Using the explicitly specified storage provider(s), querying %s:\n", num)
+			fmt.Fprintf(pp.writer, "Using the specified storage provider(s):\n")
 		}
 		for _, candidate := range ret.Candidates() {
 			fmt.Fprintf(pp.writer, "\r\t%s, Protocols: %v\n", candidate.MinerPeer.ID, candidate.Metadata.Protocols())
