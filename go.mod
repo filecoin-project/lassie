@@ -21,6 +21,7 @@ require (
 	github.com/ipfs/go-ipfs-delay v0.0.1
 	github.com/ipfs/go-ipfs-exchange-interface v0.2.0
 	github.com/ipfs/go-ipld-format v0.5.0
+	github.com/ipfs/go-libipfs v0.6.0
 	github.com/ipfs/go-log/v2 v2.5.1
 	github.com/ipfs/go-unixfsnode v1.7.1
 	github.com/ipld/go-car/v2 v2.10.1
@@ -164,3 +165,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.2.1 // indirect
 )
+
+replace github.com/ipfs/go-unixfsnode => ../../ipfs/go-unixfsnode
+
+replace github.com/ipld/go-ipld-prime => ../../ipld/go-ipld-prime
