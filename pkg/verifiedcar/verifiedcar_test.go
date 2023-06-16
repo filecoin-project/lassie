@@ -25,6 +25,7 @@ import (
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/storage/memstore"
 	"github.com/ipld/go-ipld-prime/traversal"
+	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/stretchr/testify/require"
@@ -101,6 +102,11 @@ func TestVerifiedCar(t *testing.T) {
 
 	unixfsWrappedPathSelector := unixfsnode.UnixFSPathSelectorBuilder(wrapPath, unixfsnode.ExploreAllRecursivelySelector, false)
 	unixfsWrappedPreloadPathSelector := unixfsnode.UnixFSPathSelectorBuilder(wrapPath, unixfsnode.MatchUnixFSPreloadSelector, false)
+	preloadSubst := ssb.ExploreInterpretAs("unixfs", ssb.ExploreRecursive(
+		selector.RecursionLimitDepth(1),
+		ssb.ExploreAll(ssb.ExploreRecursiveEdge()),
+	))
+	unixfsWrappedPreloadPathSelectorSubst := unixfsnode.UnixFSPathSelectorBuilder(wrapPath, preloadSubst, false)
 
 	unixfsWrappedFile := testutil.GenerateNoDupes(func() unixfs.DirEntry { return unixfs.WrapContent(t, rndReader, &lsys, unixfsFile, wrapPath, false) })
 	unixfsWrappedFileBlocks := testutil.ToBlocks(t, lsys, unixfsWrappedFile.Root, allSelector)
@@ -127,6 +133,7 @@ func TestVerifiedCar(t *testing.T) {
 	mismatchedCidBlk, _ := blocks.NewBlockWithCid(extraneousByts, allBlocks[99].Cid())
 	testCases := []struct {
 		name            string
+		skip            bool
 		blocks          []expectedBlock
 		roots           []cid.Cid
 		carv2           bool
@@ -448,7 +455,7 @@ func TestVerifiedCar(t *testing.T) {
 			roots:  []cid.Cid{unixfsExclusiveWrappedShardedDir.Root},
 			cfg: verifiedcar.Config{
 				Root:     unixfsExclusiveWrappedShardedDir.Root,
-				Selector: unixfsWrappedPreloadPathSelector,
+				Selector: unixfsWrappedPreloadPathSelectorSubst,
 			},
 		},
 		{
@@ -549,6 +556,9 @@ func TestVerifiedCar(t *testing.T) {
 	for _, testCase := range testCases {
 		testCase := testCase
 		t.Run(testCase.name, func(t *testing.T) {
+			if testCase.skip {
+				t.Skip()
+			}
 			t.Parallel()
 
 			ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
