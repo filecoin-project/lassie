@@ -454,7 +454,7 @@ func MockIpfsHandler(ctx context.Context, lsys linking.LinkSystem) func(http.Res
 		}
 		progress := traversal.Progress{Cfg: cfg}
 
-		err = progress.WalkAdv(rootNode, sel, visitNoop)
+		err = progress.WalkMatching(rootNode, sel, unixfsnode.BytesConsumingMatcher)
 		if err != nil {
 			// if we loaded the first block, we can't write headers any more
 			return
@@ -485,5 +485,3 @@ func RandTestPeerIdentity() (tnet.Identity, error) {
 	}
 	return nil, errors.New("failed to find an available port")
 }
-
-func visitNoop(p traversal.Progress, n datamodel.Node, vr traversal.VisitReason) error { return nil }

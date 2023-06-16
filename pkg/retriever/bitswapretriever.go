@@ -19,6 +19,9 @@ import (
 	"github.com/ipfs/boxo/bitswap/network"
 	"github.com/ipfs/boxo/blockservice"
 	"github.com/ipfs/go-cid"
+	"github.com/ipfs/go-libipfs/bitswap/client"
+	"github.com/ipfs/go-libipfs/bitswap/network"
+	"github.com/ipfs/go-unixfsnode"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/linking"
@@ -322,10 +325,6 @@ func loaderForSession(retrievalID types.RetrievalID, inProgressCids InProgressCi
 	}
 }
 
-func noopVisitor(prog traversal.Progress, n datamodel.Node, reason traversal.VisitReason) error {
-	return nil
-}
-
 func easyTraverse(
 	ctx context.Context,
 	root datamodel.Link,
@@ -367,7 +366,8 @@ func easyTraverse(
 	if err != nil {
 		return err
 	}
-	if err := progress.WalkAdv(node, compiledSelector, noopVisitor); err != nil {
+
+	if err := progress.WalkMatching(node, compiledSelector, unixfsnode.BytesConsumingMatcher); err != nil {
 		return err
 	}
 	return ecr.Error
