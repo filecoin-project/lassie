@@ -156,6 +156,16 @@ func TestVerifiedCar(t *testing.T) {
 			roots:  []cid.Cid{root1, root1},
 			err:    "root CID mismatch",
 			cfg: verifiedcar.Config{
+				Root:               root1,
+				Selector:           allSelector,
+				CheckRootsMismatch: true,
+			},
+		},
+		{
+			name:   "carv1 with multiple roots errors, no root cid mismatch",
+			blocks: consumedBlocks(allBlocks),
+			roots:  []cid.Cid{root1, root1},
+			cfg: verifiedcar.Config{
 				Root:     root1,
 				Selector: allSelector,
 			},
@@ -166,8 +176,9 @@ func TestVerifiedCar(t *testing.T) {
 			roots:  []cid.Cid{tbc1.AllBlocks()[1].Cid()},
 			err:    "root CID mismatch",
 			cfg: verifiedcar.Config{
-				Root:     root1,
-				Selector: allSelector,
+				Root:               root1,
+				Selector:           allSelector,
+				CheckRootsMismatch: true,
 			},
 		},
 		{

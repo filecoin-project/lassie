@@ -42,6 +42,7 @@ type Config struct {
 	Root               cid.Cid        // The single root we expect to appear in the CAR and that we use to run our traversal against
 	AllowCARv2         bool           // If true, allow CARv2 files to be received, otherwise strictly only allow CARv1
 	Selector           datamodel.Node // The selector to execute, starting at the provided Root, to verify the contents of the CAR
+	CheckRootsMismatch bool           // Check if roots match expected behavior
 	ExpectDuplicatesIn bool           // Handles whether the incoming stream has duplicates
 	WriteDuplicatesOut bool           // Handles whether duplicates should be written a second time as blocks
 	MaxBlocks          uint64         // set a budget for the traversal
@@ -78,7 +79,7 @@ func (cfg Config) VerifyCar(ctx context.Context, rdr io.Reader, lsys linking.Lin
 		return 0, 0, ErrBadVersion
 	}
 
-	if len(cbr.Roots) != 1 || cbr.Roots[0] != cfg.Root {
+	if cfg.CheckRootsMismatch && (len(cbr.Roots) != 1 || cbr.Roots[0] != cfg.Root) {
 		return 0, 0, ErrBadRoots
 	}
 	return cfg.VerifyBlockStream(ctx, cbr, lsys)
