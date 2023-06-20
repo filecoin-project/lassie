@@ -177,6 +177,12 @@ func (d *DirectCandidateFinder) retrievalCandidatesFromTransportsProtocol(ctx co
 					return
 				}
 			}
+		case "http":
+			for _, addr := range addrs {
+				if err := cs.sendCandidate(addr, &metadata.IpfsGatewayHttp{}); err != nil {
+					return
+				}
+			}
 		default:
 		}
 	}
