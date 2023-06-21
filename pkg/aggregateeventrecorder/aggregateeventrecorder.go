@@ -128,20 +128,20 @@ func (a *aggregateEventRecorder) ingestEvents() {
 		// Read incoming data
 		case event := <-a.ingestChan:
 			id := event.RetrievalId()
-			if event.Code() == types.StartedCode && event.Phase() == types.FetchPhase {
-				allowedProtocols := make([]string, 0, len(event.Protocols()))
-				for _, codec := range event.Protocols() {
+			if startedEvent, ok := event.(events.StartedFetchEvent); ok {
+				allowedProtocols := make([]string, 0, len(startedEvent.Protocols()))
+				for _, codec := range startedEvent.Protocols() {
 					allowedProtocols = append(allowedProtocols, codec.String())
 				}
 				// Initialize the temp data for tracking retrieval stats
 				eventTempMap[id] = &tempData{
-					startTime:                event.Time(),
+					startTime:                startedEvent.Time(),
 					candidatesFound:          0,
 					candidatesFiltered:       0,
 					firstByteTime:            time.Time{},
 					spId:                     "",
-					rootCid:                  event.PayloadCid().String(),
-					urlPath:                  event.(events.RetrievalEventStarted).UrlPath(),
+					rootCid:                  startedEvent.PayloadCid().String(),
+					urlPath:                  startedEvent.UrlPath(),
 					success:                  false,
 					bandwidth:                0,
 					ttfb:                     "",
@@ -160,73 +160,59 @@ func (a *aggregateEventRecorder) ingestEvents() {
 				}
 				continue
 			}
-			switch event.Code() {
-			case types.StartedCode:
 
-				// What we want to do depends which phase the Started event was emitted from
-				switch event.Phase() {
-				case types.FetchPhase:
+			switch ret := event.(type) {
+			case events.StartedRetrievalEvent:
+				protocol := ret.Protocol().String()
 
-				case types.RetrievalPhase:
-					// Create a retrieval attempt
-					var attempt RetrievalAttempt
-					if len(event.Protocols()) > 0 {
-						attempt.Protocol = event.Protocols()[0].String()
-					}
-					spid := types.Identifier(event)
+				// Create a retrieval attempt
+				var attempt RetrievalAttempt
+				attempt.Protocol = protocol
+				spid := events.Identifier(ret)
+				tempData.retrievalAttempts[spid] = &attempt
 
-					// Save the retrieval attempt
-					tempData.retrievalAttempts[spid] = &attempt
+				// Add protocol to the set of attempted protocols
+				tempData.attemptedProtocolSet[protocol] = struct{}{}
 
-					// Add any event protocols to the set of attempted protocols
-					for _, protocol := range event.(events.RetrievalEventStarted).Protocols() {
-						tempData.attemptedProtocolSet[protocol.String()] = struct{}{}
-					}
-
-				}
-
-			case types.CandidatesFoundCode:
+			case events.CandidatesFoundEvent:
 				if tempData.timeToFirstIndexerResult == "" {
-					tempData.timeToFirstIndexerResult = event.Time().Sub(tempData.startTime).String()
+					tempData.timeToFirstIndexerResult = ret.Time().Sub(tempData.startTime).String()
 				}
-				tempData.candidatesFound += len(event.(events.RetrievalEventCandidatesFound).Candidates())
+				tempData.candidatesFound += len(ret.Candidates())
 
-			case types.CandidatesFilteredCode:
-				tempData.candidatesFiltered += len(event.(events.RetrievalEventCandidatesFiltered).Candidates())
+			case events.CandidatesFilteredEvent:
+				tempData.candidatesFiltered += len(ret.Candidates())
 
-			case types.FirstByteCode:
+			case events.FirstByteEvent:
 				// Calculate time to first byte
-				spid := types.Identifier(event)
-				retrievalTtfb := event.Time().Sub(tempData.startTime).String()
-				spTtfb := event.(events.RetrievalEventFirstByte).Duration().String()
+				spid := events.Identifier(ret)
+				retrievalTtfb := ret.Time().Sub(tempData.startTime).String()
+				spTtfb := ret.Duration().String()
 				tempData.retrievalAttempts[spid].TimeToFirstByte = spTtfb
 				if tempData.ttfb == "" {
-					tempData.firstByteTime = event.Time()
+					tempData.firstByteTime = ret.Time()
 					tempData.ttfb = retrievalTtfb
 				}
-			case types.FailedCode:
-				switch event.Phase() {
-				case types.RetrievalPhase:
-					spid := types.Identifier(event)
-					errorMsg := event.(events.RetrievalEventFailed).ErrorMessage()
 
-					// Add an error message to the retrieval attempt
-					tempData.retrievalAttempts[spid].Error = errorMsg
-				}
-			case types.SuccessCode:
+			case events.FailedRetrievalEvent:
+				// Add an error message to the retrieval attempt
+				spid := events.Identifier(ret)
+				tempData.retrievalAttempts[spid].Error = ret.ErrorMessage()
+
+			case events.SucceededEvent:
 				tempData.success = true
-				tempData.successfulProtocol = event.(events.RetrievalEventSuccess).Protocol().String()
-				tempData.spId = types.Identifier(event)
+				tempData.successfulProtocol = ret.Protocol().String()
+				tempData.spId = events.Identifier(ret)
 
 				// Calculate bandwidth
-				receivedSize := event.(events.RetrievalEventSuccess).ReceivedSize()
+				receivedSize := ret.ReceivedBytesSize()
 				tempData.bytesTransferred = receivedSize
-				duration := event.Time().Sub(tempData.firstByteTime).Seconds()
+				duration := ret.Time().Sub(tempData.firstByteTime).Seconds()
 				if duration != 0 {
 					tempData.bandwidth = uint64(float64(receivedSize) / duration)
 				}
-			case types.FinishedCode:
 
+			case events.FinishedEvent:
 				// Create a slice of attempted protocols
 				var protocolsAttempted []string
 				for protocol := range tempData.attemptedProtocolSet {
@@ -245,7 +231,7 @@ func (a *aggregateEventRecorder) ingestEvents() {
 					BytesTransferred:  tempData.bytesTransferred,
 					Success:           tempData.success,
 					StartTime:         tempData.startTime,
-					EndTime:           event.Time(),
+					EndTime:           ret.Time(),
 
 					TimeToFirstIndexerResult:  tempData.timeToFirstIndexerResult,
 					IndexerCandidatesReceived: tempData.candidatesFound,
@@ -270,6 +256,7 @@ func (a *aggregateEventRecorder) ingestEvents() {
 		case emptyGaurdChan <- batchedData: // won't execute while emptyGaurdChan is nil
 			batchedData = nil
 			emptyGaurdChan = nil
+
 		}
 	}
 }
