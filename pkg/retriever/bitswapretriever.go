@@ -146,7 +146,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	cb := func(bytesWritten uint64) {
 		// record first byte received
 		if totalWritten.Load() == 0 {
-			br.events(events.FirstByte(br.clock.Now(), br.request.RetrievalID, phaseStartTime, bitswapCandidate, br.clock.Since(phaseStartTime)))
+			br.events(events.FirstByte(br.clock.Now(), br.request.RetrievalID, bitswapCandidate, br.clock.Since(phaseStartTime), multicodec.TransportBitswap))
 		}
 		totalWritten.Add(bytesWritten)
 		blockCount.Add(1)
@@ -164,7 +164,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		return nil, nil
 	}
 
-	br.events(events.Started(br.clock.Now(), br.request.RetrievalID, phaseStartTime, types.RetrievalPhase, bitswapCandidate, multicodec.TransportBitswap))
+	br.events(events.Started(br.clock.Now(), br.request.RetrievalID, bitswapCandidate, multicodec.TransportBitswap))
 
 	// set initial providers, then start a goroutine to add more as they come in
 	br.routing.AddProviders(br.request.RetrievalID, nextCandidates)
@@ -245,24 +245,20 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	br.bstore.RemoveLinkSystem(br.request.RetrievalID)
 	if err != nil {
 		// record failure
-		br.events(events.Failed(br.clock.Now(), br.request.RetrievalID, phaseStartTime, types.RetrievalPhase, bitswapCandidate, err.Error()))
+		br.events(events.Failed(br.clock.Now(), br.request.RetrievalID, bitswapCandidate, err.Error()))
 		return nil, err
 	}
 	duration := br.clock.Since(phaseStartTime)
 	speed := uint64(float64(totalWritten.Load()) / duration.Seconds())
-	preloadedPercent := storage.GetStats().PreloadedPercent()
 
 	// record success
 	br.events(events.Success(
 		br.clock.Now(),
 		br.request.RetrievalID,
-		phaseStartTime,
 		bitswapCandidate,
 		totalWritten.Load(),
 		blockCount.Load(),
 		duration,
-		big.Zero(),
-		preloadedPercent,
 		multicodec.TransportBitswap,
 	))
 

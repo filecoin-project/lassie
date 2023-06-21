@@ -42,8 +42,8 @@ func TestAssignableCandidateFinder(t *testing.T) {
 				cid2: {"apples", "oranges", "cheese"},
 			},
 			expectedEvents: map[cid.Cid][]types.EventCode{
-				cid1: {types.StartedCode, types.CandidatesFoundCode, types.CandidatesFilteredCode},
-				cid2: {types.StartedCode, types.CandidatesFoundCode, types.CandidatesFilteredCode},
+				cid1: {types.StartedFindingCandidatesCode, types.CandidatesFoundCode, types.CandidatesFilteredCode},
+				cid2: {types.StartedFindingCandidatesCode, types.CandidatesFoundCode, types.CandidatesFilteredCode},
 			},
 		},
 		{
@@ -54,8 +54,8 @@ func TestAssignableCandidateFinder(t *testing.T) {
 				cid2: fmt.Errorf("could not get retrieval candidates for %s: %w", cid2, errors.New("something went wrong")),
 			},
 			expectedEvents: map[cid.Cid][]types.EventCode{
-				cid1: {types.StartedCode, types.FailedCode},
-				cid2: {types.StartedCode, types.FailedCode},
+				cid1: {types.StartedFindingCandidatesCode, types.FailedCode},
+				cid2: {types.StartedFindingCandidatesCode, types.FailedCode},
 			},
 		},
 		{
@@ -71,8 +71,8 @@ func TestAssignableCandidateFinder(t *testing.T) {
 				cid2: {"apples", "oranges", "cheese"},
 			},
 			expectedEvents: map[cid.Cid][]types.EventCode{
-				cid1: {types.StartedCode, types.FailedCode},
-				cid2: {types.StartedCode, types.CandidatesFoundCode, types.CandidatesFilteredCode},
+				cid1: {types.StartedFindingCandidatesCode, types.FailedCode},
+				cid2: {types.StartedFindingCandidatesCode, types.CandidatesFoundCode, types.CandidatesFilteredCode},
 			},
 		},
 		{
@@ -87,8 +87,8 @@ func TestAssignableCandidateFinder(t *testing.T) {
 				cid2: {"oranges", "cheese"},
 			},
 			expectedEvents: map[cid.Cid][]types.EventCode{
-				cid1: {types.StartedCode, types.CandidatesFoundCode, types.CandidatesFilteredCode},
-				cid2: {types.StartedCode, types.CandidatesFoundCode, types.CandidatesFilteredCode},
+				cid1: {types.StartedFindingCandidatesCode, types.CandidatesFoundCode, types.CandidatesFilteredCode},
+				cid2: {types.StartedFindingCandidatesCode, types.CandidatesFoundCode, types.CandidatesFilteredCode},
 			},
 		},
 		{
@@ -105,8 +105,8 @@ func TestAssignableCandidateFinder(t *testing.T) {
 				cid2: {"apples", "oranges", "cheese"},
 			},
 			expectedEvents: map[cid.Cid][]types.EventCode{
-				cid1: {types.StartedCode, types.CandidatesFoundCode, types.FailedCode},
-				cid2: {types.StartedCode, types.CandidatesFoundCode, types.CandidatesFilteredCode},
+				cid1: {types.StartedFindingCandidatesCode, types.CandidatesFoundCode, types.FailedCode},
+				cid2: {types.StartedFindingCandidatesCode, types.CandidatesFoundCode, types.CandidatesFilteredCode},
 			},
 		},
 		{
@@ -124,8 +124,8 @@ func TestAssignableCandidateFinder(t *testing.T) {
 				cid2: {"super", "duper"},
 			},
 			expectedEvents: map[cid.Cid][]types.EventCode{
-				cid1: {types.StartedCode, types.CandidatesFoundCode, types.CandidatesFilteredCode},
-				cid2: {types.StartedCode, types.CandidatesFoundCode, types.CandidatesFilteredCode},
+				cid1: {types.StartedFindingCandidatesCode, types.CandidatesFoundCode, types.CandidatesFilteredCode},
+				cid2: {types.StartedFindingCandidatesCode, types.CandidatesFoundCode, types.CandidatesFilteredCode},
 			},
 		},
 	}

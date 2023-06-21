@@ -261,31 +261,21 @@ type progressPrinter struct {
 
 func (pp *progressPrinter) subscriber(event types.RetrievalEvent) {
 	switch ret := event.(type) {
-	case events.RetrievalEventStarted:
-		switch ret.Phase() {
-		case types.IndexerPhase:
-			fmt.Fprintf(pp.writer, "\rQuerying indexer for %s...\n", ret.PayloadCid())
-		case types.QueryPhase:
-			fmt.Fprintf(pp.writer, "\rQuerying [%s] (%s)...\n", types.Identifier(ret), ret.Code())
-		case types.RetrievalPhase:
-			fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", types.Identifier(ret), ret.Code())
-		}
-	case events.RetrievalEventConnected:
-		switch ret.Phase() {
-		case types.QueryPhase:
-			fmt.Fprintf(pp.writer, "\rQuerying [%s] (%s)...\n", types.Identifier(ret), ret.Code())
-		case types.RetrievalPhase:
-			fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", types.Identifier(ret), ret.Code())
-		}
-	case events.RetrievalEventProposed:
-		fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", types.Identifier(ret), ret.Code())
-	case events.RetrievalEventAccepted:
-		fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", types.Identifier(ret), ret.Code())
-	case events.RetrievalEventFirstByte:
-		fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", types.Identifier(ret), ret.Code())
-	case events.RetrievalEventCandidatesFound:
+	case events.StartedFindingCandidatesEvent:
+		fmt.Fprintf(pp.writer, "\rQuerying indexer for %s...\n", ret.PayloadCid())
+	case events.StartedRetrievalEvent:
+		fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", events.Identifier(ret), ret.Code())
+	case events.ConnectedToSPEvent:
+		fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", events.Identifier(ret), ret.Code())
+	case events.GraphsyncProposedEvent:
+		fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", events.Identifier(ret), ret.Code())
+	case events.GraphsyncAcceptedEvent:
+		fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", events.Identifier(ret), ret.Code())
+	case events.FirstByteEvent:
+		fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", events.Identifier(ret), ret.Code())
+	case events.CandidatesFoundEvent:
 		pp.candidatesFound = len(ret.Candidates())
-	case events.RetrievalEventCandidatesFiltered:
+	case events.CandidatesFilteredEvent:
 		num := "all of them"
 		if pp.candidatesFound != len(ret.Candidates()) {
 			num = fmt.Sprintf("%d of them", len(ret.Candidates()))
@@ -300,13 +290,11 @@ func (pp *progressPrinter) subscriber(event types.RetrievalEvent) {
 		for _, candidate := range ret.Candidates() {
 			fmt.Fprintf(pp.writer, "\r\t%s, Protocols: %v\n", candidate.MinerPeer.ID, candidate.Metadata.Protocols())
 		}
-	case events.RetrievalEventFailed:
-		if ret.Phase() == types.IndexerPhase {
-			fmt.Fprintf(pp.writer, "\rRetrieval failure from indexer: %s\n", ret.ErrorMessage())
-		} else {
-			fmt.Fprintf(pp.writer, "\rRetrieval failure for [%s]: %s\n", types.Identifier(ret), ret.ErrorMessage())
-		}
-	case events.RetrievalEventSuccess:
+	case events.FailedEvent:
+		fmt.Fprintf(pp.writer, "\rRetrieval failure from indexer: %s\n", ret.ErrorMessage())
+	case events.FailedRetrievalEvent:
+		fmt.Fprintf(pp.writer, "\rRetrieval failure for [%s]: %s\n", events.Identifier(ret), ret.ErrorMessage())
+	case events.SucceededEvent:
 		// noop, handled at return from Retrieve()
 	}
 }

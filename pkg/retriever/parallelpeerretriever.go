@@ -114,8 +114,9 @@ func (shared *retrievalShared) sendResult(result retrievalResult) bool {
 	return true
 }
 
-func (shared *retrievalShared) sendEvent(event types.RetrievalEvent) {
-	shared.sendResult(retrievalResult{PeerID: event.StorageProviderId(), Event: &event})
+func (shared *retrievalShared) sendEvent(event events.EventWithSPID) {
+	retrievalEvent := event.(types.RetrievalEvent)
+	shared.sendResult(retrievalResult{PeerID: event.StorageProviderId(), Event: &retrievalEvent})
 }
 
 func (cfg *parallelPeerRetriever) Retrieve(
@@ -182,8 +183,9 @@ func (retrieval *retrieval) RetrieveFromAsyncCandidates(asyncCandidates types.In
 
 	eventsCallback := func(evt types.RetrievalEvent) {
 		switch ret := evt.(type) {
-		case events.RetrievalEventFirstByte:
-			retrieval.Session.RecordFirstByteTime(evt.StorageProviderId(), ret.Duration())
+		case events.FirstByteEvent:
+			firstByteEvent := evt.(events.FirstByteEvent)
+			retrieval.Session.RecordFirstByteTime(firstByteEvent.StorageProviderId(), ret.Duration())
 		}
 		retrieval.eventsCallback(evt)
 	}
@@ -298,7 +300,7 @@ func (retrieval *retrieval) runRetrievalCandidate(
 	var retrievalErr error
 	var done func()
 
-	shared.sendEvent(events.Started(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate, retrieval.Protocol.Code()))
+	shared.sendEvent(events.Started(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, candidate, retrieval.Protocol.Code()))
 	connectCtx := ctx
 	if timeout != 0 {
 		var timeoutFunc func()
@@ -315,15 +317,17 @@ func (retrieval *retrieval) runRetrievalCandidate(
 			if err := retrieval.Session.RecordFailure(retrieval.request.RetrievalID, candidate.MinerPeer.ID); err != nil {
 				logger.Errorf("Error recording retrieval failure: %v", err)
 			}
-			shared.sendEvent(events.Failed(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate, retrievalErr.Error()))
+			shared.sendEvent(events.FailedRetrieval(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, candidate, retrievalErr.Error()))
 		}
 	} else {
-		shared.sendEvent(events.Connected(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate))
+		shared.sendEvent(events.Connected(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, candidate))
 
 		retrieval.Session.RecordConnectTime(candidate.MinerPeer.ID, connectTime)
 
 		// Form a queue and run retrieval in serial
 		done = shared.waitQueue.Wait(candidate.MinerPeer.ID)
+
+		// TODO: This is the start of a retrieval event
 
 		if shared.canSendResult() { // move on to retrieval phase
 			stats, retrievalErr = retrieval.Protocol.Retrieve(ctx, retrieval, shared, phaseStartTime, timeout, candidate)
@@ -333,7 +337,7 @@ func (retrieval *retrieval) runRetrievalCandidate(
 				if errors.Is(retrievalErr, ErrRetrievalTimedOut) {
 					msg = fmt.Sprintf("timeout after %s", timeout)
 				}
-				shared.sendEvent(events.Failed(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, types.RetrievalPhase, candidate, msg))
+				shared.sendEvent(events.FailedRetrieval(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, candidate, msg))
 				if err := retrieval.Session.RecordFailure(retrieval.request.RetrievalID, candidate.MinerPeer.ID); err != nil {
 					logger.Errorf("Error recording retrieval failure: %v", err)
 				}
@@ -341,13 +345,10 @@ func (retrieval *retrieval) runRetrievalCandidate(
 				shared.sendEvent(events.Success(
 					retrieval.parallelPeerRetriever.Clock.Now(),
 					retrieval.request.RetrievalID,
-					phaseStartTime,
 					candidate,
 					stats.Size,
 					stats.Blocks,
 					stats.Duration,
-					stats.TotalPayment,
-					0,
 					retrieval.Protocol.Code(),
 				))
 				seconds := stats.Duration.Seconds()

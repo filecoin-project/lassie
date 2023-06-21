@@ -185,7 +185,7 @@ func (pg *ProtocolGraphsync) Retrieve(
 	eventsSubscriber := func(event datatransfer.Event, channelState datatransfer.ChannelState) {
 		switch event.Code {
 		case datatransfer.Open:
-			shared.sendEvent(events.Proposed(retrieval.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, candidate))
+			shared.sendEvent(events.Proposed(retrieval.Clock.Now(), retrieval.request.RetrievalID, candidate))
 		case datatransfer.NewVoucherResult:
 			lastVoucher := channelState.LastVoucherResult()
 			resType, err := retrievaltypes.DealResponseFromNode(lastVoucher.Voucher)
@@ -193,12 +193,12 @@ func (pg *ProtocolGraphsync) Retrieve(
 				return
 			}
 			if resType.Status == retrievaltypes.DealStatusAccepted {
-				shared.sendEvent(events.Accepted(retrieval.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, candidate))
+				shared.sendEvent(events.Accepted(retrieval.Clock.Now(), retrieval.request.RetrievalID, candidate))
 			}
 		case datatransfer.DataReceivedProgress:
 			if !receivedFirstByte {
 				receivedFirstByte = true
-				shared.sendEvent(events.FirstByte(retrieval.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, candidate, retrieval.Clock.Since(retrievalStart)))
+				shared.sendEvent(events.FirstByte(retrieval.Clock.Now(), retrieval.request.RetrievalID, candidate, retrieval.Clock.Since(retrievalStart), multicodec.TransportGraphsyncFilecoinv1))
 			}
 			if lastBytesReceivedTimer != nil {
 				doneLk.Lock()

@@ -131,8 +131,6 @@ func (retriever *Retriever) Retrieve(
 	request types.RetrievalRequest,
 	eventsCB func(types.RetrievalEvent),
 ) (*types.RetrievalStats, error) {
-	startTime := retriever.clock.Now()
-
 	ctx = types.RegisterRetrievalIDToContext(ctx, request.RetrievalID)
 	if !retriever.eventManager.IsStarted() {
 		return nil, ErrRetrieverNotStarted
@@ -158,8 +156,9 @@ func (retriever *Retriever) Retrieve(
 	)
 
 	urlPath, _ := request.GetUrlPath()
-	// Emit a Started event denoting that the entire fetch phase has started
-	onRetrievalEvent(events.StartedFetch(retriever.clock.Now(), request.RetrievalID, startTime, request.Cid, urlPath, request.GetSupportedProtocols(retriever.protocols)...))
+
+	// Emit a StartedFetch event signaling that the Lassie fetch has started
+	onRetrievalEvent(events.StartedFetch(retriever.clock.Now(), request.RetrievalID, request.Cid, urlPath, request.GetSupportedProtocols(retriever.protocols)...))
 
 	// retrieve, note that we could get a successful retrieval
 	// (retrievalStats!=nil) _and_ also an error return because there may be
@@ -172,7 +171,7 @@ func (retriever *Retriever) Retrieve(
 	)
 
 	// Emit a Finished event denoting that the entire fetch phase has finished
-	onRetrievalEvent(events.Finished(retriever.clock.Now(), request.RetrievalID, startTime, types.RetrievalCandidate{RootCid: request.Cid}))
+	onRetrievalEvent(events.Finished(retriever.clock.Now(), request.RetrievalID, types.RetrievalCandidate{RootCid: request.Cid}))
 
 	if err != nil && retrievalStats == nil {
 		return nil, err
@@ -210,9 +209,9 @@ func makeOnRetrievalEvent(
 		logEvent(event)
 
 		switch ret := event.(type) {
-		case events.RetrievalEventCandidatesFiltered:
+		case events.CandidatesFilteredEvent:
 			handleCandidatesFilteredEvent(retrievalId, session, retrievalCid, ret)
-		case events.RetrievalEventFailed:
+		case events.FailedRetrievalEvent:
 			handleFailureEvent(ctx, session, retrievalId, eventStats, ret)
 		}
 		eventManager.DispatchEvent(event)
@@ -228,25 +227,22 @@ func handleFailureEvent(
 	session Session,
 	retrievalId types.RetrievalID,
 	eventStats *eventStats,
-	event events.RetrievalEventFailed,
+	event events.FailedRetrievalEvent,
 ) {
-	switch event.Phase() {
-	case types.RetrievalPhase:
-		eventStats.failedCount++
-		logger.Warnf(
-			"Failed to retrieve from miner %s for %s: %s",
-			event.StorageProviderId(),
-			event.PayloadCid(),
-			event.ErrorMessage(),
-		)
-	}
+	eventStats.failedCount++
+	logger.Warnf(
+		"Failed to retrieve from miner %s for %s: %s",
+		event.StorageProviderId(),
+		event.PayloadCid(),
+		event.ErrorMessage(),
+	)
 }
 
 func handleCandidatesFilteredEvent(
 	retrievalId types.RetrievalID,
 	session Session,
 	retrievalCid cid.Cid,
-	event events.RetrievalEventCandidatesFiltered,
+	event events.CandidatesFilteredEvent,
 ) {
 	if len(event.Candidates()) > 0 {
 		ids := make([]peer.ID, 0)
@@ -274,9 +270,8 @@ func logEvent(event types.RetrievalEvent) {
 		}
 	}
 	logadd("code", event.Code(),
-		"phase", event.Phase(),
 		"payloadCid", event.PayloadCid(),
-		"storageProviderId", event.StorageProviderId())
+		"storageProviderId", events.Identifier(event))
 	switch tevent := event.(type) {
 	case events.EventWithCandidates:
 		var cands = strings.Builder{}
@@ -287,10 +282,10 @@ func logEvent(event types.RetrievalEvent) {
 			}
 		}
 		logadd("candidates", cands.String())
-	case events.RetrievalEventFailed:
+	case events.FailedEvent:
 		logadd("errorMessage", tevent.ErrorMessage())
-	case events.RetrievalEventSuccess:
-		logadd("receivedSize", tevent.ReceivedSize())
+	case events.SucceededEvent:
+		logadd("receivedSize", tevent.ReceivedBytesSize())
 	}
 	logger.Debugw("retrieval-event", kv...)
 }
