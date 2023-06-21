@@ -77,7 +77,7 @@ func (ph ProtocolHttp) GetMergedMetadata(cid cid.Cid, currentMetadata, newMetada
 	return &metadata.IpfsGatewayHttp{}
 }
 
-func (ph *ProtocolHttp) Connect(ctx context.Context, retrieval *retrieval, phaseStartTime time.Time, candidate types.RetrievalCandidate) (time.Duration, error) {
+func (ph *ProtocolHttp) Connect(ctx context.Context, retrieval *retrieval, startTime time.Time, candidate types.RetrievalCandidate) (time.Duration, error) {
 	// We could begin the request here by moving ph.beginRequest() to this function.
 	// That would result in parallel connections to candidates as they are received,
 	// then serial reading of bodies.
@@ -94,7 +94,6 @@ func (ph *ProtocolHttp) Retrieve(
 	ctx context.Context,
 	retrieval *retrieval,
 	shared *retrievalShared,
-	phaseStartTime time.Time,
 	timeout time.Duration,
 	candidate types.RetrievalCandidate,
 ) (*types.RetrievalStats, error) {
@@ -118,7 +117,7 @@ func (ph *ProtocolHttp) Retrieve(
 	var ttfb time.Duration
 	rdr := newTimeToFirstByteReader(resp.Body, func() {
 		ttfb = retrieval.Clock.Since(retrievalStart)
-		shared.sendEvent(events.FirstByte(retrieval.Clock.Now(), retrieval.request.RetrievalID, phaseStartTime, candidate, ttfb))
+		shared.sendEvent(events.FirstByte(retrieval.Clock.Now(), retrieval.request.RetrievalID, candidate, ttfb, multicodec.TransportIpfsGatewayHttp))
 	})
 	cfg := verifiedcar.Config{
 		Root:               retrieval.request.Cid,

@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
+	"github.com/filecoin-project/lassie/pkg/events"
 	lassie "github.com/filecoin-project/lassie/pkg/lassie"
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/storage"
@@ -184,6 +186,9 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			request.MaxBlocks = blockLimit
 		}
 
+		// servertiming metrics
+		startTimeMap := make(map[string]time.Time)
+
 		logger.Debugw("fetching CID", "retrievalId", retrievalId, "CID", rootCid.String(), "path", path.String(), "dagScope", dagScope)
 		stats, err := lassie.Fetch(req.Context(), request, func(re types.RetrievalEvent) {
 			header := servertiming.FromContext(req.Context())
@@ -191,23 +196,31 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 				return
 			}
 
+			var metricName string
+			switch re.(type) {
+			case events.StartedFindingCandidatesEvent:
+				header.NewMetric("indexer")
+				startTimeMap["indexer"] = re.Time()
+
+			case events.StartedRetrievalEvent:
+				header.NewMetric("retrieval")
+				startTimeMap["retrieval"] = re.Time()
+				metricName = "indexer"
+
+			case events.FinishedEvent:
+				metricName = "retrieval"
+			}
+
+			// Set the metric duration
 			header.Lock()
 			if header.Metrics != nil {
 				for _, m := range header.Metrics {
-					if m.Name == string(re.Phase()) {
-						if m.Extra == nil {
-							m.Extra = map[string]string{}
-						}
-						m.Extra[string(re.Code())] = fmt.Sprintf("%d", re.Time().Sub(re.PhaseStartTime()))
-						header.Unlock()
-						return
+					if metricName != "" && m.Name == metricName {
+						m.Duration = re.Time().Sub(startTimeMap[metricName])
 					}
 				}
 			}
 			header.Unlock()
-
-			metric := header.NewMetric(string(re.Phase()))
-			metric.Duration = re.Time().Sub(re.PhaseStartTime())
 		})
 
 		// force all blocks to flush

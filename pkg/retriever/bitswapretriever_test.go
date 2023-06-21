@@ -81,8 +81,8 @@ func TestBitswapRetriever(t *testing.T) {
 				cid2: testutil.GenerateRetrievalCandidates(t, 7),
 			},
 			expectedEvents: map[cid.Cid][]types.EventCode{
-				cid1: {types.StartedCode, types.FirstByteCode, types.SuccessCode},
-				cid2: {types.StartedCode, types.FirstByteCode, types.SuccessCode},
+				cid1: {types.StartedRetrievalCode, types.FirstByteCode, types.SuccessCode},
+				cid2: {types.StartedRetrievalCode, types.FirstByteCode, types.SuccessCode},
 			},
 			expectedCids: allCids,
 			expectedRemoteCids: map[cid.Cid][]cid.Cid{
@@ -127,8 +127,8 @@ func TestBitswapRetriever(t *testing.T) {
 				cid2: testutil.GenerateRetrievalCandidates(t, 7),
 			},
 			expectedEvents: map[cid.Cid][]types.EventCode{
-				cid1: {types.StartedCode, types.FirstByteCode, types.SuccessCode},
-				cid2: {types.StartedCode, types.FirstByteCode, types.SuccessCode},
+				cid1: {types.StartedRetrievalCode, types.FirstByteCode, types.SuccessCode},
+				cid2: {types.StartedRetrievalCode, types.FirstByteCode, types.SuccessCode},
 			},
 			// only expect to bitswap fetch the blocks we don't have
 			expectedRemoteCids: map[cid.Cid][]cid.Cid{
@@ -171,8 +171,8 @@ func TestBitswapRetriever(t *testing.T) {
 				cid2: testutil.GenerateRetrievalCandidates(t, 7),
 			},
 			expectedEvents: map[cid.Cid][]types.EventCode{
-				cid1: {types.StartedCode, types.FirstByteCode, types.SuccessCode},
-				cid2: {types.StartedCode, types.FirstByteCode, types.SuccessCode},
+				cid1: {types.StartedRetrievalCode, types.FirstByteCode, types.SuccessCode},
+				cid2: {types.StartedRetrievalCode, types.FirstByteCode, types.SuccessCode},
 			},
 			expectedCids: append(append([]cid.Cid{}, tbc1Cids[:5]...), tbc2Cids[:5]...),
 			expectedRemoteCids: map[cid.Cid][]cid.Cid{
@@ -211,8 +211,8 @@ func TestBitswapRetriever(t *testing.T) {
 				cid2: testutil.GenerateRetrievalCandidates(t, 7),
 			},
 			expectedEvents: map[cid.Cid][]types.EventCode{
-				cid1: {types.StartedCode, types.FirstByteCode, types.FailedCode},
-				cid2: {types.StartedCode, types.FirstByteCode, types.FailedCode},
+				cid1: {types.StartedRetrievalCode, types.FirstByteCode, types.FailedRetrievalCode},
+				cid2: {types.StartedRetrievalCode, types.FirstByteCode, types.FailedRetrievalCode},
 			},
 			expectedErrors: map[cid.Cid]struct{}{
 				cid1: {},
@@ -232,8 +232,8 @@ func TestBitswapRetriever(t *testing.T) {
 				cid2: testutil.GenerateRetrievalCandidates(t, 7),
 			},
 			expectedEvents: map[cid.Cid][]types.EventCode{
-				cid1: {types.StartedCode, types.FailedCode},
-				cid2: {types.StartedCode, types.FailedCode},
+				cid1: {types.StartedRetrievalCode, types.FailedRetrievalCode},
+				cid2: {types.StartedRetrievalCode, types.FailedRetrievalCode},
 			},
 			expectedErrors: map[cid.Cid]struct{}{
 				cid1: {},
@@ -261,8 +261,8 @@ func TestBitswapRetriever(t *testing.T) {
 				cid2: testutil.GenerateRetrievalCandidates(t, 7),
 			},
 			expectedEvents: map[cid.Cid][]types.EventCode{
-				cid1: {types.StartedCode, types.FirstByteCode, types.FailedCode},
-				cid2: {types.StartedCode, types.FirstByteCode, types.FailedCode},
+				cid1: {types.StartedRetrievalCode, types.FirstByteCode, types.FailedRetrievalCode},
+				cid2: {types.StartedRetrievalCode, types.FirstByteCode, types.FailedRetrievalCode},
 			},
 			expectedErrors: map[cid.Cid]struct{}{
 				cid1: {},
