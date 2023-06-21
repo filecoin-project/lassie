@@ -227,8 +227,6 @@ type RetrievalEvent interface {
 	RetrievalId() RetrievalID
 	// Code returns the type of event this is
 	Code() EventCode
-	// PayloadCid returns the CID being requested
-	PayloadCid() cid.Cid
 }
 
 const BitswapIndentifier = "Bitswap"

@@ -80,8 +80,10 @@ func TestEventManager(t *testing.T) {
 
 	verifyIndexerStarted := func(event types.RetrievalEvent) {
 		require.IsType(t, events.StartedFindingCandidatesEvent{}, event)
-		require.Equal(t, id, event.RetrievalId())
-		require.Equal(t, cid, event.PayloadCid())
+		startedFindingEvent := event.(events.StartedFindingCandidatesEvent)
+
+		require.Equal(t, id, startedFindingEvent.RetrievalId())
+		require.Equal(t, cid, startedFindingEvent.PayloadCid())
 		require.Equal(t, types.StartedFindingCandidatesCode, event.Code())
 	}
 	verifyEvent(gotEvents1, types.StartedFindingCandidatesCode, verifyIndexerStarted)
@@ -89,10 +91,12 @@ func TestEventManager(t *testing.T) {
 
 	verifyIndexerCandidatesFound := func(event types.RetrievalEvent) {
 		require.IsType(t, events.CandidatesFoundEvent{}, event)
-		require.Equal(t, id, event.RetrievalId())
-		require.Equal(t, cid, event.PayloadCid())
-		require.Equal(t, types.CandidatesFoundCode, event.Code())
-		storageProviderIds := event.(events.CandidatesFoundEvent).Candidates()
+		candidatesFoundEvent := event.(events.CandidatesFoundEvent)
+
+		require.Equal(t, id, candidatesFoundEvent.RetrievalId())
+		require.Equal(t, cid, candidatesFoundEvent.PayloadCid())
+		require.Equal(t, types.CandidatesFoundCode, candidatesFoundEvent.Code())
+		storageProviderIds := candidatesFoundEvent.Candidates()
 		require.Len(t, storageProviderIds, 3)
 		require.Equal(t, peerA, storageProviderIds[0].MinerPeer.ID)
 		require.Equal(t, peerB, storageProviderIds[1].MinerPeer.ID)
@@ -103,10 +107,12 @@ func TestEventManager(t *testing.T) {
 
 	verifyIndexerCandidatesFiltered := func(event types.RetrievalEvent) {
 		require.IsType(t, events.CandidatesFilteredEvent{}, event)
-		require.Equal(t, id, event.RetrievalId())
-		require.Equal(t, cid, event.PayloadCid())
-		require.Equal(t, types.CandidatesFilteredCode, event.Code())
-		storageProviderIds := event.(events.CandidatesFilteredEvent).Candidates()
+		candidatesFilteredEvent := event.(events.CandidatesFilteredEvent)
+
+		require.Equal(t, id, candidatesFilteredEvent.RetrievalId())
+		require.Equal(t, cid, candidatesFilteredEvent.PayloadCid())
+		require.Equal(t, types.CandidatesFilteredCode, candidatesFilteredEvent.Code())
+		storageProviderIds := candidatesFilteredEvent.Candidates()
 		require.Len(t, storageProviderIds, 3)
 		require.Equal(t, peerA, storageProviderIds[0].MinerPeer.ID)
 		require.Equal(t, peerB, storageProviderIds[1].MinerPeer.ID)
@@ -117,31 +123,35 @@ func TestEventManager(t *testing.T) {
 
 	verifyRetrievalStarted := func(event types.RetrievalEvent) {
 		require.IsType(t, events.StartedRetrievalEvent{}, event)
-		require.Equal(t, id, event.RetrievalId())
-		require.Equal(t, cid, event.PayloadCid())
-		require.Equal(t, types.StartedRetrievalCode, event.Code())
-		require.Equal(t, peerB, event.(events.StartedRetrievalEvent).StorageProviderId())
+		startedEvent := event.(events.StartedRetrievalEvent)
+
+		require.Equal(t, id, startedEvent.RetrievalId())
+		require.Equal(t, types.StartedRetrievalCode, startedEvent.Code())
+		require.Equal(t, peerB, startedEvent.StorageProviderId())
 	}
 	verifyEvent(gotEvents1, types.StartedRetrievalCode, verifyRetrievalStarted)
 	verifyEvent(gotEvents2, types.StartedRetrievalCode, verifyRetrievalStarted)
 
 	verifyRetrievalSuccess := func(event types.RetrievalEvent) {
 		require.IsType(t, events.SucceededEvent{}, event)
-		require.Equal(t, id, event.RetrievalId())
-		require.Equal(t, cid, event.PayloadCid())
-		require.Equal(t, peerB, event.(events.SucceededEvent).StorageProviderId())
-		require.Equal(t, uint64(100), event.(events.SucceededEvent).ReceivedBytesSize())
-		require.Equal(t, uint64(200), event.(events.SucceededEvent).ReceivedCidsCount())
+		succeededEvent := event.(events.SucceededEvent)
+
+		require.Equal(t, id, succeededEvent.RetrievalId())
+		require.Equal(t, peerB, succeededEvent.StorageProviderId())
+		require.Equal(t, uint64(100), succeededEvent.ReceivedBytesSize())
+		require.Equal(t, uint64(200), succeededEvent.ReceivedCidsCount())
 	}
 	verifyEvent(gotEvents1, types.SuccessCode, verifyRetrievalSuccess)
 	verifyEvent(gotEvents2, types.SuccessCode, verifyRetrievalSuccess)
 
 	verifyRetrievalFailure := func(event types.RetrievalEvent) {
 		require.IsType(t, events.FailedRetrievalEvent{}, event)
-		require.Equal(t, id, event.RetrievalId())
-		require.Equal(t, cid, event.PayloadCid())
-		require.Equal(t, peerB, event.(events.FailedRetrievalEvent).StorageProviderId())
-		require.Equal(t, "error @ retrieval failure", event.(events.FailedRetrievalEvent).ErrorMessage())
+		failedEvent := event.(events.FailedRetrievalEvent)
+
+		require.Equal(t, id, failedEvent.RetrievalId())
+		require.Equal(t, cid, failedEvent.PayloadCid())
+		require.Equal(t, peerB, failedEvent.StorageProviderId())
+		require.Equal(t, "error @ retrieval failure", failedEvent.ErrorMessage())
 	}
 	verifyEvent(gotEvents1, types.FailedRetrievalCode, verifyRetrievalFailure)
 	verifyEvent(gotEvents2, types.FailedRetrievalCode, verifyRetrievalFailure)

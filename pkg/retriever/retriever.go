@@ -269,9 +269,12 @@ func logEvent(event types.RetrievalEvent) {
 			kv = append(kv, key, kva[i+1])
 		}
 	}
-	logadd("code", event.Code(),
-		"payloadCid", event.PayloadCid(),
-		"storageProviderId", events.Identifier(event))
+
+	logadd("code", event.Code(), "storageProviderId", events.Identifier(event))
+	if cidEvent, ok := event.(events.EventWithPayloadCid); ok {
+		logadd("payloadCid", cidEvent.PayloadCid())
+	}
+
 	switch tevent := event.(type) {
 	case events.EventWithCandidates:
 		var cands = strings.Builder{}

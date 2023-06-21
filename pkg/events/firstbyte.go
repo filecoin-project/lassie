@@ -24,9 +24,9 @@ func (e FirstByteEvent) Code() types.EventCode     { return types.FirstByteCode 
 func (e FirstByteEvent) Duration() time.Duration   { return e.duration }
 func (e FirstByteEvent) Protocol() multicodec.Code { return e.protocol }
 func (e FirstByteEvent) String() string {
-	return fmt.Sprintf("FirstByteEvent<%s, %s, %s, %s, %s, %s>", e.eventTime, e.retrievalId, e.payloadCid, e.storageProviderId, e.duration.String(), e.protocol.String())
+	return fmt.Sprintf("FirstByteEvent<%s, %s, %s, %s, %s>", e.eventTime, e.retrievalId, e.storageProviderId, e.duration.String(), e.protocol.String())
 }
 
 func FirstByte(at time.Time, retrievalId types.RetrievalID, candidate types.RetrievalCandidate, duration time.Duration, protocol multicodec.Code) FirstByteEvent {
-	return FirstByteEvent{spRetrievalEvent{retrievalEvent{at, retrievalId, candidate.RootCid}, candidate.MinerPeer.ID}, duration, protocol}
+	return FirstByteEvent{spRetrievalEvent{retrievalEvent{at, retrievalId}, candidate.MinerPeer.ID}, duration, protocol}
 }

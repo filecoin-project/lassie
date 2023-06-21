@@ -20,9 +20,9 @@ type FailedEvent struct {
 func (e FailedEvent) Code() types.EventCode { return types.FailedCode }
 func (e FailedEvent) ErrorMessage() string  { return e.errorMessage }
 func (e FailedEvent) String() string {
-	return fmt.Sprintf("FailedEvent<%s, %s, %s, %v>", e.eventTime, e.retrievalId, e.payloadCid, e.errorMessage)
+	return fmt.Sprintf("FailedEvent<%s, %s, %v>", e.eventTime, e.retrievalId, e.errorMessage)
 }
 
 func Failed(at time.Time, retrievalId types.RetrievalID, candidate types.RetrievalCandidate, errorMessage string) FailedEvent {
-	return FailedEvent{retrievalEvent{at, retrievalId, candidate.RootCid}, errorMessage}
+	return FailedEvent{retrievalEvent{at, retrievalId}, errorMessage}
 }

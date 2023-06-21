@@ -98,12 +98,17 @@ func VerifyContainsCollectedEvent(t *testing.T, afterStart time.Duration, expect
 		if actual.Code() == expected.Code() &&
 			actual.RetrievalId() == expected.RetrievalId() {
 
+			actualCidEvent, acidOk := actual.(events.EventWithPayloadCid)
+			expectedCidEvent, ecidOk := expected.(events.EventWithPayloadCid)
+			haveMatchingCids := acidOk && ecidOk && expectedCidEvent.PayloadCid() == actualCidEvent.PayloadCid()
+			haveNoCids := !acidOk && !ecidOk
+
 			actualSpEvent, aspOk := actual.(events.EventWithSPID)
 			expectedSpEvent, espOk := expected.(events.EventWithSPID)
 			haveMatchingSpIDs := aspOk && espOk && expectedSpEvent.StorageProviderId() == actualSpEvent.StorageProviderId()
 			haveNoSpIDs := !aspOk && !espOk
 
-			if haveMatchingSpIDs || haveNoSpIDs {
+			if (haveMatchingSpIDs || haveNoSpIDs) && (haveMatchingCids || haveNoCids) {
 				VerifyCollectedEvent(t, actual, expected)
 				return actual.Code()
 			}
@@ -116,9 +121,15 @@ func VerifyContainsCollectedEvent(t *testing.T, afterStart time.Duration, expect
 func VerifyCollectedEvent(t *testing.T, actual types.RetrievalEvent, expected types.RetrievalEvent) {
 	require.Equal(t, expected.Code(), actual.Code(), "event code")
 	require.Equal(t, expected.RetrievalId(), actual.RetrievalId(), fmt.Sprintf("retrieval id for %s", expected.Code()))
-	require.Equal(t, expected.PayloadCid(), actual.PayloadCid(), fmt.Sprintf("cid for %s", expected.Code()))
 	require.Equal(t, expected.Time(), actual.Time(), fmt.Sprintf("time for %s", expected.Code()))
 
+	if acid, ok := actual.(events.EventWithPayloadCid); ok {
+		ecid, ok := expected.(events.EventWithPayloadCid)
+		if !ok {
+			require.Fail(t, fmt.Sprintf("expected event %s should be EventWithPayloadCid", expected.Code()))
+		}
+		require.Equal(t, ecid.PayloadCid().String(), acid.PayloadCid().String(), fmt.Sprintf("cid for %s", expected.Code()))
+	}
 	if asp, ok := actual.(events.EventWithSPID); ok {
 		esp, ok := expected.(events.EventWithSPID)
 		if !ok {

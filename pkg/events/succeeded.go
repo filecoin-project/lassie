@@ -28,9 +28,9 @@ func (e SucceededEvent) ReceivedCidsCount() uint64 { return e.receivedCidsCount 
 func (e SucceededEvent) Duration() time.Duration   { return e.duration }
 func (e SucceededEvent) Protocol() multicodec.Code { return e.protocol }
 func (e SucceededEvent) String() string {
-	return fmt.Sprintf("SucceededEvent<%s, %s, %s, %s, { %d, %d, %s, %s }>", e.eventTime, e.retrievalId, e.payloadCid, e.storageProviderId, e.receivedBytesSize, e.receivedCidsCount, e.protocol, e.duration)
+	return fmt.Sprintf("SucceededEvent<%s, %s, %s, { %d, %d, %s, %s }>", e.eventTime, e.retrievalId, e.storageProviderId, e.receivedBytesSize, e.receivedCidsCount, e.protocol, e.duration)
 }
 
 func Success(at time.Time, retrievalId types.RetrievalID, candidate types.RetrievalCandidate, receivedBytesSize uint64, receivedCidsCount uint64, duration time.Duration, protocol multicodec.Code) SucceededEvent {
-	return SucceededEvent{spRetrievalEvent{retrievalEvent{at, retrievalId, candidate.RootCid}, candidate.MinerPeer.ID}, receivedBytesSize, receivedCidsCount, duration, protocol}
+	return SucceededEvent{spRetrievalEvent{retrievalEvent{at, retrievalId}, candidate.MinerPeer.ID}, receivedBytesSize, receivedCidsCount, duration, protocol}
 }

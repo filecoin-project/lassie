@@ -18,9 +18,9 @@ type GraphsyncProposedEvent struct {
 
 func (e GraphsyncProposedEvent) Code() types.EventCode { return types.ProposedCode }
 func (e GraphsyncProposedEvent) String() string {
-	return fmt.Sprintf("GraphsyncProposedEvent<%s, %s, %s, %s>", e.eventTime, e.retrievalId, e.payloadCid, e.storageProviderId)
+	return fmt.Sprintf("GraphsyncProposedEvent<%s, %s, %s>", e.eventTime, e.retrievalId, e.storageProviderId)
 }
 
 func Proposed(at time.Time, retrievalId types.RetrievalID, candidate types.RetrievalCandidate) GraphsyncProposedEvent {
-	return GraphsyncProposedEvent{spRetrievalEvent{retrievalEvent{at, retrievalId, candidate.RootCid}, candidate.MinerPeer.ID}}
+	return GraphsyncProposedEvent{spRetrievalEvent{retrievalEvent{at, retrievalId}, candidate.MinerPeer.ID}}
 }

@@ -12,12 +12,10 @@ import (
 type retrievalEvent struct {
 	eventTime   time.Time
 	retrievalId types.RetrievalID
-	payloadCid  cid.Cid
 }
 
 func (r retrievalEvent) Time() time.Time                { return r.eventTime }
 func (r retrievalEvent) RetrievalId() types.RetrievalID { return r.retrievalId }
-func (r retrievalEvent) PayloadCid() cid.Cid            { return r.payloadCid }
 
 type spRetrievalEvent struct {
 	retrievalEvent
@@ -25,6 +23,11 @@ type spRetrievalEvent struct {
 }
 
 func (e spRetrievalEvent) StorageProviderId() peer.ID { return e.storageProviderId }
+
+type EventWithPayloadCid interface {
+	types.RetrievalEvent
+	PayloadCid() cid.Cid
+}
 
 type EventWithSPID interface {
 	types.RetrievalEvent
