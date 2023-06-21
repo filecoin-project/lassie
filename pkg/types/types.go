@@ -16,7 +16,6 @@ import (
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
-	"github.com/multiformats/go-multicodec"
 )
 
 type RetrievalCandidate struct {
@@ -185,69 +184,41 @@ const (
 	SequentialCoordination = "sequential"
 )
 
-type Phase string
-
-const (
-	// FetchPhase encompasses the entire process from start to end, involves the finished event
-	FetchPhase Phase = "fetch"
-	// IndexerPhase involves a candidates-found|failure
-	IndexerPhase Phase = "indexer"
-	// QueryPhase involves a connect, query-asked|failure
-	QueryPhase Phase = "query"
-	// RetrievalPhase involves the full data retrieval: connect, proposed, accepted, first-byte-received, success|failure
-	RetrievalPhase Phase = "retrieval"
-)
-
 type EventCode string
 
 const (
-	CandidatesFoundCode    EventCode = "candidates-found"
-	CandidatesFilteredCode EventCode = "candidates-filtered"
-	StartedCode            EventCode = "started"
-	ConnectedCode          EventCode = "connected"
-	QueryAskedCode         EventCode = "query-asked"
-	QueryAskedFilteredCode EventCode = "query-asked-filtered"
-	ProposedCode           EventCode = "proposed"
-	AcceptedCode           EventCode = "accepted"
-	FirstByteCode          EventCode = "first-byte-received"
-	FailedCode             EventCode = "failure"
-	SuccessCode            EventCode = "success"
-	FinishedCode           EventCode = "finished"
+	CandidatesFoundCode          EventCode = "candidates-found"
+	CandidatesFilteredCode       EventCode = "candidates-filtered"
+	StartedCode                  EventCode = "started"
+	StartedFetchCode             EventCode = "started-fetch"
+	StartedFindingCandidatesCode EventCode = "started-finding-candidates"
+	StartedRetrievalCode         EventCode = "started-retrieval"
+	ConnectedToProviderCode      EventCode = "connected-to-provider"
+	QueryAskedCode               EventCode = "query-asked"
+	QueryAskedFilteredCode       EventCode = "query-asked-filtered"
+	ProposedCode                 EventCode = "proposed"
+	AcceptedCode                 EventCode = "accepted"
+	FirstByteCode                EventCode = "first-byte-received"
+	FailedCode                   EventCode = "failed"
+	FailedRetrievalCode          EventCode = "failed-retrieval"
+	SuccessCode                  EventCode = "success"
+	FinishedCode                 EventCode = "finished"
 )
 
 type RetrievalEvent interface {
 	fmt.Stringer
+
 	// Time returns the time that the event occurred
 	Time() time.Time
 	// RetrievalId returns the unique ID for this retrieval
 	RetrievalId() RetrievalID
 	// Code returns the type of event this is
 	Code() EventCode
-	// Phase returns what phase of a retrieval this even occurred on
-	Phase() Phase
-	// PhaseStartTime returns the time that the phase started for this storage provider
-	PhaseStartTime() time.Time
 	// PayloadCid returns the CID being requested
 	PayloadCid() cid.Cid
-	// StorageProviderId returns the peer ID of the storage provider if this
-	// retrieval was requested via peer ID
-	StorageProviderId() peer.ID
-	// Protocol
-	Protocols() []multicodec.Code
 }
 
 const BitswapIndentifier = "Bitswap"
-
-func Identifier(event RetrievalEvent) string {
-	if event.StorageProviderId() != peer.ID("") {
-		return event.StorageProviderId().String()
-	}
-	protocols := event.Protocols()
-	if len(protocols) == 1 && protocols[0] == multicodec.TransportBitswap && event.Phase() != IndexerPhase {
-		return BitswapIndentifier
-	}
-	return ""
-}
 
 // RetrievalEventSubscriber is a function that receives a stream of retrieval
 // events from all retrievals that are in progress. Various different types

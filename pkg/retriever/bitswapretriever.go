@@ -127,7 +127,7 @@ type bitswapRetrieval struct {
 // RetrieveFromCandidates retrieves via go-bitswap backed with the given candidates, under the auspices of a fetcher.Fetcher
 func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.InboundAsyncCandidates) (*types.RetrievalStats, error) {
 	selector := br.request.GetSelector()
-	phaseStartTime := br.clock.Now()
+	startTime := br.clock.Now()
 	// this is a hack cause we aren't able to track bitswap fetches per peer for now, so instead we just create a single peer for all events
 	bitswapCandidate := types.NewRetrievalCandidate(peer.ID(""), nil, br.request.Cid, metadata.Bitswap{})
 
@@ -143,7 +143,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	bytesWrittenCb := func(bytesWritten uint64) {
 		// record first byte received
 		if totalWritten.Load() == 0 {
-			br.events(events.FirstByte(br.clock.Now(), br.request.RetrievalID, phaseStartTime, bitswapCandidate, br.clock.Since(phaseStartTime)))
+			br.events(events.FirstByte(br.clock.Now(), br.request.RetrievalID, bitswapCandidate, br.clock.Since(startTime), multicodec.TransportBitswap))
 		}
 		totalWritten.Add(bytesWritten)
 		blockCount.Add(1)
@@ -161,7 +161,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		return nil, nil
 	}
 
-	br.events(events.Started(br.clock.Now(), br.request.RetrievalID, phaseStartTime, types.RetrievalPhase, bitswapCandidate, multicodec.TransportBitswap))
+	br.events(events.StartedRetrieval(br.clock.Now(), br.request.RetrievalID, bitswapCandidate, multicodec.TransportBitswap))
 
 	// set initial providers, then start a goroutine to add more as they come in
 	br.routing.AddProviders(br.request.RetrievalID, nextCandidates)
@@ -243,27 +243,20 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	br.bstore.RemoveLinkSystem(br.request.RetrievalID)
 	if err != nil {
 		// record failure
-		br.events(events.Failed(br.clock.Now(), br.request.RetrievalID, phaseStartTime, types.RetrievalPhase, bitswapCandidate, err.Error()))
+		br.events(events.FailedRetrieval(br.clock.Now(), br.request.RetrievalID, bitswapCandidate, err.Error()))
 		return nil, err
 	}
-	duration := br.clock.Since(phaseStartTime)
+	duration := br.clock.Since(startTime)
 	speed := uint64(float64(totalWritten.Load()) / duration.Seconds())
-	var preloadedPercent uint64
-	if storage != nil {
-		preloadedPercent = storage.GetStats().PreloadedPercent()
-	}
 
 	// record success
 	br.events(events.Success(
 		br.clock.Now(),
 		br.request.RetrievalID,
-		phaseStartTime,
 		bitswapCandidate,
 		totalWritten.Load(),
 		blockCount.Load(),
 		duration,
-		big.Zero(),
-		preloadedPercent,
 		multicodec.TransportBitswap,
 	))
 
