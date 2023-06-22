@@ -94,7 +94,22 @@ func daemonAction(cctx *cli.Context) error {
 	libp2pLowWater := cctx.Int("libp2p-conns-lowwater")
 	libp2pHighWater := cctx.Int("libp2p-conns-highwater")
 	concurrentSPRetrievals := cctx.Uint("concurrent-sp-retrievals")
-	lassieCfg, err := getLassieConfigForDaemon(cctx, libp2pLowWater, libp2pHighWater, concurrentSPRetrievals)
+	lassieOpts := []lassie.LassieOption{}
+
+	if concurrentSPRetrievals > 0 {
+		lassieOpts = append(lassieOpts, lassie.WithConcurrentSPRetrievals(concurrentSPRetrievals))
+	}
+
+	libp2pOpts := []config.Option{}
+	if libp2pHighWater != 0 || libp2pLowWater != 0 {
+		connManager, err := connmgr.NewConnManager(libp2pLowWater, libp2pHighWater)
+		if err != nil {
+			return cli.Exit(err, 1)
+		}
+		libp2pOpts = append(libp2pOpts, libp2p.ConnectionManager(connManager))
+	}
+
+	lassieCfg, err := buildLassieConfigFromCLIContext(cctx, lassieOpts, libp2pOpts)
 	if err != nil {
 		return cli.Exit(err, 1)
 	}
@@ -182,31 +197,6 @@ func defaultDaemonRun(
 
 	fmt.Println("Lassie daemon stopped")
 	return err
-}
-
-// getLassieConfigForDaemon returns a LassieConfig for the daemon command.
-func getLassieConfigForDaemon(
-	cctx *cli.Context,
-	libp2pLowWater int,
-	libp2pHighWater int,
-	concurrentSPRetrievals uint,
-) (*lassie.LassieConfig, error) {
-	lassieOpts := []lassie.LassieOption{}
-
-	if concurrentSPRetrievals > 0 {
-		lassieOpts = append(lassieOpts, lassie.WithConcurrentSPRetrievals(concurrentSPRetrievals))
-	}
-
-	libp2pOpts := []config.Option{}
-	if libp2pHighWater != 0 || libp2pLowWater != 0 {
-		connManager, err := connmgr.NewConnManager(libp2pLowWater, libp2pHighWater)
-		if err != nil {
-			return nil, err
-		}
-		libp2pOpts = append(libp2pOpts, libp2p.ConnectionManager(connManager))
-	}
-
-	return buildLassieConfigFromCLIContext(cctx, lassieOpts, libp2pOpts)
 }
 
 // getHttpServerConfigForDaemon returns a HttpServerConfig for the daemon command.
