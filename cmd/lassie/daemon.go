@@ -74,6 +74,11 @@ var daemonFlags = []cli.Flag{
 	FlagBitswapConcurrency,
 	FlagGlobalTimeout,
 	FlagProviderTimeout,
+	&cli.StringFlag{
+		Name:  "access-token",
+		Usage: "require HTTP clients to authorize using Bearer scheme and the configured access token",
+		Value: "",
+	},
 }
 
 var daemonCmd = &cli.Command{
@@ -119,7 +124,8 @@ func daemonAction(cctx *cli.Context) error {
 	port := cctx.Uint("port")
 	tempDir := cctx.String("tempdir")
 	maxBlocks := cctx.Uint64("maxblocks")
-	httpServerCfg := getHttpServerConfigForDaemon(address, port, tempDir, maxBlocks)
+	accessToken := cctx.String("access-token")
+	httpServerCfg := getHttpServerConfigForDaemon(address, port, tempDir, maxBlocks, accessToken)
 
 	// event recorder config
 	eventRecorderURL := cctx.String("event-recorder-url")
@@ -200,11 +206,12 @@ func defaultDaemonRun(
 }
 
 // getHttpServerConfigForDaemon returns a HttpServerConfig for the daemon command.
-func getHttpServerConfigForDaemon(address string, port uint, tempDir string, maxBlocks uint64) httpserver.HttpServerConfig {
+func getHttpServerConfigForDaemon(address string, port uint, tempDir string, maxBlocks uint64, accessToken string) httpserver.HttpServerConfig {
 	return httpserver.HttpServerConfig{
 		Address:             address,
 		Port:                port,
 		TempDir:             tempDir,
 		MaxBlocksPerRequest: maxBlocks,
+		AccessToken:         accessToken,
 	}
 }

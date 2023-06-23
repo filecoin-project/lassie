@@ -27,6 +27,7 @@ type HttpServerConfig struct {
 	Port                uint
 	TempDir             string
 	MaxBlocksPerRequest uint64
+	AccessToken         string
 }
 
 type contextKey struct {
@@ -52,6 +53,11 @@ func NewHttpServer(ctx context.Context, lassie *lassie.Lassie, cfg HttpServerCon
 	// create server
 	mux := http.NewServeMux()
 	handler := servertiming.Middleware(mux, nil)
+
+	if cfg.AccessToken != "" {
+		handler = authorizationMiddleware(handler, cfg.AccessToken)
+	}
+
 	server := &http.Server{
 		Addr:        fmt.Sprintf(":%d", cfg.Port),
 		BaseContext: func(listener net.Listener) context.Context { return ctx },
@@ -101,4 +107,18 @@ func (s *HttpServer) Close() error {
 	logger.Info("closing http server")
 	s.cancel()
 	return s.server.Shutdown(context.Background())
+}
+
+func authorizationMiddleware(next http.Handler, accessToken string) http.Handler {
+	requiredHeaderValue := "Bearer " + accessToken
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == requiredHeaderValue {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Unauthorized
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintln(w, "Unauthorized")
+	})
 }
