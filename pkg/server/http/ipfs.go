@@ -55,13 +55,13 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			return
 		}
 
-		includeDupes, err := CheckFormat(req)
+		includeDupes, err := checkFormat(req)
 		if err != nil {
 			errorResponse(res, statusLogger, http.StatusBadRequest, err)
 			return
 		}
 
-		fileName, err := ParseFilename(req)
+		fileName, err := parseFilename(req)
 		if err != nil {
 			errorResponse(res, statusLogger, http.StatusBadRequest, err)
 			return
@@ -76,7 +76,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			return
 		}
 
-		dagScope, err := ParseScope(req)
+		dagScope, err := parseScope(req)
 		if err != nil {
 			errorResponse(res, statusLogger, http.StatusBadRequest, err)
 			return
