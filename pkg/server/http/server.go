@@ -110,7 +110,7 @@ func (s *HttpServer) Close() error {
 }
 
 func authorizationMiddleware(next http.Handler, accessToken string) http.Handler {
-	requiredHeaderValue := "Bearer " + accessToken
+	requiredHeaderValue := fmt.Sprintf("Bearer %s", accessToken)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") == requiredHeaderValue {
 			next.ServeHTTP(w, r)
