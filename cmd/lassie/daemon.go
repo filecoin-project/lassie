@@ -76,7 +76,7 @@ var daemonFlags = []cli.Flag{
 	FlagProviderTimeout,
 	&cli.StringFlag{
 		Name:  "access-token",
-		Usage: "require HTTP clients to authorize using Bearer scheme and the configured access token",
+		Usage: "require HTTP clients to authorize using Bearer scheme and given access token",
 		Value: "",
 	},
 }
