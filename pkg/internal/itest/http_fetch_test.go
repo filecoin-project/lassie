@@ -64,20 +64,21 @@ func TestHttpFetch(t *testing.T) {
 	wrapPath := "/want2/want1/want0"
 
 	testCases := []struct {
-		name             string
-		graphsyncRemotes int
-		bitswapRemotes   int
-		httpRemotes      int
-		disableGraphsync bool
-		expectFail       bool
-		expectUncleanEnd bool
-		modifyHttpConfig func(httpserver.HttpServerConfig) httpserver.HttpServerConfig
-		generate         func(*testing.T, io.Reader, []testpeer.TestPeer) []unixfs.DirEntry
-		paths            []string
-		setHeader        headerSetter
-		modifyQueries    []queryModifier
-		validateBodies   []bodyValidator
-		lassieOpts       lassieOptsGen
+		name               string
+		graphsyncRemotes   int
+		bitswapRemotes     int
+		httpRemotes        int
+		disableGraphsync   bool
+		expectFail         bool
+		expectUncleanEnd   bool
+		expectUnauthorized bool
+		modifyHttpConfig   func(httpserver.HttpServerConfig) httpserver.HttpServerConfig
+		generate           func(*testing.T, io.Reader, []testpeer.TestPeer) []unixfs.DirEntry
+		paths              []string
+		setHeader          headerSetter
+		modifyQueries      []queryModifier
+		validateBodies     []bodyValidator
+		lassieOpts         lassieOptsGen
 	}{
 		{
 			name:             "graphsync large sharded file",
@@ -918,6 +919,34 @@ func TestHttpFetch(t *testing.T) {
 				validateCarBody(t, body, srcData.Root, wantCids, true)
 			}},
 		},
+		{
+			name:        "with access token - rejects anonymous requests",
+			httpRemotes: 1,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 1024)}
+			},
+			modifyHttpConfig: func(cfg httpserver.HttpServerConfig) httpserver.HttpServerConfig {
+				cfg.AccessToken = "super-secret"
+				return cfg
+			},
+			expectUnauthorized: true,
+		},
+		{
+			name:        "with access token - allows requests with authorization header",
+			httpRemotes: 1,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 1024)}
+			},
+			modifyHttpConfig: func(cfg httpserver.HttpServerConfig) httpserver.HttpServerConfig {
+				cfg.AccessToken = "super-secret"
+				return cfg
+			},
+			setHeader: func(header http.Header) {
+				header.Set("Authorization", "Bearer super-secret")
+				header.Add("Accept", "application/vnd.ipld.car")
+			},
+			expectUnauthorized: false,
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -1031,6 +1060,8 @@ func TestHttpFetch(t *testing.T) {
 			for i, resp := range responses {
 				if testCase.expectFail {
 					req.Equal(http.StatusGatewayTimeout, resp.StatusCode)
+				} else if testCase.expectUnauthorized {
+					req.Equal(http.StatusUnauthorized, resp.StatusCode)
 				} else {
 					if resp.StatusCode != http.StatusOK {
 						body, err := io.ReadAll(resp.Body)
