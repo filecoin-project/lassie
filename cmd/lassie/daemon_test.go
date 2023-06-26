@@ -41,6 +41,7 @@ func TestDaemonCommandFlags(t *testing.T) {
 				require.Equal(t, "127.0.0.1", hCfg.Address)
 				require.Equal(t, uint(0), hCfg.Port)
 				require.Equal(t, uint64(0), hCfg.MaxBlocksPerRequest)
+				require.Equal(t, "", hCfg.AccessToken)
 
 				// event recorder config
 				require.Equal(t, "", erCfg.EndpointURL)
@@ -169,6 +170,14 @@ func TestDaemonCommandFlags(t *testing.T) {
 			args: []string{"daemon", "--event-recorder-instance-id", "myinstanceid"},
 			assert: func(ctx context.Context, lCfg *l.LassieConfig, hCfg h.HttpServerConfig, erCfg *a.EventRecorderConfig) error {
 				require.Equal(t, "myinstanceid", erCfg.InstanceID)
+				return nil
+			},
+		},
+		{
+			name: "with access token",
+			args: []string{"daemon", "--access-token", "super-secret"},
+			assert: func(ctx context.Context, lCfg *l.LassieConfig, hCfg h.HttpServerConfig, erCfg *a.EventRecorderConfig) error {
+				require.Equal(t, "super-secret", hCfg.AccessToken)
 				return nil
 			},
 		},
