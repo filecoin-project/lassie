@@ -243,7 +243,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	br.bstore.RemoveLinkSystem(br.request.RetrievalID)
 	if err != nil {
 		// record failure
-		br.events(events.Failed(br.clock.Now(), br.request.RetrievalID, bitswapCandidate, err.Error()))
+		br.events(events.FailedRetrieval(br.clock.Now(), br.request.RetrievalID, bitswapCandidate, err.Error()))
 		return nil, err
 	}
 	duration := br.clock.Since(startTime)
