@@ -22,10 +22,10 @@ require (
 	github.com/ipfs/go-ipfs-exchange-interface v0.2.0
 	github.com/ipfs/go-ipld-format v0.5.0
 	github.com/ipfs/go-log/v2 v2.5.1
-	github.com/ipfs/go-unixfsnode v1.7.1
+	github.com/ipfs/go-unixfsnode v1.7.2-0.20230622024455-de5cbf74cbe0
 	github.com/ipld/go-car/v2 v2.10.1
 	github.com/ipld/go-codec-dagpb v1.6.0
-	github.com/ipld/go-ipld-prime v0.20.1-0.20230329011551-5056175565b0
+	github.com/ipld/go-ipld-prime v0.20.1-0.20230628064445-0955c324b41a
 	github.com/ipni/go-libipni v0.0.8-0.20230425184153-86a1fcb7f7ff
 	github.com/libp2p/go-libp2p v0.27.8
 	github.com/libp2p/go-libp2p-routing-helpers v0.7.0
@@ -168,7 +168,3 @@ require (
 	lukechampine.com/blake3 v1.1.7 // indirect
 	nhooyr.io/websocket v1.8.7 // indirect
 )
-
-replace github.com/ipfs/go-unixfsnode => ../../ipfs/go-unixfsnode
-
-replace github.com/ipld/go-ipld-prime => ../../ipld/go-ipld-prime

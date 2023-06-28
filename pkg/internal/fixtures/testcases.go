@@ -69,8 +69,8 @@ func ParseCase(name, spec, exec string) (TestCase, error) {
 	}
 	duplicates := query.Get("dups") == "y"
 	var byteRange *types.ByteRange
-	if query.Get("byte-range") != "" {
-		if br, err := types.ParseByteRange(query.Get("byte-range")); err != nil {
+	if query.Get("entity-bytes") != "" {
+		if br, err := types.ParseByteRange(query.Get("entity-bytes")); err != nil {
 			return TestCase{}, err
 		} else {
 			byteRange = &br
