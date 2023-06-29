@@ -17,6 +17,7 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	ipldstorage "github.com/ipld/go-ipld-prime/storage"
+	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
@@ -136,16 +137,38 @@ func NewRequestForPath(store ipldstorage.WritableStorage, cid cid.Cid, path stri
 // PathScopeSelector generates a selector for the given path, scope and byte
 // range. Use DefaultByteRange() for the default byte range value if none is
 // specified.
-func PathScopeSelector(path string, scope DagScope, bytes ByteRange) ipld.Node {
+func PathScopeSelector(path string, scope DagScope, bytes *ByteRange) ipld.Node {
 	// Turn the path / scope into a selector
 	terminal := scope.TerminalSelectorSpec()
 	if !bytes.IsDefault() {
-		ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
-		to := bytes.To
-		if to != math.MaxInt64 {
-			to++ // selector is exclusive, so increment the end
+		var to int64 = math.MaxInt64
+		if bytes.To != nil && *bytes.To > 0 {
+			to = *bytes.To + 1 // selector is exclusive, so increment the end
 		}
-		terminal = ssb.ExploreInterpretAs("unixfs", ssb.MatcherSubset(bytes.From, to))
+		// TODO: negative ranges are not currently supported, we fall-back to matching entire file
+		if bytes.From >= 0 && to >= 0 {
+			ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
+			// if we reach a terminal and it's not a file, then we need to fall-back to the default
+			// selector for the given scope. We do this with a union of the original terminal.
+			if scope == DagScopeEntity {
+				// entity is a special case which we can't just union with our matcher because it
+				// has its own matcher in it which we need to replace with the subset matcher.
+				terminal = ssb.ExploreInterpretAs("unixfs",
+					ssb.ExploreUnion(
+						ssb.MatcherSubset(bytes.From, to),
+						ssb.ExploreRecursive(
+							selector.RecursionLimitDepth(1),
+							ssb.ExploreAll(ssb.ExploreRecursiveEdge()),
+						),
+					),
+				)
+			} else {
+				terminal = ssb.ExploreUnion(
+					ssb.ExploreInterpretAs("unixfs", ssb.MatcherSubset(bytes.From, to)),
+					terminal,
+				)
+			}
+		}
 	}
 	return unixfsnode.UnixFSPathSelectorBuilder(path, terminal, false)
 }
@@ -156,11 +179,7 @@ func (r RetrievalRequest) GetSelector() ipld.Node {
 	if r.Selector != nil { // custom selector
 		return r.Selector
 	}
-	br := DefaultByteRange()
-	if r.Bytes != nil {
-		br = *r.Bytes
-	}
-	return PathScopeSelector(r.Path, r.Scope, br)
+	return PathScopeSelector(r.Path, r.Scope, r.Bytes)
 }
 
 // GetUrlPath returns a URL path and query string valid with the Trusted HTTP
@@ -272,23 +291,31 @@ func (r RetrievalRequest) GetSupportedProtocols(allSupportedProtocols []multicod
 }
 
 func (r RetrievalRequest) Etag() string {
-	// https://github.com/ipfs/boxo/pull/303/commits/f61f95481041406df46a1781b1daab34b6605650#r1213918777
+	// similar, but extended form of:
+	// https://github.com/ipfs/boxo/blob/a91e44dbdbd4c36a5b25a1b9df6ee237aa4442d2/gateway/handler_car.go#L167-L184
 	sb := strings.Builder{}
 	sb.WriteString("/ipfs/")
 	sb.WriteString(r.Cid.String())
 	if r.Path != "" {
-		sb.WriteString("/")
+		sb.WriteRune('/')
 		sb.WriteString(datamodel.ParsePath(r.Path).String())
 	}
 	if r.Scope != DagScopeAll {
-		sb.WriteString(".")
+		sb.WriteRune('.')
 		sb.WriteString(string(r.Scope))
+	}
+	if !r.Bytes.IsDefault() {
+		sb.WriteRune('.')
+		sb.WriteString(strconv.FormatInt(r.Bytes.From, 10))
+		if r.Bytes.To != nil {
+			sb.WriteRune('.')
+			sb.WriteString(strconv.FormatInt(*r.Bytes.To, 10))
+		}
 	}
 	if r.Duplicates {
 		sb.WriteString(".dups")
 	}
 	sb.WriteString(".dfs")
-	// range bytes would go here: `.from.to`
 	suffix := strconv.FormatUint(xxhash.Sum64([]byte(sb.String())), 32)
 	return `"` + r.Cid.String() + ".car." + suffix + `"`
 }
