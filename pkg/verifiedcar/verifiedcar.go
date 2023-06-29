@@ -69,7 +69,6 @@ func visitNoop(p traversal.Progress, n datamodel.Node, r traversal.VisitReason) 
 //
 // * https://specs.ipfs.tech/http-gateways/path-gateway/
 func (cfg Config) VerifyCar(ctx context.Context, rdr io.Reader, lsys linking.LinkSystem) (uint64, uint64, error) {
-
 	cbr, err := car.NewBlockReader(rdr, car.WithTrustedCAR(false))
 	if err != nil {
 		// TODO: post-1.19: fmt.Errorf("%w: %w", ErrMalformedCar, err)
@@ -93,7 +92,6 @@ func (cfg Config) VerifyCar(ctx context.Context, rdr io.Reader, lsys linking.Lin
 }
 
 func (cfg Config) VerifyBlockStream(ctx context.Context, cbr BlockReader, lsys linking.LinkSystem) (uint64, uint64, error) {
-
 	sel, err := selector.CompileSelector(cfg.Selector)
 	if err != nil {
 		return 0, 0, err
@@ -106,7 +104,7 @@ func (cfg Config) VerifyBlockStream(ctx context.Context, cbr BlockReader, lsys l
 	lsys.TrustedStorage = true // we can rely on the CAR decoder to check CID integrity
 	unixfsnode.AddUnixFSReificationToLinkSystem(&lsys)
 
-	lsys.StorageReadOpener = cfg.nextBlockReadOpener(ctx, cr, bt, lsys)
+	nbls, lsys := NewNextBlockLinkSystem(ctx, cfg, cr, bt, lsys)
 
 	// run traversal in this goroutine
 	progress := traversal.Progress{
@@ -136,21 +134,41 @@ func (cfg Config) VerifyBlockStream(ctx context.Context, cbr BlockReader, lsys l
 		return 0, 0, traversalError(err)
 	}
 
+	if nbls.Error != nil {
+		// capture any errors not bubbled up through the traversal, i.e. see
+		// https://github.com/ipld/go-ipld-prime/pull/524
+		return 0, 0, nbls.Error
+	}
+
 	// make sure we don't have any extraneous data beyond what the traversal needs
 	_, err = cbr.Next()
-	if !errors.Is(err, io.EOF) {
+	if err == nil {
 		return 0, 0, ErrExtraneousBlock
+	} else if !errors.Is(err, io.EOF) {
+		return 0, 0, err
 	}
 
 	// wait for parser to finish and provide errors or stats
 	return bt.blocks, bt.bytes, nil
 }
 
-func (cfg *Config) nextBlockReadOpener(ctx context.Context, cr *carReader, bt *writeTracker, lsys linking.LinkSystem) linking.BlockReadOpener {
-	seen := make(map[cid.Cid]struct{})
-	return func(lc linking.LinkContext, l datamodel.Link) (io.Reader, error) {
-		cid := l.(cidlink.Link).Cid
+type NextBlockLinkSystem struct {
+	Error error
+}
 
+func NewNextBlockLinkSystem(
+	ctx context.Context,
+	cfg Config,
+	cr *carReader,
+	bt *writeTracker,
+	lsys linking.LinkSystem,
+) (*NextBlockLinkSystem, linking.LinkSystem) {
+	nbls := &NextBlockLinkSystem{}
+	seen := make(map[cid.Cid]struct{})
+	storageReadOpener := lsys.StorageReadOpener
+
+	nextBlockReadOpener := func(lc linking.LinkContext, l datamodel.Link) (io.Reader, error) {
+		cid := l.(cidlink.Link).Cid
 		var data []byte
 		var err error
 		if _, ok := seen[cid]; ok {
@@ -165,7 +183,7 @@ func (cfg *Config) nextBlockReadOpener(ctx context.Context, cr *carReader, bt *w
 				}
 			} else {
 				// duplicate block, rely on the supplied LinkSystem to have stored this
-				rdr, err := lsys.StorageReadOpener(lc, l)
+				rdr, err := storageReadOpener(lc, l)
 				if !cfg.WriteDuplicatesOut {
 					return rdr, err
 				}
@@ -198,6 +216,18 @@ func (cfg *Config) nextBlockReadOpener(ctx context.Context, cr *carReader, bt *w
 		}
 		return io.NopCloser(rdr), nil
 	}
+
+	// wrap nextBlockReadOpener in one that captures errors on `nbls`
+	lsys.StorageReadOpener = func(lc linking.LinkContext, l datamodel.Link) (io.Reader, error) {
+		rdr, err := nextBlockReadOpener(lc, l)
+		if err != nil {
+			nbls.Error = err
+			return nil, err
+		}
+		return rdr, nil
+	}
+
+	return nbls, lsys
 }
 
 type carReader struct {

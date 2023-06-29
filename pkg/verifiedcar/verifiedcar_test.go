@@ -3,6 +3,7 @@ package verifiedcar_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"math/rand"
 	"os"
@@ -74,7 +75,9 @@ func TestVerifiedCar(t *testing.T) {
 		}
 	}
 
-	unixfsShardedDir := testutil.GenerateNoDupes(func() unixfs.DirEntry { return unixfs.GenerateDirectory(t, &lsys, rndReader, 8<<20, true) })
+	unixfsShardedDir := testutil.GenerateNoDupes(func() unixfs.DirEntry {
+		return testutil.GenerateStrictlyNestedShardedDir(t, &lsys, rndReader, 8<<20)
+	})
 	unixfsShardedDirBlocks := testutil.ToBlocks(t, lsys, unixfsShardedDir.Root, allSelector)
 
 	unixfsPreloadSelector := unixfsnode.MatchUnixFSPreloadSelector.Node()
@@ -115,7 +118,9 @@ func TestVerifiedCar(t *testing.T) {
 		blocks          []expectedBlock
 		roots           []cid.Cid
 		carv2           bool
-		err             string
+		expectErr       string
+		streamErr       error
+		blockWriteErr   error
 		cfg             verifiedcar.Config
 		incomingHasDups bool
 	}{
@@ -129,11 +134,11 @@ func TestVerifiedCar(t *testing.T) {
 			},
 		},
 		{
-			name:   "carv2 without AllowCARv2 errors",
-			blocks: consumedBlocks(allBlocks),
-			roots:  []cid.Cid{root1},
-			carv2:  true,
-			err:    "bad CAR version",
+			name:      "carv2 without AllowCARv2 errors",
+			blocks:    consumedBlocks(allBlocks),
+			roots:     []cid.Cid{root1},
+			carv2:     true,
+			expectErr: "bad CAR version",
 			cfg: verifiedcar.Config{
 				Root:     root1,
 				Selector: allSelector,
@@ -151,10 +156,10 @@ func TestVerifiedCar(t *testing.T) {
 			},
 		},
 		{
-			name:   "carv1 with multiple roots errors",
-			blocks: consumedBlocks(allBlocks),
-			roots:  []cid.Cid{root1, root1},
-			err:    "root CID mismatch",
+			name:      "carv1 with multiple roots errors",
+			blocks:    consumedBlocks(allBlocks),
+			roots:     []cid.Cid{root1, root1},
+			expectErr: "root CID mismatch",
 			cfg: verifiedcar.Config{
 				Root:               root1,
 				Selector:           allSelector,
@@ -171,10 +176,10 @@ func TestVerifiedCar(t *testing.T) {
 			},
 		},
 		{
-			name:   "carv1 with wrong root errors",
-			blocks: consumedBlocks(allBlocks),
-			roots:  []cid.Cid{tbc1.AllBlocks()[1].Cid()},
-			err:    "root CID mismatch",
+			name:      "carv1 with wrong root errors",
+			blocks:    consumedBlocks(allBlocks),
+			roots:     []cid.Cid{tbc1.AllBlocks()[1].Cid()},
+			expectErr: "root CID mismatch",
 			cfg: verifiedcar.Config{
 				Root:               root1,
 				Selector:           allSelector,
@@ -182,40 +187,40 @@ func TestVerifiedCar(t *testing.T) {
 			},
 		},
 		{
-			name:   "carv1 with extraneous trailing block errors",
-			blocks: append(consumedBlocks(append([]blocks.Block{}, allBlocks...)), expectedBlock{extraneousBlk, true}),
-			roots:  []cid.Cid{root1},
-			err:    "extraneous block in CAR",
+			name:      "carv1 with extraneous trailing block errors",
+			blocks:    append(consumedBlocks(append([]blocks.Block{}, allBlocks...)), expectedBlock{extraneousBlk, true}),
+			roots:     []cid.Cid{root1},
+			expectErr: "extraneous block in CAR",
 			cfg: verifiedcar.Config{
 				Root:     root1,
 				Selector: allSelector,
 			},
 		},
 		{
-			name:   "carv1 with extraneous leading block errors",
-			blocks: append(consumedBlocks([]blocks.Block{extraneousBlk}), consumedBlocks(allBlocks)...),
-			roots:  []cid.Cid{root1},
-			err:    "unexpected block in CAR: " + extraneousLnk.(cidlink.Link).Cid.String() + " != " + allBlocks[0].Cid().String(),
+			name:      "carv1 with extraneous leading block errors",
+			blocks:    append(consumedBlocks([]blocks.Block{extraneousBlk}), consumedBlocks(allBlocks)...),
+			roots:     []cid.Cid{root1},
+			expectErr: "unexpected block in CAR: " + extraneousLnk.(cidlink.Link).Cid.String() + " != " + allBlocks[0].Cid().String(),
 			cfg: verifiedcar.Config{
 				Root:     root1,
 				Selector: allSelector,
 			},
 		},
 		{
-			name:   "carv1 with out-of-order blocks errors",
-			blocks: consumedBlocks(append(append([]blocks.Block{}, allBlocks[50:]...), allBlocks[0:50]...)),
-			roots:  []cid.Cid{root1},
-			err:    "unexpected block in CAR: " + allBlocks[50].Cid().String() + " != " + allBlocks[0].Cid().String(),
+			name:      "carv1 with out-of-order blocks errors",
+			blocks:    consumedBlocks(append(append([]blocks.Block{}, allBlocks[50:]...), allBlocks[0:50]...)),
+			roots:     []cid.Cid{root1},
+			expectErr: "unexpected block in CAR: " + allBlocks[50].Cid().String() + " != " + allBlocks[0].Cid().String(),
 			cfg: verifiedcar.Config{
 				Root:     root1,
 				Selector: allSelector,
 			},
 		},
 		{
-			name:   "carv1 with mismatching CID errors",
-			blocks: consumedBlocks(append(append([]blocks.Block{}, allBlocks[0:99]...), mismatchedCidBlk)),
-			roots:  []cid.Cid{root1},
-			err:    "mismatch in content integrity",
+			name:      "carv1 with mismatching CID errors",
+			blocks:    consumedBlocks(append(append([]blocks.Block{}, allBlocks[0:99]...), mismatchedCidBlk)),
+			roots:     []cid.Cid{root1},
+			expectErr: "mismatch in content integrity",
 			cfg: verifiedcar.Config{
 				Root:     root1,
 				Selector: allSelector,
@@ -225,7 +230,7 @@ func TestVerifiedCar(t *testing.T) {
 			name:   "carv1 over budget errors",
 			blocks: consumedBlocks(allBlocks),
 			roots:  []cid.Cid{root1},
-			err: (&traversal.ErrBudgetExceeded{
+			expectErr: (&traversal.ErrBudgetExceeded{
 				BudgetKind: "link",
 				Path:       datamodel.ParsePath("Parents/0/Parents/0/Parents/0"),
 				Link:       tbc1.LinkTipIndex(3),
@@ -273,26 +278,20 @@ func TestVerifiedCar(t *testing.T) {
 			},
 		},
 		{
-			// TODO: this is flaky, why?
-			//     Error "extraneous block in CAR" does not contain "unexpected block in CAR"
-			// it's always a directory.UnixFSBasicDir, we use preload match `.` which should
-			// only want the first block. unixfsDirBlocks is created from an allSelector
-			// traversal, why is unixfs-preload making a difference for just matching a
-			// directory.UnixFSBasicDir.
-			name:   "unixfs: all of large directory with file scope, errors",
-			blocks: consumedBlocks(unixfsDirBlocks),
-			roots:  []cid.Cid{unixfsDir.Root},
-			err:    "extraneous block in CAR",
+			name:      "unixfs: all of large directory with file scope, errors",
+			blocks:    consumedBlocks(unixfsDirBlocks),
+			roots:     []cid.Cid{unixfsDir.Root},
+			expectErr: "extraneous block in CAR",
 			cfg: verifiedcar.Config{
 				Root:     unixfsDir.Root,
 				Selector: unixfsPreloadSelector,
 			},
 		},
 		{
-			name:   "unixfs: all of large sharded directory with file scope, errors",
-			blocks: consumedBlocks(unixfsShardedDirBlocks),
-			roots:  []cid.Cid{unixfsShardedDir.Root},
-			err:    "extraneous block in CAR",
+			name:      "unixfs: all of large sharded directory with file scope, errors",
+			blocks:    consumedBlocks(unixfsShardedDirBlocks),
+			roots:     []cid.Cid{unixfsShardedDir.Root},
+			expectErr: "unexpected block in CAR:",
 			cfg: verifiedcar.Config{
 				Root:     unixfsShardedDir.Root,
 				Selector: unixfsPreloadSelector,
@@ -317,10 +316,10 @@ func TestVerifiedCar(t *testing.T) {
 			},
 		},
 		{
-			name:   "unixfs: pathed subset inside large directory with file scope, errors",
-			blocks: consumedBlocks(unixfsDirBlocks),
-			roots:  []cid.Cid{unixfsDir.Root},
-			err:    "unexpected block in CAR",
+			name:      "unixfs: pathed subset inside large directory with file scope, errors",
+			blocks:    consumedBlocks(unixfsDirBlocks),
+			roots:     []cid.Cid{unixfsDir.Root},
+			expectErr: "unexpected block in CAR",
 			cfg: verifiedcar.Config{
 				Root:     unixfsDir.Root,
 				Selector: unixfsDirSubsetSelector,
@@ -337,10 +336,10 @@ func TestVerifiedCar(t *testing.T) {
 		},
 		{
 			// our wrapped file has additional in the nested directories
-			name:   "unixfs: large sharded file wrapped in directories, pathed, errors",
-			blocks: consumedBlocks(unixfsWrappedFileBlocks),
-			roots:  []cid.Cid{unixfsWrappedFile.Root},
-			err:    "unexpected block in CAR",
+			name:      "unixfs: large sharded file wrapped in directories, pathed, errors",
+			blocks:    consumedBlocks(unixfsWrappedFileBlocks),
+			roots:     []cid.Cid{unixfsWrappedFile.Root},
+			expectErr: "unexpected block in CAR",
 			cfg: verifiedcar.Config{
 				Root:     unixfsWrappedFile.Root,
 				Selector: unixfsWrappedPathSelector,
@@ -356,10 +355,10 @@ func TestVerifiedCar(t *testing.T) {
 			},
 		},
 		{
-			name:   "unixfs: large sharded file wrapped in directories, trimmed, all, errors",
-			blocks: consumedBlocks(unixfsTrimmedWrappedFileBlocks),
-			roots:  []cid.Cid{unixfsWrappedFile.Root},
-			err:    "unexpected block in CAR",
+			name:      "unixfs: large sharded file wrapped in directories, trimmed, all, errors",
+			blocks:    consumedBlocks(unixfsTrimmedWrappedFileBlocks),
+			roots:     []cid.Cid{unixfsWrappedFile.Root},
+			expectErr: "unexpected block in CAR",
 			cfg: verifiedcar.Config{
 				Root:     unixfsWrappedFile.Root,
 				Selector: allSelector,
@@ -385,10 +384,10 @@ func TestVerifiedCar(t *testing.T) {
 		},
 		{
 			// our wrapped dir has additional in the nested directories
-			name:   "unixfs: large sharded dir wrapped in directories, pathed, errors",
-			blocks: consumedBlocks(unixfsWrappedShardedDirBlocks),
-			roots:  []cid.Cid{unixfsWrappedShardedDir.Root},
-			err:    "unexpected block in CAR",
+			name:      "unixfs: large sharded dir wrapped in directories, pathed, errors",
+			blocks:    consumedBlocks(unixfsWrappedShardedDirBlocks),
+			roots:     []cid.Cid{unixfsWrappedShardedDir.Root},
+			expectErr: "unexpected block in CAR",
 			cfg: verifiedcar.Config{
 				Root:     unixfsWrappedShardedDir.Root,
 				Selector: unixfsWrappedPathSelector,
@@ -413,10 +412,10 @@ func TestVerifiedCar(t *testing.T) {
 			},
 		},
 		{
-			name:   "unixfs: large sharded dir wrapped in directories, trimmed, all, errors",
-			blocks: consumedBlocks(unixfsTrimmedWrappedShardedDirBlocks),
-			roots:  []cid.Cid{unixfsWrappedShardedDir.Root},
-			err:    "unexpected block in CAR",
+			name:      "unixfs: large sharded dir wrapped in directories, trimmed, all, errors",
+			blocks:    consumedBlocks(unixfsTrimmedWrappedShardedDirBlocks),
+			roots:     []cid.Cid{unixfsWrappedShardedDir.Root},
+			expectErr: "unexpected block in CAR",
 			cfg: verifiedcar.Config{
 				Root:     unixfsWrappedShardedDir.Root,
 				Selector: allSelector,
@@ -450,10 +449,10 @@ func TestVerifiedCar(t *testing.T) {
 			},
 		},
 		{
-			name:   "unixfs: file with dups, incoming has dups, not allowed",
-			blocks: append(append(consumedBlocks(unixfsFileWithDupsBlocks[:2]), skippedBlocks(unixfsFileWithDupsBlocks[2:len(unixfsFileWithDupsBlocks)-1])...), consumedBlocks(unixfsFileWithDupsBlocks[len(unixfsFileWithDupsBlocks)-1:])...),
-			err:    "unexpected block in CAR: " + unixfsFileWithDupsBlocks[2].Cid().String() + " != " + unixfsFileWithDupsBlocks[len(unixfsFileWithDupsBlocks)-1].Cid().String(),
-			roots:  []cid.Cid{unixfsFileWithDups.Root},
+			name:      "unixfs: file with dups, incoming has dups, not allowed",
+			blocks:    append(append(consumedBlocks(unixfsFileWithDupsBlocks[:2]), skippedBlocks(unixfsFileWithDupsBlocks[2:len(unixfsFileWithDupsBlocks)-1])...), consumedBlocks(unixfsFileWithDupsBlocks[len(unixfsFileWithDupsBlocks)-1:])...),
+			expectErr: "unexpected block in CAR: " + unixfsFileWithDupsBlocks[2].Cid().String() + " != " + unixfsFileWithDupsBlocks[len(unixfsFileWithDupsBlocks)-1].Cid().String(),
+			roots:     []cid.Cid{unixfsFileWithDups.Root},
 			cfg: verifiedcar.Config{
 				Root:     unixfsFileWithDups.Root,
 				Selector: allSelector,
@@ -493,6 +492,28 @@ func TestVerifiedCar(t *testing.T) {
 			},
 			incomingHasDups: true,
 		},
+		{
+			name:      "premature stream end errors",
+			blocks:    consumedBlocks(allBlocks),
+			roots:     []cid.Cid{root1},
+			expectErr: "something wicked this way comes",
+			streamErr: errors.New("something wicked this way comes"),
+			cfg: verifiedcar.Config{
+				Root:     root1,
+				Selector: allSelector,
+			},
+		},
+		{
+			name:          "block write error errors",
+			blocks:        consumedBlocks(allBlocks),
+			roots:         []cid.Cid{root1},
+			expectErr:     "something wicked this way comes",
+			blockWriteErr: errors.New("something wicked this way comes"),
+			cfg: verifiedcar.Config{
+				Root:     root1,
+				Selector: allSelector,
+			},
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -517,6 +538,9 @@ func TestVerifiedCar(t *testing.T) {
 			lsys.StorageWriteOpener = func(lc linking.LinkContext) (io.Writer, linking.BlockWriteCommitter, error) {
 				var buf bytes.Buffer
 				return &buf, func(l datamodel.Link) error {
+					if testCase.blockWriteErr != nil && writeCounter+skipped == len(testCase.blocks)/2 {
+						return testCase.blockWriteErr
+					}
 					for testCase.blocks[writeCounter+skipped].skipped {
 						skipped++
 					}
@@ -532,14 +556,14 @@ func TestVerifiedCar(t *testing.T) {
 				}, nil
 			}
 
-			carStream := makeCarStream(t, ctx, testCase.roots, testCase.blocks, testCase.carv2, testCase.err != "", testCase.incomingHasDups)
+			carStream := makeCarStream(t, ctx, testCase.roots, testCase.blocks, testCase.carv2, testCase.expectErr != "", testCase.incomingHasDups, testCase.streamErr)
 			blockCount, byteCount, err := testCase.cfg.VerifyCar(ctx, carStream, lsys)
 
 			// read the rest of data
 			io.ReadAll(carStream)
 
-			if testCase.err != "" {
-				req.ErrorContains(err, testCase.err)
+			if testCase.expectErr != "" {
+				req.ErrorContains(err, testCase.expectErr)
 				req.Equal(uint64(0), blockCount)
 				req.Equal(uint64(0), byteCount)
 			} else {
@@ -560,6 +584,7 @@ func makeCarStream(
 	carv2 bool,
 	expectErrors bool,
 	allowDuplicatePuts bool,
+	streamError error,
 ) io.Reader {
 
 	r, w := io.Pipe()
@@ -588,7 +613,11 @@ func makeCarStream(
 		if err != nil {
 			return
 		}
-		for _, block := range blocks {
+		for ii, block := range blocks {
+			if streamError != nil && ii == len(blocks)/2 {
+				w.CloseWithError(streamError)
+				return
+			}
 			err := carWriter.Put(ctx, block.Cid().KeyString(), block.RawData())
 			if !expectErrors {
 				req.NoError(err)

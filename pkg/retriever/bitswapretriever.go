@@ -229,7 +229,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		ctx,
 		cidlink.Link{Cid: br.request.Cid},
 		selector,
-		&traversalLinkSys,
+		traversalLinkSys,
 		preloader,
 		br.request.MaxBlocks,
 	)
@@ -295,15 +295,20 @@ func loaderForSession(retrievalID types.RetrievalID, inProgressCids InProgressCi
 	}
 }
 
+func noopVisitor(prog traversal.Progress, n datamodel.Node, reason traversal.VisitReason) error {
+	return nil
+}
+
 func easyTraverse(
 	ctx context.Context,
 	root datamodel.Link,
 	traverseSelector datamodel.Node,
-	lsys *linking.LinkSystem,
+	lsys linking.LinkSystem,
 	preloader preload.Loader,
 	maxBlocks uint64,
 ) error {
 
+	lsys, ecr := newErrorCapturingReader(lsys)
 	protoChooser := dagpb.AddSupportToChooser(basicnode.Chooser)
 
 	// retrieve first node
@@ -319,7 +324,7 @@ func easyTraverse(
 	progress := traversal.Progress{
 		Cfg: &traversal.Config{
 			Ctx:                            ctx,
-			LinkSystem:                     *lsys,
+			LinkSystem:                     lsys,
 			LinkTargetNodePrototypeChooser: protoChooser,
 			Preloader:                      preloader,
 		},
@@ -335,5 +340,27 @@ func easyTraverse(
 	if err != nil {
 		return err
 	}
-	return progress.WalkAdv(node, compiledSelector, func(prog traversal.Progress, n datamodel.Node, reason traversal.VisitReason) error { return nil })
+	if err := progress.WalkAdv(node, compiledSelector, noopVisitor); err != nil {
+		return err
+	}
+	return ecr.Error
+}
+
+type errorCapturingReader struct {
+	sro   linking.BlockReadOpener
+	Error error
+}
+
+func newErrorCapturingReader(lsys linking.LinkSystem) (linking.LinkSystem, *errorCapturingReader) {
+	ecr := &errorCapturingReader{sro: lsys.StorageReadOpener}
+	lsys.StorageReadOpener = ecr.StorageReadOpener
+	return lsys, ecr
+}
+
+func (ecr *errorCapturingReader) StorageReadOpener(lc linking.LinkContext, l datamodel.Link) (io.Reader, error) {
+	r, err := ecr.sro(lc, l)
+	if err != nil {
+		ecr.Error = err
+	}
+	return r, err
 }
