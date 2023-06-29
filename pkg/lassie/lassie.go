@@ -18,6 +18,8 @@ import (
 	"github.com/multiformats/go-multicodec"
 )
 
+const defaultProviderTimeout = 20 * time.Second
+
 // Lassie represents a reusable retrieval client.
 type Lassie struct {
 	cfg       *LassieConfig
@@ -67,7 +69,7 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 	}
 
 	if cfg.ProviderTimeout == 0 {
-		cfg.ProviderTimeout = 20 * time.Second
+		cfg.ProviderTimeout = defaultProviderTimeout
 	}
 
 	datastore := sync.MutexWrap(datastore.NewMapDatastore())

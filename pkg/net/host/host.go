@@ -19,8 +19,11 @@ import (
 	"github.com/multiformats/go-multiaddr"
 )
 
-const yamuxID = "/yamux/1.0.0"
-const mplexID = "/mplex/6.7.0"
+const (
+	yamuxID            = "/yamux/1.0.0" // The yamux protocol ID
+	mplexID            = "/mplex/6.7.0" // The mplex protocol ID
+	yamuxAcceptBacklog = 512            // The number of streams that can be waiting to be accepted
+)
 
 func InitHost(ctx context.Context, opts []libp2p.Option, listenAddrs ...multiaddr.Multiaddr) (Host, error) {
 	opts = append([]libp2p.Option{libp2p.Identity(nil), libp2p.ResourceManager(&network.NullResourceManager{})}, opts...)
@@ -52,7 +55,7 @@ func InitHost(ctx context.Context, opts []libp2p.Option, listenAddrs ...multiadd
 
 func yamuxTransport() network.Multiplexer {
 	tpt := *yamux.DefaultTransport
-	tpt.AcceptBacklog = 512
+	tpt.AcceptBacklog = yamuxAcceptBacklog
 	return &tpt
 }
 

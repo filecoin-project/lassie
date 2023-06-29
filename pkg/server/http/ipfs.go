@@ -18,18 +18,19 @@ import (
 	"github.com/multiformats/go-multicodec"
 )
 
-var (
-	MimeTypeCar        = "application/vnd.ipld.car" // The only accepted MIME type
-	MimeTypeCarVersion = "1"                        // We only accept version 1 of the MIME type
-	FormatParameterCar = "car"                      // The only valid format parameter value
-	FilenameExtCar     = ".car"                     // The only valid filename extension
-
-	DefaultIncludeDupes = true // The default value for an unspecified "dups" parameter. See https://github.com/ipfs/specs/pull/412.
-
+const (
+	MimeTypeCar                = "application/vnd.ipld.car"            // The only accepted MIME type
+	MimeTypeCarVersion         = "1"                                   // We only accept version 1 of the MIME type
+	FormatParameterCar         = "car"                                 // The only valid format parameter value
+	FilenameExtCar             = ".car"                                // The only valid filename extension
+	DefaultIncludeDupes        = true                                  // The default value for an unspecified "dups" parameter. See https://github.com/ipfs/specs/pull/412.
 	ResponseAcceptRangesHeader = "none"                                // We currently don't accept range requests
 	ResponseCacheControlHeader = "public, max-age=29030400, immutable" // Magic cache control values
-	ResponseChunkDelimeter     = []byte("0\r\n")                       // An http/1.1 chunk delimeter, used for specifying an early end to the response
-	ResponseContentTypeHeader  = fmt.Sprintf("%s; version=%s", MimeTypeCar, MimeTypeCarVersion)
+)
+
+var (
+	ResponseChunkDelimeter    = []byte("0\r\n") // An http/1.1 chunk delimeter, used for specifying an early end to the response
+	ResponseContentTypeHeader = fmt.Sprintf("%s; version=%s", MimeTypeCar, MimeTypeCarVersion)
 )
 
 func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.ResponseWriter, *http.Request) {

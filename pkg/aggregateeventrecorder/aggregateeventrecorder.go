@@ -15,8 +15,10 @@ import (
 
 var logger = log.Logger("lassie/aggregateeventrecorder")
 
-const httpTimeout = 5 * time.Second
-const parallelPosters = 5
+const (
+	httpTimeout     = 5 * time.Second // The timeout for HTTP requests
+	parallelPosters = 5               // The number of goroutines to use for posting events to the event recorder service
+)
 
 type tempData struct {
 	startTime                time.Time
@@ -175,7 +177,7 @@ func (a *aggregateEventRecorder) ingestEvents() {
 				tempData.attemptedProtocolSet[protocol] = struct{}{}
 
 			case events.CandidatesFoundEvent:
-				if tempData.timeToFirstIndexerResult == "" {
+				if tempData.timeToFirstIndexerResult == "" { // only set the first indexer result time once
 					tempData.timeToFirstIndexerResult = ret.Time().Sub(tempData.startTime).String()
 				}
 				tempData.candidatesFound += len(ret.Candidates())

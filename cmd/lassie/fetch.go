@@ -17,6 +17,8 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+const stdoutFileString string = "-" // a string representing stdout
+
 var fetchFlags = []cli.Flag{
 	&cli.StringFlag{
 		Name:      "output",
@@ -233,7 +235,7 @@ func defaultFetchRun(
 	}
 
 	var carWriter *storage.DeferredCarWriter
-	if outfile == "-" { // stdout
+	if outfile == stdoutFileString {
 		// we need the onlyWriter because stdout is presented as an os.File, and
 		// therefore pretend to support seeks, so feature-checking in go-car
 		// will make bad assumptions about capabilities unless we hide it

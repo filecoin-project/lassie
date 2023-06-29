@@ -12,13 +12,21 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-var verboseLoggingSubsystems = []string{
-	"lassie",
-	"lassie/retriever",
-	"lassie/httpserver",
-	"lassie/indexerlookup",
-	"lassie/bitswap",
-}
+var (
+	defaultTempDirectory     string   = os.TempDir() // use the system default temp dir
+	verboseLoggingSubsystems []string = []string{    // verbose logging is enabled for these subsystems when using the verbose or very-verbose flags
+		"lassie",
+		"lassie/retriever",
+		"lassie/httpserver",
+		"lassie/indexerlookup",
+		"lassie/bitswap",
+	}
+)
+
+const (
+	defaultBitswapConcurrency int           = 6                // 6 concurrent requests
+	defaultProviderTimeout    time.Duration = 20 * time.Second // 20 seconds
+)
 
 // FlagVerbose enables verbose mode, which shows info information about
 // operations invoked in the CLI.
@@ -59,9 +67,10 @@ func setLogLevel(level string) func(*cli.Context, bool) error {
 // sending metrics to an event recorder API via a Basic auth Authorization
 // HTTP header. Value will formatted as "Basic <value>" if provided.
 var FlagEventRecorderAuth = &cli.StringFlag{
-	Name:    "event-recorder-auth",
-	Usage:   "the authorization token for an event recorder API",
-	EnvVars: []string{"LASSIE_EVENT_RECORDER_AUTH"},
+	Name:        "event-recorder-auth",
+	Usage:       "the authorization token for an event recorder API",
+	DefaultText: "no authorization token will be used",
+	EnvVars:     []string{"LASSIE_EVENT_RECORDER_AUTH"},
 }
 
 // FlagEventRecorderUrl asks for and provides the URL for an event recorder API
@@ -76,9 +85,10 @@ var FlagEventRecorderInstanceId = &cli.StringFlag{
 // FlagEventRecorderUrl asks for and provides the URL for an event recorder API
 // to send metrics to.
 var FlagEventRecorderUrl = &cli.StringFlag{
-	Name:    "event-recorder-url",
-	Usage:   "the url of an event recorder API",
-	EnvVars: []string{"LASSIE_EVENT_RECORDER_URL"},
+	Name:        "event-recorder-url",
+	Usage:       "the url of an event recorder API",
+	DefaultText: "no event recorder API will be used",
+	EnvVars:     []string{"LASSIE_EVENT_RECORDER_URL"},
 }
 
 var providerBlockList map[peer.ID]bool
@@ -148,7 +158,7 @@ var FlagTempDir = &cli.StringFlag{
 	Name:        "tempdir",
 	Aliases:     []string{"td"},
 	Usage:       "directory to store temporary files while downloading",
-	Value:       os.TempDir(),
+	Value:       defaultTempDirectory,
 	DefaultText: "os temp directory",
 	EnvVars:     []string{"LASSIE_TEMP_DIRECTORY"},
 }
@@ -156,7 +166,7 @@ var FlagTempDir = &cli.StringFlag{
 var FlagBitswapConcurrency = &cli.IntFlag{
 	Name:    "bitswap-concurrency",
 	Usage:   "maximum number of concurrent bitswap requests per retrieval",
-	Value:   6,
+	Value:   defaultBitswapConcurrency,
 	EnvVars: []string{"LASSIE_BITSWAP_CONCURRENCY"},
 }
 
@@ -164,7 +174,6 @@ var FlagGlobalTimeout = &cli.DurationFlag{
 	Name:    "global-timeout",
 	Aliases: []string{"gt"},
 	Usage:   "consider it an error after not completing a retrieval after this amount of time",
-	Value:   0,
 	EnvVars: []string{"LASSIE_GLOBAL_TIMEOUT"},
 }
 
@@ -172,7 +181,7 @@ var FlagProviderTimeout = &cli.DurationFlag{
 	Name:    "provider-timeout",
 	Aliases: []string{"pt"},
 	Usage:   "consider it an error after not receiving a response from a storage provider after this amount of time",
-	Value:   20 * time.Second,
+	Value:   defaultProviderTimeout,
 	EnvVars: []string{"LASSIE_PROVIDER_TIMEOUT"},
 }
 

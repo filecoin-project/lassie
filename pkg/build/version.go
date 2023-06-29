@@ -10,13 +10,17 @@ import (
 )
 
 var (
-	defaultVersion string = "v0.0.0"
 	// version is the built version.
 	// Set with ldflags in .goreleaser.yaml via -ldflags="-X github.com/filecoin-project/lassie/pkg/build.version=v{{.Version}}".
 	version string
 	// Version returns the current version of the Lassie application
 	Version   string
 	UserAgent string
+)
+
+const (
+	defaultVersion string = "v0.0.0"       // Default version if not set by ldflags
+	versionFile    string = "version.json" // Version file path
 )
 
 func init() {
@@ -44,7 +48,7 @@ type versionJson struct {
 // should be present in the project, I hope :)
 func readVersionFromFile() (string, error) {
 	// Open file
-	file, err := os.Open("version.json")
+	file, err := os.Open(versionFile)
 	if err != nil {
 		return "", err
 	}
