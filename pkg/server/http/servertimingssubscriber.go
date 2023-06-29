@@ -45,6 +45,9 @@ func servertimingsSubscriber(req *http.Request) types.RetrievalEventSubscriber {
 			return
 		}
 
+		mapLock.Lock()
+		defer mapLock.Unlock()
+
 		switch event := re.(type) {
 		case events.StartedFetchEvent:
 			fetchStartTime = re.Time()
@@ -73,19 +76,15 @@ func servertimingsSubscriber(req *http.Request) types.RetrievalEventSubscriber {
 			retrievalTimingMap[name] = re.Time()
 		case events.FirstByteEvent:
 			name := fmt.Sprintf("retrieval-%s", events.Identifier(event))
-			mapLock.Lock()
 			if retrievalMetric, ok := retrievalMetricMap[name]; ok {
 				retrievalMetric.Extra[string(re.Code())] = fmt.Sprintf("%d", re.Time().Sub(retrievalTimingMap[name]))
 			}
-			mapLock.Unlock()
 		case events.FailedRetrievalEvent:
 			name := fmt.Sprintf("retrieval-%s", events.Identifier(re))
-			mapLock.Lock()
 			if retrievalMetric, ok := retrievalMetricMap[name]; ok {
 				retrievalMetric.Extra[string(re.Code())] = fmt.Sprintf("%d", re.Time().Sub(retrievalTimingMap[name]))
 				retrievalMetric.Duration = re.Time().Sub(retrievalTimingMap[name])
 			}
-			mapLock.Unlock()
 
 		// Due to the timing in which the Server-Timing header is written,
 		// the success and finished events are never emitted in time to make it into the header.
@@ -95,11 +94,9 @@ func servertimingsSubscriber(req *http.Request) types.RetrievalEventSubscriber {
 		default:
 			if event, ok := re.(events.EventWithProviderID); ok {
 				name := fmt.Sprintf("retrieval-%s", events.Identifier(event))
-				mapLock.Lock()
 				if retrievalMetric, ok := retrievalMetricMap[name]; ok {
 					retrievalMetric.Extra[string(re.Code())] = fmt.Sprintf("%d", re.Time().Sub(retrievalTimingMap[name]))
 				}
-				mapLock.Unlock()
 			}
 		}
 	}
