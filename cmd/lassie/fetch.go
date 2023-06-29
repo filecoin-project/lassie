@@ -64,7 +64,6 @@ var fetchFlags = []cli.Flag{
 var fetchCmd = &cli.Command{
 	Name:   "fetch",
 	Usage:  "Fetches content from the IPFS and Filecoin network",
-	Before: before,
 	After:  after,
 	Action: fetchAction,
 	Flags:  fetchFlags,
