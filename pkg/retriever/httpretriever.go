@@ -198,7 +198,7 @@ func newTimeToFirstByteReader(r io.Reader, cb func()) *timeToFirstByteReader {
 	}
 }
 
-func (t *timeToFirstByteReader) Read(p []byte) (n int, err error) {
+func (t *timeToFirstByteReader) Read(p []byte) (int, error) {
 	if !t.first {
 		t.first = true
 		defer t.cb()

@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -188,7 +189,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		stats, err := lassie.Fetch(req.Context(), request, servertimingsSubscriber(req))
 
 		// force all blocks to flush
-		if cerr := carWriter.Close(); cerr != nil {
+		if cerr := carWriter.Close(); cerr != nil && !errors.Is(cerr, context.Canceled) {
 			logger.Infof("error closing car writer: %s", cerr)
 		}
 

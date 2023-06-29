@@ -131,6 +131,9 @@ func (bs *blockStream) Close() {
 }
 
 func (bs *blockStream) WriteBlock(blk blocks.Block) error {
+	if bs.ctx.Err() != nil {
+		return bs.ctx.Err()
+	}
 	bs.mu.Lock()
 	defer bs.mu.Unlock()
 	if bs.done {
