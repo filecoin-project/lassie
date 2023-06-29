@@ -63,33 +63,6 @@ func main() {
 	}
 }
 
-func before(cctx *cli.Context) error {
-	// Determine logging level
-	subsystems := []string{
-		"lassie",
-		"lassie/httpserver",
-		"indexerlookup",
-		"lassie/bitswap",
-	}
-
-	level := "WARN"
-	if IsVerbose {
-		level = "INFO"
-	}
-	if IsVeryVerbose {
-		level = "DEBUG"
-	}
-
-	// don't over-ride logging if set in the environment.
-	if os.Getenv("GOLOG_LOG_LEVEL") == "" {
-		for _, name := range subsystems {
-			_ = log.SetLogLevel(name, level)
-		}
-	}
-
-	return nil
-}
-
 func after(cctx *cli.Context) error {
 	ResetGlobalFlags()
 	return nil

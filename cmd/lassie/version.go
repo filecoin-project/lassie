@@ -9,11 +9,11 @@ import (
 
 var versionCmd = &cli.Command{
 	Name:      "version",
-	Before:    before,
 	Usage:     "Prints the version and exits",
 	UsageText: "lassie version",
 	Flags: []cli.Flag{
 		FlagVerbose,
+		FlagVeryVerbose,
 	},
 	Action: versionCommand,
 }

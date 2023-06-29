@@ -6,37 +6,53 @@ import (
 	"time"
 
 	"github.com/filecoin-project/lassie/pkg/types"
+	"github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
 	"github.com/urfave/cli/v2"
 )
 
-// IsVerbose is a global var signaling if the CLI is running in
-// verbose mode or not (default: false).
-var IsVerbose bool
-
-// FlagVerbose enables verbose mode, which shows verbose information about
-// operations invoked in the CLI. It should be included as a flag on the
-// top-level command (e.g. lassie -v).
-var FlagVerbose = &cli.BoolFlag{
-	Name:        "verbose",
-	Aliases:     []string{"v"},
-	Usage:       "enable verbose mode for logging",
-	Destination: &IsVerbose,
+var verboseLoggingSubsystems = []string{
+	"lassie",
+	"lassie/retriever",
+	"lassie/httpserver",
+	"lassie/indexerlookup",
+	"lassie/bitswap",
 }
 
-// IsVeryVerbose is a global var signaling if the CLI is running in
-// very verbose mode or not (default: false).
-var IsVeryVerbose bool
+// FlagVerbose enables verbose mode, which shows info information about
+// operations invoked in the CLI.
+var FlagVerbose = &cli.BoolFlag{
+	Name:    "verbose",
+	Aliases: []string{"v"},
+	Usage:   "enable verbose mode for logging",
+	Action:  setLogLevel("INFO"),
+}
 
-// FlagVerbose enables verbose mode, which shows verbose information about
-// operations invoked in the CLI. It should be included as a flag on the
-// top-level command (e.g. lassie -v).
+// FlagVeryVerbose enables very verbose mode, which shows debug information about
+// operations invoked in the CLI.
 var FlagVeryVerbose = &cli.BoolFlag{
-	Name:        "very-verbose",
-	Aliases:     []string{"vv"},
-	Usage:       "enable very verbose mode for debugging",
-	Destination: &IsVeryVerbose,
+	Name:    "very-verbose",
+	Aliases: []string{"vv"},
+	Usage:   "enable very verbose mode for debugging",
+	Action:  setLogLevel("DEBUG"),
+}
+
+// setLogLevel returns a CLI Action function that sets the
+// logging level for the given subsystems to the given level.
+// It is used as an action for the verbose and very-verbose flags.
+func setLogLevel(level string) func(*cli.Context, bool) error {
+	return func(cctx *cli.Context, _ bool) error {
+		// don't override logging if set in the environment.
+		if os.Getenv("GOLOG_LOG_LEVEL") != "" {
+			return nil
+		}
+		// set the logging level for the given subsystems
+		for _, name := range verboseLoggingSubsystems {
+			_ = log.SetLogLevel(name, level)
+		}
+		return nil
+	}
 }
 
 // FlagEventRecorderAuth asks for and provides the authorization token for

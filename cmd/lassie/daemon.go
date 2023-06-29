@@ -84,7 +84,6 @@ var daemonFlags = []cli.Flag{
 var daemonCmd = &cli.Command{
 	Name:   "daemon",
 	Usage:  "Starts a lassie daemon, accepting http requests",
-	Before: before,
 	After:  after,
 	Flags:  daemonFlags,
 	Action: daemonAction,
