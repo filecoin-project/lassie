@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"net/url"
 	"strconv"
 	"strings"
@@ -300,29 +299,35 @@ func (ds DagScope) AcceptHeader() string {
 	return "application/vnd.ipld.car;version=1;order=dfs;dups=y"
 }
 
+// ByteRange represents a range of bytes in a file. The default value is 0 to
+// the end of the file, [0:*].
+// The range is inclusive at both ends, so the case of From==To selects a single
+// byte.
+// Where the end is * or beyond the end of the file, the end of the file is
+// selected.
 type ByteRange struct {
 	From int64
-	To   int64
+	To   *int64
 }
 
-func DefaultByteRange() ByteRange {
-	return ByteRange{From: 0, To: math.MaxInt64}
+// IsDefault is roughly equivalent to the range matching [0:*]
+func (br *ByteRange) IsDefault() bool {
+	return br == nil || br.From == 0 && br.To == nil
 }
 
-func (br ByteRange) String() string {
-	to := strconv.FormatInt(br.To, 10)
-	if br.To == math.MaxInt64 {
-		to = "*"
+func (br *ByteRange) String() string {
+	if br.IsDefault() {
+		return "0:*"
+	}
+	to := "*" // default to end of file
+	if br.To != nil {
+		to = strconv.FormatInt(*br.To, 10)
 	}
 	return fmt.Sprintf("%d:%s", br.From, to)
 }
 
-func (br ByteRange) IsDefault() bool {
-	return br.From == 0 && br.To == math.MaxInt64
-}
-
 func ParseByteRange(s string) (ByteRange, error) {
-	br := DefaultByteRange()
+	br := ByteRange{}
 	if s == "" {
 		return br, nil
 	}
@@ -339,10 +344,11 @@ func ParseByteRange(s string) (ByteRange, error) {
 		return br, fmt.Errorf("invalid byte range: %s", s)
 	}
 	if parts[1] != "*" {
-		br.To, err = strconv.ParseInt(parts[1], 10, 64)
+		to, err := strconv.ParseInt(parts[1], 10, 64)
 		if err != nil {
 			return br, err
 		}
+		br.To = &to
 	}
 	return br, nil
 }
