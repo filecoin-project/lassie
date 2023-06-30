@@ -23,6 +23,20 @@ func ParseScope(req *http.Request) (types.DagScope, error) {
 	return types.DagScopeAll, nil
 }
 
+// ParseByteRange returns the entity-bytes query parameter if one is set in the
+// query string or nil if one is not set. An error is returned if an
+// entity-bytes query string is not a valid byte range.
+func ParseByteRange(req *http.Request) (*types.ByteRange, error) {
+	if req.URL.Query().Has("entity-bytes") {
+		br, err := types.ParseByteRange(req.URL.Query().Get("entity-bytes"))
+		if err != nil {
+			return nil, err
+		}
+		return &br, nil
+	}
+	return nil, nil
+}
+
 // ParseFilename returns the filename query parameter or an error if the filename
 // extension is not ".car". Lassie only supports returning CAR data.
 // See https://specs.ipfs.tech/http-gateways/path-gateway/#filename-request-query-parameter
