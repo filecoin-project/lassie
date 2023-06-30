@@ -28,11 +28,12 @@ func TestFetchCommandFlags(t *testing.T) {
 		{
 			name: "with default args",
 			args: []string{"fetch", "bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4"},
-			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, tempDir string, progress bool, outfile string) error {
+			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, entityBytes string, tempDir string, progress bool, outfile string) error {
 				// fetch specific params
 				require.Equal(t, "bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4", rootCid.String())
 				require.Equal(t, "", path)
 				require.Equal(t, string(types.DagScopeAll), dagScope)
+				require.Empty(t, entityBytes)
 				require.Equal(t, false, progress)
 				require.Equal(t, "bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4.car", outfile)
 
@@ -70,7 +71,7 @@ func TestFetchCommandFlags(t *testing.T) {
 				"fetch",
 				"bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4/birb.mp4",
 			},
-			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, tempDir string, progress bool, outfile string) error {
+			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, entityBytes string, tempDir string, progress bool, outfile string) error {
 				require.Equal(t, "birb.mp4", path)
 				return nil
 			},
@@ -83,7 +84,7 @@ func TestFetchCommandFlags(t *testing.T) {
 				"entity",
 				"bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4",
 			},
-			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, tempDir string, progress bool, outfile string) error {
+			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, entityBytes string, tempDir string, progress bool, outfile string) error {
 				require.Equal(t, string(types.DagScopeEntity), dagScope)
 				return nil
 			},
@@ -96,8 +97,47 @@ func TestFetchCommandFlags(t *testing.T) {
 				"block",
 				"bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4",
 			},
-			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, tempDir string, progress bool, outfile string) error {
+			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, entityBytes string, tempDir string, progress bool, outfile string) error {
 				require.Equal(t, string(types.DagScopeBlock), dagScope)
+				return nil
+			},
+		},
+		{
+			name: "with entity-bytes 0:*",
+			args: []string{
+				"fetch",
+				"--entity-bytes",
+				"0:*",
+				"bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4",
+			},
+			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, entityBytes string, tempDir string, progress bool, outfile string) error {
+				require.Equal(t, "0:*", entityBytes)
+				return nil
+			},
+		},
+		{
+			name: "with entity-bytes 0:10",
+			args: []string{
+				"fetch",
+				"--entity-bytes",
+				"0:10",
+				"bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4",
+			},
+			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, entityBytes string, tempDir string, progress bool, outfile string) error {
+				require.Equal(t, "0:10", entityBytes)
+				return nil
+			},
+		},
+		{
+			name: "with entity-bytes 1000:20000",
+			args: []string{
+				"fetch",
+				"--entity-bytes",
+				"1000:20000",
+				"bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4",
+			},
+			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, entityBytes string, tempDir string, progress bool, outfile string) error {
+				require.Equal(t, "1000:20000", entityBytes)
 				return nil
 			},
 		},
@@ -108,7 +148,7 @@ func TestFetchCommandFlags(t *testing.T) {
 				"--progress",
 				"bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4",
 			},
-			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, tempDir string, progress bool, outfile string) error {
+			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, entityBytes string, tempDir string, progress bool, outfile string) error {
 				require.Equal(t, true, progress)
 				return nil
 			},
@@ -121,7 +161,7 @@ func TestFetchCommandFlags(t *testing.T) {
 				"myfile",
 				"bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4",
 			},
-			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, tempDir string, progress bool, outfile string) error {
+			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, entityBytes string, tempDir string, progress bool, outfile string) error {
 				require.Equal(t, "myfile", outfile)
 				return nil
 			},
@@ -134,7 +174,7 @@ func TestFetchCommandFlags(t *testing.T) {
 				"/ip4/127.0.0.1/tcp/5000/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4",
 				"bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4",
 			},
-			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, tempDir string, progress bool, outfile string) error {
+			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, entityBytes string, tempDir string, progress bool, outfile string) error {
 				require.IsType(t, &retriever.DirectCandidateFinder{}, lCfg.Finder, "finder should be a DirectCandidateFinder when providers are specified")
 				return nil
 			},
@@ -147,7 +187,7 @@ func TestFetchCommandFlags(t *testing.T) {
 				"https://cid.contact",
 				"bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4",
 			},
-			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, tempDir string, progress bool, outfile string) error {
+			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, entityBytes string, tempDir string, progress bool, outfile string) error {
 				require.IsType(t, &indexerlookup.IndexerCandidateFinder{}, lCfg.Finder, "finder should be an IndexerCandidateFinder when providing an ipni endpoint")
 				return nil
 			},
@@ -170,7 +210,7 @@ func TestFetchCommandFlags(t *testing.T) {
 				"/mytmpdir",
 				"bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4",
 			},
-			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, tempDir string, progress bool, outfile string) error {
+			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, entityBytes string, tempDir string, progress bool, outfile string) error {
 				require.Equal(t, "/mytmpdir", tempDir)
 				return nil
 			},
@@ -183,7 +223,7 @@ func TestFetchCommandFlags(t *testing.T) {
 				"30s",
 				"bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4",
 			},
-			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, tempDir string, progress bool, outfile string) error {
+			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, entityBytes string, tempDir string, progress bool, outfile string) error {
 				require.Equal(t, 30*time.Second, lCfg.ProviderTimeout)
 				return nil
 			},
@@ -196,7 +236,7 @@ func TestFetchCommandFlags(t *testing.T) {
 				"30s",
 				"bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4",
 			},
-			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, tempDir string, progress bool, outfile string) error {
+			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, entityBytes string, tempDir string, progress bool, outfile string) error {
 				require.Equal(t, 30*time.Second, lCfg.GlobalTimeout)
 				return nil
 			},
@@ -209,7 +249,7 @@ func TestFetchCommandFlags(t *testing.T) {
 				"bitswap,graphsync",
 				"bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4",
 			},
-			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, tempDir string, progress bool, outfile string) error {
+			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, entityBytes string, tempDir string, progress bool, outfile string) error {
 				require.Equal(t, []multicodec.Code{multicodec.TransportBitswap, multicodec.TransportGraphsyncFilecoinv1}, lCfg.Protocols)
 				return nil
 			},
@@ -222,7 +262,7 @@ func TestFetchCommandFlags(t *testing.T) {
 				"12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4,12D3KooWPNbkEgjdBNeaCGpsgCrPRETe4uBZf1ShFXStobdN18ys",
 				"bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4",
 			},
-			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, tempDir string, progress bool, outfile string) error {
+			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, entityBytes string, tempDir string, progress bool, outfile string) error {
 				p1, err := peer.Decode("12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4")
 				require.NoError(t, err)
 				p2, err := peer.Decode("12D3KooWPNbkEgjdBNeaCGpsgCrPRETe4uBZf1ShFXStobdN18ys")
@@ -241,7 +281,7 @@ func TestFetchCommandFlags(t *testing.T) {
 				"10",
 				"bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4",
 			},
-			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, tempDir string, progress bool, outfile string) error {
+			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, entityBytes string, tempDir string, progress bool, outfile string) error {
 				require.Equal(t, 10, lCfg.BitswapConcurrency)
 				return nil
 			},
@@ -254,7 +294,7 @@ func TestFetchCommandFlags(t *testing.T) {
 				"https://myeventrecorder.com/v1/retrieval-events",
 				"bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4",
 			},
-			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, tempDir string, progress bool, outfile string) error {
+			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, entityBytes string, tempDir string, progress bool, outfile string) error {
 				require.Equal(t, "https://myeventrecorder.com/v1/retrieval-events", erCfg.EndpointURL)
 				return nil
 			},
@@ -267,7 +307,7 @@ func TestFetchCommandFlags(t *testing.T) {
 				"secret",
 				"bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4",
 			},
-			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, tempDir string, progress bool, outfile string) error {
+			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, entityBytes string, tempDir string, progress bool, outfile string) error {
 				require.Equal(t, "secret", erCfg.EndpointAuthorization)
 				return nil
 			},
@@ -280,7 +320,7 @@ func TestFetchCommandFlags(t *testing.T) {
 				"myinstanceid",
 				"bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4",
 			},
-			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, tempDir string, progress bool, outfile string) error {
+			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, entityBytes string, tempDir string, progress bool, outfile string) error {
 				require.Equal(t, "myinstanceid", erCfg.InstanceID)
 				return nil
 			},
@@ -312,6 +352,6 @@ func TestFetchCommandFlags(t *testing.T) {
 	}
 }
 
-func noopRun(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, tempDir string, progress bool, outfile string) error {
+func noopRun(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, entityBytes string, tempDir string, progress bool, outfile string) error {
 	return nil
 }
