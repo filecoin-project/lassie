@@ -27,6 +27,7 @@ func TestEtag(t *testing.T) {
 		cid      cid.Cid
 		path     string
 		scope    types.DagScope
+		bytes    *types.ByteRange
 		dups     bool
 		expected string
 	}{
@@ -120,14 +121,56 @@ func TestEtag(t *testing.T) {
 			scope:    types.DagScopeAll,
 			expected: `"bafyrgqhai26anf3i7pips7q22coa4sz2fr4gk4q4sqdtymvvjyginfzaqewveaeqdh524nsktaq43j65v22xxrybrtertmcfxufdam3da3hbk.car.9lumqv26cg30t"`,
 		},
+		{
+			cid:      cid.MustParse("QmVXsSVjwxMsCwKRCUxEkGb4f4B98gXVy3ih3v4otvcURK"),
+			scope:    types.DagScopeAll,
+			bytes:    &types.ByteRange{From: 0}, // default, not included
+			expected: `"QmVXsSVjwxMsCwKRCUxEkGb4f4B98gXVy3ih3v4otvcURK.car.58mf8vcmd2eo8"`,
+		},
+		{
+			cid:      cid.MustParse("QmVXsSVjwxMsCwKRCUxEkGb4f4B98gXVy3ih3v4otvcURK"),
+			scope:    types.DagScopeAll,
+			bytes:    &types.ByteRange{From: 10},
+			expected: `"QmVXsSVjwxMsCwKRCUxEkGb4f4B98gXVy3ih3v4otvcURK.car.560ditjelh0u2"`,
+		},
+		{
+			cid:      cid.MustParse("QmVXsSVjwxMsCwKRCUxEkGb4f4B98gXVy3ih3v4otvcURK"),
+			scope:    types.DagScopeAll,
+			bytes:    &types.ByteRange{From: 0, To: ptr(200)},
+			expected: `"QmVXsSVjwxMsCwKRCUxEkGb4f4B98gXVy3ih3v4otvcURK.car.faqf14andvfmb"`,
+		},
+		{
+			cid:      cid.MustParse("QmVXsSVjwxMsCwKRCUxEkGb4f4B98gXVy3ih3v4otvcURK"),
+			scope:    types.DagScopeAll,
+			bytes:    &types.ByteRange{From: 100, To: ptr(200)},
+			expected: `"QmVXsSVjwxMsCwKRCUxEkGb4f4B98gXVy3ih3v4otvcURK.car.bvebrb14stt94"`,
+		},
+		{
+			cid:      cid.MustParse("QmVXsSVjwxMsCwKRCUxEkGb4f4B98gXVy3ih3v4otvcURK"),
+			scope:    types.DagScopeEntity,
+			bytes:    &types.ByteRange{From: 100, To: ptr(200)},
+			expected: `"QmVXsSVjwxMsCwKRCUxEkGb4f4B98gXVy3ih3v4otvcURK.car.bq3u6t9t877t3"`,
+		},
+		{
+			cid:      cid.MustParse("QmVXsSVjwxMsCwKRCUxEkGb4f4B98gXVy3ih3v4otvcURK"),
+			scope:    types.DagScopeEntity,
+			dups:     true,
+			bytes:    &types.ByteRange{From: 100, To: ptr(200)},
+			expected: `"QmVXsSVjwxMsCwKRCUxEkGb4f4B98gXVy3ih3v4otvcURK.car.fhf498an52uqb"`,
+		},
 	}
 
 	for _, tc := range testCases {
-		t.Run(fmt.Sprintf("%s:%s:%s:%v", tc.cid.String(), tc.path, tc.scope, tc.dups), func(t *testing.T) {
+		br := ""
+		if tc.bytes != nil {
+			br = ":" + tc.bytes.String()
+		}
+		t.Run(fmt.Sprintf("%s:%s:%s:%v%s", tc.cid.String(), tc.path, tc.scope, tc.dups, br), func(t *testing.T) {
 			rr := types.RetrievalRequest{
 				Cid:        tc.cid,
 				Path:       tc.path,
 				Scope:      tc.scope,
+				Bytes:      tc.bytes,
 				Duplicates: tc.dups,
 			}
 			actual := rr.Etag()
@@ -276,4 +319,8 @@ func must[T any](v T, err error) T {
 		panic(err)
 	}
 	return v
+}
+
+func ptr(i int64) *int64 {
+	return &i
 }
