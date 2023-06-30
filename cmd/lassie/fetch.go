@@ -46,6 +46,19 @@ var fetchFlags = []cli.Flag{
 			return nil
 		},
 	},
+	&cli.StringFlag{
+		Name: "entity-bytes",
+		Usage: "describes the byte range to consider when selecting the blocks from a sharded file." +
+			" Valid values should be of the form from:to, where from and to are byte offsets and to may be '*'",
+		DefaultText: "defaults to the entire file, 0:*",
+		Action: func(cctx *cli.Context, v string) error {
+			if _, err := types.ParseByteRange(v); err != nil {
+				return fmt.Errorf("invalid entity-bytes parameter, must be of the form from:to," +
+					" where from and to are byte offsets and to may be '*'")
+			}
+			return nil
+		},
+	},
 	FlagIPNIEndpoint,
 	FlagEventRecorderAuth,
 	FlagEventRecorderInstanceId,
@@ -78,6 +91,7 @@ func fetchAction(cctx *cli.Context) error {
 	dataWriter := cctx.App.Writer
 
 	dagScope := cctx.String("dag-scope")
+	entityBytes := cctx.String("entity-bytes")
 	tempDir := cctx.String("tempdir")
 	progress := cctx.Bool("progress")
 
@@ -111,6 +125,7 @@ func fetchAction(cctx *cli.Context) error {
 		rootCid,
 		path,
 		dagScope,
+		entityBytes,
 		tempDir,
 		progress,
 		outfile,
@@ -188,6 +203,7 @@ type fetchRunFunc func(
 	rootCid cid.Cid,
 	path string,
 	dagScope string,
+	entityBytes string,
 	tempDir string,
 	progress bool,
 	outfile string,
@@ -207,6 +223,7 @@ func defaultFetchRun(
 	rootCid cid.Cid,
 	path string,
 	dagScope string,
+	entityBytes string,
 	tempDir string,
 	progress bool,
 	outfile string,
@@ -258,7 +275,12 @@ func defaultFetchRun(
 		}
 	}, false)
 
-	request, err := types.NewRequestForPath(carStore, rootCid, path, types.DagScope(dagScope))
+	bytes, _ := types.ParseByteRange(entityBytes)
+	var br *types.ByteRange
+	if !bytes.IsDefault() {
+		br = &bytes
+	}
+	request, err := types.NewRequestForPath(carStore, rootCid, path, types.DagScope(dagScope), br)
 	if err != nil {
 		return err
 	}
