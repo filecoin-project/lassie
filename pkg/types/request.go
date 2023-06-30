@@ -110,7 +110,14 @@ type RetrievalRequest struct {
 // and writing and it is explicitly set to be trusted (i.e. it will not
 // check CIDs match bytes). If the storage is not truested,
 // request.LinkSystem.TrustedStore should be set to false after this call.
-func NewRequestForPath(store ipldstorage.WritableStorage, cid cid.Cid, path string, dagScope DagScope) (RetrievalRequest, error) {
+func NewRequestForPath(
+	store ipldstorage.WritableStorage,
+	cid cid.Cid,
+	path string,
+	dagScope DagScope,
+	byteRange *ByteRange,
+) (RetrievalRequest, error) {
+
 	retrievalId, err := NewRetrievalID()
 	if err != nil {
 		return RetrievalRequest{}, err
@@ -129,6 +136,7 @@ func NewRequestForPath(store ipldstorage.WritableStorage, cid cid.Cid, path stri
 		Cid:         cid,
 		Path:        path,
 		Scope:       dagScope,
+		Bytes:       byteRange,
 		LinkSystem:  linkSystem,
 		Duplicates:  false,
 	}, nil
@@ -203,8 +211,12 @@ func (r RetrievalRequest) GetUrlPath() (string, error) {
 	if legacyScope == string(DagScopeEntity) {
 		legacyScope = "file"
 	}
+	byteRange := ""
+	if !r.Bytes.IsDefault() {
+		byteRange = "&entity-bytes=" + r.Bytes.String()
+	}
 	path := PathEscape(r.Path)
-	return fmt.Sprintf("%s?dag-scope=%s&car-scope=%s", path, scope, legacyScope), nil
+	return fmt.Sprintf("%s?dag-scope=%s&car-scope=%s%s", path, scope, legacyScope, byteRange), nil
 }
 
 func PathEscape(path string) string {
@@ -238,6 +250,10 @@ func (r RetrievalRequest) GetDescriptorString() (string, error) {
 		scope = DagScopeAll
 	}
 	path := PathEscape(r.Path)
+	byteRange := ""
+	if !r.Bytes.IsDefault() {
+		byteRange = "&entity-bytes=" + r.Bytes.String()
+	}
 	dups := "y"
 	if !r.Duplicates {
 		dups = "n"
@@ -266,7 +282,7 @@ func (r RetrievalRequest) GetDescriptorString() (string, error) {
 		}
 		providers = "&providers=" + ps
 	}
-	return fmt.Sprintf("/ipfs/%s%s?dag-scope=%s&dups=%s%s%s%s", r.Cid.String(), path, scope, dups, blockLimit, protocols, providers), nil
+	return fmt.Sprintf("/ipfs/%s%s?dag-scope=%s%s&dups=%s%s%s%s", r.Cid.String(), path, scope, byteRange, dups, blockLimit, protocols, providers), nil
 
 }
 

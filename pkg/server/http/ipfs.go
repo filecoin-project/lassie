@@ -83,6 +83,12 @@ func ipfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.Response
 			return
 		}
 
+		byteRange, err := ParseByteRange(req)
+		if err != nil {
+			errorResponse(res, statusLogger, http.StatusBadRequest, err)
+			return
+		}
+
 		protocols, err := parseProtocols(req)
 		if err != nil {
 			errorResponse(res, statusLogger, http.StatusBadRequest, err)
@@ -124,7 +130,7 @@ func ipfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.Response
 		tempStore := storage.NewDeferredStorageCar(cfg.TempDir, rootCid)
 		var carWriter storage.DeferredWriter
 		if includeDupes {
-			carWriter = storage.NewDuplicateAdderCarForStream(req.Context(), rootCid, path.String(), dagScope, tempStore, res)
+			carWriter = storage.NewDuplicateAdderCarForStream(req.Context(), rootCid, path.String(), dagScope, byteRange, tempStore, res)
 		} else {
 			carWriter = storage.NewDeferredCarWriterForStream(rootCid, res)
 		}
@@ -136,7 +142,7 @@ func ipfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.Response
 		}()
 		var store types.ReadableWritableStorage = carStore
 
-		request, err := types.NewRequestForPath(store, rootCid, path.String(), dagScope)
+		request, err := types.NewRequestForPath(store, rootCid, path.String(), dagScope, byteRange)
 		if err != nil {
 			errorResponse(res, statusLogger, http.StatusInternalServerError, fmt.Errorf("failed to create request: %w", err))
 			return
@@ -187,7 +193,22 @@ func ipfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.Response
 		}
 
 		// servertiming metrics
-		logger.Debugw("fetching CID", "retrievalId", retrievalId, "CID", rootCid.String(), "path", path.String(), "dagScope", dagScope)
+		logger.Debugw("fetching CID",
+			"retrievalId",
+			retrievalId,
+			"CID",
+			rootCid.String(),
+			"path",
+			path.String(),
+			"dagScope",
+			dagScope,
+			"byteRange",
+			byteRange,
+			"includeDupes",
+			includeDupes,
+			"blockLimit",
+			blockLimit,
+		)
 		stats, err := fetcher.Fetch(req.Context(), request, servertimingsSubscriber(req))
 
 		// force all blocks to flush
