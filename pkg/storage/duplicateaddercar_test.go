@@ -19,7 +19,6 @@ import (
 )
 
 func TestDuplicateAdderCar(t *testing.T) {
-
 	setupStore := &testutil.CorrectedMemStore{ParentStore: &memstore.Store{
 		Bag: make(map[string][]byte),
 	}}
@@ -34,7 +33,7 @@ func TestDuplicateAdderCar(t *testing.T) {
 
 	store := storage.NewDeferredStorageCar("", unixfsFileWithDups.Root)
 	ctx := context.Background()
-	carWriter := storage.NewDuplicateAdderCarForStream(ctx, unixfsFileWithDups.Root, "", types.DagScopeAll, store, buf)
+	carWriter := storage.NewDuplicateAdderCarForStream(ctx, unixfsFileWithDups.Root, "", types.DagScopeAll, nil, store, buf)
 	cachingTempStore := storage.NewCachingTempStore(carWriter.BlockWriteOpener(), store)
 
 	// write the root block, containing sharding metadata
