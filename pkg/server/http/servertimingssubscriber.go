@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/filecoin-project/lassie/pkg/events"
@@ -35,7 +34,6 @@ func servertimingsSubscriber(req *http.Request) types.RetrievalEventSubscriber {
 	var candidateFindingMetric *servertiming.Metric
 	var candidateFindingStartTime time.Time
 
-	mapLock := sync.Mutex{}
 	retrievalMetricMap := make(map[string]*servertiming.Metric)
 	retrievalTimingMap := make(map[string]time.Time)
 
@@ -45,8 +43,8 @@ func servertimingsSubscriber(req *http.Request) types.RetrievalEventSubscriber {
 			return
 		}
 
-		mapLock.Lock()
-		defer mapLock.Unlock()
+		timing.Lock()
+		defer timing.Unlock()
 
 		switch event := re.(type) {
 		case events.StartedFetchEvent:
@@ -54,7 +52,9 @@ func servertimingsSubscriber(req *http.Request) types.RetrievalEventSubscriber {
 
 		// Candidate finding cases
 		case events.StartedFindingCandidatesEvent:
+			timing.Unlock()
 			candidateFindingMetric = timing.NewMetric(string(re.Code()))
+			timing.Lock()
 			candidateFindingMetric.Extra = make(map[string]string)
 			candidateFindingMetric.Extra["dur"] = formatDuration(re.Time().Sub(fetchStartTime))
 			candidateFindingStartTime = re.Time()
@@ -68,7 +68,9 @@ func servertimingsSubscriber(req *http.Request) types.RetrievalEventSubscriber {
 		// Retrieval cases
 		case events.StartedRetrievalEvent:
 			name := fmt.Sprintf("retrieval-%s", events.Identifier(re))
+			timing.Unlock()
 			retrievalMetric := timing.NewMetric(name)
+			timing.Lock()
 			retrievalMetric.Extra = make(map[string]string)
 			// We're using "dur" here to render the time since the "started-fetch" in the browser
 			retrievalMetric.Extra["dur"] = formatDuration(re.Time().Sub(fetchStartTime))
