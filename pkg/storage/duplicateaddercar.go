@@ -24,13 +24,23 @@ type DuplicateAdderCar struct {
 	root               cid.Cid
 	path               string
 	scope              types.DagScope
+	bytes              *types.ByteRange
 	store              *DeferredStorageCar
 	blockStream        *blockStream
 	streamCompletion   chan error
 	streamCompletionLk sync.Mutex
 }
 
-func NewDuplicateAdderCarForStream(ctx context.Context, root cid.Cid, path string, scope types.DagScope, store *DeferredStorageCar, outStream io.Writer) *DuplicateAdderCar {
+func NewDuplicateAdderCarForStream(
+	ctx context.Context,
+	root cid.Cid,
+	path string,
+	scope types.DagScope,
+	bytes *types.ByteRange,
+	store *DeferredStorageCar,
+	outStream io.Writer,
+) *DuplicateAdderCar {
+
 	blockStream := &blockStream{ctx: ctx, seen: make(map[cid.Cid]struct{})}
 	blockStream.blockBuffer = list.New()
 	blockStream.cond = sync.NewCond(&blockStream.mu)
@@ -43,6 +53,7 @@ func NewDuplicateAdderCarForStream(ctx context.Context, root cid.Cid, path strin
 		root:              root,
 		path:              path,
 		scope:             scope,
+		bytes:             bytes,
 		store:             store,
 		blockStream:       blockStream,
 	}
@@ -53,7 +64,7 @@ func (da *DuplicateAdderCar) addDupes() {
 	defer func() {
 		da.streamCompletion <- err
 	}()
-	sel := types.PathScopeSelector(da.path, da.scope, nil)
+	sel := types.PathScopeSelector(da.path, da.scope, da.bytes)
 
 	// we're going to do a verified car where we add dupes back in
 	cfg := verifiedcar.Config{
