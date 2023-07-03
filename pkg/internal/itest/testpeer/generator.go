@@ -286,7 +286,7 @@ func newTestPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity) (Test
 	if err != nil {
 		return TestPeer{}, nil, err
 	}
-	backedStore := &BackedStore{Backing: bstore}
+	backedStore := &BackedStore{bstore}
 	lsys := storeutil.LinkSystemForBlockstore(backedStore)
 	tp := TestPeer{
 		Host:            client,
