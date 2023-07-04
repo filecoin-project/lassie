@@ -339,6 +339,8 @@ github.com/ipld/go-codec-dagpb v1.6.0/go.mod h1:ANzFhfP2uMJxRBr8CE+WQWs5UsNa0pYt
 github.com/ipld/go-ipld-prime v0.20.1-0.20230629094729-829a31766846 h1:0gIWxUu4gU/Do25cwk82TRA621GjoZRSyVY472LaBrQ=
 github.com/ipld/go-ipld-prime v0.20.1-0.20230629094729-829a31766846/go.mod h1:PRQpXNcJypaPiiSdarsrJABPkYrBvafwDl0B9HjujZ8=
 github.com/ipld/go-ipld-prime/storage/bsadapter v0.0.0-20230102063945-1a409dc236dd h1:gMlw/MhNr2Wtp5RwGdsW23cs+yCuj9k2ON7i9MiJlRo=
+github.com/ipld/ipld/specs v0.0.0-20230705075038-29da2e853cdb h1:SDDUglxqma8Zl5BwGb8VPnkXXR48t7pcPnh9x8Mfp9I=
+github.com/ipld/ipld/specs v0.0.0-20230705075038-29da2e853cdb/go.mod h1:eB2ZYKBGUJFuxTCO8YC0jJu41iquw6AvHhpP7N2yw8k=
 github.com/ipni/go-libipni v0.0.8-0.20230425184153-86a1fcb7f7ff h1:xbKrIvnpQkbF8iHPk/HGcegsypCDpcXWHhzBCLyCWf8=
 github.com/ipni/go-libipni v0.0.8-0.20230425184153-86a1fcb7f7ff/go.mod h1:paYP9U4N3/vOzGCuN9kU972vtvw9JUcQjOKyiCFGwRk=
 github.com/ipsn/go-secp256k1 v0.0.0-20180726113642-9d62b9f0bc52 h1:QG4CGBqCeuBo6aZlGAamSkxWdgWfZGeE49eUOWJPA4c=
