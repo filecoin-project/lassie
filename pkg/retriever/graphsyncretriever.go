@@ -183,6 +183,7 @@ func (pg *ProtocolGraphsync) Retrieve(
 	}
 
 	var receivedFirstByte bool
+	var totalReceived uint64
 	eventsSubscriber := func(event datatransfer.Event, channelState datatransfer.ChannelState) {
 		switch event.Code {
 		case datatransfer.Open:
@@ -200,6 +201,11 @@ func (pg *ProtocolGraphsync) Retrieve(
 			if !receivedFirstByte {
 				receivedFirstByte = true
 				shared.sendEvent(ctx, events.FirstByte(retrieval.Clock.Now(), retrieval.request.RetrievalID, candidate, retrieval.Clock.Since(retrievalStart), multicodec.TransportGraphsyncFilecoinv1))
+			}
+			lastReceived := totalReceived
+			totalReceived = channelState.Received()
+			if totalReceived > lastReceived {
+				shared.sendEvent(ctx, events.DataReceived(retrieval.Clock.Now(), retrieval.request.RetrievalID, candidate, multicodec.TransportGraphsyncFilecoinv1, totalReceived-lastReceived))
 			}
 			if lastBytesReceivedTimer != nil {
 				doneLk.Lock()

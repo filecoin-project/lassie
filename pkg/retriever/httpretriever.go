@@ -137,6 +137,9 @@ func (ph *ProtocolHttp) Retrieve(
 		// in a parent
 		WriteDuplicatesOut: expectDuplicates,
 		MaxBlocks:          retrieval.request.MaxBlocks,
+		OnBlockRead: func(read uint64) {
+			shared.sendEvent(ctx, events.DataReceived(retrieval.Clock.Now(), retrieval.request.RetrievalID, candidate, multicodec.TransportIpfsGatewayHttp, read))
+		},
 	}
 
 	traversalResult, err := cfg.VerifyCar(ctx, rdr, retrieval.request.LinkSystem)
