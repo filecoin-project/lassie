@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/filecoin-project/lassie/pkg/internal/fixtures"
 	"github.com/filecoin-project/lassie/pkg/internal/testutil"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/filecoin-project/lassie/pkg/verifiedcar"
@@ -34,15 +33,16 @@ import (
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
+	trustlesspathing "github.com/ipld/ipld/specs/pkg-go/trustless-pathing"
 	"github.com/stretchr/testify/require"
 )
 
 func TestUnixfs20mVariety(t *testing.T) {
 	req := require.New(t)
 
-	testCases, err := fixtures.Unixfs20mVarietyCases()
+	testCases, err := trustlesspathing.Unixfs20mVarietyCases()
 	req.NoError(err)
-	storage, closer, err := fixtures.Unixfs20mVarietyReadableStorage()
+	storage, closer, err := trustlesspathing.Unixfs20mVarietyReadableStorage()
 	req.NoError(err)
 	defer closer.Close()
 
@@ -92,13 +92,21 @@ func TestUnixfs20mVariety(t *testing.T) {
 
 			// Run the verifier over the CAR stream to see if we end up with
 			// the same query.
+			scope, err := types.ParseDagScope(tc.Scope)
+			req.NoError(err)
+			var byteRange *types.ByteRange
+			if tc.ByteRange != "" {
+				br, err := types.ParseByteRange(tc.ByteRange)
+				req.NoError(err)
+				byteRange = &br
+			}
 			cfg := verifiedcar.Config{
 				Root:     tc.Root,
-				Selector: types.PathScopeSelector(tc.Path, tc.Scope, tc.ByteRange),
+				Selector: types.PathScopeSelector(tc.Path, scope, byteRange),
 			}
 			{
 				selBytes, _ := ipld.Encode(cfg.Selector, dagjson.Encode)
-				t.Logf("selector=%s, entity-bytes=%s", string(selBytes), tc.ByteRange.String())
+				t.Logf("selector=%s, entity-bytes=%s", string(selBytes), tc.ByteRange)
 			}
 			blockCount, byteCount, err := cfg.VerifyCar(ctx, carStream, lsys)
 
