@@ -74,7 +74,6 @@ func TestHTTPRetriever(t *testing.T) {
 	allSelector := selectorparse.CommonSelector_ExploreAllRecursively
 	initialPause := 10 * time.Millisecond
 	startTime := time.Now().Add(time.Hour)
-
 	testCases := []struct {
 		name           string
 		requests       map[cid.Cid]types.RetrievalID
@@ -114,7 +113,7 @@ func TestHTTPRetriever(t *testing.T) {
 					AskPrice:          big.Zero(),
 				},
 			},
-			expectSequence: []testutil.ExpectedActionsAtTime{
+			expectSequence: append(append([]testutil.ExpectedActionsAtTime{
 				{
 					AfterStart: 0,
 					ExpectedEvents: []types.RetrievalEvent{
@@ -133,11 +132,14 @@ func TestHTTPRetriever(t *testing.T) {
 					AfterStart: initialPause + time.Millisecond*40,
 					ExpectedEvents: []types.RetrievalEvent{
 						events.FirstByte(startTime.Add(initialPause+time.Millisecond*40), rid1, toCandidate(cid1, cid1Cands[0].MinerPeer), time.Millisecond*40, multicodec.TransportIpfsGatewayHttp),
+						events.DataReceived(startTime.Add(initialPause+time.Millisecond*40), rid1, toCandidate(cid1, cid1Cands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp, uint64(len(tbc1.Blocks(0, 1)[0].RawData()))),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_FirstByte, Provider: cid1Cands[0].MinerPeer.ID, Duration: time.Millisecond * 40},
 					},
 				},
+			},
+				testutil.DataReceivedActions(startTime, initialPause+time.Millisecond*40+remoteBlockDuration, rid1, toCandidate(cid1, cid1Cands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp, remoteBlockDuration, tbc1.Blocks(1, 100))...), []testutil.ExpectedActionsAtTime{
 				{
 					AfterStart: initialPause + time.Millisecond*40 + remoteBlockDuration*100,
 					ExpectedEvents: []types.RetrievalEvent{
@@ -153,7 +155,7 @@ func TestHTTPRetriever(t *testing.T) {
 					},
 					CompletedRetrievals: []peer.ID{cid1Cands[0].MinerPeer.ID},
 				},
-			},
+			}...),
 		},
 		{
 			name:     "two parallel, one peer each, success",
@@ -201,7 +203,7 @@ func TestHTTPRetriever(t *testing.T) {
 					AskPrice:          big.Zero(),
 				},
 			},
-			expectSequence: []testutil.ExpectedActionsAtTime{
+			expectSequence: append(append([]testutil.ExpectedActionsAtTime{
 				{
 					AfterStart: 0,
 					ExpectedEvents: []types.RetrievalEvent{
@@ -223,6 +225,7 @@ func TestHTTPRetriever(t *testing.T) {
 					AfterStart: initialPause + time.Millisecond*10,
 					ExpectedEvents: []types.RetrievalEvent{
 						events.FirstByte(startTime.Add(initialPause+time.Millisecond*10), rid2, toCandidate(cid2, cid2Cands[0].MinerPeer), time.Millisecond*10, multicodec.TransportIpfsGatewayHttp),
+						events.DataReceived(startTime.Add(initialPause+time.Millisecond*10), rid2, toCandidate(cid2, cid2Cands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp, uint64(len(tbc2.Blocks(0, 1)[0].RawData()))),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_FirstByte, Provider: cid2Cands[0].MinerPeer.ID, Duration: time.Millisecond * 10},
@@ -232,48 +235,56 @@ func TestHTTPRetriever(t *testing.T) {
 					AfterStart: initialPause + time.Millisecond*40,
 					ExpectedEvents: []types.RetrievalEvent{
 						events.FirstByte(startTime.Add(initialPause+time.Millisecond*40), rid1, toCandidate(cid1, cid1Cands[0].MinerPeer), time.Millisecond*40, multicodec.TransportIpfsGatewayHttp),
+						events.DataReceived(startTime.Add(initialPause+time.Millisecond*40), rid1, toCandidate(cid1, cid1Cands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp, uint64(len(tbc1.Blocks(0, 1)[0].RawData()))),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_FirstByte, Provider: cid1Cands[0].MinerPeer.ID, Duration: time.Millisecond * 40},
 					},
 				},
-				{
-					AfterStart: initialPause + time.Millisecond*10 + remoteBlockDuration*100,
-					ExpectedEvents: []types.RetrievalEvent{
-						events.Success(startTime.Add(initialPause+time.Millisecond*10+remoteBlockDuration*100), rid2, toCandidate(cid2, cid2Cands[0].MinerPeer), sizeOf(tbc2.AllBlocks()), 100, 10*time.Millisecond+remoteBlockDuration*100, multicodec.TransportIpfsGatewayHttp),
-					},
-					ServedRetrievals: []testutil.RemoteStats{
-						{
-							Peer:      cid2Cands[0].MinerPeer.ID,
-							Root:      cid2,
-							ByteCount: sizeOf(tbc2.AllBlocks()),
-							Blocks:    tbc2Cids,
-						},
-					},
-					CompletedRetrievals: []peer.ID{cid2Cands[0].MinerPeer.ID},
-					ExpectedMetrics: []testutil.SessionMetric{
-						{Type: testutil.SessionMetric_Success, Provider: cid2Cands[0].MinerPeer.ID, Value: math.Trunc(float64(sizeOf(tbc2.AllBlocks())) / (10*time.Millisecond + remoteBlockDuration*100).Seconds())},
-					},
-				},
-				{
-					AfterStart: initialPause + time.Millisecond*40 + remoteBlockDuration*100,
-					ExpectedEvents: []types.RetrievalEvent{
-						events.Success(startTime.Add(initialPause+time.Millisecond*40+remoteBlockDuration*100), rid1, toCandidate(cid1, cid1Cands[0].MinerPeer), sizeOf(tbc1.AllBlocks()), 100, 40*time.Millisecond+remoteBlockDuration*100, multicodec.TransportIpfsGatewayHttp),
-					},
-					ServedRetrievals: []testutil.RemoteStats{
-						{
-							Peer:      cid1Cands[0].MinerPeer.ID,
-							Root:      cid1,
-							ByteCount: sizeOf(tbc1.AllBlocks()),
-							Blocks:    tbc1Cids,
-						},
-					},
-					CompletedRetrievals: []peer.ID{cid1Cands[0].MinerPeer.ID},
-					ExpectedMetrics: []testutil.SessionMetric{
-						{Type: testutil.SessionMetric_Success, Provider: cid1Cands[0].MinerPeer.ID, Value: math.Trunc(float64(sizeOf(tbc1.AllBlocks())) / (40*time.Millisecond + remoteBlockDuration*100).Seconds())},
-					},
-				},
 			},
+				testutil.SortActions(
+					append(
+						testutil.DataReceivedActions(startTime, initialPause+time.Millisecond*10+remoteBlockDuration, rid2, toCandidate(cid2, cid2Cands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp, remoteBlockDuration, tbc2.Blocks(1, 100)),
+						testutil.DataReceivedActions(startTime, initialPause+time.Millisecond*40+remoteBlockDuration, rid1, toCandidate(cid1, cid1Cands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp, remoteBlockDuration, tbc1.Blocks(1, 100))...),
+				)...),
+				[]testutil.ExpectedActionsAtTime{
+					{
+						AfterStart: initialPause + time.Millisecond*10 + remoteBlockDuration*100,
+						ExpectedEvents: []types.RetrievalEvent{
+							events.Success(startTime.Add(initialPause+time.Millisecond*10+remoteBlockDuration*100), rid2, toCandidate(cid2, cid2Cands[0].MinerPeer), sizeOf(tbc2.AllBlocks()), 100, 10*time.Millisecond+remoteBlockDuration*100, multicodec.TransportIpfsGatewayHttp),
+						},
+						ServedRetrievals: []testutil.RemoteStats{
+							{
+								Peer:      cid2Cands[0].MinerPeer.ID,
+								Root:      cid2,
+								ByteCount: sizeOf(tbc2.AllBlocks()),
+								Blocks:    tbc2Cids,
+							},
+						},
+						CompletedRetrievals: []peer.ID{cid2Cands[0].MinerPeer.ID},
+						ExpectedMetrics: []testutil.SessionMetric{
+							{Type: testutil.SessionMetric_Success, Provider: cid2Cands[0].MinerPeer.ID, Value: math.Trunc(float64(sizeOf(tbc2.AllBlocks())) / (10*time.Millisecond + remoteBlockDuration*100).Seconds())},
+						},
+					},
+					{
+						AfterStart: initialPause + time.Millisecond*40 + remoteBlockDuration*100,
+						ExpectedEvents: []types.RetrievalEvent{
+							events.Success(startTime.Add(initialPause+time.Millisecond*40+remoteBlockDuration*100), rid1, toCandidate(cid1, cid1Cands[0].MinerPeer), sizeOf(tbc1.AllBlocks()), 100, 40*time.Millisecond+remoteBlockDuration*100, multicodec.TransportIpfsGatewayHttp),
+						},
+						ServedRetrievals: []testutil.RemoteStats{
+							{
+								Peer:      cid1Cands[0].MinerPeer.ID,
+								Root:      cid1,
+								ByteCount: sizeOf(tbc1.AllBlocks()),
+								Blocks:    tbc1Cids,
+							},
+						},
+						CompletedRetrievals: []peer.ID{cid1Cands[0].MinerPeer.ID},
+						ExpectedMetrics: []testutil.SessionMetric{
+							{Type: testutil.SessionMetric_Success, Provider: cid1Cands[0].MinerPeer.ID, Value: math.Trunc(float64(sizeOf(tbc1.AllBlocks())) / (40*time.Millisecond + remoteBlockDuration*100).Seconds())},
+						},
+					},
+				}...),
 		},
 		{
 			name:     "single, multiple errors",
@@ -432,7 +443,7 @@ func TestHTTPRetriever(t *testing.T) {
 					AskPrice:          big.Zero(),
 				},
 			},
-			expectSequence: []testutil.ExpectedActionsAtTime{
+			expectSequence: append(append([]testutil.ExpectedActionsAtTime{
 				{
 					AfterStart: 0,
 					ExpectedEvents: []types.RetrievalEvent{
@@ -499,11 +510,14 @@ func TestHTTPRetriever(t *testing.T) {
 					AfterStart: initialPause + time.Millisecond*30,
 					ExpectedEvents: []types.RetrievalEvent{
 						events.FirstByte(startTime.Add(initialPause+time.Millisecond*30), rid1, toCandidate(cid1, cid1Cands[2].MinerPeer), time.Millisecond*10, multicodec.TransportIpfsGatewayHttp),
+						events.DataReceived(startTime.Add(initialPause+time.Millisecond*30), rid1, toCandidate(cid1, cid1Cands[2].MinerPeer), multicodec.TransportIpfsGatewayHttp, uint64(len(tbc1.Blocks(0, 1)[0].RawData()))),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_FirstByte, Provider: cid1Cands[2].MinerPeer.ID, Duration: time.Millisecond * 10},
 					},
 				},
+			},
+				testutil.DataReceivedActions(startTime, initialPause+time.Millisecond*30+remoteBlockDuration, rid1, toCandidate(cid1, cid1Cands[2].MinerPeer), multicodec.TransportIpfsGatewayHttp, remoteBlockDuration, tbc1.Blocks(1, 100))...), []testutil.ExpectedActionsAtTime{
 				{
 					AfterStart: initialPause + time.Millisecond*30 + remoteBlockDuration*100,
 					ExpectedEvents: []types.RetrievalEvent{
@@ -522,7 +536,7 @@ func TestHTTPRetriever(t *testing.T) {
 						{Type: testutil.SessionMetric_Success, Provider: cid1Cands[2].MinerPeer.ID, Value: math.Trunc(float64(sizeOf(tbc1.AllBlocks())) / (10*time.Millisecond + remoteBlockDuration*100).Seconds())},
 					},
 				},
-			},
+			}...),
 		},
 		// TODO: this test demonstrates the incompleteness of the http implementation - it's counted
 		// as a success and we only signal an "error" because the selector on the server errors but
@@ -544,7 +558,7 @@ func TestHTTPRetriever(t *testing.T) {
 			expectedErrors: map[cid.Cid]struct{}{
 				cid1: {},
 			},
-			expectSequence: []testutil.ExpectedActionsAtTime{
+			expectSequence: append(append([]testutil.ExpectedActionsAtTime{
 				{
 					AfterStart: 0,
 					ExpectedEvents: []types.RetrievalEvent{
@@ -563,11 +577,14 @@ func TestHTTPRetriever(t *testing.T) {
 					AfterStart: initialPause + time.Millisecond*40,
 					ExpectedEvents: []types.RetrievalEvent{
 						events.FirstByte(startTime.Add(initialPause+time.Millisecond*40), rid1, toCandidate(cid1, cid1Cands[0].MinerPeer), time.Millisecond*40, multicodec.TransportIpfsGatewayHttp),
+						events.DataReceived(startTime.Add(initialPause+time.Millisecond*40), rid1, toCandidate(cid1, cid1Cands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp, uint64(len(tbc1.Blocks(0, 1)[0].RawData()))),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_FirstByte, Provider: cid1Cands[0].MinerPeer.ID, Duration: time.Millisecond * 40},
 					},
 				},
+			},
+				testutil.DataReceivedActions(startTime, initialPause+time.Millisecond*40+remoteBlockDuration, rid1, toCandidate(cid1, cid1Cands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp, remoteBlockDuration, tbc1.Blocks(1, 50))...), []testutil.ExpectedActionsAtTime{
 				{
 					AfterStart: initialPause + time.Millisecond*40 + remoteBlockDuration*50,
 					ExpectedEvents: []types.RetrievalEvent{
@@ -587,7 +604,7 @@ func TestHTTPRetriever(t *testing.T) {
 						{Type: testutil.SessionMetric_Failure, Provider: cid1Cands[0].MinerPeer.ID},
 					},
 				},
-			},
+			}...),
 		},
 		{
 			name:        "single, funky path",

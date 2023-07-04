@@ -16,6 +16,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/retriever/bitswaphelpers/groupworkpool"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/boxo/bitswap/client"
+	"github.com/ipfs/boxo/bitswap/client/traceability"
 	"github.com/ipfs/boxo/bitswap/network"
 	"github.com/ipfs/boxo/blockservice"
 	"github.com/ipfs/go-cid"
@@ -208,9 +209,6 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		}
 	}()
 
-	// loader that can work with bitswap just for this session
-	loader := loaderForSession(br.request.RetrievalID, br.inProgressCids, br.bsGetter)
-
 	// set up the storage system, including the preloader if configured
 	var preloader preload.Loader
 	traversalLinkSys := br.request.LinkSystem
@@ -220,7 +218,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		storage, err := bitswaphelpers.NewPreloadCachingStorage(
 			br.request.LinkSystem,
 			br.request.PreloadLinkSystem,
-			loader,
+			br.loader,
 			br.groupWorkPool.AddGroup(retrievalCtx),
 		)
 		if err != nil {
@@ -239,7 +237,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 			br.request.RetrievalID,
 			bitswaphelpers.NewByteCountingLinkSystem(&br.request.LinkSystem, bytesWrittenCb),
 		)
-		traversalLinkSys.StorageReadOpener = loader
+		traversalLinkSys.StorageReadOpener = br.loader
 	}
 
 	// run the retrieval
@@ -305,23 +303,24 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	}, nil
 }
 
-func loaderForSession(retrievalID types.RetrievalID, inProgressCids InProgressCids, bs blockservice.BlockGetter) linking.BlockReadOpener {
-	return func(lctx linking.LinkContext, lnk datamodel.Link) (io.Reader, error) {
-		cidLink, ok := lnk.(cidlink.Link)
-		if !ok {
-			return nil, fmt.Errorf("invalid link type for loading: %v", lnk)
-		}
-		inProgressCids.Inc(cidLink.Cid, retrievalID)
-		select {
-		case <-lctx.Ctx.Done():
-			return nil, lctx.Ctx.Err()
-		default:
-		}
-		blk, err := bs.GetBlock(lctx.Ctx, cidLink.Cid)
-		inProgressCids.Dec(cidLink.Cid, retrievalID)
-		if err != nil {
-			return nil, err
-		}
-		return bytes.NewReader(blk.RawData()), nil
+func (br *bitswapRetrieval) loader(lctx linking.LinkContext, lnk datamodel.Link) (io.Reader, error) {
+	cidLink, ok := lnk.(cidlink.Link)
+	if !ok {
+		return nil, fmt.Errorf("invalid link type for loading: %v", lnk)
 	}
+	br.inProgressCids.Inc(cidLink.Cid, br.request.RetrievalID)
+	select {
+	case <-lctx.Ctx.Done():
+		return nil, lctx.Ctx.Err()
+	default:
+	}
+	blk, err := br.blockService.GetBlock(lctx.Ctx, cidLink.Cid)
+	if traceableBlock, ok := blk.(traceability.Block); ok {
+		br.events(events.DataReceived(br.clock.Now(), br.request.RetrievalID, types.RetrievalCandidate{RootCid: br.request.Root, MinerPeer: peer.AddrInfo{ID: traceableBlock.From}}, multicodec.TransportBitswap, uint64(len(blk.RawData()))))
+	}
+	br.inProgressCids.Dec(cidLink.Cid, br.request.RetrievalID)
+	if err != nil {
+		return nil, err
+	}
+	return bytes.NewReader(blk.RawData()), nil
 }

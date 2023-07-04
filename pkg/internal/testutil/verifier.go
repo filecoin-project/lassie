@@ -2,13 +2,17 @@ package testutil
 
 import (
 	"context"
+	"sort"
 	"testing"
 	"time"
 
 	"github.com/benbjohnson/clock"
+	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/types"
+	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multicodec"
 	"github.com/stretchr/testify/require"
 )
 
@@ -99,4 +103,24 @@ func (rv RetrievalVerifier) RunWithVerification(
 		}
 	}
 	return results
+}
+
+func DataReceivedActions(baseTime time.Time, baseAfterStart time.Duration, rid types.RetrievalID, candidate types.RetrievalCandidate, protocol multicodec.Code, blockTime time.Duration, blks []blocks.Block) []ExpectedActionsAtTime {
+	var actions []ExpectedActionsAtTime
+	for i, blk := range blks {
+		actions = append(actions, ExpectedActionsAtTime{
+			AfterStart: baseAfterStart + time.Duration(i)*blockTime,
+			ExpectedEvents: []types.RetrievalEvent{
+				events.DataReceived(baseTime.Add(baseAfterStart+time.Duration(i)*blockTime), rid, candidate, protocol, uint64(len(blk.RawData()))),
+			},
+		})
+	}
+	return actions
+}
+
+func SortActions(actions []ExpectedActionsAtTime) []ExpectedActionsAtTime {
+	sort.Slice(actions, func(i, j int) bool {
+		return actions[i].AfterStart < actions[j].AfterStart
+	})
+	return actions
 }

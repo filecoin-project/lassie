@@ -13,6 +13,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/retriever/bitswaphelpers"
 	"github.com/filecoin-project/lassie/pkg/types"
+	"github.com/ipfs/boxo/bitswap/client/traceability"
 	"github.com/ipfs/boxo/blockservice"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
@@ -82,8 +83,8 @@ func TestBitswapRetriever(t *testing.T) {
 				cid2: testutil.GenerateRetrievalCandidates(t, 7),
 			},
 			expectedEvents: map[cid.Cid][]types.EventCode{
-				cid1: {types.StartedRetrievalCode, types.FirstByteCode, types.SuccessCode},
-				cid2: {types.StartedRetrievalCode, types.FirstByteCode, types.SuccessCode},
+				cid1: append(append([]types.EventCode{types.StartedRetrievalCode, types.FirstByteCode}, repeatCode(types.DataReceivedCode, 100)...), types.SuccessCode),
+				cid2: append(append([]types.EventCode{types.StartedRetrievalCode, types.FirstByteCode}, repeatCode(types.DataReceivedCode, 100)...), types.SuccessCode),
 			},
 			expectedCids: allCids,
 			expectedRemoteCids: map[cid.Cid][]cid.Cid{
@@ -128,8 +129,8 @@ func TestBitswapRetriever(t *testing.T) {
 				cid2: testutil.GenerateRetrievalCandidates(t, 7),
 			},
 			expectedEvents: map[cid.Cid][]types.EventCode{
-				cid1: {types.StartedRetrievalCode, types.FirstByteCode, types.SuccessCode},
-				cid2: {types.StartedRetrievalCode, types.FirstByteCode, types.SuccessCode},
+				cid1: append(append([]types.EventCode{types.StartedRetrievalCode, types.FirstByteCode}, repeatCode(types.DataReceivedCode, 50)...), types.SuccessCode),
+				cid2: append(append([]types.EventCode{types.StartedRetrievalCode, types.FirstByteCode}, repeatCode(types.DataReceivedCode, 45)...), types.SuccessCode),
 			},
 			// only expect to bitswap fetch the blocks we don't have
 			expectedRemoteCids: map[cid.Cid][]cid.Cid{
@@ -172,8 +173,8 @@ func TestBitswapRetriever(t *testing.T) {
 				cid2: testutil.GenerateRetrievalCandidates(t, 7),
 			},
 			expectedEvents: map[cid.Cid][]types.EventCode{
-				cid1: {types.StartedRetrievalCode, types.FirstByteCode, types.SuccessCode},
-				cid2: {types.StartedRetrievalCode, types.FirstByteCode, types.SuccessCode},
+				cid1: append(append([]types.EventCode{types.StartedRetrievalCode, types.FirstByteCode}, repeatCode(types.DataReceivedCode, 5)...), types.SuccessCode),
+				cid2: append(append([]types.EventCode{types.StartedRetrievalCode, types.FirstByteCode}, repeatCode(types.DataReceivedCode, 5)...), types.SuccessCode),
 			},
 			expectedCids: append(append([]cid.Cid{}, tbc1Cids[:5]...), tbc2Cids[:5]...),
 			expectedRemoteCids: map[cid.Cid][]cid.Cid{
@@ -212,8 +213,8 @@ func TestBitswapRetriever(t *testing.T) {
 				cid2: testutil.GenerateRetrievalCandidates(t, 7),
 			},
 			expectedEvents: map[cid.Cid][]types.EventCode{
-				cid1: {types.StartedRetrievalCode, types.FirstByteCode, types.FailedRetrievalCode},
-				cid2: {types.StartedRetrievalCode, types.FirstByteCode, types.FailedRetrievalCode},
+				cid1: append(append([]types.EventCode{types.StartedRetrievalCode, types.FirstByteCode}, repeatCode(types.DataReceivedCode, 50)...), types.FailedRetrievalCode),
+				cid2: append(append([]types.EventCode{types.StartedRetrievalCode, types.FirstByteCode}, repeatCode(types.DataReceivedCode, 50)...), types.FailedRetrievalCode),
 			},
 			expectedErrors: map[cid.Cid]string{
 				cid1: "could not load link",
@@ -262,8 +263,8 @@ func TestBitswapRetriever(t *testing.T) {
 				cid2: testutil.GenerateRetrievalCandidates(t, 7),
 			},
 			expectedEvents: map[cid.Cid][]types.EventCode{
-				cid1: {types.StartedRetrievalCode, types.FirstByteCode, types.FailedRetrievalCode},
-				cid2: {types.StartedRetrievalCode, types.FirstByteCode, types.FailedRetrievalCode},
+				cid1: {types.StartedRetrievalCode, types.FirstByteCode, types.DataReceivedCode, types.FailedRetrievalCode},
+				cid2: {types.StartedRetrievalCode, types.FirstByteCode, types.DataReceivedCode, types.FailedRetrievalCode},
 			},
 			expectedErrors: map[cid.Cid]string{
 				cid1: "retrieval failed; retrieval timed out after 10ms",
@@ -535,7 +536,13 @@ func (me *mockExchange) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, 
 	if err != nil {
 		return nil, err
 	}
-	return blocks.NewBlockWithCid(data, c)
+	blk, err := blocks.NewBlockWithCid(data, c)
+	if err != nil {
+		return nil, err
+	}
+	return traceability.Block{
+		Block: blk,
+	}, nil
 }
 
 func (me *mockExchange) GetBlocks(_ context.Context, _ []cid.Cid) (<-chan blocks.Block, error) {
@@ -626,4 +633,12 @@ func (mipc *mockInProgressCids) Inc(c cid.Cid, _ types.RetrievalID) {
 
 func (mipc *mockInProgressCids) Dec(c cid.Cid, _ types.RetrievalID) {
 	mipc.decremented = append(mipc.decremented, c)
+}
+
+func repeatCode(code types.EventCode, n int) []types.EventCode {
+	eventCodes := make([]types.EventCode, 0, n)
+	for i := 0; i < n; i++ {
+		eventCodes = append(eventCodes, code)
+	}
+	return eventCodes
 }
