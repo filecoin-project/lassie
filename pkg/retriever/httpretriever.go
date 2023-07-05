@@ -117,7 +117,7 @@ func (ph *ProtocolHttp) Retrieve(
 	var ttfb time.Duration
 	rdr := newTimeToFirstByteReader(resp.Body, func() {
 		ttfb = retrieval.Clock.Since(retrievalStart)
-		shared.sendEvent(events.FirstByte(retrieval.Clock.Now(), retrieval.request.RetrievalID, candidate, ttfb, multicodec.TransportIpfsGatewayHttp))
+		shared.sendEvent(ctx, events.FirstByte(retrieval.Clock.Now(), retrieval.request.RetrievalID, candidate, ttfb, multicodec.TransportIpfsGatewayHttp))
 	})
 	cfg := verifiedcar.Config{
 		Root:               retrieval.request.Cid,
