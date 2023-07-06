@@ -70,10 +70,11 @@ type retrieval struct {
 }
 
 type retrievalResult struct {
-	PeerID peer.ID
-	Stats  *types.RetrievalStats
-	Event  *types.RetrievalEvent
-	Err    error
+	PeerID      peer.ID
+	Stats       *types.RetrievalStats
+	Event       *types.RetrievalEvent
+	Err         error
+	AllFinished bool
 }
 
 // retrievalShared is the shared state and coordination between the per-SP
@@ -176,7 +177,10 @@ func (retrieval *retrieval) RetrieveFromAsyncCandidates(asyncCandidates types.In
 	finishAll := make(chan struct{}, 1)
 	go func() {
 		waitGroup.Wait()
-		close(shared.resultChan)
+		select {
+		case <-ctx.Done():
+		case shared.resultChan <- retrievalResult{AllFinished: true}:
+		}
 		finishAll <- struct{}{}
 	}()
 
@@ -262,9 +266,9 @@ func collectResults(ctx context.Context, shared *retrievalShared, eventsCallback
 	var retrievalErrors error
 	for {
 		select {
-		case result, ok := <-shared.resultChan:
+		case result := <-shared.resultChan:
 			// have we got all responses but no success?
-			if !ok {
+			if result.AllFinished {
 				// we failed, and got only retrieval errors
 				retrievalErrors = multierr.Append(retrievalErrors, ErrAllRetrievalsFailed)
 				return nil, retrievalErrors
