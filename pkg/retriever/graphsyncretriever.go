@@ -165,7 +165,7 @@ func (pg *ProtocolGraphsync) Retrieve(
 	var done, timedOut bool
 	var lastBytesReceivedTimer, gracefulShutdownTimer *clock.Timer
 
-	gracefulShutdownChan := make(chan struct{})
+	gracefulShutdownChan := make(chan struct{}, 1)
 
 	// Start the timeout tracker only if retrieval timeout isn't 0
 	if timeout != 0 {
