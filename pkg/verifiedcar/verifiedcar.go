@@ -46,13 +46,14 @@ type BlockReader interface {
 var protoChooser = dagpb.AddSupportToChooser(basicnode.Chooser)
 
 type Config struct {
-	Root               cid.Cid        // The single root we expect to appear in the CAR and that we use to run our traversal against
-	AllowCARv2         bool           // If true, allow CARv2 files to be received, otherwise strictly only allow CARv1
-	Selector           datamodel.Node // The selector to execute, starting at the provided Root, to verify the contents of the CAR
-	CheckRootsMismatch bool           // Check if roots match expected behavior
-	ExpectDuplicatesIn bool           // Handles whether the incoming stream has duplicates
-	WriteDuplicatesOut bool           // Handles whether duplicates should be written a second time as blocks
-	MaxBlocks          uint64         // set a budget for the traversal
+	Root                  cid.Cid        // The single root we expect to appear in the CAR and that we use to run our traversal against
+	AllowCARv2            bool           // If true, allow CARv2 files to be received, otherwise strictly only allow CARv1
+	Selector              datamodel.Node // The selector to execute, starting at the provided Root, to verify the contents of the CAR
+	CheckRootsMismatch    bool           // Check if roots match expected behavior
+	ExpectDuplicatesIn    bool           // Handles whether the incoming stream has duplicates
+	WriteDuplicatesOut    bool           // Handles whether duplicates should be written a second time as blocks
+	MaxBlocks             uint64         // set a budget for the traversal
+	AllowExtraneousBlocks bool           // ignores unexpected blocks and additional blocks at end as long as a complete in-order traversal is within the stream
 }
 
 // Verify reads a CAR from the provided reader, verifies the contents are
@@ -136,7 +137,9 @@ func (cfg Config) VerifyBlockStream(ctx context.Context, cbr BlockReader, lsys l
 	// make sure we don't have any extraneous data beyond what the traversal needs
 	_, err = cbr.Next()
 	if err == nil {
-		return 0, 0, ErrExtraneousBlock
+		if !cfg.AllowExtraneousBlocks {
+			return 0, 0, ErrExtraneousBlock
+		}
 	} else if !errors.Is(err, io.EOF) {
 		return 0, 0, err
 	}
@@ -181,7 +184,7 @@ func NewNextBlockLinkSystem(
 		if _, ok := seen[cid]; ok {
 			if cfg.ExpectDuplicatesIn {
 				// duplicate block, but in this case we are expecting the stream to have it
-				data, err = cr.readNextBlock(ctx, cid)
+				data, err = cr.readNextBlock(ctx, cid, cfg.AllowExtraneousBlocks)
 				if err != nil {
 					return nil, err
 				}
@@ -201,7 +204,7 @@ func NewNextBlockLinkSystem(
 			}
 		} else {
 			seen[cid] = struct{}{}
-			data, err = cr.readNextBlock(ctx, cid)
+			data, err = cr.readNextBlock(ctx, cid, cfg.AllowExtraneousBlocks)
 			if err != nil {
 				return nil, err
 			}
@@ -241,19 +244,25 @@ type carReader struct {
 	cbr BlockReader
 }
 
-func (cr *carReader) readNextBlock(ctx context.Context, expected cid.Cid) ([]byte, error) {
-	blk, err := cr.cbr.Next()
-	if err != nil {
-		if errors.Is(err, io.EOF) {
-			return nil, format.ErrNotFound{Cid: expected}
+func (cr *carReader) readNextBlock(ctx context.Context, expected cid.Cid, allowExtraneousBlocks bool) ([]byte, error) {
+	for {
+		blk, err := cr.cbr.Next()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil, format.ErrNotFound{Cid: expected}
+			}
+			return nil, multierr.Combine(ErrMalformedCar, err)
 		}
-		return nil, multierr.Combine(ErrMalformedCar, err)
-	}
 
-	if blk.Cid() != expected {
-		return nil, fmt.Errorf("%w: %s != %s", ErrUnexpectedBlock, blk.Cid(), expected)
+		if blk.Cid() == expected {
+			return blk.RawData(), nil
+		}
+
+		// mismatched cid, either error or keep reading if we allow extraneous blocks
+		if !allowExtraneousBlocks {
+			return nil, fmt.Errorf("%w: %s != %s", ErrUnexpectedBlock, blk.Cid(), expected)
+		}
 	}
-	return blk.RawData(), nil
 }
 
 type writeTracker struct {

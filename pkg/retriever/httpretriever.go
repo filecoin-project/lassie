@@ -120,10 +120,11 @@ func (ph *ProtocolHttp) Retrieve(
 		shared.sendEvent(events.FirstByte(retrieval.Clock.Now(), retrieval.request.RetrievalID, candidate, ttfb, multicodec.TransportIpfsGatewayHttp))
 	})
 	cfg := verifiedcar.Config{
-		Root:               retrieval.request.Cid,
-		Selector:           retrieval.request.GetSelector(),
-		ExpectDuplicatesIn: true,
-		MaxBlocks:          retrieval.request.MaxBlocks,
+		Root:                  retrieval.request.Cid,
+		Selector:              retrieval.request.GetSelector(),
+		AllowExtraneousBlocks: !retrieval.request.Bytes.IsDefault(),
+		ExpectDuplicatesIn:    true,
+		MaxBlocks:             retrieval.request.MaxBlocks,
 	}
 
 	blockCount, byteCount, err := cfg.VerifyCar(ctx, rdr, retrieval.request.LinkSystem)

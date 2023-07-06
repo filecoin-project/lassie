@@ -314,6 +314,16 @@ func TestVerifiedCar(t *testing.T) {
 			},
 		},
 		{
+			name:   "carv1 with extraneous trailing block, allow extraneous blocks on",
+			blocks: append(consumedBlocks(append([]blocks.Block{}, allBlocks...)), expectedBlock{extraneousBlk, true}),
+			roots:  []cid.Cid{root1},
+			cfg: verifiedcar.Config{
+				Root:                  root1,
+				Selector:              allSelector,
+				AllowExtraneousBlocks: true,
+			},
+		},
+		{
 			name:      "carv1 with extraneous leading block errors",
 			blocks:    append(consumedBlocks([]blocks.Block{extraneousBlk}), consumedBlocks(allBlocks)...),
 			roots:     []cid.Cid{root1},
@@ -321,6 +331,17 @@ func TestVerifiedCar(t *testing.T) {
 			cfg: verifiedcar.Config{
 				Root:     root1,
 				Selector: allSelector,
+			},
+		},
+
+		{
+			name:   "carv1 with extraneous leading block, allow extraneous blocks on",
+			blocks: append(skippedBlocks([]blocks.Block{extraneousBlk}), consumedBlocks(allBlocks)...),
+			roots:  []cid.Cid{root1},
+			cfg: verifiedcar.Config{
+				Root:                  root1,
+				Selector:              allSelector,
+				AllowExtraneousBlocks: true,
 			},
 		},
 		{
@@ -331,6 +352,16 @@ func TestVerifiedCar(t *testing.T) {
 			cfg: verifiedcar.Config{
 				Root:     root1,
 				Selector: allSelector,
+			},
+		},
+		{
+			name:   "carv1 with extraneous block in middle, final blocks present, allow extraneous blocks on ",
+			blocks: append(append(consumedBlocks(append([]blocks.Block{}, allBlocks[0:99]...)), skippedBlocks([]blocks.Block{extraneousBlk})...), consumedBlocks([]blocks.Block{allBlocks[99]})...),
+			roots:  []cid.Cid{root1},
+			cfg: verifiedcar.Config{
+				Root:                  root1,
+				Selector:              allSelector,
+				AllowExtraneousBlocks: true,
 			},
 		},
 		{
