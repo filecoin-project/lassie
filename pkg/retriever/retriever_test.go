@@ -60,6 +60,7 @@ func TestRetriever(t *testing.T) {
 		candidates         []types.RetrievalCandidate
 		returns_connected  map[string]testutil.DelayedConnectReturn
 		returns_retrievals map[string]testutil.DelayedClientReturn
+		cancelAfter        time.Duration
 		successfulPeer     peer.ID
 		err                error
 		expectedSequence   []testutil.ExpectedActionsAtTime
@@ -617,6 +618,97 @@ func TestRetriever(t *testing.T) {
 				},
 			},
 		},
+		{
+			// testing context cancellation, but this doesn't quite test all the
+			// way into the protocol (graphsync) retriever itself since the
+			// Retriever sits in between and has multiple paths to handling
+			// context cancellation. A leaky goroutine can still occur deeper
+			// in. A test with the same name directly against the
+			// GraphsyncRetriever gets more accurately in.
+			name: "context cancelled before completed",
+			candidates: []types.RetrievalCandidate{
+				{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
+				{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
+			},
+			returns_connected: map[string]testutil.DelayedConnectReturn{
+				string(peerA): {Err: nil, Delay: time.Millisecond * 1},
+				string(peerB): {Err: nil, Delay: time.Millisecond * 5},
+			},
+			returns_retrievals: map[string]testutil.DelayedClientReturn{
+				string(peerA): {ResultStats: &types.RetrievalStats{
+					StorageProviderId: peerA,
+					Size:              10,
+					Blocks:            11,
+					Duration:          12 * time.Second,
+					TotalPayment:      big.Zero(),
+					RootCid:           cid1,
+					AskPrice:          abi.NewTokenAmount(0),
+				}, Delay: time.Second * 1},
+				string(peerB): {ResultStats: &types.RetrievalStats{
+					StorageProviderId: peerB,
+					Size:              10,
+					Blocks:            11,
+					Duration:          12 * time.Second,
+					TotalPayment:      big.Zero(),
+					RootCid:           cid1,
+					AskPrice:          abi.NewTokenAmount(0),
+				}, Delay: time.Second * 1},
+			},
+			cancelAfter: time.Millisecond * 100,
+			err:         context.Canceled,
+			expectedSequence: []testutil.ExpectedActionsAtTime{
+				{
+					AfterStart: 0,
+					CandidatesDiscovered: []testutil.DiscoveredCandidate{
+						{
+							Cid:       cid1,
+							Candidate: types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
+						},
+						{
+							Cid:       cid1,
+							Candidate: types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
+						},
+					},
+					ReceivedConnections: []peer.ID{peerA, peerB},
+					ExpectedEvents: []types.RetrievalEvent{
+						events.StartedFetch(startTime, rid, cid1, ""),
+						events.StartedFindingCandidates(startTime, rid, cid1),
+						events.CandidatesFound(startTime, rid, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1), types.NewRetrievalCandidate(peerB, nil, cid1)}),
+						events.CandidatesFiltered(startTime, rid, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1), types.NewRetrievalCandidate(peerB, nil, cid1)}),
+						events.StartedRetrieval(startTime, rid, types.NewRetrievalCandidate(peerA, nil, cid1), multicodec.TransportGraphsyncFilecoinv1),
+						events.StartedRetrieval(startTime, rid, types.NewRetrievalCandidate(peerB, nil, cid1), multicodec.TransportGraphsyncFilecoinv1),
+					},
+				},
+				{
+					AfterStart: 5 * time.Millisecond,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.ConnectedToProvider(startTime.Add(1*time.Millisecond), rid, types.NewRetrievalCandidate(peerA, nil, cid1)),
+					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_Connect, Provider: peerA, Duration: 1 * time.Millisecond},
+					},
+				},
+				{
+					AfterStart: 5 * time.Millisecond,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.ConnectedToProvider(startTime.Add(5*time.Millisecond), rid, types.NewRetrievalCandidate(peerB, nil, cid1)),
+					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_Connect, Provider: peerB, Duration: 5 * time.Millisecond},
+					},
+				},
+				{
+					AfterStart: 5*time.Millisecond + initialPause,
+				},
+				{
+					AfterStart: 100 * time.Millisecond,
+					// context cancellation here should cause the retrieval to fail and not emit more events
+				},
+				{
+					AfterStart: 1*time.Millisecond + 1*time.Second + initialPause,
+				},
+			},
+		},
 	}
 
 	ctx := context.Background()
@@ -625,6 +717,9 @@ func TestRetriever(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(ctx, time.Second)
 			defer cancel()
+			retCtx, retCancel := context.WithCancel(ctx)
+			defer retCancel()
+
 			clock := clock.NewMock()
 			clock.Set(startTime)
 			// --- setup ---
@@ -634,7 +729,7 @@ func TestRetriever(t *testing.T) {
 			if tc.setup != nil {
 				tc.setup(session)
 			}
-			gsretriever := NewGraphsyncRetrieverWithConfig(session, client, clock, initialPause)
+			gsretriever := NewGraphsyncRetrieverWithConfig(session, client, clock, initialPause, true)
 
 			// --- create ---
 			ret, err := NewRetrieverWithClock(context.Background(), session, candidateFinder, map[multicodec.Code]types.CandidateRetriever{
@@ -649,13 +744,28 @@ func TestRetriever(t *testing.T) {
 			require.NoError(t, err)
 			results := testutil.RetrievalVerifier{
 				ExpectedSequence: tc.expectedSequence,
-			}.RunWithVerification(ctx, t, clock, client, candidateFinder, session, []testutil.RunRetrieval{func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
-				return ret.Retrieve(context.Background(), types.RetrievalRequest{
-					LinkSystem:  cidlink.DefaultLinkSystem(),
-					RetrievalID: rid,
-					Cid:         cid1,
-				}, cb)
-			}})
+			}.RunWithVerification(
+				ctx,
+				t,
+				clock,
+				client,
+				candidateFinder,
+				session,
+				retCancel,
+				tc.cancelAfter,
+				[]testutil.RunRetrieval{func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
+					return ret.Retrieve(retCtx, types.RetrievalRequest{
+						LinkSystem:  cidlink.DefaultLinkSystem(),
+						RetrievalID: rid,
+						Cid:         cid1,
+					}, cb)
+				}},
+			)
+
+			// --- stop ---
+			ret.Stop()
+
+			// -- verify --
 			require.Len(t, results, 1)
 			result, err := results[0].Stats, results[0].Err
 			if tc.err == nil {
@@ -720,7 +830,7 @@ func TestLinkSystemPerRequest(t *testing.T) {
 	candidateFinder := testutil.NewMockCandidateFinder(nil, map[cid.Cid][]types.RetrievalCandidate{cid1: candidates})
 	client := testutil.NewMockClient(returnsConnected, returnsRetrievals, clock)
 	session := session.NewSession(nil, true)
-	gsretriever := NewGraphsyncRetrieverWithConfig(session, client, clock, initialPause)
+	gsretriever := NewGraphsyncRetrieverWithConfig(session, client, clock, initialPause, true)
 
 	// --- create ---
 	ret, err := NewRetrieverWithClock(context.Background(), session, candidateFinder, map[multicodec.Code]types.CandidateRetriever{
@@ -784,7 +894,7 @@ func TestLinkSystemPerRequest(t *testing.T) {
 					events.Finished(startTime.Add(10*time.Millisecond+initialPause), rid, types.RetrievalCandidate{RootCid: cid1})},
 			},
 		},
-	}.RunWithVerification(ctx, t, clock, client, candidateFinder, nil, []testutil.RunRetrieval{
+	}.RunWithVerification(ctx, t, clock, client, candidateFinder, nil, nil, 0, []testutil.RunRetrieval{
 		func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
 			return ret.Retrieve(context.Background(), types.RetrievalRequest{
 				LinkSystem:  lsA,
@@ -850,7 +960,7 @@ func TestLinkSystemPerRequest(t *testing.T) {
 					events.Finished(startTime.Add((10*time.Millisecond+initialPause)*2), rid, types.RetrievalCandidate{RootCid: cid1})},
 			},
 		},
-	}.RunWithVerification(ctx, t, clock, client, candidateFinder, nil, []testutil.RunRetrieval{
+	}.RunWithVerification(ctx, t, clock, client, candidateFinder, nil, nil, 0, []testutil.RunRetrieval{
 		func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
 			return ret.Retrieve(context.Background(), types.RetrievalRequest{
 				LinkSystem:  lsB,
@@ -864,6 +974,9 @@ func TestLinkSystemPerRequest(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, returnsRetrievals[string(peerB)].ResultStats, result)
+
+	// --- stop ---
+	ret.Stop()
 
 	// --- verify ---
 	// two different linksystems for the different calls, in the order that we

@@ -47,7 +47,7 @@ type ProtocolHttp struct {
 // NewHttpRetriever makes a new CandidateRetriever for verified CAR HTTP
 // retrievals (transport-ipfs-gateway-http).
 func NewHttpRetriever(session Session, client *http.Client) types.CandidateRetriever {
-	return NewHttpRetrieverWithDeps(session, client, clock.New(), nil, HttpDefaultInitialWait)
+	return NewHttpRetrieverWithDeps(session, client, clock.New(), nil, HttpDefaultInitialWait, false)
 }
 
 func NewHttpRetrieverWithDeps(
@@ -56,6 +56,7 @@ func NewHttpRetrieverWithDeps(
 	clock clock.Clock,
 	awaitReceivedCandidates chan<- struct{},
 	initialPause time.Duration,
+	noDirtyClose bool,
 ) types.CandidateRetriever {
 	return &parallelPeerRetriever{
 		Protocol: &ProtocolHttp{
@@ -66,6 +67,7 @@ func NewHttpRetrieverWithDeps(
 		Clock:                   clock,
 		QueueInitialPause:       initialPause,
 		awaitReceivedCandidates: awaitReceivedCandidates,
+		noDirtyClose:            noDirtyClose,
 	}
 }
 
