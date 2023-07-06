@@ -44,12 +44,15 @@ type VerifierClient interface {
 	VerifyRetrievalsCompleted(ctx context.Context, t *testing.T, afterStart time.Duration, expectedRetrievals []peer.ID)
 }
 
-func (rv RetrievalVerifier) RunWithVerification(ctx context.Context,
+func (rv RetrievalVerifier) RunWithVerification(
+	ctx context.Context,
 	t *testing.T,
 	clock *clock.Mock,
 	client VerifierClient,
 	mockCandidateFinder *MockCandidateFinder,
 	mockSession *MockSession,
+	cancelFunc context.CancelFunc,
+	cancelAfter time.Duration,
 	runRetrievals []RunRetrieval,
 ) []types.RetrievalResult {
 
@@ -64,9 +67,14 @@ func (rv RetrievalVerifier) RunWithVerification(ctx context.Context,
 	}
 	currentTime := time.Duration(0)
 	for _, expectedActionsAtTime := range rv.ExpectedSequence {
+		if cancelAfter != 0 && cancelFunc != nil && expectedActionsAtTime.AfterStart >= cancelAfter {
+			t.Logf("Cancelling context @ %s", cancelAfter)
+			cancelFunc()
+			cancelFunc = nil
+		}
 		clock.Add(expectedActionsAtTime.AfterStart - currentTime)
 		currentTime = expectedActionsAtTime.AfterStart
-		t.Logf("current time: %s", clock.Now())
+		t.Logf("ExpectedAction.AfterStart=%s", expectedActionsAtTime.AfterStart)
 		asyncCollectingEventsListener.VerifyNextEvents(t, expectedActionsAtTime.AfterStart, expectedActionsAtTime.ExpectedEvents)
 		if mockSession != nil {
 			mockSession.VerifyMetricsAt(ctx, t, expectedActionsAtTime.AfterStart, expectedActionsAtTime.ExpectedMetrics)
@@ -87,7 +95,7 @@ func (rv RetrievalVerifier) RunWithVerification(ctx context.Context,
 		case result := <-resultChan:
 			results = append(results, result)
 		case <-ctx.Done():
-			require.FailNow(t, "did not complete retrieval")
+			require.FailNowf(t, "did not complete retrieval", "got %d of %d", i, len(runRetrievals))
 		}
 	}
 	return results

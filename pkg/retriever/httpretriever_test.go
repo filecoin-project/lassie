@@ -585,14 +585,13 @@ func TestHTTPRetriever(t *testing.T) {
 			clock := clock.NewMock()
 			clock.Set(startTime)
 
-			awaitReceivedCandidates := make(chan struct{}, 1)
 			roundTripper := testutil.NewMockRoundTripper(t, ctx, clock, remoteBlockDuration, testCase.requestPath, testCase.requestScope, testCase.remotes)
 			client := &http.Client{Transport: roundTripper}
 
 			mockSession := testutil.NewMockSession(ctx)
 			mockSession.SetCandidatePreferenceOrder(append(cid1Cands, cid2Cands...))
 			mockSession.SetProviderTimeout(5 * time.Second)
-			retriever := retriever.NewHttpRetrieverWithDeps(mockSession, client, clock, awaitReceivedCandidates, initialPause)
+			retriever := retriever.NewHttpRetrieverWithDeps(mockSession, client, clock, nil, initialPause, true)
 
 			blockAccounting := make([]*blockAccounter, 0)
 			expectedCids := make([][]cid.Cid, 0)
@@ -627,7 +626,7 @@ func TestHTTPRetriever(t *testing.T) {
 
 			results := testutil.RetrievalVerifier{
 				ExpectedSequence: testCase.expectSequence,
-			}.RunWithVerification(ctx, t, clock, roundTripper, nil, mockSession, retrievals)
+			}.RunWithVerification(ctx, t, clock, roundTripper, nil, mockSession, nil, 0, retrievals)
 
 			req.Len(results, len(testCase.requests))
 			actualStats := make([]*types.RetrievalStats, len(results))

@@ -37,6 +37,7 @@ func TestRetrievalRacing(t *testing.T) {
 		customMetadata    map[string]metadata.Protocol
 		connectReturns    map[string]testutil.DelayedConnectReturn
 		retrievalReturns  map[string]testutil.DelayedClientReturn
+		cancelAfter       time.Duration
 		expectedRetrieval string
 		expectSequence    []testutil.ExpectedActionsAtTime
 	}{
@@ -153,7 +154,6 @@ func TestRetrievalRacing(t *testing.T) {
 				},
 			},
 		},
-
 		{
 			name: "all connects failed",
 			connectReturns: map[string]testutil.DelayedConnectReturn{
@@ -593,6 +593,68 @@ func TestRetrievalRacing(t *testing.T) {
 				},
 			},
 		},
+		{
+			// Unlike the test with the same name against the full Retriever,
+			// this test operates directly on the GraphsyncRetriever, so we can
+			// tell it `noDirtyClose=true`, cancel the context, and check
+			// whether it's still running or not. Proper completion of this test
+			// indicates proper cleanup of per-SP goroutines.
+			name: "context cancelled before completed",
+			connectReturns: map[string]testutil.DelayedConnectReturn{
+				"foo": {Delay: time.Millisecond * 20},
+				"bar": {Delay: time.Millisecond * 50},
+				"baz": {Delay: time.Millisecond * 50},
+			},
+			retrievalReturns: map[string]testutil.DelayedClientReturn{
+				"foo": {ResultStats: &types.RetrievalStats{StorageProviderId: peerFoo, Size: 1}, Delay: time.Second * 1},
+				"bar": {ResultStats: &types.RetrievalStats{StorageProviderId: peerBar, Size: 2}, Delay: time.Second * 2},
+				"baz": {ResultStats: &types.RetrievalStats{StorageProviderId: peerBaz, Size: 3}, Delay: time.Second * 3},
+			},
+			cancelAfter: time.Millisecond * 100,
+			expectSequence: []testutil.ExpectedActionsAtTime{
+				{
+					AfterStart:          0,
+					ReceivedConnections: []peer.ID{peerFoo, peerBar, peerBaz},
+					ExpectedEvents: []types.RetrievalEvent{
+						events.StartedRetrieval(startTime, retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}, multicodec.TransportGraphsyncFilecoinv1),
+						events.StartedRetrieval(startTime, retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBar}}, multicodec.TransportGraphsyncFilecoinv1),
+						events.StartedRetrieval(startTime, retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBaz}}, multicodec.TransportGraphsyncFilecoinv1),
+					},
+				},
+				{
+					AfterStart: time.Millisecond * 20,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.ConnectedToProvider(startTime.Add(time.Millisecond*20), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}),
+					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_Connect, Provider: peerFoo, Duration: time.Millisecond * 20},
+					},
+				},
+				{
+					AfterStart: time.Millisecond*50 + initialPause,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.ConnectedToProvider(startTime.Add(time.Millisecond*40+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBar}}),
+						events.ConnectedToProvider(startTime.Add(time.Millisecond*40+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBaz}}),
+					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_Connect, Provider: peerBar, Duration: time.Millisecond * 50},
+						{Type: testutil.SessionMetric_Connect, Provider: peerBaz, Duration: time.Millisecond * 50},
+					},
+				},
+				{
+					AfterStart:         time.Millisecond*20 + initialPause,
+					ReceivedRetrievals: []peer.ID{peerFoo},
+				},
+				{
+					AfterStart: time.Millisecond * 100,
+					// cancellation here
+				},
+				{
+					AfterStart: time.Millisecond * 500,
+					// cancellation here
+				},
+			},
+		},
 	}
 	ctx := context.Background()
 	for _, tc := range testCases {
@@ -602,6 +664,8 @@ func TestRetrievalRacing(t *testing.T) {
 			clock.Set(startTime)
 			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
+			retCtx, retCancel := context.WithCancel(ctx)
+			defer retCancel()
 			mockClient := testutil.NewMockClient(tc.connectReturns, tc.retrievalReturns, clock)
 			candidates := []types.RetrievalCandidate{}
 			for p := range tc.connectReturns {
@@ -630,19 +694,28 @@ func TestRetrievalRacing(t *testing.T) {
 			session.RegisterRetrieval(retrievalID, cid.Undef, basicnode.NewString("r"))
 			session.AddToRetrieval(retrievalID, []peer.ID{peerFoo, peerBar, peerBaz, peerBang})
 
-			cfg := retriever.NewGraphsyncRetrieverWithConfig(session, mockClient, clock, initialPause)
+			cfg := retriever.NewGraphsyncRetrieverWithConfig(session, mockClient, clock, initialPause, true)
 
 			rv := testutil.RetrievalVerifier{
 				ExpectedSequence: tc.expectSequence,
 			}
 			// perform retrieval and make sure we got a result
-			results := rv.RunWithVerification(ctx, t, clock, mockClient, nil, session, []testutil.RunRetrieval{func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
-				return cfg.Retrieve(ctx, types.RetrievalRequest{
-					Cid:         cid.Undef,
-					RetrievalID: retrievalID,
-					LinkSystem:  cidlink.DefaultLinkSystem(),
-				}, cb).RetrieveFromAsyncCandidates(makeAsyncCandidates(t, candidates))
-			}})
+			results := rv.RunWithVerification(
+				ctx,
+				t,
+				clock,
+				mockClient,
+				nil,
+				session,
+				retCancel,
+				tc.cancelAfter,
+				[]testutil.RunRetrieval{func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
+					return cfg.Retrieve(retCtx, types.RetrievalRequest{
+						Cid:         cid.Undef,
+						RetrievalID: retrievalID,
+						LinkSystem:  cidlink.DefaultLinkSystem(),
+					}, cb).RetrieveFromAsyncCandidates(makeAsyncCandidates(t, candidates))
+				}})
 			require.Len(t, results, 1)
 			stats, err := results[0].Stats, results[0].Err
 			if tc.expectedRetrieval != "" {
@@ -654,7 +727,6 @@ func TestRetrievalRacing(t *testing.T) {
 				require.Nil(t, stats)
 				require.Error(t, err)
 			}
-
 		})
 	}
 }
@@ -805,11 +877,11 @@ func TestMultipleRetrievals(t *testing.T) {
 	session.RegisterRetrieval(retrievalID2, cid.MustParse("bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi"), basicnode.NewString("r"))
 	session.AddToRetrieval(retrievalID2, []peer.ID{peerBang, peerBoom, peerBing})
 
-	cfg := retriever.NewGraphsyncRetrieverWithConfig(session, mockClient, clock, initialPause)
+	cfg := retriever.NewGraphsyncRetrieverWithConfig(session, mockClient, clock, initialPause, true)
 
 	results := testutil.RetrievalVerifier{
 		ExpectedSequence: expectedSequence,
-	}.RunWithVerification(ctx, t, clock, mockClient, nil, session, []testutil.RunRetrieval{
+	}.RunWithVerification(ctx, t, clock, mockClient, nil, session, nil, 0, []testutil.RunRetrieval{
 		func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
 			return cfg.Retrieve(context.Background(), types.RetrievalRequest{
 				Cid:         cid1,
@@ -995,11 +1067,11 @@ func TestDuplicateRetreivals(t *testing.T) {
 	session.RegisterRetrieval(retrievalID, cid.Undef, basicnode.NewBool(true))
 	session.AddToRetrieval(retrievalID, []peer.ID{peerFoo, peerBar, peerBaz})
 
-	cfg := retriever.NewGraphsyncRetrieverWithConfig(session, mockClient, clock, initialPause)
+	cfg := retriever.NewGraphsyncRetrieverWithConfig(session, mockClient, clock, initialPause, true)
 
 	results := testutil.RetrievalVerifier{
 		ExpectedSequence: expectedSequence,
-	}.RunWithVerification(ctx, t, clock, mockClient, nil, session, []testutil.RunRetrieval{
+	}.RunWithVerification(ctx, t, clock, mockClient, nil, session, nil, 0, []testutil.RunRetrieval{
 		func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
 			return cfg.Retrieve(context.Background(), types.RetrievalRequest{
 				Cid:         cid1,

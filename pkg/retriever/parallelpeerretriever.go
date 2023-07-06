@@ -55,8 +55,14 @@ type parallelPeerRetriever struct {
 	Clock             clock.Clock
 	QueueInitialPause time.Duration
 
-	// this is purely for testing purposes, to ensure that we receive all candidates
+	// --- These are *only* for testing purposes ---
+	// awaitReceivedCandidates helps ensure that we receive all candidates
 	awaitReceivedCandidates chan<- struct{}
+	// noDirtyClose will prevent the parallelPeerRetriever from closing the
+	// retrieval until all parallel attempts have completed, even with context
+	// cancellation. Default behavior is to be permissive, waiting up to 100ms
+	// or for context cancellation.
+	noDirtyClose bool
 }
 
 // retrieval handles state on a per-retrieval (across multiple candidates) basis
@@ -195,14 +201,18 @@ func (retrieval *retrieval) RetrieveFromAsyncCandidates(asyncCandidates types.In
 	stats, err := collectResults(ctx, shared, eventsCallback)
 	cancelCtx()
 	// optimistically try to wait for all routines to finish
-	select {
-	case <-finishAll:
-	case <-time.After(100 * time.Millisecond):
-		logger.Errorf(
-			"Possible leak: unable to successfully cancel all %s retrieval attempts for %s within 100ms",
-			retrieval.Protocol.Code().String(),
-			retrieval.request.Cid.String(),
-		)
+	if retrieval.noDirtyClose {
+		<-finishAll
+	} else {
+		select {
+		case <-finishAll:
+		case <-retrieval.Clock.After(100 * time.Millisecond):
+			logger.Errorf(
+				"Possible leak: unable to successfully cancel all %s retrieval attempts for %s within 100ms",
+				retrieval.Protocol.Code().String(),
+				retrieval.request.Cid.String(),
+			)
+		}
 	}
 	return stats, err
 }
