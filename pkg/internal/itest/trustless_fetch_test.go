@@ -37,7 +37,7 @@ func TestTrustlessUnixfsFetch(t *testing.T) {
 	lsys.SetReadStorage(storage)
 
 	for _, tc := range testCases {
-		for _, proto := range []string{"http", "graphsync", "bitswap"} {
+		for _, proto := range []string{"http-ranged", "http-no-range", "graphsync", "bitswap"} {
 			t.Run(tc.Name+"/"+proto, func(t *testing.T) {
 				req := require.New(t)
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -47,8 +47,10 @@ func TestTrustlessUnixfsFetch(t *testing.T) {
 
 				mrn := mocknet.NewMockRetrievalNet(ctx, t)
 				switch proto {
-				case "http":
-					mrn.AddHttpPeers(1)
+				case "http-ranged":
+					mrn.AddHttpPeers(1, true)
+				case "http-no-range":
+					mrn.AddHttpPeers(1, false)
 				case "graphsync":
 					mrn.AddGraphsyncPeers(1)
 				case "bitswap":

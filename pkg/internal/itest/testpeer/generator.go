@@ -96,11 +96,11 @@ func (g *TestPeerGenerator) NextGraphsync() TestPeer {
 }
 
 // NextHttp generates a new test peer with http + dependencies
-func (g *TestPeerGenerator) NextHttp() TestPeer {
+func (g *TestPeerGenerator) NextHttp(supportsRanges bool) TestPeer {
 	g.seq++
 	p, err := RandTestPeerIdentity()
 	require.NoError(g.t, err)
-	tp, err := NewTestHttpPeer(g.ctx, g.mn, p, g.t)
+	tp, err := NewTestHttpPeer(g.ctx, g.mn, p, supportsRanges, g.t)
 	require.NoError(g.t, err)
 	return tp
 }
@@ -126,10 +126,10 @@ func (g *TestPeerGenerator) GraphsyncPeers(n int) []TestPeer {
 }
 
 // HttpPeers creates N test peers with http  + dependencies
-func (g *TestPeerGenerator) HttpPeers(n int) []TestPeer {
+func (g *TestPeerGenerator) HttpPeers(n int, supportsRanges bool) []TestPeer {
 	var instances []TestPeer
 	for j := 0; j < n; j++ {
-		inst := g.NextHttp()
+		inst := g.NextHttp(supportsRanges)
 		instances = append(instances, inst)
 	}
 	return instances
@@ -230,7 +230,7 @@ func NewTestGraphsyncPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identi
 	return peer, nil
 }
 
-func NewTestHttpPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity, t *testing.T) (TestPeer, error) {
+func NewTestHttpPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity, supportsRanges bool, t *testing.T) (TestPeer, error) {
 	peer, _, err := newTestPeer(ctx, mn, p)
 	if err != nil {
 		return TestPeer{}, err
@@ -249,7 +249,7 @@ func NewTestHttpPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity, t
 	}
 	peer.HttpServer = peerHttpServer
 	// Handle custom /ipfs/ endpoint
-	peerHttpServer.Mux.HandleFunc("/ipfs/", MockIpfsHandler(ctx, *peer.LinkSystem))
+	peerHttpServer.Mux.HandleFunc("/ipfs/", MockIpfsHandler(ctx, *peer.LinkSystem, supportsRanges))
 	peer.Protocol = multicodec.TransportIpfsGatewayHttp
 
 	// Start the server

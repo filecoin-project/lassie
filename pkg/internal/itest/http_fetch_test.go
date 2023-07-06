@@ -966,7 +966,7 @@ func TestHttpFetch(t *testing.T) {
 				finishedChans = append(finishedChans, mocknet.SetupRetrieval(t, r))
 			}
 			mrn.AddBitswapPeers(testCase.bitswapRemotes)
-			mrn.AddHttpPeers(testCase.httpRemotes)
+			mrn.AddHttpPeers(testCase.httpRemotes, true)
 
 			require.NoError(t, mrn.MN.LinkAll())
 

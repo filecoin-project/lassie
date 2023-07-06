@@ -81,7 +81,7 @@ func (s *TestPeerHttpServer) Close() error {
 	return s.server.Shutdown(context.Background())
 }
 
-func MockIpfsHandler(ctx context.Context, lsys linking.LinkSystem) func(http.ResponseWriter, *http.Request) {
+func MockIpfsHandler(ctx context.Context, lsys linking.LinkSystem, supportsRanges bool) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
 		urlPath := strings.Split(req.URL.Path, "/")[1:]
 
@@ -138,7 +138,7 @@ func MockIpfsHandler(ctx context.Context, lsys linking.LinkSystem) func(http.Res
 			return
 		}
 		var byteRange *types.ByteRange
-		if req.URL.Query().Get("entity-bytes") != "" {
+		if req.URL.Query().Get("entity-bytes") != "" && supportsRanges {
 			br, err := types.ParseByteRange(req.URL.Query().Get("entity-bytes"))
 			if err != nil {
 				http.Error(res, fmt.Sprintf("Invalid entity-bytes parameter: %s", req.URL.Query().Get("entity-bytes")), http.StatusBadRequest)

@@ -70,8 +70,8 @@ func (mrn *MockRetrievalNet) AddGraphsyncPeers(n int) {
 	mrn.addPeers(mrn.testPeerGenerator.GraphsyncPeers(n))
 }
 
-func (mrn *MockRetrievalNet) AddHttpPeers(n int) {
-	mrn.addPeers(mrn.testPeerGenerator.HttpPeers(n))
+func (mrn *MockRetrievalNet) AddHttpPeers(n int, supportsRanges bool) {
+	mrn.addPeers(mrn.testPeerGenerator.HttpPeers(n, supportsRanges))
 }
 
 func (mrn *MockRetrievalNet) addPeers(peers []testpeer.TestPeer) {
