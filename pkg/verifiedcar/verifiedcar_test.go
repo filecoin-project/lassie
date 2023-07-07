@@ -8,7 +8,6 @@ import (
 	"io"
 	"math/rand"
 	"os"
-	"runtime/debug"
 	"testing"
 	"time"
 
@@ -86,7 +85,6 @@ func TestUnixfs20mVariety(t *testing.T) {
 				}, nil
 			}
 			lsys.StorageReadOpener = func(lc linking.LinkContext, l datamodel.Link) (io.Reader, error) {
-				debug.PrintStack()
 				return nil, fmt.Errorf("unexpected read of %s", l.String())
 			}
 
@@ -191,15 +189,15 @@ func TestVerifiedCar(t *testing.T) {
 	})
 	unixfsShardedDirBlocks := testutil.ToBlocks(t, lsys, unixfsShardedDir.Root, allSelector)
 
-	unixfsPreloadSelector := unixfsnode.MatchUnixFSPreloadSelector.Node()
+	unixfsPreloadSelector := unixfsnode.MatchUnixFSEntitySelector.Node()
 
 	unixfsPreloadDirBlocks := testutil.ToBlocks(t, lsys, unixfsDir.Root, unixfsPreloadSelector)
 	unixfsPreloadShardedDirBlocks := testutil.ToBlocks(t, lsys, unixfsShardedDir.Root, unixfsPreloadSelector)
 
-	unixfsDirSubsetSelector := unixfsnode.UnixFSPathSelectorBuilder(unixfsDir.Children[1].Path, unixfsnode.MatchUnixFSPreloadSelector, false)
+	unixfsDirSubsetSelector := unixfsnode.UnixFSPathSelectorBuilder(unixfsDir.Children[1].Path, unixfsnode.MatchUnixFSEntitySelector, false)
 
 	unixfsWrappedPathSelector := unixfsnode.UnixFSPathSelectorBuilder(wrapPath, unixfsnode.ExploreAllRecursivelySelector, false)
-	unixfsWrappedPreloadPathSelector := unixfsnode.UnixFSPathSelectorBuilder(wrapPath, unixfsnode.MatchUnixFSPreloadSelector, false)
+	unixfsWrappedPreloadPathSelector := unixfsnode.UnixFSPathSelectorBuilder(wrapPath, unixfsnode.MatchUnixFSEntitySelector, false)
 	preloadSubst := ssb.ExploreInterpretAs("unixfs", ssb.ExploreRecursive(
 		selector.RecursionLimitDepth(1),
 		ssb.ExploreAll(ssb.ExploreRecursiveEdge()),
