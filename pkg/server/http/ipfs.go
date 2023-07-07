@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strconv"
 
-	lassie "github.com/filecoin-project/lassie/pkg/lassie"
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/storage"
 	"github.com/filecoin-project/lassie/pkg/types"
@@ -33,7 +32,7 @@ var (
 	ResponseContentTypeHeader = fmt.Sprintf("%s; version=%s", MimeTypeCar, MimeTypeCarVersion)
 )
 
-func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.ResponseWriter, *http.Request) {
+func ipfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
 		statusLogger := newStatusLogger(req.Method, req.URL.Path)
 		path := datamodel.ParsePath(req.URL.Path)
@@ -187,7 +186,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 
 		// servertiming metrics
 		logger.Debugw("fetching CID", "retrievalId", retrievalId, "CID", rootCid.String(), "path", path.String(), "dagScope", dagScope)
-		stats, err := lassie.Fetch(req.Context(), request, servertimingsSubscriber(req))
+		stats, err := fetcher.Fetch(req.Context(), request, servertimingsSubscriber(req))
 
 		// force all blocks to flush
 		if cerr := carWriter.Close(); cerr != nil && !errors.Is(cerr, context.Canceled) {
