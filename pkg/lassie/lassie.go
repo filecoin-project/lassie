@@ -18,6 +18,8 @@ import (
 	"github.com/multiformats/go-multicodec"
 )
 
+var _ types.Fetcher = &Lassie{}
+
 const defaultProviderTimeout = 20 * time.Second
 
 // Lassie represents a reusable retrieval client.

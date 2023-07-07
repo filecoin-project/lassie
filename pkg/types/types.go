@@ -18,6 +18,10 @@ import (
 	"github.com/multiformats/go-multiaddr"
 )
 
+type Fetcher interface {
+	Fetch(context.Context, RetrievalRequest, func(RetrievalEvent)) (*RetrievalStats, error)
+}
+
 type RetrievalCandidate struct {
 	MinerPeer peer.AddrInfo
 	RootCid   cid.Cid
