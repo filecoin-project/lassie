@@ -92,14 +92,16 @@ func TestUnixfs20mVariety(t *testing.T) {
 
 			// Run the verifier over the CAR stream to see if we end up with
 			// the same query.
+			br := types.DefaultByteRange()
+			if tc.ByteRange != nil {
+				br = *tc.ByteRange
+			}
 			cfg := verifiedcar.Config{
 				Root:     tc.Root,
-				Selector: types.PathScopeSelector(tc.Path, tc.Scope, tc.ByteRange),
+				Selector: types.PathScopeSelector(tc.Path, tc.Scope, br),
 			}
-			{
-				selBytes, _ := ipld.Encode(cfg.Selector, dagjson.Encode)
-				t.Logf("selector=%s, entity-bytes=%s", string(selBytes), tc.ByteRange.String())
-			}
+			selBytes, _ := ipld.Encode(cfg.Selector, dagjson.Encode)
+			t.Logf("from=%d, to=%d, selector=%s", br.From, br.To, string(selBytes))
 			blockCount, byteCount, err := cfg.VerifyCar(ctx, carStream, lsys)
 
 			req.NoError(err)
