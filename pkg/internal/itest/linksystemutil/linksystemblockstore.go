@@ -1,9 +1,10 @@
-package testpeer
+package linksystemutil
 
 import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/ipfs/boxo/blockstore"
@@ -13,26 +14,21 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 )
 
-var _ blockstore.Blockstore = (*BackedStore)(nil)
-var _ blockstore.Blockstore = (*linkSystemBlockstore)(nil)
+var _ blockstore.Blockstore = (*LinkSystemBlockstore)(nil)
 
-type BackedStore struct {
-	blockstore.Blockstore
-}
-
-func (bs *BackedStore) UseLinkSystem(lsys linking.LinkSystem) {
-	bs.Blockstore = &linkSystemBlockstore{lsys}
-}
-
-type linkSystemBlockstore struct {
+type LinkSystemBlockstore struct {
 	lsys linking.LinkSystem
 }
 
-func (lsbs *linkSystemBlockstore) DeleteBlock(ctx context.Context, c cid.Cid) error {
+func NewLinkSystemBlockstore(lsys linking.LinkSystem) *LinkSystemBlockstore {
+	return &LinkSystemBlockstore{lsys}
+}
+
+func (lsbs *LinkSystemBlockstore) DeleteBlock(ctx context.Context, c cid.Cid) error {
 	return errors.New("not supported")
 }
 
-func (lsbs *linkSystemBlockstore) Has(ctx context.Context, c cid.Cid) (bool, error) {
+func (lsbs *LinkSystemBlockstore) Has(ctx context.Context, c cid.Cid) (bool, error) {
 	_, err := lsbs.lsys.StorageReadOpener(linking.LinkContext{Ctx: ctx}, cidlink.Link{Cid: c})
 	if err != nil {
 		return false, err
@@ -40,7 +36,7 @@ func (lsbs *linkSystemBlockstore) Has(ctx context.Context, c cid.Cid) (bool, err
 	return true, nil
 }
 
-func (lsbs *linkSystemBlockstore) Get(ctx context.Context, c cid.Cid) (blocks.Block, error) {
+func (lsbs *LinkSystemBlockstore) Get(ctx context.Context, c cid.Cid) (blocks.Block, error) {
 	rdr, err := lsbs.lsys.StorageReadOpener(linking.LinkContext{Ctx: ctx}, cidlink.Link{Cid: c})
 	if err != nil {
 		return nil, err
@@ -53,19 +49,23 @@ func (lsbs *linkSystemBlockstore) Get(ctx context.Context, c cid.Cid) (blocks.Bl
 	return blocks.NewBlockWithCid(buf.Bytes(), c)
 }
 
-func (lsbs *linkSystemBlockstore) GetSize(ctx context.Context, c cid.Cid) (int, error) {
+func (lsbs *LinkSystemBlockstore) GetSize(ctx context.Context, c cid.Cid) (int, error) {
+	fmt.Println("LinkSystemBlockstore.GetSize", c.String())
 	rdr, err := lsbs.lsys.StorageReadOpener(linking.LinkContext{Ctx: ctx}, cidlink.Link{Cid: c})
 	if err != nil {
+		fmt.Println("LinkSystemBlockstore.GetSize sro err", c.String(), err.Error())
 		return 0, err
 	}
 	i, err := io.Copy(io.Discard, rdr)
 	if err != nil {
+		fmt.Println("LinkSystemBlockstore.GetSize copy err", c.String(), err.Error())
 		return 0, err
 	}
+	fmt.Println("LinkSystemBlockstore.GetSize=", c.String(), i)
 	return int(i), nil
 }
 
-func (lsbs *linkSystemBlockstore) Put(ctx context.Context, blk blocks.Block) error {
+func (lsbs *LinkSystemBlockstore) Put(ctx context.Context, blk blocks.Block) error {
 	w, wc, err := lsbs.lsys.StorageWriteOpener(linking.LinkContext{Ctx: ctx})
 	if err != nil {
 		return err
@@ -76,7 +76,7 @@ func (lsbs *linkSystemBlockstore) Put(ctx context.Context, blk blocks.Block) err
 	return wc(cidlink.Link{Cid: blk.Cid()})
 }
 
-func (lsbs *linkSystemBlockstore) PutMany(ctx context.Context, blks []blocks.Block) error {
+func (lsbs *LinkSystemBlockstore) PutMany(ctx context.Context, blks []blocks.Block) error {
 	for _, blk := range blks {
 		if err := lsbs.Put(ctx, blk); err != nil {
 			return err
@@ -85,10 +85,10 @@ func (lsbs *linkSystemBlockstore) PutMany(ctx context.Context, blks []blocks.Blo
 	return nil
 }
 
-func (lsbs *linkSystemBlockstore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
+func (lsbs *LinkSystemBlockstore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 	return nil, errors.New("not supported")
 }
 
-func (lsbs *linkSystemBlockstore) HashOnRead(enabled bool) {
+func (lsbs *LinkSystemBlockstore) HashOnRead(enabled bool) {
 	lsbs.lsys.TrustedStorage = !enabled
 }

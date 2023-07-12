@@ -3,6 +3,7 @@ package mocknet
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -62,16 +63,16 @@ func NewMockRetrievalNet(ctx context.Context, t *testing.T) *MockRetrievalNet {
 	return mrn
 }
 
-func (mrn *MockRetrievalNet) AddBitswapPeers(n int) {
-	mrn.addPeers(mrn.testPeerGenerator.BitswapPeers(n))
+func (mrn *MockRetrievalNet) AddBitswapPeers(n int, opts ...testpeer.PeerOption) {
+	mrn.addPeers(mrn.testPeerGenerator.BitswapPeers(n, opts...))
 }
 
-func (mrn *MockRetrievalNet) AddGraphsyncPeers(n int) {
-	mrn.addPeers(mrn.testPeerGenerator.GraphsyncPeers(n))
+func (mrn *MockRetrievalNet) AddGraphsyncPeers(n int, opts ...testpeer.PeerOption) {
+	mrn.addPeers(mrn.testPeerGenerator.GraphsyncPeers(n, opts...))
 }
 
-func (mrn *MockRetrievalNet) AddHttpPeers(n int) {
-	mrn.addPeers(mrn.testPeerGenerator.HttpPeers(n))
+func (mrn *MockRetrievalNet) AddHttpPeers(n int, opts ...testpeer.PeerOption) {
+	mrn.addPeers(mrn.testPeerGenerator.HttpPeers(n, opts...))
 }
 
 func (mrn *MockRetrievalNet) addPeers(peers []testpeer.TestPeer) {
@@ -161,6 +162,10 @@ func (mcf *mockCandidateFinder) FindCandidates(ctx context.Context, cid cid.Cid)
 			}
 			candidates = append(candidates, types.RetrievalCandidate{MinerPeer: *h.AddrInfo(), RootCid: cid, Metadata: md})
 		}
+	}
+	fmt.Println("Returning candidates:", len(candidates))
+	for _, c := range candidates {
+		fmt.Println("\tCandidate:", c.MinerPeer.Addrs[0])
 	}
 	return candidates, nil
 }
