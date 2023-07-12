@@ -27,7 +27,7 @@ func (tc TestCase) AsQuery() string {
 		pp = "/" + pp
 	}
 	br := ""
-	if !tc.ByteRange.IsDefault() {
+	if tc.ByteRange != nil && !tc.ByteRange.IsDefault() {
 		br = fmt.Sprintf("&entity-bytes=%s", tc.ByteRange.String())
 	}
 	dup := ""
