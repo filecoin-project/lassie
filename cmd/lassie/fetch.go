@@ -275,10 +275,10 @@ func defaultFetchRun(
 		}
 	}, false)
 
-	byteRange, _ := types.ParseByteRange(entityBytes)
+	bytes, _ := types.ParseByteRange(entityBytes)
 	var br *types.ByteRange
-	if !byteRange.IsDefault() {
-		br = &byteRange
+	if !bytes.IsDefault() {
+		br = &bytes
 	}
 	request, err := types.NewRequestForPath(carStore, rootCid, path, types.DagScope(dagScope), br)
 	if err != nil {

@@ -17,11 +17,43 @@ var _ blockstore.Blockstore = (*BackedStore)(nil)
 var _ blockstore.Blockstore = (*linkSystemBlockstore)(nil)
 
 type BackedStore struct {
-	blockstore.Blockstore
+	Backing blockstore.Blockstore
+}
+
+func (bs *BackedStore) DeleteBlock(ctx context.Context, c cid.Cid) error {
+	return bs.Backing.DeleteBlock(ctx, c)
+}
+
+func (bs *BackedStore) Has(ctx context.Context, c cid.Cid) (bool, error) {
+	return bs.Backing.Has(ctx, c)
+}
+
+func (bs *BackedStore) Get(ctx context.Context, c cid.Cid) (blocks.Block, error) {
+	return bs.Backing.Get(ctx, c)
+}
+
+func (bs *BackedStore) GetSize(ctx context.Context, c cid.Cid) (int, error) {
+	return bs.Backing.GetSize(ctx, c)
+}
+
+func (bs *BackedStore) Put(ctx context.Context, blk blocks.Block) error {
+	return bs.Backing.Put(ctx, blk)
+}
+
+func (bs *BackedStore) PutMany(ctx context.Context, blks []blocks.Block) error {
+	return bs.Backing.PutMany(ctx, blks)
+}
+
+func (bs *BackedStore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
+	return bs.Backing.AllKeysChan(ctx)
+}
+
+func (bs *BackedStore) HashOnRead(enabled bool) {
+	bs.Backing.HashOnRead(enabled)
 }
 
 func (bs *BackedStore) UseLinkSystem(lsys linking.LinkSystem) {
-	bs.Blockstore = &linkSystemBlockstore{lsys}
+	bs.Backing = &linkSystemBlockstore{lsys}
 }
 
 type linkSystemBlockstore struct {
