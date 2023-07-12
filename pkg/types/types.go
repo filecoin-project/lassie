@@ -333,7 +333,7 @@ func ParseByteRange(s string) (ByteRange, error) {
 	}
 	parts := strings.Split(s, ":")
 	if len(parts) != 2 {
-		return br, fmt.Errorf("invalid entity-bytes: %s", s)
+		return br, fmt.Errorf("invalid byte range: %s", s)
 	}
 	var err error
 	br.From, err = strconv.ParseInt(parts[0], 10, 64)
@@ -341,7 +341,7 @@ func ParseByteRange(s string) (ByteRange, error) {
 		return br, err
 	}
 	if br.From < 0 {
-		return br, fmt.Errorf("invalid entity-bytes: %s", s)
+		return br, fmt.Errorf("invalid byte range: %s", s)
 	}
 	if parts[1] != "*" {
 		to, err := strconv.ParseInt(parts[1], 10, 64)

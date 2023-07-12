@@ -82,12 +82,6 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 			return
 		}
 
-		byteRange, err := ParseByteRange(req)
-		if err != nil {
-			errorResponse(res, statusLogger, http.StatusBadRequest, err)
-			return
-		}
-
 		protocols, err := parseProtocols(req)
 		if err != nil {
 			errorResponse(res, statusLogger, http.StatusBadRequest, err)
@@ -129,7 +123,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		tempStore := storage.NewDeferredStorageCar(cfg.TempDir)
 		var carWriter storage.DeferredWriter
 		if includeDupes {
-			carWriter = storage.NewDuplicateAdderCarForStream(req.Context(), rootCid, path.String(), dagScope, byteRange, tempStore, res)
+			carWriter = storage.NewDuplicateAdderCarForStream(req.Context(), rootCid, path.String(), dagScope, tempStore, res)
 		} else {
 			carWriter = storage.NewDeferredCarWriterForStream(rootCid, res)
 		}
@@ -141,7 +135,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		}()
 		var store types.ReadableWritableStorage = carStore
 
-		request, err := types.NewRequestForPath(store, rootCid, path.String(), dagScope, byteRange)
+		request, err := types.NewRequestForPath(store, rootCid, path.String(), dagScope)
 		if err != nil {
 			errorResponse(res, statusLogger, http.StatusInternalServerError, fmt.Errorf("failed to create request: %w", err))
 			return
@@ -191,22 +185,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		}
 
 		// servertiming metrics
-		logger.Debugw("fetching CID",
-			"retrievalId",
-			retrievalId,
-			"CID",
-			rootCid.String(),
-			"path",
-			path.String(),
-			"dagScope",
-			dagScope,
-			"byteRange",
-			byteRange,
-			"includeDupes",
-			includeDupes,
-			"blockLimit",
-			blockLimit,
-		)
+		logger.Debugw("fetching CID", "retrievalId", retrievalId, "CID", rootCid.String(), "path", path.String(), "dagScope", dagScope)
 		stats, err := lassie.Fetch(req.Context(), request, servertimingsSubscriber(req))
 
 		// force all blocks to flush
