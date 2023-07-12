@@ -4,11 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"math/rand"
 	"os"
-	"runtime/debug"
 	"testing"
 	"time"
 
@@ -23,8 +21,6 @@ import (
 	unixfs "github.com/ipfs/go-unixfsnode/testutil"
 	"github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/storage"
-	"github.com/ipld/go-ipld-prime"
-	"github.com/ipld/go-ipld-prime/codec/dagjson"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -72,7 +68,7 @@ func TestUnixfs20mVariety(t *testing.T) {
 				expectedBlocks[ii] = expectedBlock{blk, false}
 			}
 
-			carStream, errorCh := makeCarStream(t, ctx, []cid.Cid{tc.Root}, expectedBlocks, false, false, false, nil)
+			carStream := makeCarStream(t, ctx, []cid.Cid{tc.Root}, expectedBlocks, false, false, false)
 
 			lsys := cidlink.DefaultLinkSystem()
 			var writeCounter int
@@ -85,35 +81,19 @@ func TestUnixfs20mVariety(t *testing.T) {
 					return nil
 				}, nil
 			}
-			lsys.StorageReadOpener = func(lc linking.LinkContext, l datamodel.Link) (io.Reader, error) {
-				debug.PrintStack()
-				return nil, fmt.Errorf("unexpected read of %s", l.String())
-			}
 
 			// Run the verifier over the CAR stream to see if we end up with
 			// the same query.
-			br := types.DefaultByteRange()
-			if tc.ByteRange != nil {
-				br = *tc.ByteRange
-			}
 			cfg := verifiedcar.Config{
 				Root:     tc.Root,
-				Selector: types.PathScopeSelector(tc.Path, tc.Scope, br),
+				Selector: types.PathScopeSelector(tc.Path, tc.Scope),
 			}
-			selBytes, _ := ipld.Encode(cfg.Selector, dagjson.Encode)
-			t.Logf("from=%d, to=%d, selector=%s", br.From, br.To, string(selBytes))
 			blockCount, byteCount, err := cfg.VerifyCar(ctx, carStream, lsys)
 
 			req.NoError(err)
 			req.Equal(count(expectedBlocks), blockCount)
 			req.Equal(sizeOf(expectedBlocks), byteCount)
 			req.Equal(int(count(expectedBlocks)), writeCounter)
-
-			select {
-			case err := <-errorCh:
-				req.NoError(err)
-			default:
-			}
 
 			// Make sure we consumed the entire stream.
 			byt, err := io.ReadAll(carStream)
@@ -688,17 +668,11 @@ func TestVerifiedCar(t *testing.T) {
 				}, nil
 			}
 
-			carStream, errorCh := makeCarStream(t, ctx, testCase.roots, testCase.blocks, testCase.carv2, testCase.expectErr != "", testCase.incomingHasDups, testCase.streamErr)
+			carStream := makeCarStream(t, ctx, testCase.roots, testCase.blocks, testCase.carv2, testCase.expectErr != "", testCase.incomingHasDups, testCase.streamErr)
 			blockCount, byteCount, err := testCase.cfg.VerifyCar(ctx, carStream, lsys)
 
 			// read the rest of data
 			io.ReadAll(carStream)
-
-			select {
-			case err := <-errorCh:
-				req.NoError(err)
-			default:
-			}
 
 			if testCase.expectErr != "" {
 				req.ErrorContains(err, testCase.expectErr)
@@ -723,12 +697,13 @@ func makeCarStream(
 	expectErrors bool,
 	allowDuplicatePuts bool,
 	streamError error,
-) (io.Reader, chan error) {
+) io.Reader {
 
 	r, w := io.Pipe()
 
-	errorCh := make(chan error, 1)
 	go func() {
+		req := require.New(t)
+
 		var carW io.Writer = w
 
 		var v2f *os.File
@@ -737,10 +712,7 @@ func makeCarStream(
 			// can't create a streaming v2
 			var err error
 			v2f, err = os.CreateTemp(t.TempDir(), "carv2")
-			if err != nil {
-				errorCh <- err
-				return
-			}
+			req.NoError(err)
 			t.Cleanup(func() {
 				v2f.Close()
 				os.Remove(v2f.Name())
@@ -749,8 +721,8 @@ func makeCarStream(
 		}
 
 		carWriter, err := storage.NewWritable(carW, roots, car.WriteAsCarV1(!carv2), car.AllowDuplicatePuts(allowDuplicatePuts))
+		req.NoError(err)
 		if err != nil {
-			errorCh <- err
 			return
 		}
 		for ii, block := range blocks {
@@ -759,18 +731,14 @@ func makeCarStream(
 				return
 			}
 			err := carWriter.Put(ctx, block.Cid().KeyString(), block.RawData())
-			if !expectErrors && err != nil {
-				errorCh <- err
-				return
+			if !expectErrors {
+				req.NoError(err)
 			}
 			if ctx.Err() != nil {
 				return
 			}
 		}
-		if err := carWriter.Finalize(); err != nil {
-			errorCh <- err
-			return
-		}
+		req.NoError(carWriter.Finalize())
 
 		if carv2 {
 			v2f.Seek(0, io.SeekStart)
@@ -779,9 +747,7 @@ func makeCarStream(
 			io.Copy(w, v2f)
 		}
 
-		if err := w.Close(); err != nil {
-			errorCh <- err
-		}
+		req.NoError(w.Close())
 	}()
 
 	go func() {
@@ -791,7 +757,7 @@ func makeCarStream(
 		}
 	}()
 
-	return r, errorCh
+	return r
 }
 
 type expectedBlock struct {
