@@ -45,11 +45,14 @@ func (dcs *DeferredStorageCar) Close() error {
 	}
 	dcs.closed = true
 	if dcs.f != nil {
-		for _, err := range []error{dcs.f.Close(), os.Remove(dcs.f.Name())} {
-			if err != nil {
-				return err
-			}
+		err := dcs.f.Close()
+		if err != nil {
+			return err
 		}
+
+		// If the file exists, delete it. We don't care about the error here
+		// because we're just cleaning up.
+		_ = os.Remove(dcs.f.Name())
 	}
 	return nil
 }
