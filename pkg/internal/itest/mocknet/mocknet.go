@@ -62,16 +62,16 @@ func NewMockRetrievalNet(ctx context.Context, t *testing.T) *MockRetrievalNet {
 	return mrn
 }
 
-func (mrn *MockRetrievalNet) AddBitswapPeers(n int) {
-	mrn.addPeers(mrn.testPeerGenerator.BitswapPeers(n))
+func (mrn *MockRetrievalNet) AddBitswapPeers(n int, opts ...testpeer.PeerOption) {
+	mrn.addPeers(mrn.testPeerGenerator.BitswapPeers(n, opts...))
 }
 
-func (mrn *MockRetrievalNet) AddGraphsyncPeers(n int) {
-	mrn.addPeers(mrn.testPeerGenerator.GraphsyncPeers(n))
+func (mrn *MockRetrievalNet) AddGraphsyncPeers(n int, opts ...testpeer.PeerOption) {
+	mrn.addPeers(mrn.testPeerGenerator.GraphsyncPeers(n, opts...))
 }
 
-func (mrn *MockRetrievalNet) AddHttpPeers(n int) {
-	mrn.addPeers(mrn.testPeerGenerator.HttpPeers(n))
+func (mrn *MockRetrievalNet) AddHttpPeers(n int, opts ...testpeer.PeerOption) {
+	mrn.addPeers(mrn.testPeerGenerator.HttpPeers(n, opts...))
 }
 
 func (mrn *MockRetrievalNet) addPeers(peers []testpeer.TestPeer) {

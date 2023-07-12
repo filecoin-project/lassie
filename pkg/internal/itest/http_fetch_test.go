@@ -1039,7 +1039,8 @@ func TestHttpFetch(t *testing.T) {
 			if testCase.lassieOpts != nil {
 				customOpts = testCase.lassieOpts(t, mrn)
 			}
-			opts := append([]lassie.LassieOption{lassie.WithProviderTimeout(20 * time.Second),
+			opts := append([]lassie.LassieOption{
+				lassie.WithProviderTimeout(20 * time.Second),
 				lassie.WithHost(mrn.Self),
 				lassie.WithFinder(mrn.Finder),
 			}, customOpts...)

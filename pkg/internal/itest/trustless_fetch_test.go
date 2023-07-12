@@ -12,6 +12,7 @@ import (
 
 	datatransfer "github.com/filecoin-project/go-data-transfer/v2"
 	"github.com/filecoin-project/lassie/pkg/internal/itest/mocknet"
+	"github.com/filecoin-project/lassie/pkg/internal/itest/testpeer"
 	"github.com/filecoin-project/lassie/pkg/lassie"
 	httpserver "github.com/filecoin-project/lassie/pkg/server/http"
 	"github.com/google/uuid"
@@ -45,22 +46,19 @@ func TestTrustlessUnixfsFetch(t *testing.T) {
 
 				t.Logf("query=%s, blocks=%d", tc.AsQuery(), len(tc.ExpectedCids))
 
+				var finishedChan chan []datatransfer.Event
 				mrn := mocknet.NewMockRetrievalNet(ctx, t)
 				switch proto {
 				case "http":
-					mrn.AddHttpPeers(1)
+					mrn.AddHttpPeers(1, testpeer.WithLinkSystem(lsys))
 				case "graphsync":
-					mrn.AddGraphsyncPeers(1)
-				case "bitswap":
-					mrn.AddBitswapPeers(1)
-				}
-				require.NoError(t, mrn.MN.LinkAll())
-				var finishedChan chan []datatransfer.Event
-				if proto == "graphsync" {
+					mrn.AddGraphsyncPeers(1, testpeer.WithLinkSystem(lsys))
 					finishedChan = mocknet.SetupRetrieval(t, mrn.Remotes[0])
+				case "bitswap":
+					mrn.AddBitswapPeers(1, testpeer.WithLinkSystem(lsys))
 				}
 
-				mrn.Remotes[0].Blockstore().UseLinkSystem(lsys)
+				require.NoError(t, mrn.MN.LinkAll())
 				mrn.Remotes[0].Cids[tc.Root] = struct{}{}
 
 				lassie, err := lassie.NewLassie(
