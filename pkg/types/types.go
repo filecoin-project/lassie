@@ -273,7 +273,7 @@ func (ds DagScope) TerminalSelectorSpec() builder.SelectorSpec {
 	case DagScopeAll:
 		return unixfsnode.ExploreAllRecursivelySelector
 	case DagScopeEntity:
-		return unixfsnode.MatchUnixFSEntitySelector
+		return unixfsnode.MatchUnixFSPreloadSelector // file
 	case DagScopeBlock:
 		return matcherSelector
 	case DagScope(""):
