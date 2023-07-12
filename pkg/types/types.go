@@ -348,9 +348,6 @@ func ParseByteRange(s string) (ByteRange, error) {
 		if err != nil {
 			return br, err
 		}
-		if to < 0 {
-			return br, fmt.Errorf("invalid entity-bytes: %s", s)
-		}
 		br.To = &to
 	}
 	return br, nil

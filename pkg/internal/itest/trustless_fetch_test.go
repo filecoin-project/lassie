@@ -11,6 +11,7 @@ import (
 	"time"
 
 	datatransfer "github.com/filecoin-project/go-data-transfer/v2"
+	"github.com/filecoin-project/lassie/pkg/internal/fixtures"
 	"github.com/filecoin-project/lassie/pkg/internal/itest/mocknet"
 	"github.com/filecoin-project/lassie/pkg/lassie"
 	httpserver "github.com/filecoin-project/lassie/pkg/server/http"
@@ -18,16 +19,15 @@ import (
 	"github.com/ipfs/go-unixfsnode"
 	"github.com/ipld/go-car/v2"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	trustlesspathing "github.com/ipld/ipld/specs/pkg-go/trustless-pathing"
 	"github.com/stretchr/testify/require"
 )
 
 func TestTrustlessUnixfsFetch(t *testing.T) {
 	req := require.New(t)
 
-	testCases, err := trustlesspathing.Unixfs20mVarietyCases()
+	testCases, err := fixtures.Unixfs20mVarietyCases()
 	req.NoError(err)
-	storage, closer, err := trustlesspathing.Unixfs20mVarietyReadableStorage()
+	storage, closer, err := fixtures.Unixfs20mVarietyReadableStorage()
 	req.NoError(err)
 	defer closer.Close()
 
