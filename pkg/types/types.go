@@ -305,10 +305,6 @@ type ByteRange struct {
 	To   int64
 }
 
-func DefaultByteRange() ByteRange {
-	return ByteRange{From: 0, To: math.MaxInt64}
-}
-
 func (br ByteRange) String() string {
 	to := strconv.FormatInt(br.To, 10)
 	if br.To == math.MaxInt64 {
@@ -322,7 +318,7 @@ func (br ByteRange) IsDefault() bool {
 }
 
 func ParseByteRange(s string) (ByteRange, error) {
-	br := DefaultByteRange()
+	br := ByteRange{From: 0, To: math.MaxInt64}
 	if s == "" {
 		return br, nil
 	}

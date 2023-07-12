@@ -3,7 +3,6 @@ package types
 import (
 	"errors"
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 
@@ -14,9 +13,7 @@ import (
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	"github.com/ipld/go-ipld-prime/node/basicnode"
 	ipldstorage "github.com/ipld/go-ipld-prime/storage"
-	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
 )
@@ -75,10 +72,6 @@ type RetrievalRequest struct {
 	// is not set, Scope and Path will be used to construct a selector.
 	Scope DagScope
 
-	// Bytes is the optional byte range within the DAG to fetch. If not set
-	// the default byte range will fetch the entire file.
-	Bytes *ByteRange
-
 	// Duplicates is a flag that indicates whether duplicate blocks should be
 	// stored into the LinkSystem where they occur in the traversal.
 	Duplicates bool
@@ -131,21 +124,9 @@ func NewRequestForPath(store ipldstorage.WritableStorage, cid cid.Cid, path stri
 	}, nil
 }
 
-// PathScopeSelector generates a selector for the given path, scope and byte
-// range. Use DefaultByteRange() for the default byte range value if none is
-// specified.
-func PathScopeSelector(path string, scope DagScope, bytes ByteRange) ipld.Node {
+func PathScopeSelector(path string, scope DagScope) ipld.Node {
 	// Turn the path / scope into a selector
-	terminal := scope.TerminalSelectorSpec()
-	if !bytes.IsDefault() {
-		ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
-		to := bytes.To
-		if to != math.MaxInt64 {
-			to++ // selector is exclusive, so increment the end
-		}
-		terminal = ssb.ExploreInterpretAs("unixfs", ssb.MatcherSubset(bytes.From, to))
-	}
-	return unixfsnode.UnixFSPathSelectorBuilder(path, terminal, false)
+	return unixfsnode.UnixFSPathSelectorBuilder(path, scope.TerminalSelectorSpec(), false)
 }
 
 // GetSelector will safely return a selector for this request. If none has been
@@ -154,11 +135,7 @@ func (r RetrievalRequest) GetSelector() ipld.Node {
 	if r.Selector != nil { // custom selector
 		return r.Selector
 	}
-	br := DefaultByteRange()
-	if r.Bytes != nil {
-		br = *r.Bytes
-	}
-	return PathScopeSelector(r.Path, r.Scope, br)
+	return PathScopeSelector(r.Path, r.Scope)
 }
 
 // GetUrlPath returns a URL path and query string valid with the Trusted HTTP

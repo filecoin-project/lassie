@@ -53,7 +53,7 @@ func (da *DuplicateAdderCar) addDupes() {
 	defer func() {
 		da.streamCompletion <- err
 	}()
-	sel := types.PathScopeSelector(da.path, da.scope, types.DefaultByteRange())
+	sel := types.PathScopeSelector(da.path, da.scope)
 
 	// we're going to do a verified car where we add dupes back in
 	cfg := verifiedcar.Config{
