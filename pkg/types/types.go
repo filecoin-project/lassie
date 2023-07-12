@@ -4,10 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"net/url"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/filecoin-project/go-state-types/abi"
@@ -283,62 +280,6 @@ func (ds DagScope) TerminalSelectorSpec() builder.SelectorSpec {
 	panic(fmt.Sprintf("unknown DagScope: [%s]", string(ds)))
 }
 
-func ParseDagScope(s string) (DagScope, error) {
-	switch s {
-	case "all":
-		return DagScopeAll, nil
-	case "entity":
-		return DagScopeEntity, nil
-	case "block":
-		return DagScopeBlock, nil
-	default:
-		return DagScopeAll, errors.New("invalid dag-scope")
-	}
-}
-
 func (ds DagScope) AcceptHeader() string {
 	return "application/vnd.ipld.car;version=1;order=dfs;dups=y"
-}
-
-type ByteRange struct {
-	From int64
-	To   int64
-}
-
-func (br ByteRange) String() string {
-	to := strconv.FormatInt(br.To, 10)
-	if br.To == math.MaxInt64 {
-		to = "*"
-	}
-	return fmt.Sprintf("%d:%s", br.From, to)
-}
-
-func (br ByteRange) IsDefault() bool {
-	return br.From == 0 && br.To == math.MaxInt64
-}
-
-func ParseByteRange(s string) (ByteRange, error) {
-	br := ByteRange{From: 0, To: math.MaxInt64}
-	if s == "" {
-		return br, nil
-	}
-	parts := strings.Split(s, ":")
-	if len(parts) != 2 {
-		return br, fmt.Errorf("invalid byte range: %s", s)
-	}
-	var err error
-	br.From, err = strconv.ParseInt(parts[0], 10, 64)
-	if err != nil {
-		return br, err
-	}
-	if br.From < 0 {
-		return br, fmt.Errorf("invalid byte range: %s", s)
-	}
-	if parts[1] != "*" {
-		br.To, err = strconv.ParseInt(parts[1], 10, 64)
-		if err != nil {
-			return br, err
-		}
-	}
-	return br, nil
 }

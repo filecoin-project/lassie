@@ -18,6 +18,8 @@ import (
 	"github.com/ipfs/boxo/bitswap/network"
 	"github.com/ipfs/boxo/blockservice"
 	"github.com/ipfs/go-cid"
+	"github.com/ipfs/go-libipfs/bitswap/client"
+	"github.com/ipfs/go-libipfs/bitswap/network"
 	"github.com/ipfs/go-unixfsnode"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime/datamodel"

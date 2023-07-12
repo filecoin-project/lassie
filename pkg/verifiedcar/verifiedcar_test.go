@@ -10,9 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/filecoin-project/lassie/pkg/internal/fixtures"
 	"github.com/filecoin-project/lassie/pkg/internal/testutil"
-	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/filecoin-project/lassie/pkg/verifiedcar"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
@@ -32,76 +30,6 @@ import (
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/stretchr/testify/require"
 )
-
-func TestUnixfs20mVariety(t *testing.T) {
-	req := require.New(t)
-
-	testCases, err := fixtures.Unixfs20mVarietyCases()
-	req.NoError(err)
-	storage, closer, err := fixtures.Unixfs20mVarietyReadableStorage()
-	req.NoError(err)
-	defer closer.Close()
-
-	lsys := cidlink.DefaultLinkSystem()
-	lsys.TrustedStorage = true
-	unixfsnode.AddUnixFSReificationToLinkSystem(&lsys)
-	lsys.SetReadStorage(storage)
-
-	for _, tc := range testCases {
-		t.Run(tc.Name, func(t *testing.T) {
-			req := require.New(t)
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			defer cancel()
-
-			t.Logf("query=%s, blocks=%d", tc.AsQuery(), len(tc.ExpectedCids))
-
-			// tc.ExpectedCids is in the order we expect to see them in a properly
-			// formed trustless CAR for the given query. So we build our list of
-			// expected blocks in that order and feed it through makeCarStream to
-			// produce the expected CAR.
-			expectedBlocks := make([]expectedBlock, len(tc.ExpectedCids))
-			for ii, ec := range tc.ExpectedCids {
-				byt, err := lsys.LoadRaw(linking.LinkContext{Ctx: ctx}, cidlink.Link{Cid: ec})
-				req.NoError(err)
-				blk, err := blocks.NewBlockWithCid(byt, ec)
-				req.NoError(err)
-				expectedBlocks[ii] = expectedBlock{blk, false}
-			}
-
-			carStream := makeCarStream(t, ctx, []cid.Cid{tc.Root}, expectedBlocks, false, false, false)
-
-			lsys := cidlink.DefaultLinkSystem()
-			var writeCounter int
-			lsys.StorageWriteOpener = func(lc linking.LinkContext) (io.Writer, linking.BlockWriteCommitter, error) {
-				var buf bytes.Buffer
-				return &buf, func(l datamodel.Link) error {
-					req.Equal(expectedBlocks[writeCounter].Cid().String(), l.(cidlink.Link).Cid.String(), "block %d", writeCounter)
-					req.Equal(expectedBlocks[writeCounter].RawData(), buf.Bytes(), "block %d", writeCounter)
-					writeCounter++
-					return nil
-				}, nil
-			}
-
-			// Run the verifier over the CAR stream to see if we end up with
-			// the same query.
-			cfg := verifiedcar.Config{
-				Root:     tc.Root,
-				Selector: types.PathScopeSelector(tc.Path, tc.Scope),
-			}
-			blockCount, byteCount, err := cfg.VerifyCar(ctx, carStream, lsys)
-
-			req.NoError(err)
-			req.Equal(count(expectedBlocks), blockCount)
-			req.Equal(sizeOf(expectedBlocks), byteCount)
-			req.Equal(int(count(expectedBlocks)), writeCounter)
-
-			// Make sure we consumed the entire stream.
-			byt, err := io.ReadAll(carStream)
-			req.NoError(err)
-			req.Equal(0, len(byt))
-		})
-	}
-}
 
 func TestVerifiedCar(t *testing.T) {
 	ctx := context.Background()

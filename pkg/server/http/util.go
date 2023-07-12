@@ -14,11 +14,29 @@ import (
 // parameter is not one of the supported values.
 func ParseScope(req *http.Request) (types.DagScope, error) {
 	if req.URL.Query().Has("dag-scope") {
-		return types.ParseDagScope(req.URL.Query().Get("dag-scope"))
+		switch req.URL.Query().Get("dag-scope") {
+		case "all":
+			return types.DagScopeAll, nil
+		case "entity":
+			return types.DagScopeEntity, nil
+		case "block":
+			return types.DagScopeBlock, nil
+		default:
+			return types.DagScopeAll, errors.New("invalid dag-scope parameter")
+		}
 	}
 	// check for legacy param name -- to do -- delete once we confirm this isn't used any more
 	if req.URL.Query().Has("car-scope") {
-		return types.ParseDagScope(req.URL.Query().Get("car-scope"))
+		switch req.URL.Query().Get("car-scope") {
+		case "all":
+			return types.DagScopeAll, nil
+		case "file":
+			return types.DagScopeEntity, nil
+		case "block":
+			return types.DagScopeBlock, nil
+		default:
+			return types.DagScopeAll, errors.New("invalid car-scope parameter")
+		}
 	}
 	return types.DagScopeAll, nil
 }
