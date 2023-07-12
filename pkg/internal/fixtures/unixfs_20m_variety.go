@@ -21,13 +21,12 @@ func filepath(typ string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// convert wd to absolute path, normalizing to / separators
-	wd = strings.ReplaceAll(wd, "\\", "/")
 	rootInd := strings.LastIndex(wd, "/lassie/pkg/")
 	if rootInd == -1 {
 		return "", fmt.Errorf("could not find root of lassie package")
 	}
 	filename := wd[:rootInd] + "/lassie/pkg/" + file + typ
+	fmt.Println("Using", filename)
 	return filename, nil
 }
 
