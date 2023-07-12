@@ -14,6 +14,7 @@ import (
 	dtimpl "github.com/filecoin-project/go-data-transfer/v2/impl"
 	dtnet "github.com/filecoin-project/go-data-transfer/v2/network"
 	gstransport "github.com/filecoin-project/go-data-transfer/v2/transport/graphsync"
+	"github.com/filecoin-project/lassie/pkg/internal/itest/linksystemutil"
 	bsnet "github.com/ipfs/boxo/bitswap/network"
 	"github.com/ipfs/boxo/bitswap/server"
 	"github.com/ipfs/go-cid"
@@ -76,60 +77,60 @@ func (g *TestPeerGenerator) Close() error {
 }
 
 // NextBitswap generates a new test peer with bitswap + dependencies
-func (g *TestPeerGenerator) NextBitswap() TestPeer {
+func (g *TestPeerGenerator) NextBitswap(opts ...PeerOption) TestPeer {
 	g.seq++
 	p, err := RandTestPeerIdentity()
 	require.NoError(g.t, err)
-	tp, err := NewTestBitswapPeer(g.ctx, g.mn, p, g.netOptions, g.bsOptions)
+	tp, err := NewTestBitswapPeer(g.ctx, g.mn, p, g.netOptions, g.bsOptions, opts...)
 	require.NoError(g.t, err)
 	return tp
 }
 
 // NextGraphsync generates a new test peer with graphsync + dependencies
-func (g *TestPeerGenerator) NextGraphsync() TestPeer {
+func (g *TestPeerGenerator) NextGraphsync(opts ...PeerOption) TestPeer {
 	g.seq++
-	p, err := p2ptestutil.RandTestBogusIdentity()
+	p, err := RandTestPeerIdentity()
 	require.NoError(g.t, err)
-	tp, err := NewTestGraphsyncPeer(g.ctx, g.mn, p)
+	tp, err := NewTestGraphsyncPeer(g.ctx, g.mn, p, opts...)
 	require.NoError(g.t, err)
 	return tp
 }
 
 // NextHttp generates a new test peer with http + dependencies
-func (g *TestPeerGenerator) NextHttp() TestPeer {
+func (g *TestPeerGenerator) NextHttp(opts ...PeerOption) TestPeer {
 	g.seq++
 	p, err := RandTestPeerIdentity()
 	require.NoError(g.t, err)
-	tp, err := NewTestHttpPeer(g.ctx, g.mn, p, g.t)
+	tp, err := NewTestHttpPeer(g.ctx, g.mn, p, g.t, opts...)
 	require.NoError(g.t, err)
 	return tp
 }
 
 // BitswapPeers creates N test peers with bitswap + dependencies
-func (g *TestPeerGenerator) BitswapPeers(n int) []TestPeer {
+func (g *TestPeerGenerator) BitswapPeers(n int, opts ...PeerOption) []TestPeer {
 	var instances []TestPeer
 	for j := 0; j < n; j++ {
-		inst := g.NextBitswap()
+		inst := g.NextBitswap(opts...)
 		instances = append(instances, inst)
 	}
 	return instances
 }
 
 // GraphsyncPeers creates N test peers with graphsync + dependencies
-func (g *TestPeerGenerator) GraphsyncPeers(n int) []TestPeer {
+func (g *TestPeerGenerator) GraphsyncPeers(n int, opts ...PeerOption) []TestPeer {
 	var instances []TestPeer
 	for j := 0; j < n; j++ {
-		inst := g.NextGraphsync()
+		inst := g.NextGraphsync(opts...)
 		instances = append(instances, inst)
 	}
 	return instances
 }
 
 // HttpPeers creates N test peers with http  + dependencies
-func (g *TestPeerGenerator) HttpPeers(n int) []TestPeer {
+func (g *TestPeerGenerator) HttpPeers(n int, opts ...PeerOption) []TestPeer {
 	var instances []TestPeer
 	for j := 0; j < n; j++ {
-		inst := g.NextHttp()
+		inst := g.NextHttp(opts...)
 		instances = append(instances, inst)
 	}
 	return instances
@@ -155,7 +156,7 @@ type TestPeer struct {
 	BitswapNetwork     bsnet.BitSwapNetwork
 	DatatransferServer datatransfer.Manager
 	HttpServer         *TestPeerHttpServer
-	blockstore         *BackedStore
+	blockstore         blockstore.Blockstore
 	Host               host.Host
 	blockstoreDelay    delay.D
 	LinkSystem         *linking.LinkSystem
@@ -164,7 +165,7 @@ type TestPeer struct {
 }
 
 // Blockstore returns the block store for this test instance
-func (i *TestPeer) Blockstore() *BackedStore {
+func (i *TestPeer) Blockstore() blockstore.Blockstore {
 	return i.blockstore
 }
 
@@ -186,8 +187,15 @@ func (i TestPeer) AddrInfo() *peer.AddrInfo {
 // NB: It's easy make mistakes by providing the same peer ID to two different
 // instances. To safeguard, use the InstanceGenerator to generate instances. It's
 // just a much better idea.
-func NewTestBitswapPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity, netOptions []bsnet.NetOpt, bsOptions []server.Option) (TestPeer, error) {
-	peer, _, err := newTestPeer(ctx, mn, p)
+func NewTestBitswapPeer(
+	ctx context.Context,
+	mn mocknet.Mocknet,
+	p tnet.Identity,
+	netOptions []bsnet.NetOpt,
+	bsOptions []server.Option,
+	opts ...PeerOption,
+) (TestPeer, error) {
+	peer, _, err := newTestPeer(ctx, mn, p, opts...)
 	if err != nil {
 		return TestPeer{}, err
 	}
@@ -204,8 +212,8 @@ func NewTestBitswapPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity
 	return peer, nil
 }
 
-func NewTestGraphsyncPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity) (TestPeer, error) {
-	peer, dstore, err := newTestPeer(ctx, mn, p)
+func NewTestGraphsyncPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity, opts ...PeerOption) (TestPeer, error) {
+	peer, dstore, err := newTestPeer(ctx, mn, p, opts...)
 	if err != nil {
 		return TestPeer{}, err
 	}
@@ -230,8 +238,8 @@ func NewTestGraphsyncPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identi
 	return peer, nil
 }
 
-func NewTestHttpPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity, t *testing.T) (TestPeer, error) {
-	peer, _, err := newTestPeer(ctx, mn, p)
+func NewTestHttpPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity, t *testing.T, opts ...PeerOption) (TestPeer, error) {
+	peer, _, err := newTestPeer(ctx, mn, p, opts...)
 	if err != nil {
 		return TestPeer{}, err
 	}
@@ -268,7 +276,17 @@ func NewTestHttpPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity, t
 	return peer, nil
 }
 
-func newTestPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity) (TestPeer, ds.Batching, error) {
+func newTestPeer(
+	ctx context.Context,
+	mn mocknet.Mocknet,
+	p tnet.Identity,
+	opts ...PeerOption,
+) (TestPeer, ds.Batching, error) {
+	cfg := peerConfig{}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
 	bsdelay := delay.Fixed(0)
 
 	client, err := mn.AddPeer(p.PrivateKey(), p.Address())
@@ -280,18 +298,20 @@ func newTestPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity) (Test
 	dstore := ds_sync.MutexWrap(baseStore)
 	dstoreDelayed := delayed.New(dstore, bsdelay)
 
-	bstore, err := blockstore.CachedBlockstore(ctx,
-		blockstore.NewBlockstore(dstoreDelayed),
-		blockstore.DefaultCacheOpts())
-	if err != nil {
-		return TestPeer{}, nil, err
+	if cfg.bstore == nil {
+		var err error
+		cfg.bstore, err = blockstore.CachedBlockstore(ctx,
+			blockstore.NewBlockstore(dstoreDelayed),
+			blockstore.DefaultCacheOpts())
+		if err != nil {
+			return TestPeer{}, nil, err
+		}
 	}
-	backedStore := &BackedStore{bstore}
-	lsys := storeutil.LinkSystemForBlockstore(backedStore)
+	lsys := storeutil.LinkSystemForBlockstore(cfg.bstore)
 	tp := TestPeer{
 		Host:            client,
 		ID:              p.ID(),
-		blockstore:      backedStore,
+		blockstore:      cfg.bstore,
 		blockstoreDelay: bsdelay,
 		LinkSystem:      &lsys,
 		Cids:            make(map[cid.Cid]struct{}),
@@ -355,4 +375,16 @@ func RandTestPeerIdentity() (tnet.Identity, error) {
 		} // else assume it's in use and try again
 	}
 	return nil, errors.New("failed to find an available port")
+}
+
+type peerConfig struct {
+	bstore blockstore.Blockstore
+}
+
+type PeerOption func(*peerConfig)
+
+func WithLinkSystem(lsys linking.LinkSystem) PeerOption {
+	return func(pc *peerConfig) {
+		pc.bstore = linksystemutil.NewLinkSystemBlockstore(lsys)
+	}
 }
