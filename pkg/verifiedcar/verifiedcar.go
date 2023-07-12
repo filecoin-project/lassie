@@ -55,6 +55,8 @@ type Config struct {
 	MaxBlocks          uint64         // set a budget for the traversal
 }
 
+func visitNoop(p traversal.Progress, n datamodel.Node, r traversal.VisitReason) error { return nil }
+
 // Verify reads a CAR from the provided reader, verifies the contents are
 // strictly what is specified by this Config and writes the blocks to the
 // provided BlockWriteOpener. It returns the number of blocks and bytes
@@ -128,17 +130,7 @@ func (cfg Config) VerifyBlockStream(ctx context.Context, cbr BlockReader, lsys l
 	if err != nil {
 		return 0, 0, err
 	}
-	if err := progress.WalkMatching(rootNode, sel, func(p traversal.Progress, n datamodel.Node) error {
-		if lbn, ok := n.(datamodel.LargeBytesNode); ok {
-			rdr, err := lbn.AsLargeBytes()
-			if err != nil {
-				return err
-			}
-			_, err = io.Copy(io.Discard, rdr)
-			return err
-		}
-		return nil
-	}); err != nil {
+	if err := progress.WalkAdv(rootNode, sel, visitNoop); err != nil {
 		return 0, 0, traversalError(err)
 	}
 
