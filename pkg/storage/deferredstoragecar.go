@@ -21,6 +21,7 @@ var _ ReadableWritableStorage = (*DeferredStorageCar)(nil)
 // in the case of an error).
 type DeferredStorageCar struct {
 	tempDir string
+	root    cid.Cid
 
 	lk     sync.Mutex
 	closed bool
@@ -29,9 +30,10 @@ type DeferredStorageCar struct {
 }
 
 // NewDeferredStorageCar creates a new DeferredStorageCar.
-func NewDeferredStorageCar(tempDir string) *DeferredStorageCar {
+func NewDeferredStorageCar(tempDir string, root cid.Cid) *DeferredStorageCar {
 	return &DeferredStorageCar{
 		tempDir: tempDir,
+		root:    root,
 	}
 }
 
@@ -136,7 +138,7 @@ func (dcs *DeferredStorageCar) readWrite() (ReadableWritableStorage, error) {
 		if dcs.f, err = os.CreateTemp(dcs.tempDir, "lassie_carstorage"); err != nil {
 			return nil, err
 		}
-		rw, err := carstorage.NewReadableWritable(dcs.f, []cid.Cid{}, carv2.WriteAsCarV1(true))
+		rw, err := carstorage.NewReadableWritable(dcs.f, []cid.Cid{dcs.root}, carv2.WriteAsCarV1(true))
 		if err != nil {
 			return nil, err
 		}

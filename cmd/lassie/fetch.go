@@ -242,7 +242,7 @@ func defaultFetchRun(
 		carWriter = storage.NewDeferredCarWriterForPath(rootCid, outfile)
 	}
 
-	tempStore := storage.NewDeferredStorageCar(tempDir)
+	tempStore := storage.NewDeferredStorageCar(tempDir, rootCid)
 	carStore := storage.NewCachingTempStore(carWriter.BlockWriteOpener(), tempStore)
 	defer carStore.Close()
 
