@@ -32,7 +32,7 @@ func TestDuplicateAdderCar(t *testing.T) {
 	unixfsFileWithDupsBlocks := testutil.ToBlocks(t, lsys, unixfsFileWithDups.Root, selectorparse.CommonSelector_ExploreAllRecursively)
 	buf := new(bytes.Buffer)
 
-	store := storage.NewDeferredStorageCar("")
+	store := storage.NewDeferredStorageCar("", unixfsFileWithDups.Root)
 	ctx := context.Background()
 	carWriter := storage.NewDuplicateAdderCarForStream(ctx, unixfsFileWithDups.Root, "", types.DagScopeAll, store, buf)
 	cachingTempStore := storage.NewCachingTempStore(carWriter.BlockWriteOpener(), store)

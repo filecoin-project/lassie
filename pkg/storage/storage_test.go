@@ -40,9 +40,9 @@ func TestTempCarStorage(t *testing.T) {
 						return nil
 					}, nil
 				}
-				cw = NewCachingTempStore(bwo, NewDeferredStorageCar(tempDir))
+				cw = NewCachingTempStore(bwo, NewDeferredStorageCar(tempDir, testCid1))
 			} else {
-				cw = NewDeferredStorageCar(tempDir)
+				cw = NewDeferredStorageCar(tempDir, testCid1)
 			}
 
 			ents, err := os.ReadDir(tempDir)
@@ -154,7 +154,7 @@ func TestPreloadStore(t *testing.T) {
 			return nil
 		}, nil
 	}
-	mainStore := NewCachingTempStore(bwo, NewDeferredStorageCar(t.TempDir()))
+	mainStore := NewCachingTempStore(bwo, NewDeferredStorageCar(t.TempDir(), td[0].cid))
 	t.Cleanup(func() {
 		require.NoError(t, mainStore.Close())
 	})

@@ -120,7 +120,7 @@ func ipfsHandler(lassie *lassie.Lassie, cfg HttpServerConfig) func(http.Response
 		// the response writer. Once closed, no other content should be written.
 		bytesWritten := make(chan struct{}, 1)
 
-		tempStore := storage.NewDeferredStorageCar(cfg.TempDir)
+		tempStore := storage.NewDeferredStorageCar(cfg.TempDir, rootCid)
 		var carWriter storage.DeferredWriter
 		if includeDupes {
 			carWriter = storage.NewDuplicateAdderCarForStream(req.Context(), rootCid, path.String(), dagScope, tempStore, res)

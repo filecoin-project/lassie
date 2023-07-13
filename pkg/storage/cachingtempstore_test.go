@@ -49,7 +49,7 @@ func TestDeferredCarWriterWritesCARv1(t *testing.T) {
 
 			var buf bytes.Buffer
 			cw := NewDeferredCarWriterForStream(testCid1, &buf)
-			ss := NewCachingTempStore(cw.BlockWriteOpener(), NewDeferredStorageCar(""))
+			ss := NewCachingTempStore(cw.BlockWriteOpener(), NewDeferredStorageCar("", testCid1))
 			t.Cleanup(func() { ss.Close() })
 
 			if tt.readBeforeWrite {
