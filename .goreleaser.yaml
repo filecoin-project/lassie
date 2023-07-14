@@ -22,6 +22,10 @@ archives:
       format: zip
     - goos: darwin
       format: zip
+  - name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_
+      {{- if eq .Os "darwin" }}mac_os
+      {{- else }}{{ .Os }}{{ end }}_{{ .Arch }}
 release:
   mode: keep-existing
 changelog:
