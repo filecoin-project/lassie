@@ -188,16 +188,20 @@ func (a *aggregateEventRecorder) ingestEvents() {
 				spid := events.Identifier(ret)
 				retrievalTtfb := ret.Time().Sub(tempData.startTime).String()
 				spTtfb := ret.Duration().String()
-				tempData.retrievalAttempts[spid].TimeToFirstByte = spTtfb
-				if tempData.ttfb == "" {
-					tempData.firstByteTime = ret.Time()
-					tempData.ttfb = retrievalTtfb
+				if _, ok := tempData.retrievalAttempts[spid]; ok {
+					tempData.retrievalAttempts[spid].TimeToFirstByte = spTtfb
+					if tempData.ttfb == "" {
+						tempData.firstByteTime = ret.Time()
+						tempData.ttfb = retrievalTtfb
+					}
 				}
 
 			case events.FailedRetrievalEvent:
 				// Add an error message to the retrieval attempt
 				spid := events.Identifier(ret)
-				tempData.retrievalAttempts[spid].Error = ret.ErrorMessage()
+				if _, ok := tempData.retrievalAttempts[spid]; ok {
+					tempData.retrievalAttempts[spid].Error = ret.ErrorMessage()
+				}
 
 			case events.SucceededEvent:
 				tempData.success = true
