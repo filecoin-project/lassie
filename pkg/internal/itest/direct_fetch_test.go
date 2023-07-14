@@ -116,7 +116,7 @@ func TestDirectFetch(t *testing.T) {
 			}()
 			outCar, err := storage.NewReadableWritable(outFile, []cid.Cid{srcData1.Root}, carv2.WriteAsCarV1(true))
 			req.NoError(err)
-			request, err := types.NewRequestForPath(outCar, srcData1.Root, "", types.DagScopeAll, nil)
+			request, err := types.NewRequestForPath(outCar, srcData1.Root, "", types.DagScopeAll)
 			req.NoError(err)
 			_, err = lassie.Fetch(ctx, request, func(types.RetrievalEvent) {})
 			req.NoError(err)

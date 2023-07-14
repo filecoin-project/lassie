@@ -55,6 +55,8 @@ type Config struct {
 	MaxBlocks          uint64         // set a budget for the traversal
 }
 
+func visitNoop(p traversal.Progress, n datamodel.Node, r traversal.VisitReason) error { return nil }
+
 // Verify reads a CAR from the provided reader, verifies the contents are
 // strictly what is specified by this Config and writes the blocks to the
 // provided BlockWriteOpener. It returns the number of blocks and bytes
@@ -118,19 +120,24 @@ func (cfg Config) VerifyBlockStream(ctx context.Context, cbr BlockReader, lsys l
 			NodeBudget: math.MaxInt64,
 		}
 	}
-
-	rootNode, err := loadNode(ctx, cfg.Root, lsys)
+	lc := linking.LinkContext{Ctx: ctx}
+	lnk := cidlink.Link{Cid: cfg.Root}
+	proto, err := protoChooser(lnk, lc)
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to load root node: %w", err)
+		return 0, 0, err
 	}
-	if err := progress.WalkMatching(rootNode, sel, unixfsnode.BytesConsumingMatcher); err != nil {
+	rootNode, err := lsys.Load(lc, lnk, proto)
+	if err != nil {
+		return 0, 0, err
+	}
+	if err := progress.WalkAdv(rootNode, sel, visitNoop); err != nil {
 		return 0, 0, traversalError(err)
 	}
 
 	if nbls.Error != nil {
 		// capture any errors not bubbled up through the traversal, i.e. see
 		// https://github.com/ipld/go-ipld-prime/pull/524
-		return 0, 0, fmt.Errorf("block load failed during traversal: %w", nbls.Error)
+		return 0, 0, nbls.Error
 	}
 
 	// make sure we don't have any extraneous data beyond what the traversal needs
@@ -143,20 +150,6 @@ func (cfg Config) VerifyBlockStream(ctx context.Context, cbr BlockReader, lsys l
 
 	// wait for parser to finish and provide errors or stats
 	return bt.blocks, bt.bytes, nil
-}
-
-func loadNode(ctx context.Context, rootCid cid.Cid, lsys linking.LinkSystem) (datamodel.Node, error) {
-	lnk := cidlink.Link{Cid: rootCid}
-	lnkCtx := linking.LinkContext{Ctx: ctx}
-	proto, err := protoChooser(lnk, lnkCtx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to choose prototype for CID %s: %w", rootCid.String(), err)
-	}
-	rootNode, err := lsys.Load(lnkCtx, lnk, proto)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load root CID: %w", err)
-	}
-	return rootNode, nil
 }
 
 type NextBlockLinkSystem struct {

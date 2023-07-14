@@ -3,7 +3,6 @@ package types
 import (
 	"errors"
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 
@@ -14,10 +13,7 @@ import (
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	"github.com/ipld/go-ipld-prime/node/basicnode"
 	ipldstorage "github.com/ipld/go-ipld-prime/storage"
-	"github.com/ipld/go-ipld-prime/traversal/selector"
-	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
 )
@@ -76,10 +72,6 @@ type RetrievalRequest struct {
 	// is not set, Scope and Path will be used to construct a selector.
 	Scope DagScope
 
-	// Bytes is the optional byte range within the DAG to fetch. If not set
-	// the default byte range will fetch the entire file.
-	Bytes *ByteRange
-
 	// Duplicates is a flag that indicates whether duplicate blocks should be
 	// stored into the LinkSystem where they occur in the traversal.
 	Duplicates bool
@@ -109,14 +101,7 @@ type RetrievalRequest struct {
 // and writing and it is explicitly set to be trusted (i.e. it will not
 // check CIDs match bytes). If the storage is not truested,
 // request.LinkSystem.TrustedStore should be set to false after this call.
-func NewRequestForPath(
-	store ipldstorage.WritableStorage,
-	cid cid.Cid,
-	path string,
-	dagScope DagScope,
-	byteRange *ByteRange,
-) (RetrievalRequest, error) {
-
+func NewRequestForPath(store ipldstorage.WritableStorage, cid cid.Cid, path string, dagScope DagScope) (RetrievalRequest, error) {
 	retrievalId, err := NewRetrievalID()
 	if err != nil {
 		return RetrievalRequest{}, err
@@ -135,48 +120,13 @@ func NewRequestForPath(
 		Cid:         cid,
 		Path:        path,
 		Scope:       dagScope,
-		Bytes:       byteRange,
 		LinkSystem:  linkSystem,
 	}, nil
 }
 
-// PathScopeSelector generates a selector for the given path, scope and byte
-// range. Use DefaultByteRange() for the default byte range value if none is
-// specified.
-func PathScopeSelector(path string, scope DagScope, bytes *ByteRange) ipld.Node {
+func PathScopeSelector(path string, scope DagScope) ipld.Node {
 	// Turn the path / scope into a selector
-	terminal := scope.TerminalSelectorSpec()
-	if !bytes.IsDefault() {
-		var to int64 = math.MaxInt64
-		if bytes.To != nil && *bytes.To > 0 {
-			to = *bytes.To + 1 // selector is exclusive, so increment the end
-		}
-		// TODO: negative ranges are not currently supported, we fall-back to matching entire file
-		if bytes.From >= 0 && to >= 0 {
-			ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
-			// if we reach a terminal and it's not a file, then we need to fall-back to the default
-			// selector for the given scope. We do this with a union of the original terminal.
-			if scope == DagScopeEntity {
-				// entity is a special case which we can't just union with our matcher because it
-				// has its own matcher in it which we need to replace with the subset matcher.
-				terminal = ssb.ExploreInterpretAs("unixfs",
-					ssb.ExploreUnion(
-						ssb.MatcherSubset(bytes.From, to),
-						ssb.ExploreRecursive(
-							selector.RecursionLimitDepth(1),
-							ssb.ExploreAll(ssb.ExploreRecursiveEdge()),
-						),
-					),
-				)
-			} else {
-				terminal = ssb.ExploreUnion(
-					ssb.ExploreInterpretAs("unixfs", ssb.MatcherSubset(bytes.From, to)),
-					terminal,
-				)
-			}
-		}
-	}
-	return unixfsnode.UnixFSPathSelectorBuilder(path, terminal, false)
+	return unixfsnode.UnixFSPathSelectorBuilder(path, scope.TerminalSelectorSpec(), false)
 }
 
 // GetSelector will safely return a selector for this request. If none has been
@@ -185,7 +135,7 @@ func (r RetrievalRequest) GetSelector() ipld.Node {
 	if r.Selector != nil { // custom selector
 		return r.Selector
 	}
-	return PathScopeSelector(r.Path, r.Scope, r.Bytes)
+	return PathScopeSelector(r.Path, r.Scope)
 }
 
 // GetUrlPath returns a URL path and query string valid with the Trusted HTTP
@@ -205,15 +155,11 @@ func (r RetrievalRequest) GetUrlPath() (string, error) {
 	if legacyScope == string(DagScopeEntity) {
 		legacyScope = "file"
 	}
-	byteRange := ""
-	if !r.Bytes.IsDefault() {
-		byteRange = "&entity-bytes=" + r.Bytes.String()
-	}
 	path := r.Path
 	if path != "" {
 		path = "/" + path
 	}
-	return fmt.Sprintf("%s?dag-scope=%s&car-scope=%s%s", path, scope, legacyScope, byteRange), nil
+	return fmt.Sprintf("%s?dag-scope=%s&car-scope=%s", path, scope, legacyScope), nil
 }
 
 // GetSupportedProtocols will safely return the supported protocols for a specific request.
@@ -237,31 +183,23 @@ func (r RetrievalRequest) GetSupportedProtocols(allSupportedProtocols []multicod
 }
 
 func (r RetrievalRequest) Etag() string {
-	// similar, but extended form of:
-	// https://github.com/ipfs/boxo/blob/a91e44dbdbd4c36a5b25a1b9df6ee237aa4442d2/gateway/handler_car.go#L167-L184
+	// https://github.com/ipfs/boxo/pull/303/commits/f61f95481041406df46a1781b1daab34b6605650#r1213918777
 	sb := strings.Builder{}
 	sb.WriteString("/ipfs/")
 	sb.WriteString(r.Cid.String())
 	if r.Path != "" {
-		sb.WriteRune('/')
+		sb.WriteString("/")
 		sb.WriteString(datamodel.ParsePath(r.Path).String())
 	}
 	if r.Scope != DagScopeAll {
-		sb.WriteRune('.')
+		sb.WriteString(".")
 		sb.WriteString(string(r.Scope))
-	}
-	if !r.Bytes.IsDefault() {
-		sb.WriteRune('.')
-		sb.WriteString(strconv.FormatInt(r.Bytes.From, 10))
-		if r.Bytes.To != nil {
-			sb.WriteRune('.')
-			sb.WriteString(strconv.FormatInt(*r.Bytes.To, 10))
-		}
 	}
 	if r.Duplicates {
 		sb.WriteString(".dups")
 	}
 	sb.WriteString(".dfs")
+	// range bytes would go here: `.from.to`
 	suffix := strconv.FormatUint(xxhash.Sum64([]byte(sb.String())), 32)
 	return `"` + r.Cid.String() + ".car." + suffix + `"`
 }

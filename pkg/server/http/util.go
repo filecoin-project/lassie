@@ -14,7 +14,16 @@ import (
 // parameter is not one of the supported values.
 func ParseScope(req *http.Request) (types.DagScope, error) {
 	if req.URL.Query().Has("dag-scope") {
-		return types.ParseDagScope(req.URL.Query().Get("dag-scope"))
+		switch req.URL.Query().Get("dag-scope") {
+		case "all":
+			return types.DagScopeAll, nil
+		case "entity":
+			return types.DagScopeEntity, nil
+		case "block":
+			return types.DagScopeBlock, nil
+		default:
+			return types.DagScopeAll, errors.New("invalid dag-scope parameter")
+		}
 	}
 	// check for legacy param name -- to do -- delete once we confirm this isn't used any more
 	if req.URL.Query().Has("car-scope") {
@@ -30,20 +39,6 @@ func ParseScope(req *http.Request) (types.DagScope, error) {
 		}
 	}
 	return types.DagScopeAll, nil
-}
-
-// ParseByteRange returns the entity-bytes query parameter if one is set in the
-// query string or nil if one is not set. An error is returned if an
-// entity-bytes query string is not a valid byte range.
-func ParseByteRange(req *http.Request) (*types.ByteRange, error) {
-	if req.URL.Query().Has("entity-bytes") {
-		br, err := types.ParseByteRange(req.URL.Query().Get("entity-bytes"))
-		if err != nil {
-			return nil, err
-		}
-		return &br, nil
-	}
-	return nil, nil
 }
 
 // ParseFilename returns the filename query parameter or an error if the filename

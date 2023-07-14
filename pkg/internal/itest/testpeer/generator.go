@@ -1,11 +1,13 @@
 package testpeer
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +16,7 @@ import (
 	dtimpl "github.com/filecoin-project/go-data-transfer/v2/impl"
 	dtnet "github.com/filecoin-project/go-data-transfer/v2/network"
 	gstransport "github.com/filecoin-project/go-data-transfer/v2/transport/graphsync"
+	"github.com/filecoin-project/lassie/pkg/types"
 	bsnet "github.com/ipfs/boxo/bitswap/network"
 	"github.com/ipfs/boxo/bitswap/server"
 	"github.com/ipfs/go-cid"
@@ -26,9 +29,17 @@ import (
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	delay "github.com/ipfs/go-ipfs-delay"
 	"github.com/ipfs/go-log/v2"
+	"github.com/ipfs/go-unixfsnode"
+	"github.com/ipld/go-car/v2"
+	"github.com/ipld/go-car/v2/storage"
+	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
+	"github.com/ipld/go-ipld-prime/traversal"
+	"github.com/ipld/go-ipld-prime/traversal/selector"
 	routinghelpers "github.com/libp2p/go-libp2p-routing-helpers"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	p2ptestutil "github.com/libp2p/go-libp2p-testing/netutil"
@@ -155,7 +166,7 @@ type TestPeer struct {
 	BitswapNetwork     bsnet.BitSwapNetwork
 	DatatransferServer datatransfer.Manager
 	HttpServer         *TestPeerHttpServer
-	blockstore         *BackedStore
+	blockstore         blockstore.Blockstore
 	Host               host.Host
 	blockstoreDelay    delay.D
 	LinkSystem         *linking.LinkSystem
@@ -164,7 +175,7 @@ type TestPeer struct {
 }
 
 // Blockstore returns the block store for this test instance
-func (i *TestPeer) Blockstore() *BackedStore {
+func (i *TestPeer) Blockstore() blockstore.Blockstore {
 	return i.blockstore
 }
 
@@ -276,8 +287,7 @@ func newTestPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity) (Test
 		panic(err.Error())
 	}
 
-	baseStore := ds.NewMapDatastore()
-	dstore := ds_sync.MutexWrap(baseStore)
+	dstore := ds_sync.MutexWrap(ds.NewMapDatastore())
 	dstoreDelayed := delayed.New(dstore, bsdelay)
 
 	bstore, err := blockstore.CachedBlockstore(ctx,
@@ -286,12 +296,11 @@ func newTestPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity) (Test
 	if err != nil {
 		return TestPeer{}, nil, err
 	}
-	backedStore := &BackedStore{bstore}
-	lsys := storeutil.LinkSystemForBlockstore(backedStore)
+	lsys := storeutil.LinkSystemForBlockstore(bstore)
 	tp := TestPeer{
 		Host:            client,
 		ID:              p.ID(),
-		blockstore:      backedStore,
+		blockstore:      bstore,
 		blockstoreDelay: bsdelay,
 		LinkSystem:      &lsys,
 		Cids:            make(map[cid.Cid]struct{}),
@@ -333,6 +342,126 @@ func StartAndWaitForReady(ctx context.Context, manager datatransfer.Manager) err
 	}
 }
 
+func MockIpfsHandler(ctx context.Context, lsys linking.LinkSystem) func(http.ResponseWriter, *http.Request) {
+	return func(res http.ResponseWriter, req *http.Request) {
+		urlPath := strings.Split(req.URL.Path, "/")[1:]
+
+		// validate CID path parameter
+		cidStr := urlPath[1]
+		rootCid, err := cid.Parse(cidStr)
+		if err != nil {
+			http.Error(res, fmt.Sprintf("Failed to parse CID path parameter: %s", cidStr), http.StatusBadRequest)
+			return
+		}
+
+		// Grab unixfs path if it exists
+		unixfsPath := ""
+		if len(urlPath) > 2 {
+			unixfsPath = "/" + strings.Join(urlPath[2:], "/")
+		}
+
+		acceptTypes := strings.Split(req.Header.Get("Accept"), ",")
+		includeDupes := false
+		for _, acceptType := range acceptTypes {
+			typeParts := strings.Split(acceptType, ";")
+			if typeParts[0] == "application/vnd.ipld.car" {
+				for _, nextPart := range typeParts[1:] {
+					pair := strings.Split(nextPart, "=")
+					if len(pair) == 2 {
+						attr := strings.TrimSpace(pair[0])
+						value := strings.TrimSpace(pair[1])
+						if attr == "dups" && value == "y" {
+							includeDupes = true
+						}
+					}
+				}
+			}
+		}
+
+		// We're always providing the dag-scope parameter, so add a failure case if we stop
+		// providing it in the future
+		if !req.URL.Query().Has("dag-scope") {
+			http.Error(res, "Missing dag-scope parameter", http.StatusBadRequest)
+			return
+		}
+
+		// Parse car scope and use it to get selector
+		var dagScope types.DagScope
+		switch req.URL.Query().Get("dag-scope") {
+		case "all":
+			dagScope = types.DagScopeAll
+		case "entity":
+			dagScope = types.DagScopeEntity
+		case "block":
+			dagScope = types.DagScopeBlock
+		default:
+			http.Error(res, fmt.Sprintf("Invalid dag-scope parameter: %s", req.URL.Query().Get("dag-scope")), http.StatusBadRequest)
+			return
+		}
+
+		selNode := unixfsnode.UnixFSPathSelectorBuilder(unixfsPath, dagScope.TerminalSelectorSpec(), false)
+		sel, err := selector.CompileSelector(selNode)
+		if err != nil {
+			http.Error(res, fmt.Sprintf("Failed to compile selector from dag-scope: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Write to response writer
+		carWriter, err := storage.NewWritable(res, []cid.Cid{rootCid}, car.WriteAsCarV1(true), car.AllowDuplicatePuts(includeDupes))
+		if err != nil {
+			http.Error(res, fmt.Sprintf("Failed to create car writer: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Extend the StorageReadOpener func to write to the carWriter
+		originalSRO := lsys.StorageReadOpener
+		lsys.StorageReadOpener = func(lc linking.LinkContext, lnk datamodel.Link) (io.Reader, error) {
+			r, err := originalSRO(lc, lnk)
+			if err != nil {
+				return nil, err
+			}
+			byts, err := io.ReadAll(r)
+			if err != nil {
+				return nil, err
+			}
+			err = carWriter.Put(ctx, lnk.(cidlink.Link).Cid.KeyString(), byts)
+			if err != nil {
+				return nil, err
+			}
+
+			return bytes.NewReader(byts), nil
+		}
+
+		protoChooser := dagpb.AddSupportToChooser(basicnode.Chooser)
+		lnk := cidlink.Link{Cid: rootCid}
+		lnkCtx := linking.LinkContext{}
+		proto, err := protoChooser(lnk, lnkCtx)
+		if err != nil {
+			http.Error(res, fmt.Sprintf("Failed to choose prototype node: %s", cidStr), http.StatusBadRequest)
+			return
+		}
+
+		rootNode, err := lsys.Load(lnkCtx, lnk, proto)
+		if err != nil {
+			http.Error(res, fmt.Sprintf("Failed to load root cid into link system: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		cfg := &traversal.Config{
+			Ctx:                            ctx,
+			LinkSystem:                     lsys,
+			LinkTargetNodePrototypeChooser: protoChooser,
+		}
+		progress := traversal.Progress{Cfg: cfg}
+
+		err = progress.WalkAdv(rootNode, sel, visitNoop)
+		if err != nil {
+			// if we loaded the first block, we can't write headers any more
+			return
+		}
+	}
+}
+
 // RandTestPeerIdentity is a wrapper around
 // github.com/libp2p/go-libp2p-testing/netutil/RandTestBogusIdentity that
 // ensures the returned identity has an available port. The identity generated
@@ -356,3 +485,5 @@ func RandTestPeerIdentity() (tnet.Identity, error) {
 	}
 	return nil, errors.New("failed to find an available port")
 }
+
+func visitNoop(p traversal.Progress, n datamodel.Node, vr traversal.VisitReason) error { return nil }

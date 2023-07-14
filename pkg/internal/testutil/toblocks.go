@@ -53,7 +53,8 @@ func ToBlocks(t *testing.T, lsys linking.LinkSystem, root cid.Cid, selNode datam
 			LinkTargetNodePrototypeChooser: dagpb.AddSupportToChooser(basicnode.Chooser),
 		},
 	}
-	err = prog.WalkMatching(rootNode, sel, unixfsnode.BytesConsumingMatcher)
+	vf := func(p traversal.Progress, n datamodel.Node, vr traversal.VisitReason) error { return nil }
+	err = prog.WalkAdv(rootNode, sel, vf)
 	require.NoError(t, err)
 
 	return traversedBlocks
