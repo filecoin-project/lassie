@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/filecoin-project/lassie/pkg/build"
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/storage"
 	"github.com/filecoin-project/lassie/pkg/types"
@@ -147,6 +148,7 @@ func ipfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.Response
 
 		carWriter.OnPut(func(int) {
 			// called once we start writing blocks into the CAR (on the first Put())
+			res.Header().Set("Server", build.UserAgent) // "lassie/vx.y.z-<git commit hash>"
 			res.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", fileName))
 			res.Header().Set("Accept-Ranges", ResponseAcceptRangesHeader)
 			res.Header().Set("Cache-Control", ResponseCacheControlHeader)

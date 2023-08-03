@@ -1068,6 +1068,7 @@ func TestHttpFetch(t *testing.T) {
 						req.NoError(err)
 						req.Failf("200 response code not received", "got code: %d, body: %s", resp.StatusCode, string(body))
 					}
+					req.Regexp(`^lassie/v\d+\.\d+\.\d+-\w+$`, resp.Header.Get("Server"))
 					req.Equal(fmt.Sprintf(`attachment; filename="%s.car"`, srcData[i].Root.String()), resp.Header.Get("Content-Disposition"))
 					req.Equal("none", resp.Header.Get("Accept-Ranges"))
 					req.Equal("public, max-age=29030400, immutable", resp.Header.Get("Cache-Control"))
