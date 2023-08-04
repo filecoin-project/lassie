@@ -135,6 +135,14 @@ func TestIpfsHandler(t *testing.T) {
 			wantBody:   "invalid providers parameter\n",
 		},
 		{
+			name:       "400 on invalid entity-bytes query parameter",
+			method:     "GET",
+			path:       "/ipfs/bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4?entity-bytes=invalid",
+			headers:    map[string]string{"Accept": "application/vnd.ipld.car"},
+			wantStatus: http.StatusBadRequest,
+			wantBody:   "invalid entity-bytes parameter\n",
+		},
+		{
 			name:    "404 when no candidates can be found",
 			method:  "GET",
 			path:    "/ipfs/bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4",
