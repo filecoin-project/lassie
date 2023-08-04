@@ -14,7 +14,11 @@ import (
 // parameter is not one of the supported values.
 func ParseScope(req *http.Request) (types.DagScope, error) {
 	if req.URL.Query().Has("dag-scope") {
-		return types.ParseDagScope(req.URL.Query().Get("dag-scope"))
+		if ds, err := types.ParseDagScope(req.URL.Query().Get("dag-scope")); err != nil {
+			return ds, errors.New("invalid dag-scope parameter")
+		} else {
+			return ds, nil
+		}
 	}
 	// check for legacy param name -- to do -- delete once we confirm this isn't used any more
 	if req.URL.Query().Has("car-scope") {
@@ -39,7 +43,7 @@ func ParseByteRange(req *http.Request) (*types.ByteRange, error) {
 	if req.URL.Query().Has("entity-bytes") {
 		br, err := types.ParseByteRange(req.URL.Query().Get("entity-bytes"))
 		if err != nil {
-			return nil, err
+			return nil, errors.New("invalid entity-bytes parameter")
 		}
 		return &br, nil
 	}
