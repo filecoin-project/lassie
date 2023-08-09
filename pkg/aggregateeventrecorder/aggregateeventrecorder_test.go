@@ -64,7 +64,7 @@ func TestAggregateEventRecorder(t *testing.T) {
 				subscriber(events.StartedRetrieval(clock.Now(), id, bitswapPeer, multicodec.TransportBitswap))
 				clock.Add(20 * time.Millisecond)
 				subscriber(events.FirstByte(clock.Now(), id, bitswapPeer, 20*time.Millisecond, multicodec.TransportBitswap))
-				subscriber(events.FailedRetrieval(clock.Now(), id, graphsyncCandidates[0], "failed to dial"))
+				subscriber(events.FailedRetrieval(clock.Now(), id, graphsyncCandidates[0], multicodec.TransportGraphsyncFilecoinv1, "failed to dial"))
 				clock.Add(20 * time.Millisecond)
 				subscriber(events.FirstByte(clock.Now(), id, graphsyncCandidates[1], 50*time.Millisecond, multicodec.TransportGraphsyncFilecoinv1))
 				clock.Add(30 * time.Millisecond)

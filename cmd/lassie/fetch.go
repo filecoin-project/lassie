@@ -277,12 +277,16 @@ func defaultFetchRun(
 		fmt.Fprintln(msgWriter)
 		return err
 	}
+	spid := stats.StorageProviderId
+	if spid == "" {
+		spid = types.BitswapIndentifier
+	}
 	fmt.Fprintf(msgWriter, "\nFetched [%s] from [%s]:\n"+
 		"\tDuration: %s\n"+
 		"\t  Blocks: %d\n"+
 		"\t   Bytes: %s\n",
 		rootCid,
-		stats.StorageProviderId,
+		spid,
 		stats.Duration,
 		blockCount,
 		humanize.IBytes(stats.Size),

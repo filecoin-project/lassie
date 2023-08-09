@@ -17,7 +17,7 @@ var (
 type FirstByteEvent struct {
 	providerRetrievalEvent
 	duration time.Duration
-	protocol multicodec.Code // TODO: remove when we can get the storage provider id from bitswap. This is required to determine the SP ID from events.Identifier().
+	protocol multicodec.Code
 }
 
 func (e FirstByteEvent) Code() types.EventCode     { return types.FirstByteCode }
