@@ -67,7 +67,7 @@ func TestRetrievalRacing(t *testing.T) {
 				{
 					AfterStart: time.Millisecond * 20,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.ConnectedToProvider(startTime.Add(time.Millisecond*20), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}),
+						events.ConnectedToProvider(startTime.Add(time.Millisecond*20), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}, multicodec.TransportGraphsyncFilecoinv1),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: peerFoo, Duration: time.Millisecond * 20},
@@ -118,7 +118,7 @@ func TestRetrievalRacing(t *testing.T) {
 				{
 					AfterStart: time.Millisecond * 20,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.ConnectedToProvider(startTime.Add(time.Millisecond*20), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}),
+						events.ConnectedToProvider(startTime.Add(time.Millisecond*20), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}, multicodec.TransportGraphsyncFilecoinv1),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: peerFoo, Duration: time.Millisecond * 20},
@@ -131,8 +131,8 @@ func TestRetrievalRacing(t *testing.T) {
 				{
 					AfterStart: time.Millisecond*50 + initialPause,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.ConnectedToProvider(startTime.Add(time.Millisecond*40+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBar}}),
-						events.ConnectedToProvider(startTime.Add(time.Millisecond*40+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBaz}}),
+						events.ConnectedToProvider(startTime.Add(time.Millisecond*40+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBar}}, multicodec.TransportGraphsyncFilecoinv1),
+						events.ConnectedToProvider(startTime.Add(time.Millisecond*40+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBaz}}, multicodec.TransportGraphsyncFilecoinv1),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: peerBar, Duration: time.Millisecond * 50},
@@ -179,9 +179,9 @@ func TestRetrievalRacing(t *testing.T) {
 				{
 					AfterStart: time.Millisecond * 20,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.FailedRetrieval(startTime.Add(time.Millisecond*20), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}, "unable to connect to provider: Nope"),
-						events.FailedRetrieval(startTime.Add(time.Millisecond*20), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBar}}, "unable to connect to provider: Nope"),
-						events.FailedRetrieval(startTime.Add(time.Millisecond*20), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBaz}}, "unable to connect to provider: Nope"),
+						events.FailedRetrieval(startTime.Add(time.Millisecond*20), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}, multicodec.TransportGraphsyncFilecoinv1, "unable to connect to provider: Nope"),
+						events.FailedRetrieval(startTime.Add(time.Millisecond*20), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBar}}, multicodec.TransportGraphsyncFilecoinv1, "unable to connect to provider: Nope"),
+						events.FailedRetrieval(startTime.Add(time.Millisecond*20), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBaz}}, multicodec.TransportGraphsyncFilecoinv1, "unable to connect to provider: Nope"),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Failure, Provider: peerFoo},
@@ -217,7 +217,7 @@ func TestRetrievalRacing(t *testing.T) {
 				{
 					AfterStart: time.Millisecond * 20,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.ConnectedToProvider(startTime.Add(time.Millisecond*20), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}),
+						events.ConnectedToProvider(startTime.Add(time.Millisecond*20), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}, multicodec.TransportGraphsyncFilecoinv1),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: peerFoo, Duration: time.Millisecond * 20},
@@ -231,7 +231,7 @@ func TestRetrievalRacing(t *testing.T) {
 					AfterStart: time.Millisecond*40 + initialPause,
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Proposed(startTime.Add(time.Millisecond*40+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}),
-						events.FailedRetrieval(startTime.Add(time.Millisecond*40+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}, "retrieval failed: Nope"),
+						events.FailedRetrieval(startTime.Add(time.Millisecond*40+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}, multicodec.TransportGraphsyncFilecoinv1, "retrieval failed: Nope"),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Failure, Provider: peerFoo},
@@ -241,7 +241,7 @@ func TestRetrievalRacing(t *testing.T) {
 					AfterStart:         time.Millisecond * 60,
 					ReceivedRetrievals: []peer.ID{peerBar},
 					ExpectedEvents: []types.RetrievalEvent{
-						events.ConnectedToProvider(startTime.Add(time.Millisecond*60), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBar}}),
+						events.ConnectedToProvider(startTime.Add(time.Millisecond*60), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBar}}, multicodec.TransportGraphsyncFilecoinv1),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: peerBar, Duration: time.Millisecond * 60},
@@ -288,7 +288,7 @@ func TestRetrievalRacing(t *testing.T) {
 				{
 					AfterStart: time.Millisecond * 20,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.ConnectedToProvider(startTime.Add(time.Millisecond*20), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}),
+						events.ConnectedToProvider(startTime.Add(time.Millisecond*20), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}, multicodec.TransportGraphsyncFilecoinv1),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: peerFoo, Duration: time.Millisecond * 20},
@@ -297,7 +297,7 @@ func TestRetrievalRacing(t *testing.T) {
 				{
 					AfterStart: time.Millisecond * 25,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.ConnectedToProvider(startTime.Add(time.Millisecond*25), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBar}}),
+						events.ConnectedToProvider(startTime.Add(time.Millisecond*25), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBar}}, multicodec.TransportGraphsyncFilecoinv1),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: peerBar, Duration: time.Millisecond * 25},
@@ -310,7 +310,7 @@ func TestRetrievalRacing(t *testing.T) {
 				{
 					AfterStart: time.Millisecond * 60,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.ConnectedToProvider(startTime.Add(time.Millisecond*60), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBaz}}),
+						events.ConnectedToProvider(startTime.Add(time.Millisecond*60), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBaz}}, multicodec.TransportGraphsyncFilecoinv1),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: peerBaz, Duration: time.Millisecond * 60},
@@ -321,7 +321,7 @@ func TestRetrievalRacing(t *testing.T) {
 					ReceivedRetrievals: []peer.ID{peerBar},
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Proposed(startTime.Add(time.Millisecond*120+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}),
-						events.FailedRetrieval(startTime.Add(time.Millisecond*120+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}, "retrieval failed: Nope"),
+						events.FailedRetrieval(startTime.Add(time.Millisecond*120+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}, multicodec.TransportGraphsyncFilecoinv1, "retrieval failed: Nope"),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Failure, Provider: peerFoo},
@@ -332,7 +332,7 @@ func TestRetrievalRacing(t *testing.T) {
 					ReceivedRetrievals: []peer.ID{peerBaz},
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Proposed(startTime.Add(time.Millisecond*220+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBar}}),
-						events.FailedRetrieval(startTime.Add(time.Millisecond*220+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBar}}, "retrieval failed: Nope"),
+						events.FailedRetrieval(startTime.Add(time.Millisecond*220+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBar}}, multicodec.TransportGraphsyncFilecoinv1, "retrieval failed: Nope"),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Failure, Provider: peerBar},
@@ -342,7 +342,7 @@ func TestRetrievalRacing(t *testing.T) {
 					AfterStart: time.Millisecond*320 + initialPause,
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Proposed(startTime.Add(time.Millisecond*320+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBaz}}),
-						events.FailedRetrieval(startTime.Add(time.Millisecond*320+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBaz}}, "retrieval failed: Nope"),
+						events.FailedRetrieval(startTime.Add(time.Millisecond*320+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBaz}}, multicodec.TransportGraphsyncFilecoinv1, "retrieval failed: Nope"),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Failure, Provider: peerBaz},
@@ -386,7 +386,7 @@ func TestRetrievalRacing(t *testing.T) {
 				{
 					AfterStart: time.Millisecond * 1,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.ConnectedToProvider(startTime.Add(time.Millisecond*1), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}),
+						events.ConnectedToProvider(startTime.Add(time.Millisecond*1), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}, multicodec.TransportGraphsyncFilecoinv1),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: peerFoo, Duration: time.Millisecond * 1},
@@ -399,9 +399,9 @@ func TestRetrievalRacing(t *testing.T) {
 				{
 					AfterStart: time.Millisecond * 100,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.ConnectedToProvider(startTime.Add(time.Millisecond*100), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBar}}),
-						events.ConnectedToProvider(startTime.Add(time.Millisecond*100), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBaz}}),
-						events.ConnectedToProvider(startTime.Add(time.Millisecond*100), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBang}}),
+						events.ConnectedToProvider(startTime.Add(time.Millisecond*100), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBar}}, multicodec.TransportGraphsyncFilecoinv1),
+						events.ConnectedToProvider(startTime.Add(time.Millisecond*100), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBaz}}, multicodec.TransportGraphsyncFilecoinv1),
+						events.ConnectedToProvider(startTime.Add(time.Millisecond*100), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBang}}, multicodec.TransportGraphsyncFilecoinv1),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: peerBar, Duration: time.Millisecond * 100},
@@ -414,7 +414,7 @@ func TestRetrievalRacing(t *testing.T) {
 					ReceivedRetrievals: []peer.ID{peerBaz},
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Proposed(startTime.Add(time.Millisecond*201+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}),
-						events.FailedRetrieval(startTime.Add(time.Millisecond*201+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}, "retrieval failed: Nope"),
+						events.FailedRetrieval(startTime.Add(time.Millisecond*201+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}, multicodec.TransportGraphsyncFilecoinv1, "retrieval failed: Nope"),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Failure, Provider: peerFoo},
@@ -468,9 +468,9 @@ func TestRetrievalRacing(t *testing.T) {
 				{
 					AfterStart: time.Millisecond * 100,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.ConnectedToProvider(startTime.Add(time.Millisecond*100), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBar}}),
-						events.ConnectedToProvider(startTime.Add(time.Millisecond*100), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBaz}}),
-						events.ConnectedToProvider(startTime.Add(time.Millisecond*100), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBang}}),
+						events.ConnectedToProvider(startTime.Add(time.Millisecond*100), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBar}}, multicodec.TransportGraphsyncFilecoinv1),
+						events.ConnectedToProvider(startTime.Add(time.Millisecond*100), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBaz}}, multicodec.TransportGraphsyncFilecoinv1),
+						events.ConnectedToProvider(startTime.Add(time.Millisecond*100), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBang}}, multicodec.TransportGraphsyncFilecoinv1),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: peerBar, Duration: time.Millisecond * 100},
@@ -530,7 +530,7 @@ func TestRetrievalRacing(t *testing.T) {
 				{
 					AfterStart: time.Millisecond * 1,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.ConnectedToProvider(startTime.Add(time.Millisecond*1), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}),
+						events.ConnectedToProvider(startTime.Add(time.Millisecond*1), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}, multicodec.TransportGraphsyncFilecoinv1),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: peerFoo, Duration: time.Millisecond * 1},
@@ -543,7 +543,7 @@ func TestRetrievalRacing(t *testing.T) {
 				{
 					AfterStart: time.Millisecond * 100,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.ConnectedToProvider(startTime.Add(time.Millisecond*100), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBang}}),
+						events.ConnectedToProvider(startTime.Add(time.Millisecond*100), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBang}}, multicodec.TransportGraphsyncFilecoinv1),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: peerBang, Duration: time.Millisecond * 100},
@@ -552,7 +552,7 @@ func TestRetrievalRacing(t *testing.T) {
 				{
 					AfterStart: time.Millisecond * 200,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.ConnectedToProvider(startTime.Add(time.Millisecond*200), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBaz}}),
+						events.ConnectedToProvider(startTime.Add(time.Millisecond*200), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBaz}}, multicodec.TransportGraphsyncFilecoinv1),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: peerBaz, Duration: time.Millisecond * 200},
@@ -561,7 +561,7 @@ func TestRetrievalRacing(t *testing.T) {
 				{
 					AfterStart: time.Millisecond * 220,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.ConnectedToProvider(startTime.Add(time.Millisecond*220), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBar}}),
+						events.ConnectedToProvider(startTime.Add(time.Millisecond*220), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBar}}, multicodec.TransportGraphsyncFilecoinv1),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: peerBar, Duration: time.Millisecond * 220},
@@ -572,7 +572,7 @@ func TestRetrievalRacing(t *testing.T) {
 					ReceivedRetrievals: []peer.ID{peerBang},
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Proposed(startTime.Add(time.Millisecond*401+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}),
-						events.FailedRetrieval(startTime.Add(time.Millisecond*401+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}, "retrieval failed: Nope"),
+						events.FailedRetrieval(startTime.Add(time.Millisecond*401+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}, multicodec.TransportGraphsyncFilecoinv1, "retrieval failed: Nope"),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Failure, Provider: peerFoo},
@@ -624,7 +624,7 @@ func TestRetrievalRacing(t *testing.T) {
 				{
 					AfterStart: time.Millisecond * 20,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.ConnectedToProvider(startTime.Add(time.Millisecond*20), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}),
+						events.ConnectedToProvider(startTime.Add(time.Millisecond*20), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}, multicodec.TransportGraphsyncFilecoinv1),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: peerFoo, Duration: time.Millisecond * 20},
@@ -633,8 +633,8 @@ func TestRetrievalRacing(t *testing.T) {
 				{
 					AfterStart: time.Millisecond*50 + initialPause,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.ConnectedToProvider(startTime.Add(time.Millisecond*40+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBar}}),
-						events.ConnectedToProvider(startTime.Add(time.Millisecond*40+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBaz}}),
+						events.ConnectedToProvider(startTime.Add(time.Millisecond*40+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBar}}, multicodec.TransportGraphsyncFilecoinv1),
+						events.ConnectedToProvider(startTime.Add(time.Millisecond*40+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBaz}}, multicodec.TransportGraphsyncFilecoinv1),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: peerBar, Duration: time.Millisecond * 50},
@@ -790,8 +790,8 @@ func TestMultipleRetrievals(t *testing.T) {
 		{
 			AfterStart: time.Millisecond * 1,
 			ExpectedEvents: []types.RetrievalEvent{
-				events.FailedRetrieval(startTime.Add(time.Millisecond*1), retrievalID2, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBoom}}, "unable to connect to provider: Nope"),
-				events.ConnectedToProvider(startTime.Add(time.Millisecond*1), retrievalID1, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}),
+				events.FailedRetrieval(startTime.Add(time.Millisecond*1), retrievalID2, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBoom}}, multicodec.TransportGraphsyncFilecoinv1, "unable to connect to provider: Nope"),
+				events.ConnectedToProvider(startTime.Add(time.Millisecond*1), retrievalID1, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}, multicodec.TransportGraphsyncFilecoinv1),
 			},
 			ExpectedMetrics: []testutil.SessionMetric{
 				{Type: testutil.SessionMetric_Failure, Provider: peerBoom},
@@ -806,7 +806,7 @@ func TestMultipleRetrievals(t *testing.T) {
 			AfterStart: time.Millisecond*2 + initialPause,
 			ExpectedEvents: []types.RetrievalEvent{
 				events.Proposed(startTime.Add(time.Millisecond*2+initialPause), retrievalID1, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}),
-				events.FailedRetrieval(startTime.Add(time.Millisecond*2+initialPause), retrievalID1, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}, "retrieval failed: Nope"),
+				events.FailedRetrieval(startTime.Add(time.Millisecond*2+initialPause), retrievalID1, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}, multicodec.TransportGraphsyncFilecoinv1, "retrieval failed: Nope"),
 			},
 			ExpectedMetrics: []testutil.SessionMetric{
 				{Type: testutil.SessionMetric_Failure, Provider: peerFoo},
@@ -815,8 +815,8 @@ func TestMultipleRetrievals(t *testing.T) {
 		{
 			AfterStart: time.Millisecond * 100,
 			ExpectedEvents: []types.RetrievalEvent{
-				events.ConnectedToProvider(startTime.Add(time.Millisecond*100), retrievalID1, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBar}}),
-				events.ConnectedToProvider(startTime.Add(time.Millisecond*100), retrievalID2, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBing}}),
+				events.ConnectedToProvider(startTime.Add(time.Millisecond*100), retrievalID1, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBar}}, multicodec.TransportGraphsyncFilecoinv1),
+				events.ConnectedToProvider(startTime.Add(time.Millisecond*100), retrievalID2, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBing}}, multicodec.TransportGraphsyncFilecoinv1),
 			},
 			ExpectedMetrics: []testutil.SessionMetric{
 				{Type: testutil.SessionMetric_Connect, Provider: peerBar, Duration: time.Millisecond * 100},
@@ -999,7 +999,7 @@ func TestDuplicateRetreivals(t *testing.T) {
 		{
 			AfterStart: time.Millisecond * 50,
 			ExpectedEvents: []types.RetrievalEvent{
-				events.ConnectedToProvider(startTime.Add(time.Millisecond*50), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}),
+				events.ConnectedToProvider(startTime.Add(time.Millisecond*50), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}, multicodec.TransportGraphsyncFilecoinv1),
 			},
 			ExpectedMetrics: []testutil.SessionMetric{
 				{Type: testutil.SessionMetric_Connect, Provider: peerFoo, Duration: time.Millisecond * 50},
@@ -1012,7 +1012,7 @@ func TestDuplicateRetreivals(t *testing.T) {
 		{
 			AfterStart: time.Millisecond * 75,
 			ExpectedEvents: []types.RetrievalEvent{
-				events.ConnectedToProvider(startTime.Add(time.Millisecond*75), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBaz}}),
+				events.ConnectedToProvider(startTime.Add(time.Millisecond*75), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBaz}}, multicodec.TransportGraphsyncFilecoinv1),
 			},
 			ExpectedMetrics: []testutil.SessionMetric{
 				{Type: testutil.SessionMetric_Connect, Provider: peerBaz, Duration: time.Millisecond * 75},
@@ -1021,7 +1021,7 @@ func TestDuplicateRetreivals(t *testing.T) {
 		{
 			AfterStart: time.Millisecond * 100,
 			ExpectedEvents: []types.RetrievalEvent{
-				events.ConnectedToProvider(startTime.Add(time.Millisecond*100), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBar}}),
+				events.ConnectedToProvider(startTime.Add(time.Millisecond*100), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerBar}}, multicodec.TransportGraphsyncFilecoinv1),
 			},
 			ExpectedMetrics: []testutil.SessionMetric{
 				{Type: testutil.SessionMetric_Connect, Provider: peerBar, Duration: time.Millisecond * 100},
@@ -1032,7 +1032,7 @@ func TestDuplicateRetreivals(t *testing.T) {
 			ReceivedRetrievals: []peer.ID{peerBar},
 			ExpectedEvents: []types.RetrievalEvent{
 				events.Proposed(startTime.Add(time.Millisecond*200+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}),
-				events.FailedRetrieval(startTime.Add(time.Millisecond*200+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}, "retrieval failed: Nope"),
+				events.FailedRetrieval(startTime.Add(time.Millisecond*200+initialPause), retrievalID, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerFoo}}, multicodec.TransportGraphsyncFilecoinv1, "retrieval failed: Nope"),
 			},
 			ExpectedMetrics: []testutil.SessionMetric{
 				{Type: testutil.SessionMetric_Failure, Provider: peerFoo},

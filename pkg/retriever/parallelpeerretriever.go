@@ -333,10 +333,10 @@ func (retrieval *retrieval) runRetrievalCandidate(
 			if err := retrieval.Session.RecordFailure(retrieval.request.RetrievalID, candidate.MinerPeer.ID); err != nil {
 				logger.Errorf("Error recording retrieval failure on protocol %s: %v", retrieval.Protocol.Code().String(), err)
 			}
-			shared.sendEvent(ctx, events.FailedRetrieval(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, candidate, retrievalErr.Error()))
+			shared.sendEvent(ctx, events.FailedRetrieval(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, candidate, retrieval.Protocol.Code(), retrievalErr.Error()))
 		}
 	} else {
-		shared.sendEvent(ctx, events.ConnectedToProvider(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, candidate))
+		shared.sendEvent(ctx, events.ConnectedToProvider(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, candidate, retrieval.Protocol.Code()))
 
 		retrieval.Session.RecordConnectTime(candidate.MinerPeer.ID, connectTime)
 
@@ -351,7 +351,7 @@ func (retrieval *retrieval) runRetrievalCandidate(
 				if errors.Is(retrievalErr, ErrRetrievalTimedOut) {
 					msg = fmt.Sprintf("timeout after %s", timeout)
 				}
-				shared.sendEvent(ctx, events.FailedRetrieval(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, candidate, msg))
+				shared.sendEvent(ctx, events.FailedRetrieval(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, candidate, retrieval.Protocol.Code(), msg))
 				if err := retrieval.Session.RecordFailure(retrieval.request.RetrievalID, candidate.MinerPeer.ID); err != nil {
 					logger.Errorf("Error recording retrieval failure for protocol %s: %v", retrieval.Protocol.Code().String(), err)
 				}

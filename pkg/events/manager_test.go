@@ -39,7 +39,7 @@ func TestEventManager(t *testing.T) {
 	em.DispatchEvent(events.CandidatesFiltered(time.Now(), id, cid, []types.RetrievalCandidate{{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid}, {MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, {MinerPeer: peer.AddrInfo{ID: peerC}, RootCid: cid}}))
 	em.DispatchEvent(events.StartedRetrieval(time.Now(), id, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, multicodec.TransportGraphsyncFilecoinv1))
 	em.DispatchEvent(events.Success(time.Now(), id, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, 100, 200, time.Second*300, multicodec.TransportGraphsyncFilecoinv1))
-	em.DispatchEvent(events.FailedRetrieval(time.Now(), id, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, "error @ retrieval failure"))
+	em.DispatchEvent(events.FailedRetrieval(time.Now(), id, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, multicodec.TransportGraphsyncFilecoinv1, "error @ retrieval failure"))
 
 	time.Sleep(50 * time.Millisecond)
 
@@ -53,7 +53,7 @@ func TestEventManager(t *testing.T) {
 	em.DispatchEvent(events.CandidatesFiltered(time.Now(), id, cid, []types.RetrievalCandidate{{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid}, {MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, {MinerPeer: peer.AddrInfo{ID: peerC}, RootCid: cid}}))
 	em.DispatchEvent(events.StartedRetrieval(time.Now(), id, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, multicodec.TransportGraphsyncFilecoinv1))
 	em.DispatchEvent(events.Success(time.Now(), id, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, 100, 200, time.Second*300, multicodec.TransportGraphsyncFilecoinv1))
-	em.DispatchEvent(events.FailedRetrieval(time.Now(), id, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, "error @ retrieval failure"))
+	em.DispatchEvent(events.FailedRetrieval(time.Now(), id, types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerB}, RootCid: cid}, multicodec.TransportGraphsyncFilecoinv1, "error @ retrieval failure"))
 
 	select {
 	case <-em.Stop():

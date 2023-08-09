@@ -105,7 +105,7 @@ func TestRetriever(t *testing.T) {
 				{
 					AfterStart: 20 * time.Millisecond,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.ConnectedToProvider(startTime.Add(20*time.Millisecond), rid, types.NewRetrievalCandidate(peerA, nil, cid1)),
+						events.ConnectedToProvider(startTime.Add(20*time.Millisecond), rid, types.NewRetrievalCandidate(peerA, nil, cid1), multicodec.TransportGraphsyncFilecoinv1),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: peerA, Duration: 20 * time.Millisecond},
@@ -178,7 +178,7 @@ func TestRetriever(t *testing.T) {
 				{
 					AfterStart: 5 * time.Millisecond,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.ConnectedToProvider(startTime.Add(5*time.Millisecond), rid, types.NewRetrievalCandidate(peerB, nil, cid1)),
+						events.ConnectedToProvider(startTime.Add(5*time.Millisecond), rid, types.NewRetrievalCandidate(peerB, nil, cid1), multicodec.TransportGraphsyncFilecoinv1),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: peerB, Duration: 5 * time.Millisecond},
@@ -254,7 +254,7 @@ func TestRetriever(t *testing.T) {
 				{
 					AfterStart: 50 * time.Millisecond,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.ConnectedToProvider(startTime.Add(50*time.Millisecond), rid, types.NewRetrievalCandidate(peerA, nil, cid1)),
+						events.ConnectedToProvider(startTime.Add(50*time.Millisecond), rid, types.NewRetrievalCandidate(peerA, nil, cid1), multicodec.TransportGraphsyncFilecoinv1),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: peerA, Duration: 50 * time.Millisecond},
@@ -328,7 +328,7 @@ func TestRetriever(t *testing.T) {
 				{
 					AfterStart: 5 * time.Millisecond,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.FailedRetrieval(startTime.Add(5*time.Millisecond), rid, types.NewRetrievalCandidate(peerA, nil, cid1), "unable to connect to provider: blip"),
+						events.FailedRetrieval(startTime.Add(5*time.Millisecond), rid, types.NewRetrievalCandidate(peerA, nil, cid1), multicodec.TransportGraphsyncFilecoinv1, "unable to connect to provider: blip"),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Failure, Provider: peerA},
@@ -337,7 +337,7 @@ func TestRetriever(t *testing.T) {
 				{
 					AfterStart: 50 * time.Millisecond,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.ConnectedToProvider(startTime.Add(50*time.Millisecond), rid, types.NewRetrievalCandidate(peerB, nil, cid1)),
+						events.ConnectedToProvider(startTime.Add(50*time.Millisecond), rid, types.NewRetrievalCandidate(peerB, nil, cid1), multicodec.TransportGraphsyncFilecoinv1),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: peerB, Duration: 50 * time.Millisecond},
@@ -412,7 +412,7 @@ func TestRetriever(t *testing.T) {
 				{
 					AfterStart: 5 * time.Millisecond,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.ConnectedToProvider(startTime.Add(5*time.Millisecond), rid, types.NewRetrievalCandidate(peerB, nil, cid1)),
+						events.ConnectedToProvider(startTime.Add(5*time.Millisecond), rid, types.NewRetrievalCandidate(peerB, nil, cid1), multicodec.TransportGraphsyncFilecoinv1),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: peerB, Duration: 5 * time.Millisecond},
@@ -426,7 +426,7 @@ func TestRetriever(t *testing.T) {
 					AfterStart: 10*time.Millisecond + initialPause,
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Proposed(startTime.Add(10*time.Millisecond+initialPause), rid, types.NewRetrievalCandidate(peerB, nil, cid1)),
-						events.FailedRetrieval(startTime.Add(10*time.Millisecond+initialPause), rid, types.NewRetrievalCandidate(peerB, nil, cid1), "retrieval failed: bork!"),
+						events.FailedRetrieval(startTime.Add(10*time.Millisecond+initialPause), rid, types.NewRetrievalCandidate(peerB, nil, cid1), multicodec.TransportGraphsyncFilecoinv1, "retrieval failed: bork!"),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Failure, Provider: peerB},
@@ -436,7 +436,7 @@ func TestRetriever(t *testing.T) {
 					AfterStart:         500 * time.Millisecond,
 					ReceivedRetrievals: []peer.ID{peerA},
 					ExpectedEvents: []types.RetrievalEvent{
-						events.ConnectedToProvider(startTime.Add(500*time.Millisecond), rid, types.NewRetrievalCandidate(peerA, nil, cid1)),
+						events.ConnectedToProvider(startTime.Add(500*time.Millisecond), rid, types.NewRetrievalCandidate(peerA, nil, cid1), multicodec.TransportGraphsyncFilecoinv1),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: peerA, Duration: 500 * time.Millisecond},
@@ -517,7 +517,7 @@ func TestRetriever(t *testing.T) {
 				{
 					AfterStart: 1 * time.Millisecond,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.ConnectedToProvider(startTime.Add(1*time.Millisecond), rid, types.NewRetrievalCandidate(peerA, nil, cid1)),
+						events.ConnectedToProvider(startTime.Add(1*time.Millisecond), rid, types.NewRetrievalCandidate(peerA, nil, cid1), multicodec.TransportGraphsyncFilecoinv1),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: peerA, Duration: time.Millisecond},
@@ -530,7 +530,7 @@ func TestRetriever(t *testing.T) {
 				{
 					AfterStart: 100 * time.Millisecond,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.ConnectedToProvider(startTime.Add(100*time.Millisecond), rid, types.NewRetrievalCandidate(peerB, nil, cid1)),
+						events.ConnectedToProvider(startTime.Add(100*time.Millisecond), rid, types.NewRetrievalCandidate(peerB, nil, cid1), multicodec.TransportGraphsyncFilecoinv1),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: peerB, Duration: 100 * time.Millisecond},
@@ -540,7 +540,7 @@ func TestRetriever(t *testing.T) {
 					AfterStart:         201*time.Millisecond + initialPause,
 					ReceivedRetrievals: []peer.ID{peerB},
 					ExpectedEvents: []types.RetrievalEvent{
-						events.FailedRetrieval(startTime.Add(201*time.Millisecond+initialPause), rid, types.NewRetrievalCandidate(peerA, nil, cid1), "timeout after 200ms"),
+						events.FailedRetrieval(startTime.Add(201*time.Millisecond+initialPause), rid, types.NewRetrievalCandidate(peerA, nil, cid1), multicodec.TransportGraphsyncFilecoinv1, "timeout after 200ms"),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Failure, Provider: peerA},
@@ -682,7 +682,7 @@ func TestRetriever(t *testing.T) {
 				{
 					AfterStart: 5 * time.Millisecond,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.ConnectedToProvider(startTime.Add(1*time.Millisecond), rid, types.NewRetrievalCandidate(peerA, nil, cid1)),
+						events.ConnectedToProvider(startTime.Add(1*time.Millisecond), rid, types.NewRetrievalCandidate(peerA, nil, cid1), multicodec.TransportGraphsyncFilecoinv1),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: peerA, Duration: 1 * time.Millisecond},
@@ -691,7 +691,7 @@ func TestRetriever(t *testing.T) {
 				{
 					AfterStart: 5 * time.Millisecond,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.ConnectedToProvider(startTime.Add(5*time.Millisecond), rid, types.NewRetrievalCandidate(peerB, nil, cid1)),
+						events.ConnectedToProvider(startTime.Add(5*time.Millisecond), rid, types.NewRetrievalCandidate(peerB, nil, cid1), multicodec.TransportGraphsyncFilecoinv1),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: peerB, Duration: 5 * time.Millisecond},
@@ -877,7 +877,7 @@ func TestLinkSystemPerRequest(t *testing.T) {
 			{
 				AfterStart: 5 * time.Millisecond,
 				ExpectedEvents: []types.RetrievalEvent{
-					events.ConnectedToProvider(startTime.Add(5*time.Millisecond), rid, types.NewRetrievalCandidate(peerA, nil, cid1)),
+					events.ConnectedToProvider(startTime.Add(5*time.Millisecond), rid, types.NewRetrievalCandidate(peerA, nil, cid1), multicodec.TransportGraphsyncFilecoinv1),
 				},
 			},
 			{
@@ -943,7 +943,7 @@ func TestLinkSystemPerRequest(t *testing.T) {
 			{
 				AfterStart: 5 * time.Millisecond,
 				ExpectedEvents: []types.RetrievalEvent{
-					events.ConnectedToProvider(startTime.Add(15*time.Millisecond+initialPause), rid, types.NewRetrievalCandidate(peerB, nil, cid1)),
+					events.ConnectedToProvider(startTime.Add(15*time.Millisecond+initialPause), rid, types.NewRetrievalCandidate(peerB, nil, cid1), multicodec.TransportGraphsyncFilecoinv1),
 				},
 			},
 			{

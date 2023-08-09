@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/filecoin-project/lassie/pkg/types"
+	"github.com/multiformats/go-multicodec"
 )
 
 var (
@@ -17,6 +18,9 @@ type GraphsyncProposedEvent struct {
 }
 
 func (e GraphsyncProposedEvent) Code() types.EventCode { return types.ProposedCode }
+func (e GraphsyncProposedEvent) Protocol() multicodec.Code {
+	return multicodec.TransportGraphsyncFilecoinv1
+}
 func (e GraphsyncProposedEvent) String() string {
 	return fmt.Sprintf("GraphsyncProposedEvent<%s, %s, %s, %s>", e.eventTime, e.retrievalId, e.payloadCid, e.providerId)
 }
