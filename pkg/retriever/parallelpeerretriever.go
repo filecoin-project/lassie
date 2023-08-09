@@ -327,7 +327,9 @@ func (retrieval *retrieval) runRetrievalCandidate(
 	// Setup in parallel
 	connectTime, err := retrieval.Protocol.Connect(connectCtx, retrieval, startTime, candidate)
 	if err != nil {
-		if ctx.Err() == nil { // not cancelled, maybe timed out though
+		// Exclude the case where the context was cancelled by the parent, whichikely means that
+		// another protocol has succeeded.
+		if ctx.Err() == nil || !errors.Is(err, context.Canceled) {
 			logger.Warnf("Failed to connect to SP %s on protocol %s: %v", candidate.MinerPeer.ID, retrieval.Protocol.Code().String(), err)
 			retrievalErr = fmt.Errorf("%w: %v", ErrConnectFailed, err)
 			if err := retrieval.Session.RecordFailure(retrieval.request.RetrievalID, candidate.MinerPeer.ID); err != nil {
@@ -347,13 +349,17 @@ func (retrieval *retrieval) runRetrievalCandidate(
 			stats, retrievalErr = retrieval.Protocol.Retrieve(ctx, retrieval, shared, timeout, candidate)
 
 			if retrievalErr != nil {
-				msg := retrievalErr.Error()
-				if errors.Is(retrievalErr, ErrRetrievalTimedOut) {
-					msg = fmt.Sprintf("timeout after %s", timeout)
-				}
-				shared.sendEvent(ctx, events.FailedRetrieval(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, candidate, retrieval.Protocol.Code(), msg))
-				if err := retrieval.Session.RecordFailure(retrieval.request.RetrievalID, candidate.MinerPeer.ID); err != nil {
-					logger.Errorf("Error recording retrieval failure for protocol %s: %v", retrieval.Protocol.Code().String(), err)
+				// Exclude the case where the context was cancelled by the parent, which likely
+				// means that another protocol has succeeded.
+				if ctx.Err() == nil || !errors.Is(err, context.Canceled) {
+					msg := retrievalErr.Error()
+					if errors.Is(retrievalErr, ErrRetrievalTimedOut) {
+						msg = fmt.Sprintf("timeout after %s", timeout)
+					}
+					shared.sendEvent(ctx, events.FailedRetrieval(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, candidate, retrieval.Protocol.Code(), msg))
+					if err := retrieval.Session.RecordFailure(retrieval.request.RetrievalID, candidate.MinerPeer.ID); err != nil {
+						logger.Errorf("Error recording retrieval failure for protocol %s: %v", retrieval.Protocol.Code().String(), err)
+					}
 				}
 			} else {
 				shared.sendEvent(ctx, events.Success(
