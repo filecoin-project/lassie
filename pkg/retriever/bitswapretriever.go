@@ -3,6 +3,7 @@ package retriever
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -242,8 +243,14 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	br.routing.RemoveProviders(br.request.RetrievalID)
 	br.bstore.RemoveLinkSystem(br.request.RetrievalID)
 	if err != nil {
-		// record failure
-		br.events(events.FailedRetrieval(br.clock.Now(), br.request.RetrievalID, bitswapCandidate, multicodec.TransportBitswap, err.Error()))
+		// If the local context was canceled and the parent wasn't, it could be from a block timeout
+		// (see lastBytesReceivedTimer), in which case it needs to be recorded as a failure.
+		// However, if the parent context has an error we want to exclude cancellation errors
+		// since the failure could be because another protocol finished, not because of a bitswap
+		// problem.
+		if br.ctx.Err() == nil || !errors.Is(err, context.Canceled) {
+			br.events(events.FailedRetrieval(br.clock.Now(), br.request.RetrievalID, bitswapCandidate, multicodec.TransportBitswap, err.Error()))
+		}
 		return nil, err
 	}
 	duration := br.clock.Since(startTime)
