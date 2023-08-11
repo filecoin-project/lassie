@@ -1,0 +1,31 @@
+type CarMetadata union {
+  | Metadata "car-metadata/v1"
+} representation keyed
+
+type Metadata struct {
+  request Request
+  # must contain either a properties or an error
+  properties optional CarProperties
+  error optional String
+}
+
+type Request struct {
+  root &Any
+  path optional String
+  scope DagScope
+  duplicates Bool (rename "dups")
+  entityBytes optional String (rename "entity-bytes") # Must be a valid entity-bytes param: "from:to"
+}
+
+type DagScope enum {
+  | all
+  | entity
+  | block
+}
+
+type CarProperties struct {
+  carBytes Int (rename "car_bytes")
+  dataBytes Int (rename "data_bytes")
+  blockCount Int (rename "block_count")
+  checksumMultihash optional Bytes (rename "checksum") # Must be a valid multihash
+}

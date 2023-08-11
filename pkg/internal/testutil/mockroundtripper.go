@@ -110,7 +110,7 @@ func (mrt *MockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 		legacyScope = "file"
 	}
 	require.Equal(mrt.t, req.URL.RawQuery, fmt.Sprintf("dag-scope=%s&car-scope=%s", expectedScope, legacyScope))
-	require.Equal(mrt.t, req.Header["Accept"], []string{"application/vnd.ipld.car;version=1;order=dfs;dups=y"})
+	require.Equal(mrt.t, req.Header["Accept"], []string{"application/vnd.ipld.car; version=1; order=dfs; dups=y; meta=eof"})
 	reqId := req.Header["X-Request-Id"]
 	require.Len(mrt.t, reqId, 1)
 	_, err = uuid.Parse(reqId[0])
@@ -175,16 +175,20 @@ func (mrt *MockRoundTripper) VerifyRetrievalsServed(ctx context.Context, t *test
 }
 
 func (mrt *MockRoundTripper) VerifyRetrievalsCompleted(ctx context.Context, t *testing.T, afterStart time.Duration, expectedRetrievals []peer.ID) {
-	retrievals := make([]peer.ID, 0, len(expectedRetrievals))
+	expectedRetrievalsStr := make([]string, 0, len(expectedRetrievals))
+	for _, er := range expectedRetrievals {
+		expectedRetrievalsStr = append(expectedRetrievalsStr, er.String())
+	}
+	retrievals := make([]string, 0, len(expectedRetrievals))
 	for i := 0; i < len(expectedRetrievals); i++ {
 		select {
 		case retrieval := <-mrt.endsCh:
-			retrievals = append(retrievals, retrieval)
+			retrievals = append(retrievals, retrieval.String())
 		case <-ctx.Done():
 			require.FailNowf(t, "failed to complete expected retrievals", "expected %d, received %d @ %s", len(expectedRetrievals), i, afterStart)
 		}
 	}
-	require.ElementsMatch(t, expectedRetrievals, retrievals)
+	require.ElementsMatch(t, expectedRetrievalsStr, retrievals)
 }
 
 // deferredBody is simply a Reader that lazily starts a CAR writer on the first
@@ -196,6 +200,7 @@ type deferredBody struct {
 
 	r    io.ReadCloser
 	once sync.Once
+	err  error // cache Read error for multiple reads
 }
 
 func newDeferredBody(mrt *MockRoundTripper, remote MockRoundTripRemote, root cid.Cid) *deferredBody {
@@ -297,12 +302,18 @@ func (d *deferredBody) makeBody() io.ReadCloser {
 }
 
 func (d *deferredBody) Read(p []byte) (n int, err error) {
+	if d.err != nil {
+		return 0, d.err
+	}
 	d.once.Do(func() {
 		d.r = d.makeBody()
 	})
 	n, err = d.r.Read(p)
 	if err == io.EOF {
 		d.mrt.endsCh <- d.remote.Peer.ID
+	}
+	if err != nil {
+		d.err = err
 	}
 	return n, err
 }

@@ -1,4 +1,4 @@
-package httpserver
+package httputil
 
 import (
 	"errors"
@@ -74,33 +74,34 @@ func ParseFilename(req *http.Request) (string, error) {
 //
 // Lassie only allows the "car" format query parameter
 // https://specs.ipfs.tech/http-gateways/path-gateway/#format-request-query-parameter
-func CheckFormat(req *http.Request) (bool, error) {
+func CheckFormat(req *http.Request) (bool, bool, error) {
 	hasAccept := req.Header.Get("Accept") != ""
 	// check if Accept header includes application/vnd.ipld.car
-	validAccept, includeDupes := ParseAccept(req.Header.Get("Accept"))
+	validAccept, includeDupes, includeMeta := ParseAccept(req.Header.Get("Accept"))
 	if hasAccept && !validAccept {
-		return false, fmt.Errorf("no acceptable content type")
+		return false, false, fmt.Errorf("no acceptable content type")
 	}
 
 	// check if format is "car"
 	hasFormat := req.URL.Query().Has("format")
 	if hasFormat && req.URL.Query().Get("format") != FormatParameterCar {
-		return false, fmt.Errorf("requested non-supported format %s", req.URL.Query().Get("format"))
+		return false, false, fmt.Errorf("requested non-supported format %s", req.URL.Query().Get("format"))
 	}
 
 	// if neither are provided return
 	// one of them has to be given with a CAR type since we only return CAR data
 	if !validAccept && !hasFormat {
-		return false, fmt.Errorf("neither a valid accept header or format parameter were provided")
+		return false, false, fmt.Errorf("neither a valid accept header or format parameter were provided")
 	}
 
-	return includeDupes, nil
+	return includeDupes, includeMeta, nil
 }
 
 // ParseAccept validates that the request Accept header is of the type CAR and
 // returns whether or not duplicate blocks are allowed in the response via
-// IPIP-412: https://github.com/ipfs/specs/pull/412.
-func ParseAccept(acceptHeader string) (validAccept bool, includeDupes bool) {
+// IPIP-412: https://github.com/ipfs/specs/pull/412, and whether or not
+// metadata is requested via IPIP-431: https://github.com/ipfs/specs/pull/431.
+func ParseAccept(acceptHeader string) (validAccept bool, includeDupes bool, includeMeta bool) {
 	acceptTypes := strings.Split(acceptHeader, ",")
 	validAccept = false
 	includeDupes = DefaultIncludeDupes
@@ -138,6 +139,14 @@ func ParseAccept(acceptHeader string) (validAccept bool, includeDupes bool) {
 							case "unk":
 							default:
 								// we only do dfs, which also satisfies unk, future extensions are not yet supported
+								validAccept = false
+							}
+						case "meta":
+							switch value {
+							case "eof":
+								includeMeta = true
+							default:
+								// we only support eof, future extensions are not yet supported
 								validAccept = false
 							}
 						default:

@@ -139,6 +139,20 @@ type RetrievalStats struct {
 	AskPrice          abi.TokenAmount
 	TimeToFirstByte   time.Duration
 	Selector          string
+	CarProperties     *CarProperties // only set if CAR file is fetched via http and the provider provides the metadata
+}
+
+// CarProperties is supplied by the storage provider during HTTP fetches and
+// provides metadata about the CAR file.
+type CarProperties struct {
+	CarBytes          int64
+	DataBytes         int64
+	BlockCount        int64
+	ChecksumMultihash []byte
+}
+
+func (cp CarProperties) String() string {
+	return fmt.Sprintf("CarProperties<car bytes: %d, data bytes: %d, block count: %d, checksum: %x>", cp.CarBytes, cp.DataBytes, cp.BlockCount, cp.ChecksumMultihash)
 }
 
 type RetrievalResult struct {
@@ -282,8 +296,4 @@ func (ds DagScope) TerminalSelectorSpec() builder.SelectorSpec {
 		return unixfsnode.ExploreAllRecursivelySelector // default to explore-all for zero-value DagScope
 	}
 	panic(fmt.Sprintf("unknown DagScope: [%s]", string(ds)))
-}
-
-func (ds DagScope) AcceptHeader() string {
-	return "application/vnd.ipld.car;version=1;order=dfs;dups=y"
 }

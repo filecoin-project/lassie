@@ -291,6 +291,9 @@ func defaultFetchRun(
 		blockCount,
 		humanize.IBytes(stats.Size),
 	)
+	if stats.CarProperties != nil {
+		fmt.Fprintf(msgWriter, "\tChecksum: %x\n", stats.CarProperties.ChecksumMultihash)
+	}
 
 	return nil
 }

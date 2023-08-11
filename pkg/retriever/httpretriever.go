@@ -12,10 +12,12 @@ import (
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/build"
 	"github.com/filecoin-project/lassie/pkg/events"
+	"github.com/filecoin-project/lassie/pkg/httputil"
+	httpmetadata "github.com/filecoin-project/lassie/pkg/httputil/metadata"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/filecoin-project/lassie/pkg/verifiedcar"
 	"github.com/ipfs/go-cid"
-	"github.com/ipni/go-libipni/metadata"
+	ipnimetadata "github.com/ipni/go-libipni/metadata"
 	"github.com/multiformats/go-multicodec"
 )
 
@@ -75,8 +77,8 @@ func (ph ProtocolHttp) Code() multicodec.Code {
 	return multicodec.TransportIpfsGatewayHttp
 }
 
-func (ph ProtocolHttp) GetMergedMetadata(cid cid.Cid, currentMetadata, newMetadata metadata.Protocol) metadata.Protocol {
-	return &metadata.IpfsGatewayHttp{}
+func (ph ProtocolHttp) GetMergedMetadata(cid cid.Cid, currentMetadata, newMetadata ipnimetadata.Protocol) ipnimetadata.Protocol {
+	return &ipnimetadata.IpfsGatewayHttp{}
 }
 
 func (ph *ProtocolHttp) Connect(ctx context.Context, retrieval *retrieval, startTime time.Time, candidate types.RetrievalCandidate) (time.Duration, error) {
@@ -116,27 +118,54 @@ func (ph *ProtocolHttp) Retrieve(
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, ErrHttpRequestFailure{Code: resp.StatusCode}
 	}
+
+	_, _, includeMeta := httputil.ParseAccept(resp.Header.Get("Content-Type"))
+
 	var ttfb time.Duration
 	rdr := newTimeToFirstByteReader(resp.Body, func() {
 		ttfb = retrieval.Clock.Since(retrievalStart)
 		shared.sendEvent(ctx, events.FirstByte(retrieval.Clock.Now(), retrieval.request.RetrievalID, candidate, ttfb, multicodec.TransportIpfsGatewayHttp))
 	})
 	cfg := verifiedcar.Config{
-		Root:               retrieval.request.Cid,
-		Selector:           retrieval.request.GetSelector(),
-		ExpectDuplicatesIn: true,
-		MaxBlocks:          retrieval.request.MaxBlocks,
+		Root:                   retrieval.request.Cid,
+		Selector:               retrieval.request.GetSelector(),
+		ExpectDuplicatesIn:     true,
+		MaxBlocks:              retrieval.request.MaxBlocks,
+		ZeroLengthSectionAsEof: includeMeta,
 	}
 
 	blockCount, byteCount, err := cfg.VerifyCar(ctx, rdr, retrieval.request.LinkSystem)
 	if err != nil {
 		return nil, err
 	}
+	var md httpmetadata.CarMetadata
+	if includeMeta {
+		if err := md.Deserialize(resp.Body); err != nil {
+			logger.Errorf("Did not get trailing metadata from http fetch from %s: %v", candidate.MinerPeer.ID, err)
+		}
+		if md.Metadata != nil {
+			if md.Metadata.Error != nil {
+				return nil, fmt.Errorf("storage provider reported an error: %v", *md.Metadata.Error)
+			}
+			if md.Metadata.Properties != nil {
+				if md.Metadata.Properties.BlockCount != int64(blockCount) {
+					return nil, fmt.Errorf("storage provider reported %d blocks, but we received %d", md.Metadata.Properties.BlockCount, blockCount)
+				}
+				if md.Metadata.Properties.CarBytes != rdr.count-1 { // -1 for the NUL byte at the end of the CAR
+					return nil, fmt.Errorf("storage provider reported CAR was %d bytes, but we received %d", md.Metadata.Properties.CarBytes, rdr.count)
+				}
+				if md.Metadata.Properties.DataBytes != int64(byteCount) {
+					return nil, fmt.Errorf("storage provider reported CAR block data was %d bytes, but we received %d", md.Metadata.Properties.DataBytes, byteCount)
+				}
+				// TODO: checksum?
+			}
+		}
+	}
 
 	duration := retrieval.Clock.Since(retrievalStart)
 	speed := uint64(float64(byteCount) / duration.Seconds())
 
-	return &types.RetrievalStats{
+	stats := types.RetrievalStats{
 		RootCid:           candidate.RootCid,
 		StorageProviderId: candidate.MinerPeer.ID,
 		Size:              byteCount,
@@ -147,7 +176,12 @@ func (ph *ProtocolHttp) Retrieve(
 		NumPayments:       0,
 		AskPrice:          big.Zero(),
 		TimeToFirstByte:   ttfb,
-	}, nil
+	}
+	if md.Metadata != nil && md.Metadata.Properties != nil {
+		stats.CarProperties = md.Metadata.Properties
+	}
+
+	return &stats, nil
 }
 
 func (ph *ProtocolHttp) beginRequest(ctx context.Context, request types.RetrievalRequest, candidate types.RetrievalCandidate) (resp *http.Response, err error) {
@@ -178,7 +212,7 @@ func makeRequest(ctx context.Context, request types.RetrievalRequest, candidate 
 		logger.Warnf("Couldn't construct a http request %s: %v", candidate.MinerPeer.ID, err)
 		return nil, fmt.Errorf("%w for peer %s: %v", ErrBadPathForRequest, candidate.MinerPeer.ID, err)
 	}
-	req.Header.Add("Accept", request.Scope.AcceptHeader())
+	req.Header.Add("Accept", httputil.RequestAcceptHeader)
 	req.Header.Add("X-Request-Id", request.RetrievalID.String())
 	req.Header.Add("User-Agent", build.UserAgent)
 
@@ -190,6 +224,7 @@ var _ io.Reader = (*timeToFirstByteReader)(nil)
 type timeToFirstByteReader struct {
 	r     io.Reader
 	first bool
+	count int64
 	cb    func()
 }
 
@@ -205,5 +240,6 @@ func (t *timeToFirstByteReader) Read(p []byte) (int, error) {
 		t.first = true
 		defer t.cb()
 	}
+	t.count += int64(len(p))
 	return t.r.Read(p)
 }

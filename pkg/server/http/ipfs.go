@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/filecoin-project/lassie/pkg/build"
+	"github.com/filecoin-project/lassie/pkg/httputil"
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/storage"
 	"github.com/filecoin-project/lassie/pkg/types"
@@ -16,21 +17,6 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
-)
-
-const (
-	MimeTypeCar                = "application/vnd.ipld.car"            // The only accepted MIME type
-	MimeTypeCarVersion         = "1"                                   // We only accept version 1 of the MIME type
-	FormatParameterCar         = "car"                                 // The only valid format parameter value
-	FilenameExtCar             = ".car"                                // The only valid filename extension
-	DefaultIncludeDupes        = true                                  // The default value for an unspecified "dups" parameter. See https://github.com/ipfs/specs/pull/412.
-	ResponseAcceptRangesHeader = "none"                                // We currently don't accept range requests
-	ResponseCacheControlHeader = "public, max-age=29030400, immutable" // Magic cache control values
-)
-
-var (
-	ResponseChunkDelimeter    = []byte("0\r\n") // An http/1.1 chunk delimeter, used for specifying an early end to the response
-	ResponseContentTypeHeader = fmt.Sprintf("%s; version=%s", MimeTypeCar, MimeTypeCarVersion)
 )
 
 func ipfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.ResponseWriter, *http.Request) {
@@ -56,13 +42,13 @@ func ipfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.Response
 			return
 		}
 
-		includeDupes, err := CheckFormat(req)
+		includeDupes, _, err := httputil.CheckFormat(req)
 		if err != nil {
 			errorResponse(res, statusLogger, http.StatusBadRequest, err)
 			return
 		}
 
-		fileName, err := ParseFilename(req)
+		fileName, err := httputil.ParseFilename(req)
 		if err != nil {
 			errorResponse(res, statusLogger, http.StatusBadRequest, err)
 			return
@@ -77,7 +63,7 @@ func ipfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.Response
 			return
 		}
 
-		dagScope, err := ParseScope(req)
+		dagScope, err := httputil.ParseScope(req)
 		if err != nil {
 			errorResponse(res, statusLogger, http.StatusBadRequest, err)
 			return
@@ -97,7 +83,7 @@ func ipfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.Response
 
 		// for setting Content-Disposition header based on filename url parameter
 		if fileName == "" {
-			fileName = fmt.Sprintf("%s%s", rootCid.String(), FilenameExtCar)
+			fileName = fmt.Sprintf("%s%s", rootCid.String(), httputil.FilenameExtCar)
 		}
 
 		retrievalId, err := types.NewRetrievalID()
@@ -150,9 +136,9 @@ func ipfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.Response
 			// called once we start writing blocks into the CAR (on the first Put())
 			res.Header().Set("Server", build.UserAgent) // "lassie/vx.y.z-<git commit hash>"
 			res.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", fileName))
-			res.Header().Set("Accept-Ranges", ResponseAcceptRangesHeader)
-			res.Header().Set("Cache-Control", ResponseCacheControlHeader)
-			res.Header().Set("Content-Type", ResponseContentTypeHeader)
+			res.Header().Set("Accept-Ranges", httputil.ResponseAcceptRangesHeader)
+			res.Header().Set("Cache-Control", httputil.ResponseCacheControlHeader)
+			res.Header().Set("Content-Type", httputil.ResponseContentTypeHeader)
 			res.Header().Set("Etag", request.Etag())
 			res.Header().Set("X-Content-Type-Options", "nosniff")
 			res.Header().Set("X-Ipfs-Path", "/"+datamodel.ParsePath(req.URL.Path).String())
@@ -270,7 +256,7 @@ func closeWithUnterminatedChunk(res http.ResponseWriter) error {
 	if err != nil {
 		return fmt.Errorf("unable to access conn through hijack interface: %w", err)
 	}
-	if _, err := buf.Write(ResponseChunkDelimeter); err != nil {
+	if _, err := buf.Write(httputil.ResponseChunkDelimeter); err != nil {
 		return fmt.Errorf("writing response chunk delimiter: %w", err)
 	}
 	if err := buf.Flush(); err != nil {
