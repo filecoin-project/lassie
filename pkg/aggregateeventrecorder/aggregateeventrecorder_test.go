@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"context"
 	"github.com/benbjohnson/clock"
 	"github.com/filecoin-project/lassie/pkg/aggregateeventrecorder"
 	"github.com/filecoin-project/lassie/pkg/events"
@@ -19,7 +20,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/net/context"
 )
 
 func TestAggregateEventRecorder(t *testing.T) {
