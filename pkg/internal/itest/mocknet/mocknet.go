@@ -3,7 +3,6 @@ package mocknet
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -162,10 +161,6 @@ func (mcf *mockCandidateFinder) FindCandidates(ctx context.Context, cid cid.Cid)
 			}
 			candidates = append(candidates, types.RetrievalCandidate{MinerPeer: *h.AddrInfo(), RootCid: cid, Metadata: md})
 		}
-	}
-	fmt.Println("Returning candidates:", len(candidates))
-	for _, c := range candidates {
-		fmt.Println("\tCandidate:", c.MinerPeer.Addrs[0])
 	}
 	return candidates, nil
 }

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 
 	"github.com/ipfs/boxo/blockstore"
@@ -50,18 +49,14 @@ func (lsbs *LinkSystemBlockstore) Get(ctx context.Context, c cid.Cid) (blocks.Bl
 }
 
 func (lsbs *LinkSystemBlockstore) GetSize(ctx context.Context, c cid.Cid) (int, error) {
-	fmt.Println("LinkSystemBlockstore.GetSize", c.String())
 	rdr, err := lsbs.lsys.StorageReadOpener(linking.LinkContext{Ctx: ctx}, cidlink.Link{Cid: c})
 	if err != nil {
-		fmt.Println("LinkSystemBlockstore.GetSize sro err", c.String(), err.Error())
 		return 0, err
 	}
 	i, err := io.Copy(io.Discard, rdr)
 	if err != nil {
-		fmt.Println("LinkSystemBlockstore.GetSize copy err", c.String(), err.Error())
 		return 0, err
 	}
-	fmt.Println("LinkSystemBlockstore.GetSize=", c.String(), i)
 	return int(i), nil
 }
 

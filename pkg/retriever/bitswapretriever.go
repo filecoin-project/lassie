@@ -163,10 +163,6 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		return nil, nil
 	}
 
-	fmt.Println("hasCandidates", hasCandidates, "nextCandidates", len(nextCandidates))
-	for _, c := range nextCandidates {
-		fmt.Println("\tnextCandidates", c.MinerPeer.Addrs)
-	}
 	br.events(events.StartedRetrieval(br.clock.Now(), br.request.RetrievalID, bitswapCandidate, multicodec.TransportBitswap))
 
 	// set initial providers, then start a goroutine to add more as they come in
@@ -315,9 +311,6 @@ func easyTraverse(
 	preloader preload.Loader,
 	maxBlocks uint64,
 ) error {
-
-	fmt.Println("easyTraverse", root.String())
-
 	lsys, ecr := newErrorCapturingReader(lsys)
 	protoChooser := dagpb.AddSupportToChooser(basicnode.Chooser)
 
@@ -330,8 +323,6 @@ func easyTraverse(
 	if err != nil {
 		return err
 	}
-
-	fmt.Println("easyTraverse, loaded root", root.String())
 
 	progress := traversal.Progress{
 		Cfg: &traversal.Config{
@@ -353,13 +344,7 @@ func easyTraverse(
 		return err
 	}
 
-	if err := progress.WalkAdv(node, compiledSelector, func(p traversal.Progress, n datamodel.Node, vr traversal.VisitReason) error {
-		fmt.Println("WalkAdv", p.LastBlock.Link.String(), p.LastBlock.Path.String(), p.Path.String(), vr)
-		if vr == traversal.VisitReason_SelectionMatch {
-			return unixfsnode.BytesConsumingMatcher(p, n)
-		}
-		return nil
-	}); err != nil {
+	if err := progress.WalkMatching(node, compiledSelector, unixfsnode.BytesConsumingMatcher); err != nil {
 		return err
 	}
 	return ecr.Error
