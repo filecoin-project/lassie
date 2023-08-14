@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"context"
+
 	"github.com/benbjohnson/clock"
 	"github.com/filecoin-project/lassie/pkg/aggregateeventrecorder"
 	"github.com/filecoin-project/lassie/pkg/events"
