@@ -296,6 +296,7 @@ func (cs *PreloadCachingStorage) Loader(linkCtx linking.LinkContext, link ipld.L
 		fmt.Println("cache miss, fetcher()", link.String())
 		r, err := cs.fetcher(linkCtx, link)
 		if err != nil {
+			fmt.Println("cache miss, fetcher() failed", link.String())
 			if nf, ok := err.(interface{ NotFound() bool }); ok && nf.NotFound() {
 				cs.preloadsLk.Lock()
 				cs.notFound[string(link.(cidlink.Link).Cid.Hash())] = struct{}{}
@@ -303,6 +304,7 @@ func (cs *PreloadCachingStorage) Loader(linkCtx linking.LinkContext, link ipld.L
 			}
 			return nil, err
 		}
+		fmt.Println("load link successfully from after cache miss, link=", link.String())
 		logger.Debugw("load link successfully from after cache miss", "link", link)
 		// loaded from fetcher, write to parent and return
 		return cs.loadToParent(r, linkCtx, link)
@@ -354,15 +356,19 @@ func (cs *PreloadCachingStorage) Loader(linkCtx linking.LinkContext, link ipld.L
 func (cs *PreloadCachingStorage) loadToParent(reader io.Reader, linkCtx linking.LinkContext, link ipld.Link) (io.Reader, error) {
 	writer, c, err := cs.parentLinkSystem.StorageWriteOpener(linkCtx)
 	if err != nil {
+		fmt.Println("loadToParent swo err", link.String(), err.Error())
 		return nil, err
 	}
 	byts, err := io.ReadAll(io.TeeReader(reader, writer)) // slurp it in so the writer can commit
 	if err != nil {
+		fmt.Println("loadToParent readAll err", link.String(), err.Error())
 		return nil, err
 	}
 	if err = c(link); err != nil {
+		fmt.Println("loadToParent commit err", link.String(), err.Error())
 		return nil, err
 	}
+	fmt.Println("loadToParent done", link.String())
 	return bytes.NewBuffer(byts), nil
 }
 
