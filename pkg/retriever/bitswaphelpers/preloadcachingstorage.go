@@ -173,6 +173,7 @@ func (cs *PreloadCachingStorage) Preloader(preloadCtx preload.PreloadContext, li
 	cs.preloadsLk.Lock()
 	defer cs.preloadsLk.Unlock()
 
+	fmt.Println("Preloader link", link.Link.String())
 	logger.Debugw("preload link", "link", link)
 
 	// links coming in here aren't necessarily deduplicated and may be ones we've
@@ -292,6 +293,7 @@ func (cs *PreloadCachingStorage) Loader(linkCtx linking.LinkContext, link ipld.L
 		// 4a. If the block is not in the preload list
 		cs.preloadMisses++
 		// load directly from the fetcher, if it can be fetched
+		fmt.Println("cache miss, fetcher()", link.String())
 		r, err := cs.fetcher(linkCtx, link)
 		if err != nil {
 			if nf, ok := err.(interface{ NotFound() bool }); ok && nf.NotFound() {
@@ -312,6 +314,7 @@ func (cs *PreloadCachingStorage) Loader(linkCtx linking.LinkContext, link ipld.L
 	// preloadLink() will process it right now if it's in the queue, or be a
 	// noop if it's in progress with the preloader; either way we wait on
 	// pl.loaded.
+	fmt.Println("queueing preload link=", link.String())
 	cs.preloadLink(pl, linkCtx, link)
 
 	select {
@@ -332,12 +335,14 @@ func (cs *PreloadCachingStorage) Loader(linkCtx linking.LinkContext, link ipld.L
 			// retriever fills the block in the parent store, so we repeat the
 			// parent store check here.
 			if r, err := linkSystemGetStream(cs.parentLinkSystem, linkCtx, link); r != nil && err == nil {
+				fmt.Println("load link successfully from after cache hit from main store, link=", link.String())
 				logger.Debugw("load link successfully from after cache hit from main store", "link", link)
 				return r, nil // found in parent, return
 			} else if err != nil {
 				return nil, err
 			}
 		}
+		fmt.Println("load link successfully from after cache hit, link=", link.String())
 		logger.Debugw("load link successfully from after cache hit", "link", link)
 		// loaded from cache, write to parent and return
 		return cs.loadToParent(r, linkCtx, link)
@@ -364,6 +369,7 @@ func (cs *PreloadCachingStorage) loadToParent(reader io.Reader, linkCtx linking.
 func (cs *PreloadCachingStorage) preloadLink(pl *preloadingLink, linkCtx linking.LinkContext, link ipld.Link) {
 	pl.loadSyncer.Do(func() {
 		defer close(pl.loaded)
+		fmt.Println("preloadLink fetcher()", link.String())
 		reader, err := cs.fetcher(linkCtx, link)
 		if err != nil {
 			if nf, ok := err.(interface{ NotFound() bool }); ok && nf.NotFound() {
