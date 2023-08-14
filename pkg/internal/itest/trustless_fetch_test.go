@@ -32,6 +32,13 @@ func TestTrustlessUnixfsFetch(t *testing.T) {
 		panic(err)
 	}
 	log.SetAllLoggers(lvl)
+	defer func() {
+		lvl, err := log.LevelFromString("error")
+		if err != nil {
+			panic(err)
+		}
+		log.SetAllLoggers(lvl)
+	}()
 
 	testCases, err := trustlesspathing.Unixfs20mVarietyCases()
 	req.NoError(err)
