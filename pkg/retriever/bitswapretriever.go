@@ -284,6 +284,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 
 func loaderForSession(retrievalID types.RetrievalID, inProgressCids InProgressCids, bs blockservice.BlockGetter) linking.BlockReadOpener {
 	return func(lctx linking.LinkContext, lnk datamodel.Link) (io.Reader, error) {
+		fmt.Println("loaderForSession", lnk.String())
 		cidLink, ok := lnk.(cidlink.Link)
 		if !ok {
 			return nil, fmt.Errorf("invalid link type for loading: %v", lnk)
@@ -294,7 +295,9 @@ func loaderForSession(retrievalID types.RetrievalID, inProgressCids InProgressCi
 			return nil, lctx.Ctx.Err()
 		default:
 		}
+		fmt.Println("bs.GetBlock()", cidLink.Cid.String())
 		blk, err := bs.GetBlock(lctx.Ctx, cidLink.Cid)
+		fmt.Println("bs.GetBlock() done", cidLink.Cid.String(), err)
 		inProgressCids.Dec(cidLink.Cid, retrievalID)
 		if err != nil {
 			return nil, err
