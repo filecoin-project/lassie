@@ -11,7 +11,7 @@ require (
 	github.com/filecoin-project/go-state-types v0.10.0
 	github.com/google/uuid v1.3.0
 	github.com/hannahhoward/go-pubsub v1.0.0
-	github.com/ipfs/boxo v0.10.1-0.20230815232555-428ef5fb9149
+	github.com/ipfs/boxo v0.10.1-0.20230815235545-2bfff9a24c2b
 	github.com/ipfs/go-block-format v0.1.2
 	github.com/ipfs/go-cid v0.4.1
 	github.com/ipfs/go-datastore v0.6.0
