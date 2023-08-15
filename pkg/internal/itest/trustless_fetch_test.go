@@ -60,6 +60,9 @@ func TestTrustlessUnixfsFetch(t *testing.T) {
 
 				req.NoError(mrn.MN.LinkAll())
 				mrn.Remotes[0].Cids[tc.Root] = struct{}{}
+				// pre-connect while https://github.com/ipfs/boxo/issues/432 remains unresolved
+				_, err := mrn.MN.ConnectPeers(mrn.Self.ID(), mrn.Remotes[0].ID)
+				req.NoError(err)
 
 				lassie, err := lassie.NewLassie(
 					ctx,
