@@ -58,7 +58,7 @@ func TestTrustlessUnixfsFetch(t *testing.T) {
 					mrn.AddBitswapPeers(1, testpeer.WithLinkSystem(lsys))
 				}
 
-				require.NoError(t, mrn.MN.LinkAll())
+				req.NoError(mrn.MN.LinkAll())
 				mrn.Remotes[0].Cids[tc.Root] = struct{}{}
 
 				lassie, err := lassie.NewLassie(
@@ -119,7 +119,7 @@ func TestTrustlessUnixfsFetch(t *testing.T) {
 				req.Equal(`"`, etagGot[len(etagGot)-1:], "ETag should end with a quote")
 				req.Equal(fmt.Sprintf("/ipfs/%s%s", tc.Root.String(), tc.Path), resp.Header.Get("X-Ipfs-Path"))
 				requestId := resp.Header.Get("X-Trace-Id")
-				require.NotEmpty(t, requestId)
+				req.NotEmpty(requestId)
 				_, err = uuid.Parse(requestId)
 				req.NoError(err)
 
