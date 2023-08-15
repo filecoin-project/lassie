@@ -65,4 +65,43 @@ jobs:
         uses: protocol/multiple-go-modules@v1.4
         with:
           run: cd pkg/internal/itest && GOLOG_LOG_LEVEL=debug go test -v -run TestTrustlessUnixfsFetch/small_file_in_directory/block/bitswap
-  
+      - name: Run TestTrustlessUnixfsFetch/small_file_in_directory/block/bitswap 11
+        uses: protocol/multiple-go-modules@v1.4
+        with:
+          run: cd pkg/internal/itest && GOLOG_LOG_LEVEL=debug go test -v -run TestTrustlessUnixfsFetch/small_file_in_directory/block/bitswap
+      - name: Run TestTrustlessUnixfsFetch/small_file_in_directory/block/bitswap 12
+        uses: protocol/multiple-go-modules@v1.4
+        with:
+          run: cd pkg/internal/itest && GOLOG_LOG_LEVEL=debug go test -v -run TestTrustlessUnixfsFetch/small_file_in_directory/block/bitswap
+      - name: Run TestTrustlessUnixfsFetch/small_file_in_directory/block/bitswap 13
+        uses: protocol/multiple-go-modules@v1.4
+        with:
+          run: cd pkg/internal/itest && GOLOG_LOG_LEVEL=debug go test -v -run TestTrustlessUnixfsFetch/small_file_in_directory/block/bitswap
+      - name: Run TestTrustlessUnixfsFetch/small_file_in_directory/block/bitswap 14
+        uses: protocol/multiple-go-modules@v1.4
+        with:
+          run: cd pkg/internal/itest && GOLOG_LOG_LEVEL=debug go test -v -run TestTrustlessUnixfsFetch/small_file_in_directory/block/bitswap
+      - name: Run TestTrustlessUnixfsFetch/small_file_in_directory/block/bitswap 15
+        uses: protocol/multiple-go-modules@v1.4
+        with:
+          run: cd pkg/internal/itest && GOLOG_LOG_LEVEL=debug go test -v -run TestTrustlessUnixfsFetch/small_file_in_directory/block/bitswap
+      - name: Run TestTrustlessUnixfsFetch/small_file_in_directory/block/bitswap 16
+        uses: protocol/multiple-go-modules@v1.4
+        with:
+          run: cd pkg/internal/itest && GOLOG_LOG_LEVEL=debug go test -v -run TestTrustlessUnixfsFetch/small_file_in_directory/block/bitswap
+      - name: Run TestTrustlessUnixfsFetch/small_file_in_directory/block/bitswap 17
+        uses: protocol/multiple-go-modules@v1.4
+        with:
+          run: cd pkg/internal/itest && GOLOG_LOG_LEVEL=debug go test -v -run TestTrustlessUnixfsFetch/small_file_in_directory/block/bitswap
+      - name: Run TestTrustlessUnixfsFetch/small_file_in_directory/block/bitswap 18
+        uses: protocol/multiple-go-modules@v1.4
+        with:
+          run: cd pkg/internal/itest && GOLOG_LOG_LEVEL=debug go test -v -run TestTrustlessUnixfsFetch/small_file_in_directory/block/bitswap
+      - name: Run TestTrustlessUnixfsFetch/small_file_in_directory/block/bitswap 19
+        uses: protocol/multiple-go-modules@v1.4
+        with:
+          run: cd pkg/internal/itest && GOLOG_LOG_LEVEL=debug go test -v -run TestTrustlessUnixfsFetch/small_file_in_directory/block/bitswap
+      - name: Run TestTrustlessUnixfsFetch/small_file_in_directory/block/bitswap 20
+        uses: protocol/multiple-go-modules@v1.4
+        with:
+          run: cd pkg/internal/itest && GOLOG_LOG_LEVEL=debug go test -v -run TestTrustlessUnixfsFetch/small_file_in_directory/block/bitswap
