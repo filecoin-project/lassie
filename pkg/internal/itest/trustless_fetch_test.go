@@ -16,7 +16,6 @@ import (
 	"github.com/filecoin-project/lassie/pkg/lassie"
 	httpserver "github.com/filecoin-project/lassie/pkg/server/http"
 	"github.com/google/uuid"
-	"github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-unixfsnode"
 	"github.com/ipld/go-car/v2"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -26,19 +25,6 @@ import (
 
 func TestTrustlessUnixfsFetch(t *testing.T) {
 	req := require.New(t)
-
-	lvl, err := log.LevelFromString("debug")
-	if err != nil {
-		panic(err)
-	}
-	log.SetAllLoggers(lvl)
-	defer func() {
-		lvl, err := log.LevelFromString("error")
-		if err != nil {
-			panic(err)
-		}
-		log.SetAllLoggers(lvl)
-	}()
 
 	testCases, err := trustlesspathing.Unixfs20mVarietyCases()
 	req.NoError(err)
