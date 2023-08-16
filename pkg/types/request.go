@@ -150,32 +150,32 @@ func PathScopeSelector(path string, scope DagScope, bytes *ByteRange) ipld.Node 
 	terminal := scope.TerminalSelectorSpec()
 	if !bytes.IsDefault() {
 		var to int64 = math.MaxInt64
-		if bytes.To != nil && *bytes.To > 0 {
-			to = *bytes.To + 1 // selector is exclusive, so increment the end
-		}
-		// TODO: negative ranges are not currently supported, we fall-back to matching entire file
-		if bytes.From >= 0 && to >= 0 {
-			ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
-			// if we reach a terminal and it's not a file, then we need to fall-back to the default
-			// selector for the given scope. We do this with a union of the original terminal.
-			if scope == DagScopeEntity {
-				// entity is a special case which we can't just union with our matcher because it
-				// has its own matcher in it which we need to replace with the subset matcher.
-				terminal = ssb.ExploreInterpretAs("unixfs",
-					ssb.ExploreUnion(
-						ssb.MatcherSubset(bytes.From, to),
-						ssb.ExploreRecursive(
-							selector.RecursionLimitDepth(1),
-							ssb.ExploreAll(ssb.ExploreRecursiveEdge()),
-						),
-					),
-				)
-			} else {
-				terminal = ssb.ExploreUnion(
-					ssb.ExploreInterpretAs("unixfs", ssb.MatcherSubset(bytes.From, to)),
-					terminal,
-				)
+		if bytes.To != nil {
+			to = *bytes.To
+			if to > 0 {
+				to++ // selector is exclusive, so increment the end
 			}
+		}
+		ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
+		// if we reach a terminal and it's not a file, then we need to fall-back to the default
+		// selector for the given scope. We do this with a union of the original terminal.
+		if scope == DagScopeEntity {
+			// entity is a special case which we can't just union with our matcher because it
+			// has its own matcher in it which we need to replace with the subset matcher.
+			terminal = ssb.ExploreInterpretAs("unixfs",
+				ssb.ExploreUnion(
+					ssb.MatcherSubset(bytes.From, to),
+					ssb.ExploreRecursive(
+						selector.RecursionLimitDepth(1),
+						ssb.ExploreAll(ssb.ExploreRecursiveEdge()),
+					),
+				),
+			)
+		} else {
+			terminal = ssb.ExploreUnion(
+				ssb.ExploreInterpretAs("unixfs", ssb.MatcherSubset(bytes.From, to)),
+				terminal,
+			)
 		}
 	}
 	return unixfsnode.UnixFSPathSelectorBuilder(path, terminal, false)
