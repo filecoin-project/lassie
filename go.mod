@@ -25,8 +25,8 @@ require (
 	github.com/ipfs/go-unixfsnode v1.7.2
 	github.com/ipld/go-car/v2 v2.10.2-0.20230622090957-499d0c909d33
 	github.com/ipld/go-codec-dagpb v1.6.0
-	github.com/ipld/go-ipld-prime v0.20.1-0.20230707090759-349deb22a1fd
-	github.com/ipld/ipld/specs v0.0.0-20230705075038-29da2e853cdb
+	github.com/ipld/go-ipld-prime v0.21.0
+	github.com/ipld/ipld/specs v0.0.0-20230816230151-73f8fbea1783
 	github.com/ipni/go-libipni v0.0.8-0.20230425184153-86a1fcb7f7ff
 	github.com/libp2p/go-libp2p v0.27.8
 	github.com/libp2p/go-libp2p-routing-helpers v0.7.0
