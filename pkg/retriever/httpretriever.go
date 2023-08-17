@@ -15,6 +15,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/filecoin-project/lassie/pkg/verifiedcar"
 	"github.com/ipfs/go-cid"
+	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/multiformats/go-multicodec"
 )
@@ -126,6 +127,7 @@ func (ph *ProtocolHttp) Retrieve(
 		Selector:           retrieval.request.GetSelector(),
 		ExpectDuplicatesIn: true,
 		MaxBlocks:          retrieval.request.MaxBlocks,
+		ExpectPath:         datamodel.ParsePath(retrieval.request.Path),
 	}
 
 	blockCount, byteCount, err := cfg.VerifyCar(ctx, rdr, retrieval.request.LinkSystem)

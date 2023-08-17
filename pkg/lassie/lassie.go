@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/filecoin-project/lassie/pkg/indexerlookup"
-	"github.com/filecoin-project/lassie/pkg/net/client"
 	"github.com/filecoin-project/lassie/pkg/net/host"
 	"github.com/filecoin-project/lassie/pkg/retriever"
+	"github.com/filecoin-project/lassie/pkg/retriever/graphsync/client"
 	"github.com/filecoin-project/lassie/pkg/session"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-datastore"

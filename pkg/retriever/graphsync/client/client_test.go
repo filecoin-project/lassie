@@ -10,6 +10,7 @@ import (
 	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/ipfs/go-cid"
+	"github.com/ipfs/go-graphsync"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -51,6 +52,7 @@ func TestClient(t *testing.T) {
 		},
 	}
 	eventsCb := func(event datatransfer.Event, channelState datatransfer.ChannelState) {}
+	progressCb := func(prog graphsync.ResponseProgress) {}
 	gracefulShutdownRequested := make(chan struct{})
 
 	stats, err := client.RetrieveFromPeer(
@@ -60,6 +62,7 @@ func TestClient(t *testing.T) {
 		proposal,
 		selector,
 		0,
+		progressCb,
 		eventsCb,
 		gracefulShutdownRequested,
 	)
@@ -76,7 +79,6 @@ func TestClient(t *testing.T) {
 	gotVoucher, err := retrievaltypes.BindnodeRegistry.TypeFromNode(voucher.Voucher, (*retrievaltypes.DealProposal)(nil))
 	require.NoError(t, err)
 	require.Equal(t, proposal, gotVoucher)
-
 	require.Equal(t, proposal.PayloadCID, gotLoadFor)
 }
 
@@ -99,6 +101,7 @@ func TestClient_BadSelector(t *testing.T) {
 		},
 	}
 	eventsCb := func(event datatransfer.Event, channelState datatransfer.ChannelState) {}
+	progressCb := func(prog graphsync.ResponseProgress) {}
 	gracefulShutdownRequested := make(chan struct{})
 
 	stats, err := client.RetrieveFromPeer(
@@ -108,6 +111,7 @@ func TestClient_BadSelector(t *testing.T) {
 		proposal,
 		selector,
 		0,
+		progressCb,
 		eventsCb,
 		gracefulShutdownRequested,
 	)

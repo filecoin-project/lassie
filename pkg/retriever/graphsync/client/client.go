@@ -25,8 +25,9 @@ import (
 	"github.com/filecoin-project/lassie/pkg/types"
 
 	"github.com/ipfs/go-datastore"
+	"github.com/ipfs/go-graphsync"
 
-	graphsync "github.com/ipfs/go-graphsync/impl"
+	gsimpl "github.com/ipfs/go-graphsync/impl"
 	gsnetwork "github.com/ipfs/go-graphsync/network"
 
 	"github.com/ipfs/go-log/v2"
@@ -70,7 +71,7 @@ type RetrievalClient struct {
 type Config struct {
 	ChannelMonitorConfig dtchannelmonitor.Config
 	Datastore            datastore.Batching
-	GraphsyncOpts        []graphsync.Option
+	GraphsyncOpts        []gsimpl.Option
 	Host                 host.Host
 	RetrievalConfigurer  datatransfer.TransportConfigurer
 }
@@ -90,16 +91,16 @@ func NewClient(ctx context.Context, datastore datastore.Batching, host host.Host
 			//OnRestartComplete func(id datatransfer.ChannelID)
 		},
 		Datastore: datastore,
-		GraphsyncOpts: []graphsync.Option{
-			graphsync.MaxInProgressIncomingRequests(maxInProgressIncomingRequests),
-			graphsync.MaxInProgressOutgoingRequests(maxInProgressOutgoingRequests),
-			graphsync.MaxMemoryResponder(maxMemoryResponder),
-			graphsync.MaxMemoryPerPeerResponder(maxMemoryPerPeerResponder),
-			graphsync.MaxInProgressIncomingRequestsPerPeer(maxInProgressIncomingRequestsPerPeer),
-			graphsync.MessageSendRetries(messageSendRetries),
-			graphsync.SendMessageTimeout(sendMessageTimeout),
-			graphsync.MaxLinksPerIncomingRequests(maxTraversalLinks),
-			graphsync.MaxLinksPerOutgoingRequests(maxTraversalLinks),
+		GraphsyncOpts: []gsimpl.Option{
+			gsimpl.MaxInProgressIncomingRequests(maxInProgressIncomingRequests),
+			gsimpl.MaxInProgressOutgoingRequests(maxInProgressOutgoingRequests),
+			gsimpl.MaxMemoryResponder(maxMemoryResponder),
+			gsimpl.MaxMemoryPerPeerResponder(maxMemoryPerPeerResponder),
+			gsimpl.MaxInProgressIncomingRequestsPerPeer(maxInProgressIncomingRequestsPerPeer),
+			gsimpl.MessageSendRetries(messageSendRetries),
+			gsimpl.SendMessageTimeout(sendMessageTimeout),
+			gsimpl.MaxLinksPerIncomingRequests(maxTraversalLinks),
+			gsimpl.MaxLinksPerOutgoingRequests(maxTraversalLinks),
 		},
 		Host: host,
 	}
@@ -113,12 +114,11 @@ func NewClient(ctx context.Context, datastore datastore.Batching, host host.Host
 
 // Creates a new RetrievalClient with the given Config
 func NewClientWithConfig(ctx context.Context, cfg *Config) (*RetrievalClient, error) {
-
-	graphSync := graphsync.New(ctx,
+	graphSync := gsimpl.New(ctx,
 		gsnetwork.NewFromLibp2pHost(cfg.Host),
 		cidlink.DefaultLinkSystem(),
 		cfg.GraphsyncOpts...,
-	).(*graphsync.GraphSync)
+	).(*gsimpl.GraphSync)
 
 	dtNetwork := dtnetwork.NewFromLibp2pHost(cfg.Host)
 	dtTransport := dttransport.NewTransport(cfg.Host.ID(), graphSync)
@@ -183,6 +183,7 @@ func (rc *RetrievalClient) RetrieveFromPeer(
 	proposal *retrievaltypes.DealProposal,
 	sel ipld.Node,
 	maxBlocks uint64,
+	progressCallback func(graphsync.ResponseProgress),
 	eventsCallback datatransfer.Subscriber,
 	gracefulShutdownRequested <-chan struct{},
 ) (*types.RetrievalStats, error) {
@@ -313,6 +314,7 @@ func (rc *RetrievalClient) RetrieveFromPeer(
 		datatransfer.WithTransportOptions(
 			dttransport.UseStore(linkSystem),
 			dttransport.MaxLinks(maxBlocks),
+			dttransport.WithResponseProgressListener(progressCallback),
 		),
 	)
 	if err != nil {
@@ -333,7 +335,6 @@ awaitfinished:
 			if err != nil {
 				return nil, fmt.Errorf("data transfer failed: %w", err)
 			}
-
 			logger.Debugf("data transfer for retrieval complete")
 			break awaitfinished
 		case <-gracefulShutdownRequested:

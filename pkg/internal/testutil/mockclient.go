@@ -12,6 +12,7 @@ import (
 	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
+	"github.com/ipfs/go-graphsync"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -24,9 +25,10 @@ type DelayedConnectReturn struct {
 }
 
 type DelayedClientReturn struct {
-	ResultStats *types.RetrievalStats
-	ResultErr   error
-	Delay       time.Duration
+	ResultStats   *types.RetrievalStats
+	ProgressPaths []string
+	ResultErr     error
+	Delay         time.Duration
 }
 
 type ClientRetrievalRequest struct {
@@ -182,6 +184,7 @@ func (mc *MockClient) RetrieveFromPeer(
 	proposal *retrievaltypes.DealProposal,
 	selector ipld.Node,
 	maxBlocks uint64,
+	progressCallback func(graphsync.ResponseProgress),
 	eventsCallback datatransfer.Subscriber,
 	gracefulShutdownRequested <-chan struct{},
 ) (*types.RetrievalStats, error) {
@@ -209,6 +212,11 @@ func (mc *MockClient) RetrieveFromPeer(
 		case <-gracefulShutdownRequested:
 			return nil, context.Canceled
 		case <-timer.C:
+		}
+		for _, path := range drr.ProgressPaths {
+			progressCallback(graphsync.ResponseProgress{
+				Path: datamodel.ParsePath(path),
+			})
 		}
 		eventsCallback(datatransfer.Event{Code: datatransfer.Open}, nil)
 		if drr.ResultStats != nil {

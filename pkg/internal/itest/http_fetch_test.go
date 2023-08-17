@@ -64,21 +64,20 @@ func TestHttpFetch(t *testing.T) {
 	wrapPath := "/want2/want1/want0"
 
 	testCases := []struct {
-		name               string
-		graphsyncRemotes   int
-		bitswapRemotes     int
-		httpRemotes        int
-		disableGraphsync   bool
-		expectFail         bool
-		expectUncleanEnd   bool
-		expectUnauthorized bool
-		modifyHttpConfig   func(httpserver.HttpServerConfig) httpserver.HttpServerConfig
-		generate           func(*testing.T, io.Reader, []testpeer.TestPeer) []unixfs.DirEntry
-		paths              []string
-		setHeader          headerSetter
-		modifyQueries      []queryModifier
-		validateBodies     []bodyValidator
-		lassieOpts         lassieOptsGen
+		name             string
+		graphsyncRemotes int
+		bitswapRemotes   int
+		httpRemotes      int
+		disableGraphsync bool
+		expectStatusCode int
+		expectUncleanEnd bool
+		modifyHttpConfig func(httpserver.HttpServerConfig) httpserver.HttpServerConfig
+		generate         func(*testing.T, io.Reader, []testpeer.TestPeer) []unixfs.DirEntry
+		paths            []string
+		setHeader        headerSetter
+		modifyQueries    []queryModifier
+		validateBodies   []bodyValidator
+		lassieOpts       lassieOptsGen
 	}{
 		{
 			name:             "graphsync large sharded file",
@@ -691,6 +690,54 @@ func TestHttpFetch(t *testing.T) {
 			}},
 		},
 		{
+			name:             "graphsync nested file, with path plus extra, unclean end (path unfulfilled)",
+			graphsyncRemotes: 1,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				lsys := remotes[0].LinkSystem
+				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 1024), wrapPath, false)}
+			},
+			paths:         []string{wrapPath + "/more/not/here"},
+			modifyQueries: []queryModifier{entityQuery},
+			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
+				// no validation, Go's body parser will fail on the unclean end and we're unlikely
+				// to have enough content quick enough to parse before it encounters the unclean end
+				// and returns nothing
+			}},
+			expectUncleanEnd: true,
+		},
+		{
+			name:           "bitswap nested file, with path plus extra, unclean end (path unfulfilled)",
+			bitswapRemotes: 1,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				lsys := remotes[0].LinkSystem
+				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 1024), wrapPath, false)}
+			},
+			paths:         []string{wrapPath + "/more/not/here"},
+			modifyQueries: []queryModifier{entityQuery},
+			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
+				// no validation, Go's body parser will fail on the unclean end and we're unlikely
+				// to have enough content quick enough to parse before it encounters the unclean end
+				// and returns nothing
+			}},
+			expectUncleanEnd: true,
+		},
+		{
+			name:        "http nested file, with path plus extra, unclean end (path unfulfilled)",
+			httpRemotes: 1,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				lsys := remotes[0].LinkSystem
+				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 1024), wrapPath, false)}
+			},
+			paths:         []string{wrapPath + "/more/not/here"},
+			modifyQueries: []queryModifier{entityQuery},
+			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
+				// no validation, Go's body parser will fail on the unclean end and we're unlikely
+				// to have enough content quick enough to parse before it encounters the unclean end
+				// and returns nothing
+			}},
+			expectUncleanEnd: true,
+		},
+		{
 			// A very contrived example - we spread the content generated for this test across 4 peers,
 			// then we also make sure the root is in all of them, so the CandidateFinder will return them
 			// all. The retriever should then form a swarm of 4 peers and fetch the content from across
@@ -765,7 +812,7 @@ func TestHttpFetch(t *testing.T) {
 			name:             "two separate, parallel graphsync retrievals, with graphsync disabled",
 			graphsyncRemotes: 2,
 			disableGraphsync: true,
-			expectFail:       true,
+			expectStatusCode: http.StatusGatewayTimeout,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{
 					unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20),
@@ -929,7 +976,7 @@ func TestHttpFetch(t *testing.T) {
 				cfg.AccessToken = "super-secret"
 				return cfg
 			},
-			expectUnauthorized: true,
+			expectStatusCode: http.StatusUnauthorized,
 		},
 		{
 			name:        "with access token - allows requests with authorization header",
@@ -945,7 +992,7 @@ func TestHttpFetch(t *testing.T) {
 				header.Set("Authorization", "Bearer super-secret")
 				header.Add("Accept", "application/vnd.ipld.car")
 			},
-			expectUnauthorized: false,
+			expectStatusCode: http.StatusOK, // i.e. not StatusUnauthorized
 		},
 	}
 
@@ -1059,10 +1106,8 @@ func TestHttpFetch(t *testing.T) {
 			}
 
 			for i, resp := range responses {
-				if testCase.expectFail {
-					req.Equal(http.StatusGatewayTimeout, resp.StatusCode)
-				} else if testCase.expectUnauthorized {
-					req.Equal(http.StatusUnauthorized, resp.StatusCode)
+				if testCase.expectStatusCode != 0 && testCase.expectStatusCode != http.StatusOK {
+					req.Equal(testCase.expectStatusCode, resp.StatusCode)
 				} else {
 					if resp.StatusCode != http.StatusOK {
 						body, err := io.ReadAll(resp.Body)

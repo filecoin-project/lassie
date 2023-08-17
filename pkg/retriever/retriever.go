@@ -28,6 +28,7 @@ var (
 	ErrProposalCreationFailed      = errors.New("proposal creation failed")
 	ErrRetrievalRegistrationFailed = errors.New("retrieval registration failed")
 	ErrRetrievalFailed             = errors.New("retrieval failed")
+	ErrRetrievalVerificationFailed = errors.New("retrieval verification failed")
 	ErrAllRetrievalsFailed         = errors.New("all retrievals failed")
 	ErrConnectFailed               = errors.New("unable to connect to provider")
 	ErrAllQueriesFailed            = errors.New("all queries failed")

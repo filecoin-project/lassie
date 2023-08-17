@@ -157,9 +157,11 @@ func TestVerifiedCar(t *testing.T) {
 	allSelector := selectorparse.CommonSelector_ExploreAllRecursively
 
 	wrapPath := "/some/path/to/content"
+	wrapPathPlusMore := wrapPath + "/nope/not/here"
 
 	unixfsFile := testutil.GenerateNoDupes(func() unixfs.DirEntry { return unixfs.GenerateFile(t, &lsys, rndReader, 4<<20) })
 	unixfsFileBlocks := testutil.ToBlocks(t, lsys, unixfsFile.Root, allSelector)
+	unixfsSmallFile := testutil.GenerateNoDupes(func() unixfs.DirEntry { return unixfs.GenerateFile(t, &lsys, rndReader, 1024) })
 
 	unixfsFileRange0_1048576Blocks := unixfsFileBlocks[0:6]
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
@@ -203,6 +205,7 @@ func TestVerifiedCar(t *testing.T) {
 		ssb.ExploreAll(ssb.ExploreRecursiveEdge()),
 	))
 	unixfsWrappedPreloadPathSelectorSubst := unixfsnode.UnixFSPathSelectorBuilder(wrapPath, preloadSubst, false)
+	unixfsWrappedPathPlusMoreSelector := unixfsnode.UnixFSPathSelectorBuilder(wrapPathPlusMore, unixfsnode.ExploreAllRecursivelySelector, false)
 
 	unixfsWrappedFile := testutil.GenerateNoDupes(func() unixfs.DirEntry { return unixfs.WrapContent(t, rndReader, &lsys, unixfsFile, wrapPath, false) })
 	unixfsWrappedFileBlocks := testutil.ToBlocks(t, lsys, unixfsWrappedFile.Root, allSelector)
@@ -211,6 +214,10 @@ func TestVerifiedCar(t *testing.T) {
 	unixfsTrimmedWrappedFileBlocks := testutil.ToBlocks(t, lsys, unixfsWrappedFile.Root, unixfsWrappedPathSelector)
 	unixfsExclusiveWrappedFile := testutil.GenerateNoDupes(func() unixfs.DirEntry { return unixfs.WrapContent(t, rndReader, &lsys, unixfsFile, wrapPath, true) })
 	unixfsExclusiveWrappedFileBlocks := testutil.ToBlocks(t, lsys, unixfsExclusiveWrappedFile.Root, allSelector)
+	unixfsExclusiveWrappedSmallFile := testutil.GenerateNoDupes(func() unixfs.DirEntry {
+		return unixfs.WrapContent(t, rndReader, &lsys, unixfsSmallFile, wrapPath, true)
+	})
+	unixfsExclusiveWrappedSmallFileBlocks := testutil.ToBlocks(t, lsys, unixfsExclusiveWrappedSmallFile.Root, allSelector)
 
 	unixfsWrappedShardedDir := testutil.GenerateNoDupes(func() unixfs.DirEntry {
 		return unixfs.WrapContent(t, rndReader, &lsys, unixfsShardedDir, wrapPath, false)
@@ -541,8 +548,9 @@ func TestVerifiedCar(t *testing.T) {
 			blocks: consumedBlocks(unixfsExclusiveWrappedShardedDirBlocks),
 			roots:  []cid.Cid{unixfsExclusiveWrappedShardedDir.Root},
 			cfg: verifiedcar.Config{
-				Root:     unixfsExclusiveWrappedShardedDir.Root,
-				Selector: unixfsWrappedPathSelector,
+				Root:       unixfsExclusiveWrappedShardedDir.Root,
+				Selector:   unixfsWrappedPathSelector,
+				ExpectPath: datamodel.ParsePath(wrapPath),
 			},
 		},
 		{
@@ -645,6 +653,38 @@ func TestVerifiedCar(t *testing.T) {
 			cfg: verifiedcar.Config{
 				Root:     unixfsFile.Root,
 				Selector: unixfsFileRange1048576_2097152Selector,
+			},
+		},
+		{
+			// pathing beyond the file means we don't do explore-all on the file's blocks
+			name:      "unixfs: large sharded file wrapped in directories, pathed too far, errors",
+			blocks:    consumedBlocks(unixfsExclusiveWrappedFileBlocks),
+			roots:     []cid.Cid{unixfsExclusiveWrappedFile.Root},
+			expectErr: "extraneous block in CAR",
+			cfg: verifiedcar.Config{
+				Root:     unixfsExclusiveWrappedFile.Root,
+				Selector: unixfsWrappedPathPlusMoreSelector,
+			},
+		},
+		{
+			name:   "unixfs: small single-block file wrapped in directories, with ExpectPath",
+			blocks: consumedBlocks(unixfsExclusiveWrappedSmallFileBlocks),
+			roots:  []cid.Cid{unixfsExclusiveWrappedSmallFile.Root},
+			cfg: verifiedcar.Config{
+				Root:       unixfsExclusiveWrappedSmallFile.Root,
+				Selector:   unixfsWrappedPathSelector,
+				ExpectPath: datamodel.ParsePath(wrapPath),
+			},
+		},
+		{
+			name:      "unixfs: small single-block file wrapped in directories, pathed too far, errors",
+			blocks:    consumedBlocks(unixfsExclusiveWrappedSmallFileBlocks),
+			roots:     []cid.Cid{unixfsExclusiveWrappedSmallFile.Root},
+			expectErr: "failed to traverse full path",
+			cfg: verifiedcar.Config{
+				Root:       unixfsExclusiveWrappedSmallFile.Root,
+				Selector:   unixfsWrappedPathPlusMoreSelector,
+				ExpectPath: datamodel.ParsePath(wrapPathPlusMore),
 			},
 		},
 	}

@@ -12,9 +12,12 @@ import (
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/types"
+	"github.com/filecoin-project/lassie/pkg/verifiedcar"
 	"github.com/ipfs/go-cid"
+	"github.com/ipfs/go-graphsync"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/codec/dagjson"
+	"github.com/ipld/go-ipld-prime/datamodel"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -36,6 +39,7 @@ type GraphsyncClient interface {
 		proposal *retrievaltypes.DealProposal,
 		selector ipld.Node,
 		maxLinks uint64,
+		progressCallback func(graphsync.ResponseProgress),
 		eventsCallback datatransfer.Subscriber,
 		gracefulShutdownRequested <-chan struct{},
 	) (*types.RetrievalStats, error)
@@ -214,13 +218,19 @@ func (pg *ProtocolGraphsync) Retrieve(
 		}
 	}
 
+	var lastPath datamodel.Path
+	progressCallback := func(progress graphsync.ResponseProgress) {
+		lastPath = progress.Path
+	}
+
 	stats, err := pg.Client.RetrieveFromPeer(
 		retrieveCtx,
 		retrieval.request.LinkSystem,
 		candidate.MinerPeer.ID,
 		proposal,
 		selector,
-		uint64(retrieval.request.MaxBlocks),
+		retrieval.request.MaxBlocks,
+		progressCallback,
 		eventsSubscriber,
 		gracefulShutdownChan,
 	)
@@ -245,5 +255,10 @@ func (pg *ProtocolGraphsync) Retrieve(
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrRetrievalFailed, err)
 	}
+
+	if err := verifiedcar.CheckTraversalPath(datamodel.ParsePath(retrieval.request.Path), lastPath); err != nil {
+		return nil, err
+	}
+
 	return stats, nil
 }

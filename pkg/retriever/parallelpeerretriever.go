@@ -351,7 +351,7 @@ func (retrieval *retrieval) runRetrievalCandidate(
 			if retrievalErr != nil {
 				// Exclude the case where the context was cancelled by the parent, which likely
 				// means that another protocol has succeeded.
-				if ctx.Err() == nil || !errors.Is(err, context.Canceled) {
+				if ctx.Err() == nil || !errors.Is(retrievalErr, context.Canceled) {
 					msg := retrievalErr.Error()
 					if errors.Is(retrievalErr, ErrRetrievalTimedOut) {
 						msg = fmt.Sprintf("timeout after %s", timeout)

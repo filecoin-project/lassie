@@ -15,6 +15,7 @@ import (
 	_ "github.com/ipld/go-ipld-prime/codec/dagjson"
 	_ "github.com/ipld/go-ipld-prime/codec/json"
 	_ "github.com/ipld/go-ipld-prime/codec/raw"
+	"github.com/ipld/go-ipld-prime/traversal/selector"
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
@@ -24,9 +25,9 @@ import (
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/linking/preload"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/traversal"
-	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"go.uber.org/multierr"
 )
 
@@ -39,8 +40,8 @@ var (
 	ErrMissingBlock    = errors.New("missing block in CAR")
 )
 
-type BlockReader interface {
-	Next() (blocks.Block, error)
+type BlockStream interface {
+	Next(ctx context.Context) (blocks.Block, error)
 }
 
 var protoChooser = dagpb.AddSupportToChooser(basicnode.Chooser)
@@ -53,6 +54,7 @@ type Config struct {
 	ExpectDuplicatesIn bool           // Handles whether the incoming stream has duplicates
 	WriteDuplicatesOut bool           // Handles whether duplicates should be written a second time as blocks
 	MaxBlocks          uint64         // set a budget for the traversal
+	ExpectPath         datamodel.Path // sets the expected IPLD path that the traversal should take, if set, this is used to determine whether the full expected traversal occurred
 }
 
 // Verify reads a CAR from the provided reader, verifies the contents are
@@ -86,30 +88,57 @@ func (cfg Config) VerifyCar(ctx context.Context, rdr io.Reader, lsys linking.Lin
 	if cfg.CheckRootsMismatch && (len(cbr.Roots) != 1 || cbr.Roots[0] != cfg.Root) {
 		return 0, 0, ErrBadRoots
 	}
-	return cfg.VerifyBlockStream(ctx, cbr, lsys)
+	return cfg.VerifyBlockStream(ctx, blockReaderStream{cbr}, lsys)
 }
 
-func (cfg Config) VerifyBlockStream(ctx context.Context, cbr BlockReader, lsys linking.LinkSystem) (uint64, uint64, error) {
-	sel, err := selector.CompileSelector(cfg.Selector)
-	if err != nil {
-		return 0, 0, err
-	}
-
-	cr := &carReader{
-		cbr: cbr,
-	}
+func (cfg Config) VerifyBlockStream(ctx context.Context, bs BlockStream, lsys linking.LinkSystem) (uint64, uint64, error) {
+	cr := &carReader{bs}
 	bt := &writeTracker{}
 	lsys.TrustedStorage = true // we can rely on the CAR decoder to check CID integrity
 	unixfsnode.AddUnixFSReificationToLinkSystem(&lsys)
+	lsys.StorageReadOpener = cfg.nextBlockReadOpener(ctx, cr, bt, lsys)
 
-	nbls, lsys := NewNextBlockLinkSystem(ctx, cfg, cr, bt, lsys)
+	// perform the traversal
+	if err := cfg.Traverse(ctx, lsys, nil); err != nil {
+		return 0, 0, err
+	}
 
-	// run traversal in this goroutine
+	// make sure we don't have any extraneous data beyond what the traversal needs
+	_, err := bs.Next(ctx)
+	if err == nil {
+		return 0, 0, ErrExtraneousBlock
+	} else if !errors.Is(err, io.EOF) {
+		return 0, 0, err
+	}
+
+	// wait for parser to finish and provide errors or stats
+	return bt.blocks, bt.bytes, nil
+}
+
+// Traverse performs a traversal using the Config's Selector, starting at the
+// Config's Root, using the provided LinkSystem and optional Preloader.
+//
+// The traversal will capture any errors that occur during traversal, block
+// loading and will account for the Config's ExpectPath property, if set, to
+// ensure that the full path-based traversal has occurred.
+func (cfg Config) Traverse(
+	ctx context.Context,
+	lsys linking.LinkSystem,
+	preloader preload.Loader,
+) error {
+	sel, err := selector.CompileSelector(cfg.Selector)
+	if err != nil {
+		return err
+	}
+
+	lsys, ecr := NewErrorCapturingReader(lsys)
+
 	progress := traversal.Progress{
 		Cfg: &traversal.Config{
 			Ctx:                            ctx,
 			LinkSystem:                     lsys,
 			LinkTargetNodePrototypeChooser: protoChooser,
+			Preloader:                      preloader,
 		},
 	}
 	if cfg.MaxBlocks > 0 {
@@ -121,28 +150,49 @@ func (cfg Config) VerifyBlockStream(ctx context.Context, cbr BlockReader, lsys l
 
 	rootNode, err := loadNode(ctx, cfg.Root, lsys)
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to load root node: %w", err)
+		return fmt.Errorf("failed to load root node: %w", err)
 	}
-	if err := progress.WalkMatching(rootNode, sel, unixfsnode.BytesConsumingMatcher); err != nil {
-		return 0, 0, traversalError(err)
+	progress.LastBlock.Link = cidlink.Link{Cid: cfg.Root}
+
+	var lastPath datamodel.Path
+	visitor := func(p traversal.Progress, n datamodel.Node, vr traversal.VisitReason) error {
+		lastPath = p.Path
+		if vr == traversal.VisitReason_SelectionMatch {
+			return unixfsnode.BytesConsumingMatcher(p, n)
+		}
+		return nil
 	}
 
-	if nbls.Error != nil {
-		// capture any errors not bubbled up through the traversal, i.e. see
-		// https://github.com/ipld/go-ipld-prime/pull/524
-		return 0, 0, fmt.Errorf("block load failed during traversal: %w", nbls.Error)
+	if err := progress.WalkAdv(rootNode, sel, visitor); err != nil {
+		return traversalError(err)
 	}
 
-	// make sure we don't have any extraneous data beyond what the traversal needs
-	_, err = cbr.Next()
-	if err == nil {
-		return 0, 0, ErrExtraneousBlock
-	} else if !errors.Is(err, io.EOF) {
-		return 0, 0, err
+	if err := CheckTraversalPath(cfg.ExpectPath, lastPath); err != nil {
+		return err
 	}
 
-	// wait for parser to finish and provide errors or stats
-	return bt.blocks, bt.bytes, nil
+	if ecr.Error != nil {
+		return fmt.Errorf("block load failed during traversal: %w", ecr.Error)
+	}
+	return nil
+}
+
+func CheckTraversalPath(expectPath datamodel.Path, lastTraversalPath datamodel.Path) error {
+	for expectPath.Len() > 0 {
+		if lastTraversalPath.Len() == 0 {
+			return fmt.Errorf("failed to traverse full path, missed: [%s]", expectPath.String())
+		}
+		var seg, lastSeg datamodel.PathSegment
+		seg, expectPath = expectPath.Shift()
+		lastSeg, lastTraversalPath = lastTraversalPath.Shift()
+		if seg != lastSeg {
+			return fmt.Errorf("unexpected path segment visit, got [%s], expected [%s]", lastSeg.String(), seg.String())
+		}
+	}
+	// having lastTraversalPath.Len()>0 is fine, it may be due to an "all" or
+	// "entity" doing an explore-all on the remainder of the DAG after the path;
+	// or it could be because ExpectPath was empty.
+	return nil
 }
 
 func loadNode(ctx context.Context, rootCid cid.Cid, lsys linking.LinkSystem) (datamodel.Node, error) {
@@ -159,22 +209,9 @@ func loadNode(ctx context.Context, rootCid cid.Cid, lsys linking.LinkSystem) (da
 	return rootNode, nil
 }
 
-type NextBlockLinkSystem struct {
-	Error error
-}
-
-func NewNextBlockLinkSystem(
-	ctx context.Context,
-	cfg Config,
-	cr *carReader,
-	bt *writeTracker,
-	lsys linking.LinkSystem,
-) (*NextBlockLinkSystem, linking.LinkSystem) {
-	nbls := &NextBlockLinkSystem{}
+func (cfg *Config) nextBlockReadOpener(ctx context.Context, cr *carReader, bt *writeTracker, lsys linking.LinkSystem) linking.BlockReadOpener {
 	seen := make(map[cid.Cid]struct{})
-	storageReadOpener := lsys.StorageReadOpener
-
-	nextBlockReadOpener := func(lc linking.LinkContext, l datamodel.Link) (io.Reader, error) {
+	return func(lc linking.LinkContext, l datamodel.Link) (io.Reader, error) {
 		cid := l.(cidlink.Link).Cid
 		var data []byte
 		var err error
@@ -190,7 +227,7 @@ func NewNextBlockLinkSystem(
 				}
 			} else {
 				// duplicate block, rely on the supplied LinkSystem to have stored this
-				rdr, err := storageReadOpener(lc, l)
+				rdr, err := lsys.StorageReadOpener(lc, l)
 				if !cfg.WriteDuplicatesOut {
 					return rdr, err
 				}
@@ -223,26 +260,14 @@ func NewNextBlockLinkSystem(
 		}
 		return io.NopCloser(rdr), nil
 	}
-
-	// wrap nextBlockReadOpener in one that captures errors on `nbls`
-	lsys.StorageReadOpener = func(lc linking.LinkContext, l datamodel.Link) (io.Reader, error) {
-		rdr, err := nextBlockReadOpener(lc, l)
-		if err != nil {
-			nbls.Error = err
-			return nil, err
-		}
-		return rdr, nil
-	}
-
-	return nbls, lsys
 }
 
 type carReader struct {
-	cbr BlockReader
+	bs BlockStream
 }
 
 func (cr *carReader) readNextBlock(ctx context.Context, expected cid.Cid) ([]byte, error) {
-	blk, err := cr.cbr.Next()
+	blk, err := cr.bs.Next(ctx)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil, format.ErrNotFound{Cid: expected}
@@ -277,4 +302,38 @@ func traversalError(original error) error {
 			return original
 		}
 	}
+}
+
+// ErrorCapturingReader captures any errors that occur during block loading
+// and makes them available via the Error property.
+//
+// This is useful for capturing errors that occur during traversal, which are
+// not currently surfaced by the traversal package, see:
+//
+//	https://github.com/ipld/go-ipld-prime/pull/524
+type ErrorCapturingReader struct {
+	sro   linking.BlockReadOpener
+	Error error
+}
+
+func NewErrorCapturingReader(lsys linking.LinkSystem) (linking.LinkSystem, *ErrorCapturingReader) {
+	ecr := &ErrorCapturingReader{sro: lsys.StorageReadOpener}
+	lsys.StorageReadOpener = ecr.StorageReadOpener
+	return lsys, ecr
+}
+
+func (ecr *ErrorCapturingReader) StorageReadOpener(lc linking.LinkContext, l datamodel.Link) (io.Reader, error) {
+	r, err := ecr.sro(lc, l)
+	if err != nil {
+		ecr.Error = err
+	}
+	return r, err
+}
+
+type blockReaderStream struct {
+	cbr *car.BlockReader
+}
+
+func (brs blockReaderStream) Next(ctx context.Context) (blocks.Block, error) {
+	return brs.cbr.Next()
 }

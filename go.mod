@@ -6,7 +6,7 @@ require (
 	github.com/benbjohnson/clock v1.3.5
 	github.com/cespare/xxhash/v2 v2.2.0
 	github.com/dustin/go-humanize v1.0.1
-	github.com/filecoin-project/go-data-transfer/v2 v2.0.0-rc7
+	github.com/filecoin-project/go-data-transfer/v2 v2.0.0-rc7.0.20230818040822-432a10ec7e4a
 	github.com/filecoin-project/go-retrieval-types v1.2.0
 	github.com/filecoin-project/go-state-types v0.10.0
 	github.com/google/uuid v1.3.0

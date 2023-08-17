@@ -11,11 +11,12 @@ import (
 	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/internal/itest/mocknet"
-	"github.com/filecoin-project/lassie/pkg/net/client"
+	"github.com/filecoin-project/lassie/pkg/retriever/graphsync/client"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/namespace"
 	dss "github.com/ipfs/go-datastore/sync"
+	"github.com/ipfs/go-graphsync"
 	"github.com/ipfs/go-graphsync/storeutil"
 	bstore "github.com/ipfs/go-ipfs-blockstore"
 	"github.com/ipfs/go-unixfsnode"
@@ -129,6 +130,7 @@ func runRetrieval(t *testing.T, ctx context.Context, mrn *mocknet.MockRetrievalN
 		proposal,
 		selectorparse.CommonSelector_ExploreAllRecursively,
 		0,
+		func(rp graphsync.ResponseProgress) {},
 		subscriberLocal,
 		shutdown,
 	)

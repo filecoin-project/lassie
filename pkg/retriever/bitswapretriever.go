@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"sync/atomic"
 	"time"
 
@@ -15,19 +14,15 @@ import (
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/retriever/bitswaphelpers"
 	"github.com/filecoin-project/lassie/pkg/types"
+	"github.com/filecoin-project/lassie/pkg/verifiedcar"
 	"github.com/ipfs/boxo/bitswap/client"
 	"github.com/ipfs/boxo/bitswap/network"
 	"github.com/ipfs/boxo/blockservice"
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-unixfsnode"
-	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/linking/preload"
-	"github.com/ipld/go-ipld-prime/node/basicnode"
-	"github.com/ipld/go-ipld-prime/traversal"
-	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -226,15 +221,13 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		traversalLinkSys.StorageReadOpener = loader
 	}
 
-	// run the retrieval
-	err = easyTraverse(
-		ctx,
-		cidlink.Link{Cid: br.request.Cid},
-		selector,
-		traversalLinkSys,
-		preloader,
-		br.request.MaxBlocks,
-	)
+	err = verifiedcar.Config{
+		Root:       br.request.Cid,
+		Selector:   selector,
+		ExpectPath: datamodel.ParsePath(br.request.Path),
+		MaxBlocks:  br.request.MaxBlocks,
+	}.Traverse(ctx, traversalLinkSys, preloader)
+
 	if storage != nil {
 		storage.Stop()
 	}
@@ -301,71 +294,4 @@ func loaderForSession(retrievalID types.RetrievalID, inProgressCids InProgressCi
 		}
 		return bytes.NewReader(blk.RawData()), nil
 	}
-}
-
-func easyTraverse(
-	ctx context.Context,
-	root datamodel.Link,
-	traverseSelector datamodel.Node,
-	lsys linking.LinkSystem,
-	preloader preload.Loader,
-	maxBlocks uint64,
-) error {
-
-	lsys, ecr := newErrorCapturingReader(lsys)
-	protoChooser := dagpb.AddSupportToChooser(basicnode.Chooser)
-
-	// retrieve first node
-	prototype, err := protoChooser(root, linking.LinkContext{Ctx: ctx})
-	if err != nil {
-		return err
-	}
-	node, err := lsys.Load(linking.LinkContext{Ctx: ctx}, root, prototype)
-	if err != nil {
-		return err
-	}
-
-	progress := traversal.Progress{
-		Cfg: &traversal.Config{
-			Ctx:                            ctx,
-			LinkSystem:                     lsys,
-			LinkTargetNodePrototypeChooser: protoChooser,
-			Preloader:                      preloader,
-		},
-	}
-	if maxBlocks > 0 {
-		progress.Budget = &traversal.Budget{
-			LinkBudget: int64(maxBlocks) - 1, // first block is already loaded
-			NodeBudget: math.MaxInt64,
-		}
-	}
-	progress.LastBlock.Link = root
-	compiledSelector, err := selector.ParseSelector(traverseSelector)
-	if err != nil {
-		return err
-	}
-
-	if err := progress.WalkMatching(node, compiledSelector, unixfsnode.BytesConsumingMatcher); err != nil {
-		return err
-	}
-	return ecr.Error
-}
-
-type errorCapturingReader struct {
-	sro   linking.BlockReadOpener
-	Error error
-}
-
-func newErrorCapturingReader(lsys linking.LinkSystem) (linking.LinkSystem, *errorCapturingReader) {
-	ecr := &errorCapturingReader{sro: lsys.StorageReadOpener}
-	lsys.StorageReadOpener = ecr.StorageReadOpener
-	return lsys, ecr
-}
-
-func (ecr *errorCapturingReader) StorageReadOpener(lc linking.LinkContext, l datamodel.Link) (io.Reader, error) {
-	r, err := ecr.sro(lc, l)
-	if err != nil {
-		ecr.Error = err
-	}
-	return r, err
 }

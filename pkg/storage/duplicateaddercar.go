@@ -14,6 +14,7 @@ import (
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 )
@@ -71,6 +72,7 @@ func (da *DuplicateAdderCar) addDupes() {
 		Root:               da.root,
 		Selector:           sel,
 		WriteDuplicatesOut: true,
+		ExpectPath:         datamodel.ParsePath(da.path),
 	}
 
 	lsys := cidlink.DefaultLinkSystem()
@@ -159,7 +161,7 @@ func (bs *blockStream) WriteBlock(blk blocks.Block) error {
 	return nil
 }
 
-func (bs *blockStream) Next() (blocks.Block, error) {
+func (bs *blockStream) Next(ctx context.Context) (blocks.Block, error) {
 	bs.mu.Lock()
 	defer bs.mu.Unlock()
 
@@ -167,6 +169,8 @@ func (bs *blockStream) Next() (blocks.Block, error) {
 		select {
 		case <-bs.ctx.Done():
 			return nil, bs.ctx.Err()
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		default:
 		}
 		if e := bs.blockBuffer.Front(); e != nil {

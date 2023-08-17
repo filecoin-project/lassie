@@ -23,7 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRetrievalRacing(t *testing.T) {
+func TestGraphsyncRetrievalRacing(t *testing.T) {
 	retrievalID := types.RetrievalID(uuid.New())
 	startTime := time.Now().Add(time.Hour)
 	initialPause := 10 * time.Millisecond
@@ -678,22 +678,7 @@ func TestRetrievalRacing(t *testing.T) {
 				candidates = append(candidates, types.NewRetrievalCandidate(peer.ID(p), nil, cid.Undef, protocol))
 			}
 
-			// we're testing the actual Session implementation, but we also want
-			// to observe, so MockSession WithActual lets us do that.
-			scfg := session.DefaultConfig().
-				WithDefaultProviderConfig(session.ProviderConfig{
-					RetrievalTimeout: time.Second,
-				}).
-				WithConnectTimeAlpha(0.0). // only use the last connect time
-				WithoutRandomness()
-			_session := session.NewSession(scfg, true)
-			session := testutil.NewMockSession(ctx)
-			session.WithActual(_session)
-			// register the retrieval so we don't get any "not found" errors out
-			// of the session
-			session.RegisterRetrieval(retrievalID, cid.Undef, basicnode.NewString("r"))
-			session.AddToRetrieval(retrievalID, []peer.ID{peerFoo, peerBar, peerBaz, peerBang})
-
+			session := setupTestSession(ctx, retrievalID, []peer.ID{"foo", "bar", "baz", "bang"})
 			cfg := retriever.NewGraphsyncRetrieverWithConfig(session, mockClient, clock, initialPause, true)
 
 			rv := testutil.RetrievalVerifier{
@@ -732,7 +717,7 @@ func TestRetrievalRacing(t *testing.T) {
 }
 
 // run two retrievals simultaneously
-func TestMultipleRetrievals(t *testing.T) {
+func TestGraphsyncMultipleRetrievals(t *testing.T) {
 	retrievalID1 := types.RetrievalID(uuid.New())
 	retrievalID2 := types.RetrievalID(uuid.New())
 	peerFoo := peer.ID("foo")
@@ -861,13 +846,7 @@ func TestMultipleRetrievals(t *testing.T) {
 
 	// we're testing the actual Session implementation, but we also want
 	// to observe, so MockSession WithActual lets us do that.
-	scfg := session.DefaultConfig().
-		WithDefaultProviderConfig(session.ProviderConfig{
-			RetrievalTimeout: time.Second,
-		}).
-		WithConnectTimeAlpha(0.0). // only use the last connect time
-		WithoutRandomness()
-	_session := session.NewSession(scfg, true)
+	_session := session.NewSession(makeTestSession(), true)
 	session := testutil.NewMockSession(ctx)
 	session.WithActual(_session)
 	// register the retrieval so we don't get any "not found" errors out
@@ -918,7 +897,7 @@ func TestMultipleRetrievals(t *testing.T) {
 	require.Equal(t, mockClient.GetRetrievalReturns()["bing"].ResultStats, stats)
 }
 
-func TestRetrievalSelector(t *testing.T) {
+func TestGraphsyncRetrievalSelector(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	retrievalID := types.RetrievalID(uuid.New())
@@ -931,13 +910,7 @@ func TestRetrievalSelector(t *testing.T) {
 		clock.New(),
 	)
 
-	scfg := session.DefaultConfig().
-		WithDefaultProviderConfig(session.ProviderConfig{
-			RetrievalTimeout: time.Second,
-		}).
-		WithConnectTimeAlpha(0.0). // only use the last connect time
-		WithoutRandomness()
-	session := session.NewSession(scfg, true)
+	session := setupTestSession(ctx, retrievalID, []peer.ID{peerFoo, peerBar})
 	cfg := retriever.NewGraphsyncRetriever(session, mockClient)
 
 	selector := selectorparse.CommonSelector_MatchPoint
@@ -959,7 +932,69 @@ func TestRetrievalSelector(t *testing.T) {
 	require.Same(t, selector, rr.Selector)
 }
 
-func TestDuplicateRetreivals(t *testing.T) {
+func TestGraphsyncRetrievalPathProgress(t *testing.T) {
+	expectPath := "/path/to/thing"
+	for _, tc := range []struct {
+		name              string
+		paths             []string
+		expectPass        bool
+		unexpectedSegment bool
+	}{
+		{"full", []string{"/path", "/path/to", "/path/to/thing"}, true, false},
+		{"more", []string{"/path", "/path/to", "/path/to/thing", "/path/to/thing/more!"}, true, false},
+		{"less", []string{"/path", "/path/to"}, false, false},
+		{"single segment", []string{"/path"}, false, false},
+		{"empty", []string{}, false, false},
+		{"going awry", []string{"/path", "/path/to/other"}, false, true},
+		{"completely wrong", []string{"/wot"}, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			retrievalID := types.RetrievalID(uuid.New())
+			peerFoo := peer.ID("foo")
+			peerBar := peer.ID("bar")
+			cid1 := cid.MustParse("bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")
+			mockClient := testutil.NewMockClient(
+				map[string]testutil.DelayedConnectReturn{"foo": {Err: nil, Delay: 0}},
+				map[string]testutil.DelayedClientReturn{"foo": {
+					ResultStats:   &types.RetrievalStats{StorageProviderId: peerBar, Size: 2},
+					Delay:         0,
+					ProgressPaths: tc.paths,
+				}},
+				clock.New(),
+			)
+
+			session := setupTestSession(ctx, retrievalID, []peer.ID{peerFoo, peerBar})
+			cfg := retriever.NewGraphsyncRetriever(session, mockClient)
+
+			retrieval := cfg.Retrieve(context.Background(), types.RetrievalRequest{
+				Cid:         cid1,
+				RetrievalID: retrievalID,
+				LinkSystem:  cidlink.DefaultLinkSystem(),
+				Path:        expectPath,
+			}, nil)
+			stats, err := retrieval.RetrieveFromAsyncCandidates(makeAsyncCandidates(t, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerFoo, nil, cid.Undef, &metadata.GraphsyncFilecoinV1{})}))
+			if tc.expectPass {
+				require.NoError(t, err)
+				require.NotNil(t, stats)
+				require.Equal(t, mockClient.GetRetrievalReturns()["foo"].ResultStats, stats)
+			} else {
+				if tc.unexpectedSegment {
+					require.ErrorContains(t, err, "unexpected path segment visit")
+				} else {
+					require.ErrorContains(t, err, "failed to traverse full path")
+				}
+			}
+
+			// make sure we performed the retrievals we expected
+			rr := mockClient.VerifyReceivedRetrievalFrom(ctx, t, peerFoo)
+			require.NotNil(t, rr)
+		})
+	}
+}
+
+func TestGraphsyncDuplicateRetreivals(t *testing.T) {
 	retrievalID := types.RetrievalID(uuid.New())
 	peerFoo := peer.ID("foo")
 	peerBar := peer.ID("bar")
@@ -1053,20 +1088,7 @@ func TestDuplicateRetreivals(t *testing.T) {
 		},
 	}
 
-	// we're testing the actual Session implementation, but we also want
-	// to observe, so MockSession WithActual lets us do that.
-	scfg := session.DefaultConfig().
-		WithDefaultProviderConfig(session.ProviderConfig{
-			RetrievalTimeout: time.Second,
-		}).
-		WithConnectTimeAlpha(0.0). // only use the last connect time
-		WithoutRandomness()
-	_session := session.NewSession(scfg, true)
-	session := testutil.NewMockSession(ctx)
-	session.WithActual(_session)
-	session.RegisterRetrieval(retrievalID, cid.Undef, basicnode.NewBool(true))
-	session.AddToRetrieval(retrievalID, []peer.ID{peerFoo, peerBar, peerBaz})
-
+	session := setupTestSession(ctx, retrievalID, []peer.ID{peerFoo, peerBar, peerBaz})
 	cfg := retriever.NewGraphsyncRetrieverWithConfig(session, mockClient, clock, initialPause, true)
 
 	results := testutil.RetrievalVerifier{
@@ -1102,4 +1124,22 @@ func makeAsyncCandidates(t *testing.T, candidates []types.RetrievalCandidate) ty
 	}
 	close(outgoing)
 	return incoming
+}
+
+func makeTestSession() *session.Config {
+	return session.DefaultConfig().
+		WithDefaultProviderConfig(session.ProviderConfig{
+			RetrievalTimeout: time.Second,
+		}).
+		WithConnectTimeAlpha(0.0). // only use the last connect time
+		WithoutRandomness()
+}
+
+func setupTestSession(ctx context.Context, retrievalID types.RetrievalID, peers []peer.ID) *testutil.MockSession {
+	_session := session.NewSession(makeTestSession(), true)
+	session := testutil.NewMockSession(ctx)
+	session.WithActual(_session)
+	session.RegisterRetrieval(retrievalID, cid.Undef, basicnode.NewString("r"))
+	session.AddToRetrieval(retrievalID, peers)
+	return session
 }
