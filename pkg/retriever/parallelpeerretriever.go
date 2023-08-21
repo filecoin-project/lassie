@@ -309,7 +309,6 @@ func (retrieval *retrieval) runRetrievalCandidate(
 	startTime time.Time,
 	candidate types.RetrievalCandidate,
 ) {
-
 	timeout := retrieval.Session.GetStorageProviderTimeout(candidate.MinerPeer.ID)
 
 	var stats *types.RetrievalStats
@@ -327,9 +326,9 @@ func (retrieval *retrieval) runRetrievalCandidate(
 	// Setup in parallel
 	connectTime, err := retrieval.Protocol.Connect(connectCtx, retrieval, startTime, candidate)
 	if err != nil {
-		// Exclude the case where the context was cancelled by the parent, whichikely means that
+		// Exclude the case where the context was cancelled by the parent, which likely means that
 		// another protocol has succeeded.
-		if ctx.Err() == nil || !errors.Is(err, context.Canceled) {
+		if !errors.Is(ctx.Err(), context.Canceled) {
 			logger.Warnf("Failed to connect to SP %s on protocol %s: %v", candidate.MinerPeer.ID, retrieval.Protocol.Code().String(), err)
 			retrievalErr = fmt.Errorf("%w: %v", ErrConnectFailed, err)
 			if err := retrieval.Session.RecordFailure(retrieval.request.RetrievalID, candidate.MinerPeer.ID); err != nil {
@@ -351,7 +350,7 @@ func (retrieval *retrieval) runRetrievalCandidate(
 			if retrievalErr != nil {
 				// Exclude the case where the context was cancelled by the parent, which likely
 				// means that another protocol has succeeded.
-				if ctx.Err() == nil || !errors.Is(retrievalErr, context.Canceled) {
+				if !errors.Is(ctx.Err(), context.Canceled) {
 					msg := retrievalErr.Error()
 					if errors.Is(retrievalErr, ErrRetrievalTimedOut) {
 						msg = fmt.Sprintf("timeout after %s", timeout)

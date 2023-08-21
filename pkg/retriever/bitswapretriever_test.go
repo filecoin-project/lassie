@@ -65,7 +65,7 @@ func TestBitswapRetriever(t *testing.T) {
 		expectedCandidates map[cid.Cid][]types.RetrievalCandidate
 		expectedEvents     map[cid.Cid][]types.EventCode
 		expectedStats      map[cid.Cid]*types.RetrievalStats
-		expectedErrors     map[cid.Cid]struct{}
+		expectedErrors     map[cid.Cid]string
 		expectedCids       []cid.Cid
 		expectedRemoteCids map[cid.Cid][]cid.Cid
 		cfg                retriever.BitswapConfig
@@ -214,9 +214,9 @@ func TestBitswapRetriever(t *testing.T) {
 				cid1: {types.StartedRetrievalCode, types.FirstByteCode, types.FailedRetrievalCode},
 				cid2: {types.StartedRetrievalCode, types.FirstByteCode, types.FailedRetrievalCode},
 			},
-			expectedErrors: map[cid.Cid]struct{}{
-				cid1: {},
-				cid2: {},
+			expectedErrors: map[cid.Cid]string{
+				cid1: "could not load link",
+				cid2: "could not load link",
 			},
 		},
 		{
@@ -235,9 +235,9 @@ func TestBitswapRetriever(t *testing.T) {
 				cid1: {types.StartedRetrievalCode, types.FailedRetrievalCode},
 				cid2: {types.StartedRetrievalCode, types.FailedRetrievalCode},
 			},
-			expectedErrors: map[cid.Cid]struct{}{
-				cid1: {},
-				cid2: {},
+			expectedErrors: map[cid.Cid]string{
+				cid1: "could not load link",
+				cid2: "could not load link",
 			},
 		},
 		{
@@ -264,9 +264,9 @@ func TestBitswapRetriever(t *testing.T) {
 				cid1: {types.StartedRetrievalCode, types.FirstByteCode, types.FailedRetrievalCode},
 				cid2: {types.StartedRetrievalCode, types.FirstByteCode, types.FailedRetrievalCode},
 			},
-			expectedErrors: map[cid.Cid]struct{}{
-				cid1: {},
-				cid2: {},
+			expectedErrors: map[cid.Cid]string{
+				cid1: "retrieval failed; retrieval timed out after 10ms",
+				cid2: "retrieval failed; retrieval timed out after 10ms",
 			},
 			cfg: retriever.BitswapConfig{
 				BlockTimeout: 10 * time.Millisecond,
@@ -397,7 +397,7 @@ func TestBitswapRetriever(t *testing.T) {
 					retrieval1 := bsr.Retrieve(req1Context, req1, retrievalCollector)
 					retrieval2 := bsr.Retrieve(req2Context, req2, retrievalCollector)
 					receivedStats := make(map[cid.Cid]*types.RetrievalStats, 2)
-					receivedErrors := make(map[cid.Cid]struct{}, 2)
+					receivedErrors := make(map[cid.Cid]error, 2)
 					expectedCandidates := make(map[types.RetrievalID][]types.RetrievalCandidate)
 					if testCase.expectedCandidates != nil {
 						for key, candidates := range testCase.expectedCandidates {
@@ -436,7 +436,7 @@ func TestBitswapRetriever(t *testing.T) {
 						receivedStats[cid1] = stats
 					}
 					if err != nil {
-						receivedErrors[cid1] = struct{}{}
+						receivedErrors[cid1] = err
 					}
 
 					// reset the clock
@@ -466,14 +466,17 @@ func TestBitswapRetriever(t *testing.T) {
 						receivedStats[cid2] = stats
 					}
 					if err != nil {
-						receivedErrors[cid2] = struct{}{}
+						receivedErrors[cid2] = err
 					}
 					receivedCodes := make(map[cid.Cid][]types.EventCode, len(receivedEvents))
 					expectedErrors := testCase.expectedErrors
 					if expectedErrors == nil {
-						expectedErrors = make(map[cid.Cid]struct{})
+						expectedErrors = make(map[cid.Cid]string)
 					}
-					req.Equal(expectedErrors, receivedErrors)
+					for c, expectedError := range expectedErrors {
+						req.Contains(receivedErrors, c)
+						req.ErrorContains(receivedErrors[c], expectedError)
+					}
 					expectedStats := testCase.expectedStats
 					if expectedStats == nil {
 						expectedStats = make(map[cid.Cid]*types.RetrievalStats)
