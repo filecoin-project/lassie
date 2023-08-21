@@ -243,7 +243,8 @@ func (pg *ProtocolGraphsync) Retrieve(
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrRetrievalFailed, err)
+		// TODO: replace with %w: %w after 1.19
+		return nil, multierr.Append(ErrRetrievalFailed, err)
 	}
 	return stats, nil
 }

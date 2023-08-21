@@ -3,10 +3,10 @@ package retriever
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"math"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -31,6 +31,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
+	"go.uber.org/multierr"
 )
 
 const DefaultConcurrency = 6
@@ -133,10 +134,17 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	bitswapCandidate := types.NewRetrievalCandidate(peer.ID(""), nil, br.request.Cid, metadata.Bitswap{})
 
 	// setup the linksystem to record bytes & blocks written -- since this isn't automatic w/o go-data-transfer
-	ctx, cancel := context.WithCancel(br.ctx)
+	retrievalCtx, cancel := context.WithCancel(br.ctx)
 	var lastBytesReceivedTimer *clock.Timer
+	var doneLk sync.Mutex
+	var timedOut bool
 	if br.cfg.BlockTimeout != 0 {
-		lastBytesReceivedTimer = br.clock.AfterFunc(br.cfg.BlockTimeout, cancel)
+		lastBytesReceivedTimer = br.clock.AfterFunc(br.cfg.BlockTimeout, func() {
+			cancel()
+			doneLk.Lock()
+			timedOut = true
+			doneLk.Unlock()
+		})
 	}
 
 	totalWritten := atomic.Uint64{}
@@ -155,7 +163,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	}
 
 	// setup providers for this retrieval
-	hasCandidates, nextCandidates, err := ayncCandidates.Next(ctx)
+	hasCandidates, nextCandidates, err := ayncCandidates.Next(retrievalCtx)
 	if !hasCandidates || err != nil {
 		cancel()
 		// we never received any candidates, so we give up on bitswap retrieval
@@ -168,7 +176,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	br.routing.AddProviders(br.request.RetrievalID, nextCandidates)
 	go func() {
 		for {
-			hasCandidates, nextCandidates, err := ayncCandidates.Next(ctx)
+			hasCandidates, nextCandidates, err := ayncCandidates.Next(retrievalCtx)
 			if !hasCandidates || err != nil {
 				if br.awaitReceivedCandidates != nil {
 					select {
@@ -204,7 +212,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 			concurrency,
 		)
 		if err == nil {
-			err = storage.Start(ctx)
+			err = storage.Start(retrievalCtx)
 		}
 		if err != nil {
 			cancel()
@@ -227,7 +235,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 
 	// run the retrieval
 	err = easyTraverse(
-		ctx,
+		retrievalCtx,
 		cidlink.Link{Cid: br.request.Cid},
 		selector,
 		traversalLinkSys,
@@ -243,12 +251,22 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	br.routing.RemoveProviders(br.request.RetrievalID)
 	br.bstore.RemoveLinkSystem(br.request.RetrievalID)
 	if err != nil {
-		// If the local context was canceled and the parent wasn't, it could be from a block timeout
-		// (see lastBytesReceivedTimer), in which case it needs to be recorded as a failure.
-		// However, if the parent context has an error we want to exclude cancellation errors
-		// since the failure could be because another protocol finished, not because of a bitswap
-		// problem.
-		if br.ctx.Err() == nil || !errors.Is(err, context.Canceled) {
+		// check for timeout on the local context
+		// TODO: post 1.19 replace timedOut and doneLk with WithCancelCause and use DeadlineExceeded cause:
+		// if errors.Is(retrievalCtx.Err(), context.Canceled) && errors.Is(context.Cause(retrievalCtx), context.DeadlineExceeded) {
+		if timedOut {
+			// TODO: replace with %w: %w after 1.19
+			err = multierr.Append(ErrRetrievalFailed,
+				fmt.Errorf(
+					"%w after %s",
+					ErrRetrievalTimedOut,
+					br.cfg.BlockTimeout,
+				),
+			)
+		}
+		// exclude the case where the context was cancelled by the parent, which likely means that
+		// another protocol has succeeded.
+		if br.ctx.Err() == nil {
 			br.events(events.FailedRetrieval(br.clock.Now(), br.request.RetrievalID, bitswapCandidate, multicodec.TransportBitswap, err.Error()))
 		}
 		return nil, err
