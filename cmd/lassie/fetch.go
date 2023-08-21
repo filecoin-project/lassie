@@ -277,7 +277,7 @@ func defaultFetchRun(
 		fmt.Fprintln(msgWriter)
 		return err
 	}
-	spid := stats.StorageProviderId
+	spid := stats.StorageProviderId.String()
 	if spid == "" {
 		spid = types.BitswapIndentifier
 	}
