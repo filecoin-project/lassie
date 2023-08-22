@@ -22,8 +22,8 @@ require (
 	github.com/ipfs/go-ipfs-exchange-interface v0.2.0
 	github.com/ipfs/go-ipld-format v0.5.0
 	github.com/ipfs/go-log/v2 v2.5.1
-	github.com/ipfs/go-unixfsnode v1.7.2
-	github.com/ipld/go-car/v2 v2.10.2-0.20230622090957-499d0c909d33
+	github.com/ipfs/go-unixfsnode v1.7.4
+	github.com/ipld/go-car/v2 v2.11.0
 	github.com/ipld/go-codec-dagpb v1.6.0
 	github.com/ipld/go-ipld-prime v0.21.0
 	github.com/ipld/ipld/specs v0.0.0-20230816230151-73f8fbea1783
