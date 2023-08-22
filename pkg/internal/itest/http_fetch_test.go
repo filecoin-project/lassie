@@ -1072,7 +1072,7 @@ func TestHttpFetch(t *testing.T) {
 					req.Equal(fmt.Sprintf(`attachment; filename="%s.car"`, srcData[i].Root.String()), resp.Header.Get("Content-Disposition"))
 					req.Equal("none", resp.Header.Get("Accept-Ranges"))
 					req.Equal("public, max-age=29030400, immutable", resp.Header.Get("Cache-Control"))
-					req.Equal("application/vnd.ipld.car; version=1", resp.Header.Get("Content-Type"))
+					req.Equal("application/vnd.ipld.car; version=1; order=dfs; dups=y", resp.Header.Get("Content-Type"))
 					req.Equal("nosniff", resp.Header.Get("X-Content-Type-Options"))
 					etagStart := fmt.Sprintf(`"%s.car.`, srcData[i].Root.String())
 					etagGot := resp.Header.Get("ETag")

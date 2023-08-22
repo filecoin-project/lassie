@@ -46,13 +46,14 @@ type BlockReader interface {
 var protoChooser = dagpb.AddSupportToChooser(basicnode.Chooser)
 
 type Config struct {
-	Root               cid.Cid        // The single root we expect to appear in the CAR and that we use to run our traversal against
-	AllowCARv2         bool           // If true, allow CARv2 files to be received, otherwise strictly only allow CARv1
-	Selector           datamodel.Node // The selector to execute, starting at the provided Root, to verify the contents of the CAR
-	CheckRootsMismatch bool           // Check if roots match expected behavior
-	ExpectDuplicatesIn bool           // Handles whether the incoming stream has duplicates
-	WriteDuplicatesOut bool           // Handles whether duplicates should be written a second time as blocks
-	MaxBlocks          uint64         // set a budget for the traversal
+	Root                   cid.Cid        // The single root we expect to appear in the CAR and that we use to run our traversal against
+	AllowCARv2             bool           // If true, allow CARv2 files to be received, otherwise strictly only allow CARv1
+	Selector               datamodel.Node // The selector to execute, starting at the provided Root, to verify the contents of the CAR
+	CheckRootsMismatch     bool           // Check if roots match expected behavior
+	ExpectDuplicatesIn     bool           // Handles whether the incoming stream has duplicates
+	WriteDuplicatesOut     bool           // Handles whether duplicates should be written a second time as blocks
+	MaxBlocks              uint64         // Set a budget for the traversal
+	ZeroLengthSectionAsEof bool           // If true, treat a zero-length section as CAR EOF, use if we expect trailing bytes (i.e. for metadata)
 }
 
 func visitNoop(p traversal.Progress, n datamodel.Node, r traversal.VisitReason) error { return nil }
@@ -69,7 +70,7 @@ func visitNoop(p traversal.Progress, n datamodel.Node, r traversal.VisitReason) 
 //
 // * https://specs.ipfs.tech/http-gateways/path-gateway/
 func (cfg Config) VerifyCar(ctx context.Context, rdr io.Reader, lsys linking.LinkSystem) (uint64, uint64, error) {
-	cbr, err := car.NewBlockReader(rdr, car.WithTrustedCAR(false))
+	cbr, err := car.NewBlockReader(rdr, car.WithTrustedCAR(false), car.ZeroLengthSectionAsEOF(cfg.ZeroLengthSectionAsEof))
 	if err != nil {
 		// TODO: post-1.19: fmt.Errorf("%w: %w", ErrMalformedCar, err)
 		return 0, 0, multierr.Combine(ErrMalformedCar, err)
