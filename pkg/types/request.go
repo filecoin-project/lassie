@@ -122,6 +122,7 @@ func NewRequestForPath(store ipldstorage.WritableStorage, cid cid.Cid, path stri
 		Path:        path,
 		Scope:       dagScope,
 		LinkSystem:  linkSystem,
+		Duplicates:  false,
 	}, nil
 }
 
@@ -140,9 +141,13 @@ func (r RetrievalRequest) GetSelector() ipld.Node {
 }
 
 // GetUrlPath returns a URL path and query string valid with the Trusted HTTP
-// Gateway spec by combining the Path and the Scope of this request. If this
-// request uses an explicit Selector rather than a Path, an error will be
-// returned.
+// Gateway spec by combining the Path and the Scope of this request.
+//
+// If this request uses an explicit Selector rather than a Path, an error will
+// be returned.
+//
+// The returned value includes a URL escaped form of the originally requested
+// path.
 func (r RetrievalRequest) GetUrlPath() (string, error) {
 	if r.Selector != nil {
 		return "", errors.New("RetrievalRequest uses an explicit selector, can't generate a URL path for it")
@@ -156,16 +161,75 @@ func (r RetrievalRequest) GetUrlPath() (string, error) {
 	if legacyScope == string(DagScopeEntity) {
 		legacyScope = "file"
 	}
+	path := PathEscape(r.Path)
+	return fmt.Sprintf("%s?dag-scope=%s&car-scope=%s", path, scope, legacyScope), nil
+}
+
+func PathEscape(path string) string {
+	if path == "" {
+		return path
+	}
+	var sb strings.Builder
+	var ps datamodel.PathSegment
+	p := datamodel.ParsePath(path)
+	for p.Len() > 0 {
+		ps, p = p.Shift()
+		sb.WriteRune('/')
+		sb.WriteString(url.PathEscape(ps.String()))
+	}
+	return sb.String()
+}
+
+// GetDescriptorString returns a URL and query string-style descriptor string
+// for the request. This is different from GetUrlPath as it is not intended
+// (nor safe) to use as an HTTP request. Instead, this should be used for
+// logging and other descriptive purposes.
+//
+// If this request uses an explicit Selector rather than a Path, an error will
+// be returned.
+func (r RetrievalRequest) GetDescriptorString() (string, error) {
+	if r.Selector != nil {
+		return "", errors.New("RetrievalRequest uses an explicit selector, can't generate a descriptor path for it")
+	}
+	scope := r.Scope
+	if r.Scope == "" {
+		scope = DagScopeAll
+	}
 	var path string
 	if r.Path != "" {
-		p := datamodel.ParsePath(r.Path)
-		for p.Len() > 0 {
-			var ps datamodel.PathSegment
-			ps, p = p.Shift()
-			path += "/" + url.PathEscape(ps.String())
-		}
+		path = "/" + datamodel.ParsePath(r.Path).String()
 	}
-	return fmt.Sprintf("%s?dag-scope=%s&car-scope=%s", path, scope, legacyScope), nil
+
+	dups := "y"
+	if !r.Duplicates {
+		dups = "n"
+	}
+	var blockLimit string
+	if r.MaxBlocks > 0 {
+		blockLimit = fmt.Sprintf("&blockLimit=%d", r.MaxBlocks)
+	}
+	var protocols string
+	if len(r.Protocols) > 0 {
+		var sb strings.Builder
+		sb.WriteString("&protocols=")
+		for i, protocol := range r.Protocols {
+			if i > 0 {
+				sb.WriteString(",")
+			}
+			sb.WriteString(protocol.String())
+		}
+		protocols = sb.String()
+	}
+	var providers string
+	if len(r.FixedPeers) > 0 {
+		ps, err := ToProviderString(r.FixedPeers)
+		if err != nil {
+			return "", err
+		}
+		providers = "&providers=" + ps
+	}
+	return fmt.Sprintf("/ipfs/%s%s?dag-scope=%s&dups=%s%s%s%s", r.Cid.String(), path, scope, dups, blockLimit, protocols, providers), nil
+
 }
 
 // GetSupportedProtocols will safely return the supported protocols for a specific request.
@@ -237,7 +301,6 @@ func ParseProtocolsString(v string) ([]multicodec.Code, error) {
 func ParseProviderStrings(v string) ([]peer.AddrInfo, error) {
 	vs := strings.Split(v, ",")
 	providerAddrInfos := make([]peer.AddrInfo, 0, len(vs))
-
 	for _, v := range vs {
 		providerAddrInfo, err := peer.AddrInfoFromString(v)
 		if err != nil {
@@ -246,4 +309,19 @@ func ParseProviderStrings(v string) ([]peer.AddrInfo, error) {
 		providerAddrInfos = append(providerAddrInfos, *providerAddrInfo)
 	}
 	return providerAddrInfos, nil
+}
+
+func ToProviderString(ai []peer.AddrInfo) (string, error) {
+	var sb strings.Builder
+	for i, v := range ai {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		ma, err := peer.AddrInfoToP2pAddrs(&v)
+		if err != nil {
+			return "", err
+		}
+		sb.WriteString(ma[0].String())
+	}
+	return sb.String(), nil
 }

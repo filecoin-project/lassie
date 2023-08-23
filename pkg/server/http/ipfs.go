@@ -155,7 +155,7 @@ func ipfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.Response
 			res.Header().Set("Content-Type", ResponseContentTypeHeader)
 			res.Header().Set("Etag", request.Etag())
 			res.Header().Set("X-Content-Type-Options", "nosniff")
-			res.Header().Set("X-Ipfs-Path", "/"+datamodel.ParsePath(req.URL.Path).String())
+			res.Header().Set("X-Ipfs-Path", types.PathEscape(req.URL.Path))
 			// TODO: set X-Ipfs-Roots header when we support root+path
 			// see https://github.com/ipfs/kubo/pull/8720
 			res.Header().Set("X-Trace-Id", requestId)
