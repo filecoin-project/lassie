@@ -126,12 +126,12 @@ func fetchAction(cctx *cli.Context) error {
 
 func parseCidPath(cpath string) (cid.Cid, string, error) {
 	cstr := strings.Split(cpath, "/")[0]
-	path := strings.TrimPrefix(cpath, cstr)
+	path := datamodel.ParsePath(strings.TrimPrefix(cpath, cstr))
 	rootCid, err := cid.Parse(cstr)
 	if err != nil {
 		return cid.Undef, "", err
 	}
-	return rootCid, path, nil
+	return rootCid, path.String(), nil
 }
 
 type progressPrinter struct {
