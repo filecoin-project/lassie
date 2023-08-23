@@ -71,7 +71,7 @@ func TestFetchCommandFlags(t *testing.T) {
 				"bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4/birb.mp4",
 			},
 			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, tempDir string, progress bool, outfile string) error {
-				require.Equal(t, "/birb.mp4", path)
+				require.Equal(t, "birb.mp4", path)
 				return nil
 			},
 		},
