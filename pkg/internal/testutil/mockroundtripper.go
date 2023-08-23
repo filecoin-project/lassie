@@ -94,7 +94,7 @@ func (mrt *MockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 	require.Equal(mrt.t, us[1], "ipfs")
 	root, err := cid.Parse(us[2])
 	require.NoError(mrt.t, err)
-	path := strings.TrimSuffix(req.URL.Path, "/ipfs/"+root.String())
+	path := strings.TrimPrefix(strings.TrimPrefix(req.URL.Path, "/ipfs/"+root.String()), "/")
 	expectedPath, ok := mrt.expectedPath[root]
 	if !ok {
 		require.Equal(mrt.t, path, "")

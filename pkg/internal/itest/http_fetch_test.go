@@ -920,6 +920,66 @@ func TestHttpFetch(t *testing.T) {
 			}},
 		},
 		{
+			name:           "bitswap nested file, path with special characters",
+			bitswapRemotes: 1,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				lsys := remotes[0].LinkSystem
+				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateFile(t, lsys, rndReader, 1024), "/?/#/%/ ", false)}
+			},
+			paths:         []string{"/?/#/%/ "},
+			modifyQueries: []queryModifier{entityQuery},
+			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
+				wantCids := []cid.Cid{
+					srcData.Root,                                                 // "/"
+					srcData.Children[1].Root,                                     // "/?"
+					srcData.Children[1].Children[1].Root,                         // "/?/#"
+					srcData.Children[1].Children[1].Children[1].Root,             // "/?/#/%"
+					srcData.Children[1].Children[1].Children[1].Children[0].Root, // "/?/#/%/ " (' ' is before '!', so it's the first link after the one named '!before')
+				}
+				validateCarBody(t, body, srcData.Root, wantCids, true)
+			}},
+		},
+		{
+			name:        "http nested file, path with special characters",
+			httpRemotes: 1,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				lsys := remotes[0].LinkSystem
+				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateFile(t, lsys, rndReader, 1024), "/?/#/%/ ", false)}
+			},
+			paths:         []string{"/?/#/%/ "},
+			modifyQueries: []queryModifier{entityQuery},
+			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
+				wantCids := []cid.Cid{
+					srcData.Root,                                                 // "/"
+					srcData.Children[1].Root,                                     // "/?"
+					srcData.Children[1].Children[1].Root,                         // "/?/#"
+					srcData.Children[1].Children[1].Children[1].Root,             // "/?/#/%"
+					srcData.Children[1].Children[1].Children[1].Children[0].Root, // "/?/#/%/ " (' ' is before '!', so it's the first link after the one named '!before')
+				}
+				validateCarBody(t, body, srcData.Root, wantCids, true)
+			}},
+		},
+		{
+			name:             "graphsync nested file, path with special characters",
+			graphsyncRemotes: 1,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				lsys := remotes[0].LinkSystem
+				return []unixfs.DirEntry{unixfs.WrapContent(t, rndReader, lsys, unixfs.GenerateFile(t, lsys, rndReader, 1024), "/?/#/%/ ", false)}
+			},
+			paths:         []string{"/?/#/%/ "},
+			modifyQueries: []queryModifier{entityQuery},
+			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
+				wantCids := []cid.Cid{
+					srcData.Root,                                                 // "/"
+					srcData.Children[1].Root,                                     // "/?"
+					srcData.Children[1].Children[1].Root,                         // "/?/#"
+					srcData.Children[1].Children[1].Children[1].Root,             // "/?/#/%"
+					srcData.Children[1].Children[1].Children[1].Children[0].Root, // "/?/#/%/ " (' ' is before '!', so it's the first link after the one named '!before')
+				}
+				validateCarBody(t, body, srcData.Root, wantCids, true)
+			}},
+		},
+		{
 			name:        "with access token - rejects anonymous requests",
 			httpRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
@@ -1004,17 +1064,25 @@ func TestHttpFetch(t *testing.T) {
 				serverError <- httpServer.Start()
 			}()
 
+			paths := make([]string, len(srcData))
+			for i := 0; i < len(srcData); i++ {
+				if testCase.paths != nil && testCase.paths[i] != "" {
+					p := datamodel.ParsePath(testCase.paths[i])
+					for p.Len() > 0 {
+						var ps datamodel.PathSegment
+						ps, p = p.Shift()
+						paths[i] += "/" + url.PathEscape(ps.String())
+					}
+				}
+			}
+
 			responseChans := make([]chan *http.Response, 0)
 			for i := 0; i < len(srcData); i++ {
 				responseChan := make(chan *http.Response, 1)
 				responseChans = append(responseChans, responseChan)
 				go func(i int) {
 					// Make a request for our CID and read the complete CAR bytes
-					var path string
-					if testCase.paths != nil && testCase.paths[i] != "" {
-						path = testCase.paths[i]
-					}
-					addr := fmt.Sprintf("http://%s/ipfs/%s%s", httpServer.Addr(), srcData[i].Root.String(), path)
+					addr := fmt.Sprintf("http://%s/ipfs/%s%s", httpServer.Addr(), srcData[i].Root.String(), paths[i])
 					getReq, err := http.NewRequest("GET", addr, nil)
 					req.NoError(err)
 					if testCase.setHeader == nil {
@@ -1078,11 +1146,7 @@ func TestHttpFetch(t *testing.T) {
 					etagGot := resp.Header.Get("ETag")
 					req.True(strings.HasPrefix(etagGot, etagStart), "ETag should start with [%s], got [%s]", etagStart, etagGot)
 					req.Equal(`"`, etagGot[len(etagGot)-1:], "ETag should end with a quote")
-					var path string
-					if testCase.paths != nil && testCase.paths[i] != "" {
-						path = testCase.paths[i]
-					}
-					req.Equal(fmt.Sprintf("/ipfs/%s%s", srcData[i].Root.String(), path), resp.Header.Get("X-Ipfs-Path"))
+					req.Equal(fmt.Sprintf("/ipfs/%s%s", srcData[i].Root.String(), paths[i]), resp.Header.Get("X-Ipfs-Path"))
 					requestId := resp.Header.Get("X-Trace-Id")
 					require.NotEmpty(t, requestId)
 					_, err := uuid.Parse(requestId)

@@ -58,6 +58,9 @@ func TestRetriever(t *testing.T) {
 		name               string
 		setup              func(*testutil.MockSession)
 		candidates         []types.RetrievalCandidate
+		path               string
+		dups               bool
+		scope              types.DagScope
 		returns_connected  map[string]testutil.DelayedConnectReturn
 		returns_retrievals map[string]testutil.DelayedClientReturn
 		cancelAfter        time.Duration
@@ -95,7 +98,76 @@ func TestRetriever(t *testing.T) {
 					},
 					ReceivedConnections: []peer.ID{peerA},
 					ExpectedEvents: []types.RetrievalEvent{
-						events.StartedFetch(startTime, rid, cid1, ""),
+						events.StartedFetch(startTime, rid, cid1, "?dag-scope=all&dups=n", multicodec.TransportGraphsyncFilecoinv1),
+						events.StartedFindingCandidates(startTime, rid, cid1),
+						events.CandidatesFound(startTime, rid, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1)}),
+						events.CandidatesFiltered(startTime, rid, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1)}),
+						events.StartedRetrieval(startTime, rid, types.NewRetrievalCandidate(peerA, nil, cid1), multicodec.TransportGraphsyncFilecoinv1),
+					},
+				},
+				{
+					AfterStart: 20 * time.Millisecond,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.ConnectedToProvider(startTime.Add(20*time.Millisecond), rid, types.NewRetrievalCandidate(peerA, nil, cid1), multicodec.TransportGraphsyncFilecoinv1),
+					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_Connect, Provider: peerA, Duration: 20 * time.Millisecond},
+					},
+				},
+				{
+					AfterStart:         20*time.Millisecond + initialPause,
+					ReceivedRetrievals: []peer.ID{peerA},
+				},
+				{
+					AfterStart: 25*time.Millisecond + initialPause,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Proposed(startTime.Add(25*time.Millisecond+initialPause), rid, types.NewRetrievalCandidate(peerA, nil, cid1)),
+						events.Accepted(startTime.Add(25*time.Millisecond+initialPause), rid, types.NewRetrievalCandidate(peerA, nil, cid1)),
+						events.FirstByte(startTime.Add(25*time.Millisecond+initialPause), rid, types.NewRetrievalCandidate(peerA, nil, cid1), 5*time.Millisecond, multicodec.TransportGraphsyncFilecoinv1),
+						events.Success(startTime.Add(25*time.Millisecond+initialPause), rid, types.NewRetrievalCandidate(peerA, nil, cid1), 1, 2, 3*time.Second, multicodec.TransportGraphsyncFilecoinv1),
+						events.Finished(startTime.Add(25*time.Millisecond+initialPause), rid, types.RetrievalCandidate{RootCid: cid1}),
+					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_FirstByte, Provider: peerA, Duration: 5 * time.Millisecond},
+						{Type: testutil.SessionMetric_Success, Provider: peerA, Value: math.Trunc(1.0 / float64((3 * time.Second).Milliseconds()))},
+					},
+				},
+			},
+		},
+		{
+			name: "single candidate and successful retrieval, w/ path & dups & scope",
+			candidates: []types.RetrievalCandidate{
+				{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
+			},
+			path:  "some/path/to/request",
+			dups:  true,
+			scope: types.DagScopeBlock,
+			returns_connected: map[string]testutil.DelayedConnectReturn{
+				string(peerA): {Err: nil, Delay: time.Millisecond * 20},
+			},
+			returns_retrievals: map[string]testutil.DelayedClientReturn{
+				string(peerA): {ResultStats: &types.RetrievalStats{
+					StorageProviderId: peerA,
+					Size:              1,
+					Blocks:            2,
+					Duration:          3 * time.Second,
+					TotalPayment:      big.Zero(),
+					RootCid:           cid1,
+					AskPrice:          abi.NewTokenAmount(0),
+				}, Delay: time.Millisecond * 5},
+			},
+			expectedSequence: []testutil.ExpectedActionsAtTime{
+				{
+					AfterStart: 0,
+					CandidatesDiscovered: []testutil.DiscoveredCandidate{
+						{
+							Cid:       cid1,
+							Candidate: types.RetrievalCandidate{MinerPeer: peer.AddrInfo{ID: peerA}, RootCid: cid1, Metadata: metadata.Default.New(&metadata.GraphsyncFilecoinV1{})},
+						},
+					},
+					ReceivedConnections: []peer.ID{peerA},
+					ExpectedEvents: []types.RetrievalEvent{
+						events.StartedFetch(startTime, rid, cid1, "/some/path/to/request?dag-scope=block&dups=y", multicodec.TransportGraphsyncFilecoinv1),
 						events.StartedFindingCandidates(startTime, rid, cid1),
 						events.CandidatesFound(startTime, rid, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1)}),
 						events.CandidatesFiltered(startTime, rid, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1)}),
@@ -167,7 +239,7 @@ func TestRetriever(t *testing.T) {
 					},
 					ReceivedConnections: []peer.ID{peerA, peerB},
 					ExpectedEvents: []types.RetrievalEvent{
-						events.StartedFetch(startTime, rid, cid1, ""),
+						events.StartedFetch(startTime, rid, cid1, "?dag-scope=all&dups=n", multicodec.TransportGraphsyncFilecoinv1),
 						events.StartedFindingCandidates(startTime, rid, cid1),
 						events.CandidatesFound(startTime, rid, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1), types.NewRetrievalCandidate(peerB, nil, cid1)}),
 						events.CandidatesFiltered(startTime, rid, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1), types.NewRetrievalCandidate(peerB, nil, cid1)}),
@@ -244,7 +316,7 @@ func TestRetriever(t *testing.T) {
 					},
 					ReceivedConnections: []peer.ID{peerA},
 					ExpectedEvents: []types.RetrievalEvent{
-						events.StartedFetch(startTime, rid, cid1, ""),
+						events.StartedFetch(startTime, rid, cid1, "?dag-scope=all&dups=n", multicodec.TransportGraphsyncFilecoinv1),
 						events.StartedFindingCandidates(startTime, rid, cid1),
 						events.CandidatesFound(startTime, rid, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(blacklistedPeer, nil, cid1), types.NewRetrievalCandidate(peerA, nil, cid1)}),
 						events.CandidatesFiltered(startTime, rid, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1)}),
@@ -317,7 +389,7 @@ func TestRetriever(t *testing.T) {
 					},
 					ReceivedConnections: []peer.ID{peerA, peerB},
 					ExpectedEvents: []types.RetrievalEvent{
-						events.StartedFetch(startTime, rid, cid1, ""),
+						events.StartedFetch(startTime, rid, cid1, "?dag-scope=all&dups=n", multicodec.TransportGraphsyncFilecoinv1),
 						events.StartedFindingCandidates(startTime, rid, cid1),
 						events.CandidatesFound(startTime, rid, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1), types.NewRetrievalCandidate(peerB, nil, cid1)}),
 						events.CandidatesFiltered(startTime, rid, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1), types.NewRetrievalCandidate(peerB, nil, cid1)}),
@@ -401,7 +473,7 @@ func TestRetriever(t *testing.T) {
 					},
 					ReceivedConnections: []peer.ID{peerA, peerB},
 					ExpectedEvents: []types.RetrievalEvent{
-						events.StartedFetch(startTime, rid, cid1, ""),
+						events.StartedFetch(startTime, rid, cid1, "?dag-scope=all&dups=n", multicodec.TransportGraphsyncFilecoinv1),
 						events.StartedFindingCandidates(startTime, rid, cid1),
 						events.CandidatesFound(startTime, rid, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1), types.NewRetrievalCandidate(peerB, nil, cid1)}),
 						events.CandidatesFiltered(startTime, rid, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1), types.NewRetrievalCandidate(peerB, nil, cid1)}),
@@ -506,7 +578,7 @@ func TestRetriever(t *testing.T) {
 					},
 					ReceivedConnections: []peer.ID{peerA, peerB},
 					ExpectedEvents: []types.RetrievalEvent{
-						events.StartedFetch(startTime, rid, cid1, ""),
+						events.StartedFetch(startTime, rid, cid1, "?dag-scope=all&dups=n", multicodec.TransportGraphsyncFilecoinv1),
 						events.StartedFindingCandidates(startTime, rid, cid1),
 						events.CandidatesFound(startTime, rid, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1), types.NewRetrievalCandidate(peerB, nil, cid1)}),
 						events.CandidatesFiltered(startTime, rid, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1), types.NewRetrievalCandidate(peerB, nil, cid1)}),
@@ -578,7 +650,7 @@ func TestRetriever(t *testing.T) {
 					AfterStart:           0,
 					CandidatesDiscovered: []testutil.DiscoveredCandidate{},
 					ExpectedEvents: []types.RetrievalEvent{
-						events.StartedFetch(startTime, rid, cid1, ""),
+						events.StartedFetch(startTime, rid, cid1, "?dag-scope=all&dups=n", multicodec.TransportGraphsyncFilecoinv1),
 						events.StartedFindingCandidates(startTime, rid, cid1),
 						events.Failed(startTime, rid, types.RetrievalCandidate{RootCid: cid1}, "no candidates"),
 						events.Finished(startTime, rid, types.RetrievalCandidate{RootCid: cid1}),
@@ -609,7 +681,7 @@ func TestRetriever(t *testing.T) {
 						},
 					},
 					ExpectedEvents: []types.RetrievalEvent{
-						events.StartedFetch(startTime, rid, cid1, ""),
+						events.StartedFetch(startTime, rid, cid1, "?dag-scope=all&dups=n", multicodec.TransportGraphsyncFilecoinv1),
 						events.StartedFindingCandidates(startTime, rid, cid1),
 						events.CandidatesFound(startTime, rid, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(blacklistedPeer, nil, cid1)}),
 						events.Failed(startTime, rid, types.RetrievalCandidate{RootCid: cid1}, "no candidates"),
@@ -671,7 +743,7 @@ func TestRetriever(t *testing.T) {
 					},
 					ReceivedConnections: []peer.ID{peerA, peerB},
 					ExpectedEvents: []types.RetrievalEvent{
-						events.StartedFetch(startTime, rid, cid1, ""),
+						events.StartedFetch(startTime, rid, cid1, "?dag-scope=all&dups=n", multicodec.TransportGraphsyncFilecoinv1),
 						events.StartedFindingCandidates(startTime, rid, cid1),
 						events.CandidatesFound(startTime, rid, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1), types.NewRetrievalCandidate(peerB, nil, cid1)}),
 						events.CandidatesFiltered(startTime, rid, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1), types.NewRetrievalCandidate(peerB, nil, cid1)}),
@@ -758,6 +830,9 @@ func TestRetriever(t *testing.T) {
 						LinkSystem:  cidlink.DefaultLinkSystem(),
 						RetrievalID: rid,
 						Cid:         cid1,
+						Path:        tc.path,
+						Scope:       tc.scope,
+						Duplicates:  tc.dups,
 					}, cb)
 				}},
 			)
@@ -866,7 +941,7 @@ func TestLinkSystemPerRequest(t *testing.T) {
 				},
 				ReceivedConnections: []peer.ID{peerA, peerB},
 				ExpectedEvents: []types.RetrievalEvent{
-					events.StartedFetch(startTime, rid, cid1, ""),
+					events.StartedFetch(startTime, rid, cid1, "?dag-scope=all&dups=n", multicodec.TransportGraphsyncFilecoinv1),
 					events.StartedFindingCandidates(startTime, rid, cid1),
 					events.CandidatesFound(startTime, rid, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1), types.NewRetrievalCandidate(peerB, nil, cid1)}),
 					events.CandidatesFiltered(startTime, rid, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1), types.NewRetrievalCandidate(peerB, nil, cid1)}),
@@ -932,7 +1007,7 @@ func TestLinkSystemPerRequest(t *testing.T) {
 				},
 				ReceivedConnections: []peer.ID{peerA, peerB},
 				ExpectedEvents: []types.RetrievalEvent{
-					events.StartedFetch(startTime.Add(10*time.Millisecond+initialPause), rid, cid1, ""),
+					events.StartedFetch(startTime.Add(10*time.Millisecond+initialPause), rid, cid1, "?dag-scope=all&dups=n", multicodec.TransportGraphsyncFilecoinv1),
 					events.StartedFindingCandidates(startTime.Add(10*time.Millisecond+initialPause), rid, cid1),
 					events.CandidatesFound(startTime.Add(10*time.Millisecond+initialPause), rid, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1), types.NewRetrievalCandidate(peerB, nil, cid1)}),
 					events.CandidatesFiltered(startTime.Add(10*time.Millisecond+initialPause), rid, cid1, []types.RetrievalCandidate{types.NewRetrievalCandidate(peerA, nil, cid1), types.NewRetrievalCandidate(peerB, nil, cid1)}),

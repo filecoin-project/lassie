@@ -152,4 +152,12 @@ func VerifyCollectedEvent(t *testing.T, actual types.RetrievalEvent, expected ty
 			require.Fail(t, "wrong event type", expected.Code())
 		}
 	}
+	if esf, ok := expected.(events.StartedFetchEvent); ok {
+		if asf, ok := actual.(events.StartedFetchEvent); ok {
+			require.Equal(t, esf.UrlPath(), asf.UrlPath(), fmt.Sprintf("url path for %s", expected.Code()))
+			require.Equal(t, esf.Protocols(), asf.Protocols(), fmt.Sprintf("protocols for %s", expected.Code()))
+		} else {
+			require.Fail(t, "wrong event type", expected.Code())
+		}
+	}
 }

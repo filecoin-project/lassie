@@ -155,10 +155,14 @@ func (retriever *Retriever) Retrieve(
 		eventsCB,
 	)
 
-	urlPath, _ := request.GetUrlPath()
+	descriptor, err := request.GetDescriptorString()
+	if err != nil {
+		return nil, err
+	}
+	descriptor = strings.TrimPrefix(descriptor, "/ipfs/"+request.Cid.String())
 
 	// Emit a StartedFetch event signaling that the Lassie fetch has started
-	onRetrievalEvent(events.StartedFetch(retriever.clock.Now(), request.RetrievalID, request.Cid, urlPath, request.GetSupportedProtocols(retriever.protocols)...))
+	onRetrievalEvent(events.StartedFetch(retriever.clock.Now(), request.RetrievalID, request.Cid, descriptor, request.GetSupportedProtocols(retriever.protocols)...))
 
 	// retrieve, note that we could get a successful retrieval
 	// (retrievalStats!=nil) _and_ also an error return because there may be

@@ -17,15 +17,20 @@ import (
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	gstestutil "github.com/ipfs/go-graphsync/testutil"
+	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime/datamodel"
+	"github.com/ipld/go-ipld-prime/fluent/qp"
 	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/storage/memstore"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
+	"github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/slices"
 )
 
 func TestHTTPRetriever(t *testing.T) {
@@ -49,8 +54,14 @@ func TestHTTPRetriever(t *testing.T) {
 	}
 	cid1 := tbc1.TipLink.(cidlink.Link).Cid
 	cid2 := tbc2.TipLink.(cidlink.Link).Cid
+
 	cid1Cands := testutil.GenerateRetrievalCandidatesForCID(t, 10, cid1, metadata.IpfsGatewayHttp{})
 	cid2Cands := testutil.GenerateRetrievalCandidatesForCID(t, 10, cid2, metadata.IpfsGatewayHttp{})
+
+	// testing our strange paths that need to propagate through http requests
+	funkyPath, funkyLinks := mkFunky(lsys)
+	funkyCands := testutil.GenerateRetrievalCandidatesForCID(t, 1, funkyLinks[0], metadata.IpfsGatewayHttp{})
+
 	rid1 := types.RetrievalID(uuid.New())
 	rid2 := types.RetrievalID(uuid.New())
 	remoteBlockDuration := 50 * time.Millisecond
@@ -571,6 +582,86 @@ func TestHTTPRetriever(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:        "single, funky path",
+			requests:    map[cid.Cid]types.RetrievalID{funkyLinks[0]: rid1},
+			requestPath: map[cid.Cid]string{funkyLinks[0]: funkyPath},
+			remotes: map[cid.Cid][]testutil.MockRoundTripRemote{
+				funkyLinks[0]: {
+					{
+						Peer:       funkyCands[0].MinerPeer,
+						LinkSystem: lsys,
+						Selector:   allSelector,
+						RespondAt:  startTime.Add(initialPause + time.Millisecond*40),
+					},
+				},
+			},
+			expectedStats: map[cid.Cid]*types.RetrievalStats{
+				funkyLinks[0]: {
+					RootCid:           funkyLinks[0],
+					StorageProviderId: funkyCands[0].MinerPeer.ID,
+					Size:              sizeOfStored(lsys, funkyLinks),
+					Blocks:            uint64(len(funkyLinks)),
+					Duration:          40*time.Millisecond + remoteBlockDuration*time.Duration(len(funkyLinks)),
+					AverageSpeed:      uint64(float64(sizeOfStored(lsys, funkyLinks)) / (40*time.Millisecond + remoteBlockDuration*time.Duration(len(funkyLinks))).Seconds()),
+					TimeToFirstByte:   40 * time.Millisecond,
+					TotalPayment:      big.Zero(),
+					AskPrice:          big.Zero(),
+				},
+			},
+			expectedCids: map[cid.Cid][]cid.Cid{funkyLinks[0]: funkyLinks},
+			expectSequence: []testutil.ExpectedActionsAtTime{
+				{
+					AfterStart: 0,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.StartedRetrieval(startTime, rid1, toCandidate(funkyLinks[0], funkyCands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp),
+						events.ConnectedToProvider(startTime, rid1, toCandidate(funkyLinks[0], funkyCands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp),
+					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_Connect, Provider: funkyCands[0].MinerPeer.ID},
+					},
+				},
+				{
+					AfterStart:         initialPause,
+					ReceivedRetrievals: []peer.ID{funkyCands[0].MinerPeer.ID},
+				},
+				{
+					AfterStart: initialPause + time.Millisecond*40,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.FirstByte(startTime.Add(initialPause+time.Millisecond*40), rid1, toCandidate(funkyLinks[0], funkyCands[0].MinerPeer), time.Millisecond*40, multicodec.TransportIpfsGatewayHttp),
+					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_FirstByte, Provider: funkyCands[0].MinerPeer.ID, Duration: time.Millisecond * 40},
+					},
+				},
+				{
+					AfterStart: initialPause + time.Millisecond*40 + remoteBlockDuration*time.Duration(len(funkyLinks)),
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Success(
+							startTime.Add(initialPause+time.Millisecond*40+remoteBlockDuration*time.Duration(len(funkyLinks))),
+							rid1,
+							toCandidate(funkyLinks[0], funkyCands[0].MinerPeer),
+							sizeOfStored(lsys, funkyLinks),
+							uint64(len(funkyLinks)),
+							time.Millisecond*40+remoteBlockDuration*time.Duration(len(funkyLinks)),
+							multicodec.TransportIpfsGatewayHttp,
+						),
+					},
+					CompletedRetrievals: []peer.ID{funkyCands[0].MinerPeer.ID},
+					ServedRetrievals: []testutil.RemoteStats{
+						{
+							Peer:      funkyCands[0].MinerPeer.ID,
+							Root:      funkyLinks[0],
+							ByteCount: sizeOfStored(lsys, funkyLinks),
+							Blocks:    funkyLinks,
+						},
+					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_Success, Provider: funkyCands[0].MinerPeer.ID, Value: math.Trunc(float64(sizeOfStored(lsys, funkyLinks)) / (time.Millisecond*40 + remoteBlockDuration*time.Duration(len(funkyLinks))).Seconds())},
+					},
+				},
+			},
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -678,4 +769,62 @@ func (ba *blockAccounter) StorageWriteOpener(lctx linking.LinkContext) (io.Write
 		ba.cids = append(ba.cids, l.(cidlink.Link).Cid)
 		return wc(l)
 	}, err
+}
+
+var pblp = cidlink.LinkPrototype{
+	Prefix: cid.Prefix{
+		Version:  1,
+		Codec:    cid.DagProtobuf,
+		MhType:   multihash.SHA2_256,
+		MhLength: 32,
+	},
+}
+var rawlp = cidlink.LinkPrototype{
+	Prefix: cid.Prefix{
+		Version:  1,
+		Codec:    cid.Raw,
+		MhType:   multihash.SHA2_256,
+		MhLength: 32,
+	},
+}
+
+func mkBlockWithBytes(lsys linking.LinkSystem, bytes []byte) cid.Cid {
+	l, err := lsys.Store(linking.LinkContext{}, rawlp, basicnode.NewBytes(bytes))
+	if err != nil {
+		panic(err)
+	}
+	return l.(cidlink.Link).Cid
+}
+
+func mkBlockWithLink(lsys linking.LinkSystem, c cid.Cid, name string) cid.Cid {
+	n, err := qp.BuildMap(dagpb.Type.PBNode, 1, func(ma datamodel.MapAssembler) {
+		qp.MapEntry(ma, "Links", qp.List(1, func(la datamodel.ListAssembler) {
+			qp.ListEntry(la, qp.Map(2, func(ma datamodel.MapAssembler) {
+				qp.MapEntry(ma, "Name", qp.String(name))
+				qp.MapEntry(ma, "Hash", qp.Link(cidlink.Link{Cid: c}))
+			}))
+		}))
+	})
+	if err != nil {
+		panic(err)
+	}
+	l, err := lsys.Store(linking.LinkContext{}, pblp, n)
+	if err != nil {
+		panic(err)
+	}
+	return l.(cidlink.Link).Cid
+}
+
+func mkFunky(lsys linking.LinkSystem) (string, []cid.Cid) {
+	funkyPath := `=funky/ path/#/with?/weird%/c+h+a+r+s`
+	funkyLinks := make([]cid.Cid, 0)
+	funkyLinks = append(funkyLinks, mkBlockWithBytes(lsys, []byte("funky data")))
+	funkyLinks = append(funkyLinks, mkBlockWithLink(lsys, funkyLinks[len(funkyLinks)-1], "c+h+a+r+s"))
+	funkyLinks = append(funkyLinks, mkBlockWithLink(lsys, funkyLinks[len(funkyLinks)-1], "weird%"))
+	funkyLinks = append(funkyLinks, mkBlockWithLink(lsys, funkyLinks[len(funkyLinks)-1], "with?"))
+	funkyLinks = append(funkyLinks, mkBlockWithLink(lsys, funkyLinks[len(funkyLinks)-1], "#"))
+	funkyLinks = append(funkyLinks, mkBlockWithLink(lsys, funkyLinks[len(funkyLinks)-1], " path"))
+	funkyLinks = append(funkyLinks, mkBlockWithLink(lsys, funkyLinks[len(funkyLinks)-1], "=funky"))
+	slices.Reverse(funkyLinks)
+	return funkyPath, funkyLinks
 }
