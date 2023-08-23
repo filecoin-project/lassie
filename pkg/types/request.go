@@ -3,6 +3,7 @@ package types
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -155,9 +156,14 @@ func (r RetrievalRequest) GetUrlPath() (string, error) {
 	if legacyScope == string(DagScopeEntity) {
 		legacyScope = "file"
 	}
-	path := r.Path
-	if path != "" {
-		path = "/" + path
+	var path string
+	if r.Path != "" {
+		p := datamodel.ParsePath(r.Path)
+		for p.Len() > 0 {
+			var ps datamodel.PathSegment
+			ps, p = p.Shift()
+			path += "/" + url.PathEscape(ps.String())
+		}
 	}
 	return fmt.Sprintf("%s?dag-scope=%s&car-scope=%s", path, scope, legacyScope), nil
 }
