@@ -243,7 +243,8 @@ func (cr *carReader) readNextBlock(ctx context.Context, expected cid.Cid) ([]byt
 		return nil, multierr.Combine(ErrMalformedCar, err)
 	}
 
-	if blk.Cid() != expected {
+	// compare by multihash only
+	if !bytes.Equal(blk.Cid().Hash(), expected.Hash()) {
 		return nil, fmt.Errorf("%w: %s != %s", ErrUnexpectedBlock, blk.Cid(), expected)
 	}
 	return blk.RawData(), nil
