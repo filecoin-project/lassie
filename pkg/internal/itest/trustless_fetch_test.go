@@ -15,6 +15,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/internal/itest/testpeer"
 	"github.com/filecoin-project/lassie/pkg/lassie"
 	httpserver "github.com/filecoin-project/lassie/pkg/server/http"
+	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-unixfsnode"
 	"github.com/ipld/go-car/v2"
@@ -117,7 +118,7 @@ func TestTrustlessUnixfsFetch(t *testing.T) {
 				etagGot := resp.Header.Get("ETag")
 				req.True(strings.HasPrefix(etagGot, etagStart), "ETag should start with [%s], got [%s]", etagStart, etagGot)
 				req.Equal(`"`, etagGot[len(etagGot)-1:], "ETag should end with a quote")
-				req.Equal(fmt.Sprintf("/ipfs/%s%s", tc.Root.String(), tc.Path), resp.Header.Get("X-Ipfs-Path"))
+				req.Equal(fmt.Sprintf("/ipfs/%s%s", tc.Root.String(), types.PathEscape(tc.Path)), resp.Header.Get("X-Ipfs-Path"))
 				requestId := resp.Header.Get("X-Trace-Id")
 				require.NotEmpty(t, requestId)
 				_, err = uuid.Parse(requestId)
