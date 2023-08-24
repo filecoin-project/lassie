@@ -287,18 +287,37 @@ func TestRequestStringRepresentations(t *testing.T) {
 			expectedDescriptor: "/ipfs/bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi?dag-scope=all&dups=n&providers=/dns/beep.boop.com/tcp/3747/p2p/12D3KooWDXAVxjSTKbHKpNk8mFVQzHdBDvR4kybu582Xd4Zrvagg,/ip4/127.0.0.1/tcp/5000/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4",
 		},
 		{
+			name: "byte range",
+			request: types.RetrievalRequest{
+				Cid:   testCidV1,
+				Bytes: &types.ByteRange{From: 100, To: ptr(200)},
+			},
+			expectedUrlPath:    "?dag-scope=all&car-scope=all&entity-bytes=100:200",
+			expectedDescriptor: "/ipfs/bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi?dag-scope=all&entity-bytes=100:200&dups=n",
+		},
+		{
+			name: "byte range -ve",
+			request: types.RetrievalRequest{
+				Cid:   testCidV1,
+				Bytes: &types.ByteRange{From: -100},
+			},
+			expectedUrlPath:    "?dag-scope=all&car-scope=all&entity-bytes=-100:*",
+			expectedDescriptor: "/ipfs/bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi?dag-scope=all&entity-bytes=-100:*&dups=n",
+		},
+		{
 			name: "all the things",
 			request: types.RetrievalRequest{
 				Cid:        testCidV0,
 				Path:       "/some/path/to/thing",
 				Scope:      types.DagScopeEntity,
 				Duplicates: true,
+				Bytes:      &types.ByteRange{From: 100, To: ptr(-200)},
 				MaxBlocks:  222,
 				Protocols:  []multicodec.Code{multicodec.TransportBitswap, multicodec.TransportIpfsGatewayHttp},
 				FixedPeers: must(types.ParseProviderStrings("/dns/beep.boop.com/tcp/3747/p2p/12D3KooWDXAVxjSTKbHKpNk8mFVQzHdBDvR4kybu582Xd4Zrvagg,/ip4/127.0.0.1/tcp/5000/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4")),
 			},
-			expectedUrlPath:    "/some/path/to/thing?dag-scope=entity&car-scope=file",
-			expectedDescriptor: "/ipfs/QmVXsSVjwxMsCwKRCUxEkGb4f4B98gXVy3ih3v4otvcURK/some/path/to/thing?dag-scope=entity&dups=y&blockLimit=222&protocols=transport-bitswap,transport-ipfs-gateway-http&providers=/dns/beep.boop.com/tcp/3747/p2p/12D3KooWDXAVxjSTKbHKpNk8mFVQzHdBDvR4kybu582Xd4Zrvagg,/ip4/127.0.0.1/tcp/5000/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4",
+			expectedUrlPath:    "/some/path/to/thing?dag-scope=entity&car-scope=file&entity-bytes=100:-200",
+			expectedDescriptor: "/ipfs/QmVXsSVjwxMsCwKRCUxEkGb4f4B98gXVy3ih3v4otvcURK/some/path/to/thing?dag-scope=entity&entity-bytes=100:-200&dups=y&blockLimit=222&protocols=transport-bitswap,transport-ipfs-gateway-http&providers=/dns/beep.boop.com/tcp/3747/p2p/12D3KooWDXAVxjSTKbHKpNk8mFVQzHdBDvR4kybu582Xd4Zrvagg,/ip4/127.0.0.1/tcp/5000/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4",
 		},
 	}
 
