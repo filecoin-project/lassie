@@ -169,7 +169,7 @@ func TestRequestStringRepresentations(t *testing.T) {
 				Path: "/?/#/;/&/ /!",
 			},
 			expectedUrlPath:    "/%3F/%23/%3B/&/%20/%21?dag-scope=all&car-scope=all",
-			expectedDescriptor: "/ipfs/bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi/?/#/;/&/ /!?dag-scope=all&dups=n",
+			expectedDescriptor: "/ipfs/bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi/%3F/%23/%3B/&/%20/%21?dag-scope=all&dups=n",
 		},
 		{
 			name: "entity",

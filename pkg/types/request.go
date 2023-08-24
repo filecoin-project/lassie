@@ -195,11 +195,7 @@ func (r RetrievalRequest) GetDescriptorString() (string, error) {
 	if r.Scope == "" {
 		scope = DagScopeAll
 	}
-	var path string
-	if r.Path != "" {
-		path = "/" + datamodel.ParsePath(r.Path).String()
-	}
-
+	path := PathEscape(r.Path)
 	dups := "y"
 	if !r.Duplicates {
 		dups = "n"
