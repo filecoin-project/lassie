@@ -26,6 +26,7 @@ import (
 	"github.com/ipld/go-ipld-prime/storage/memstore"
 	"github.com/ipld/go-ipld-prime/traversal"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
+	mh "github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/require"
 )
 
@@ -123,6 +124,8 @@ func TestVerifiedCar(t *testing.T) {
 		blockWriteErr   error
 		cfg             verifiedcar.Config
 		incomingHasDups bool
+		carAsCIDv0      bool
+		carAsRawBlocks  bool
 	}{
 		{
 			name:   "complete carv1",
@@ -514,6 +517,40 @@ func TestVerifiedCar(t *testing.T) {
 				Selector: allSelector,
 			},
 		},
+		{
+			// strip out codec from the CIDs coming over the wire
+			name:   "complete carv1, raw blocks",
+			blocks: consumedBlocks(allBlocks),
+			roots:  []cid.Cid{root1},
+			cfg: verifiedcar.Config{
+				Root:     root1,
+				Selector: allSelector,
+			},
+			carAsRawBlocks: true,
+		},
+		{
+			// strip out codec from the CIDs coming over the wire
+			name:   "unixfs: large sharded file, raw blocks",
+			blocks: consumedBlocks(unixfsFileBlocks),
+			roots:  []cid.Cid{unixfsFile.Root},
+			cfg: verifiedcar.Config{
+				Root:     unixfsFile.Root,
+				Selector: allSelector,
+			},
+			carAsRawBlocks: true,
+		},
+		{
+			// switch to CIDv0 for the CIDs coming over the wire, internally the DAG still has CIDv1
+			// links
+			name:   "unixfs: large sharded file, CIDv0",
+			blocks: consumedBlocks(unixfsFileBlocks),
+			roots:  []cid.Cid{unixfsFile.Root},
+			cfg: verifiedcar.Config{
+				Root:     unixfsFile.Root,
+				Selector: allSelector,
+			},
+			carAsCIDv0: true,
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -556,7 +593,7 @@ func TestVerifiedCar(t *testing.T) {
 				}, nil
 			}
 
-			carStream := makeCarStream(t, ctx, testCase.roots, testCase.blocks, testCase.carv2, testCase.expectErr != "", testCase.incomingHasDups, testCase.streamErr)
+			carStream := makeCarStream(t, ctx, testCase.roots, testCase.blocks, testCase.carv2, testCase.expectErr != "", testCase.incomingHasDups, testCase.streamErr, testCase.carAsRawBlocks, testCase.carAsCIDv0)
 			blockCount, byteCount, err := testCase.cfg.VerifyCar(ctx, carStream, lsys)
 
 			// read the rest of data
@@ -585,6 +622,8 @@ func makeCarStream(
 	expectErrors bool,
 	allowDuplicatePuts bool,
 	streamError error,
+	carAsRawBlocks bool,
+	carAsCIDv0 bool,
 ) io.Reader {
 
 	r, w := io.Pipe()
@@ -618,7 +657,13 @@ func makeCarStream(
 				w.CloseWithError(streamError)
 				return
 			}
-			err := carWriter.Put(ctx, block.Cid().KeyString(), block.RawData())
+			c := block.Cid()
+			if carAsCIDv0 && c.Prefix().MhType == mh.SHA2_256 && c.Prefix().Codec == cid.DagProtobuf {
+				c = cid.NewCidV0(c.Hash())
+			} else if carAsRawBlocks {
+				c = cid.NewCidV1(cid.Raw, c.Hash())
+			}
+			err := carWriter.Put(ctx, c.KeyString(), block.RawData())
 			if !expectErrors {
 				req.NoError(err)
 			}
