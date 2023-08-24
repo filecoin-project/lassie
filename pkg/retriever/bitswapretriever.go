@@ -254,6 +254,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		// check for timeout on the local context
 		// TODO: post 1.19 replace timedOut and doneLk with WithCancelCause and use DeadlineExceeded cause:
 		// if errors.Is(retrievalCtx.Err(), context.Canceled) && errors.Is(context.Cause(retrievalCtx), context.DeadlineExceeded) {
+		doneLk.Lock()
 		if timedOut {
 			// TODO: replace with %w: %w after 1.19
 			err = multierr.Append(ErrRetrievalFailed,
@@ -264,6 +265,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 				),
 			)
 		}
+		doneLk.Unlock()
 		// exclude the case where the context was cancelled by the parent, which likely means that
 		// another protocol has succeeded.
 		if br.ctx.Err() == nil {
