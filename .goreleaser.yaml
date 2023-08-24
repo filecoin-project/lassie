@@ -14,6 +14,8 @@ builds:
       - 'arm64'
     # Change to a static date for checksum verification. See https://goreleaser.com/customization/builds/#reproducible-builds.
     mod_timestamp: '{{.CommitTimestamp}}'
+    env:
+      - CGO_ENABLED=0
 universal_binaries:
   - replace: true
 archives:
