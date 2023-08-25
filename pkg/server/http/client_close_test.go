@@ -46,7 +46,7 @@ func TestHttpClientClose(t *testing.T) {
 	req.NoError(err)
 
 	reqCtx, reqCancel := context.WithCancel(context.Background())
-	handler := ipfsHandler(lassie, HttpServerConfig{TempDir: t.TempDir()})
+	handler := IpfsHandler(lassie, HttpServerConfig{TempDir: t.TempDir()})
 	response := &responseWriter{t: t, header: http.Header{}, ctx: reqCtx, cancelFn: reqCancel, fatalCh: make(chan struct{})}
 	addr := fmt.Sprintf("http://%s/ipfs/%s%s", "127.0.0.1", srcData.Root.String(), "")
 	request, err := http.NewRequestWithContext(reqCtx, "GET", addr, nil)

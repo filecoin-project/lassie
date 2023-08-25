@@ -73,7 +73,7 @@ func NewHttpServer(ctx context.Context, lassie *lassie.Lassie, cfg HttpServerCon
 	}
 
 	// Routes
-	mux.HandleFunc("/ipfs/", ipfsHandler(lassie, cfg))
+	mux.HandleFunc("/ipfs/", IpfsHandler(lassie, cfg))
 
 	// Handle pprof endpoints
 	mux.HandleFunc("/debug/pprof/", pprof.Index)

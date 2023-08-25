@@ -33,7 +33,7 @@ var (
 	ResponseContentTypeHeader = fmt.Sprintf("%s; version=%s", MimeTypeCar, MimeTypeCarVersion)
 )
 
-func ipfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.ResponseWriter, *http.Request) {
+func IpfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
 		statusLogger := newStatusLogger(req.Method, req.URL.Path)
 		path := datamodel.ParsePath(req.URL.Path)
