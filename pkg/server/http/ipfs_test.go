@@ -238,7 +238,7 @@ func TestIpfsHandler(t *testing.T) {
 			if tt.httpServerConfig != nil {
 				cfg = tt.httpServerConfig
 			}
-			handler := ipfsHandler(fetcher, *cfg)
+			handler := IpfsHandler(fetcher, *cfg)
 
 			req, err := http.NewRequest(tt.method, tt.path, nil)
 			if err != nil {
