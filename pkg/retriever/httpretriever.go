@@ -117,6 +117,11 @@ func (ph *ProtocolHttp) Retrieve(
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, ErrHttpRequestFailure{Code: resp.StatusCode}
 	}
+
+	// if Content-Type is not valid, it will default to
+	// trustlesshttp.DefaultIncludeDupes (true)
+	_, expectDuplicates := trustlesshttp.ParseContentType(resp.Header.Get("Content-Type"))
+
 	var ttfb time.Duration
 	rdr := newTimeToFirstByteReader(resp.Body, func() {
 		ttfb = retrieval.Clock.Since(retrievalStart)
@@ -125,7 +130,11 @@ func (ph *ProtocolHttp) Retrieve(
 	cfg := traversal.Config{
 		Root:               retrieval.request.Root,
 		Selector:           retrieval.request.GetSelector(),
-		ExpectDuplicatesIn: true, // TODO: parse Content-Type and set this appropriately
+		ExpectDuplicatesIn: expectDuplicates,
+		// write out the same as we get in  so we're not causing waste here,
+		// dealing with the actual output duplicates requirements can be done
+		// in a parent
+		WriteDuplicatesOut: expectDuplicates,
 		MaxBlocks:          retrieval.request.MaxBlocks,
 	}
 
@@ -135,13 +144,13 @@ func (ph *ProtocolHttp) Retrieve(
 	}
 
 	duration := retrieval.Clock.Since(retrievalStart)
-	speed := uint64(float64(traversalResult.Bytes) / duration.Seconds())
+	speed := uint64(float64(traversalResult.BytesIn) / duration.Seconds())
 
 	return &types.RetrievalStats{
 		RootCid:           candidate.RootCid,
 		StorageProviderId: candidate.MinerPeer.ID,
-		Size:              traversalResult.Bytes,
-		Blocks:            traversalResult.Blocks,
+		Size:              traversalResult.BytesIn,
+		Blocks:            traversalResult.BlocksIn,
 		Duration:          duration,
 		AverageSpeed:      speed,
 		TotalPayment:      big.Zero(),
