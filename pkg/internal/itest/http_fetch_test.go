@@ -1139,7 +1139,7 @@ func TestHttpFetch(t *testing.T) {
 					}
 					req.Regexp(`^lassie/v\d+\.\d+\.\d+-\w+$`, resp.Header.Get("Server"))
 					req.Equal(fmt.Sprintf(`attachment; filename="%s.car"`, srcData[i].Root.String()), resp.Header.Get("Content-Disposition"))
-					req.Equal("bytes", resp.Header.Get("Accept-Ranges"))
+					req.Equal("none", resp.Header.Get("Accept-Ranges"))
 					req.Equal("public, max-age=29030400, immutable", resp.Header.Get("Cache-Control"))
 					ct := resp.Header.Get("Content-Type")
 					// TODO: check the noDups() case and assert accordingly

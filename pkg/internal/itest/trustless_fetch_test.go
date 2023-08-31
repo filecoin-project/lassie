@@ -110,7 +110,7 @@ func TestTrustlessUnixfsFetch(t *testing.T) {
 					req.Failf("200 response code not received", "got code: %d, body: %s", resp.StatusCode, string(body))
 				}
 				req.Equal(fmt.Sprintf(`attachment; filename="%s.car"`, tc.Root.String()), resp.Header.Get("Content-Disposition"))
-				req.Equal("bytes", resp.Header.Get("Accept-Ranges"))
+				req.Equal("none", resp.Header.Get("Accept-Ranges"))
 				req.Equal("public, max-age=29030400, immutable", resp.Header.Get("Cache-Control"))
 				req.Equal("application/vnd.ipld.car; version=1; order=dfs; dups=y", resp.Header.Get("Content-Type"))
 				req.Equal("nosniff", resp.Header.Get("X-Content-Type-Options"))

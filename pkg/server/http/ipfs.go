@@ -80,7 +80,7 @@ func IpfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.Response
 			// called once we start writing blocks into the CAR (on the first Put())
 			res.Header().Set("Server", build.UserAgent) // "lassie/vx.y.z-<git commit hash>"
 			res.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", fileName))
-			res.Header().Set("Accept-Ranges", trustlesshttp.ResponseAcceptRangesHeader)
+			res.Header().Set("Accept-Ranges", "none")
 			res.Header().Set("Cache-Control", trustlesshttp.ResponseCacheControlHeader)
 			res.Header().Set("Content-Type", trustlesshttp.ResponseContentTypeHeader(request.Duplicates))
 			res.Header().Set("Etag", request.Etag())
