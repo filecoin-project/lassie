@@ -10,6 +10,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/internal/mockfetcher"
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/types"
+	trustlessutils "github.com/ipld/go-trustless-utils"
 	"github.com/stretchr/testify/require"
 )
 
@@ -46,7 +47,7 @@ func TestIpfsHandler(t *testing.T) {
 			path:       "/ipfs/bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4",
 			headers:    map[string]string{"Accept": "application/json"},
 			wantStatus: http.StatusBadRequest,
-			wantBody:   "no acceptable content type\n",
+			wantBody:   "invalid Accept header; unsupported: \"application/json\"\n",
 		},
 		{
 			name:       "400 on invalid Accept header - bad dups",
@@ -54,7 +55,7 @@ func TestIpfsHandler(t *testing.T) {
 			path:       "/ipfs/bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4",
 			headers:    map[string]string{"Accept": "application/vnd.ipld.car;dups=invalid"},
 			wantStatus: http.StatusBadRequest,
-			wantBody:   "no acceptable content type\n",
+			wantBody:   "invalid Accept header; unsupported: \"application/vnd.ipld.car;dups=invalid\"\n",
 		},
 		{
 			name:       "400 on invalid Accept header - bad version",
@@ -62,7 +63,7 @@ func TestIpfsHandler(t *testing.T) {
 			path:       "/ipfs/bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4",
 			headers:    map[string]string{"Accept": "application/vnd.ipld.car;version=2"},
 			wantStatus: http.StatusBadRequest,
-			wantBody:   "no acceptable content type\n",
+			wantBody:   "invalid Accept header; unsupported: \"application/vnd.ipld.car;version=2\"\n",
 		},
 		{
 			name:       "400 on invalid Accept header - bad order",
@@ -70,21 +71,21 @@ func TestIpfsHandler(t *testing.T) {
 			path:       "/ipfs/bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4",
 			headers:    map[string]string{"Accept": "application/vnd.ipld.car;order=invalid"},
 			wantStatus: http.StatusBadRequest,
-			wantBody:   "no acceptable content type\n",
+			wantBody:   "invalid Accept header; unsupported: \"application/vnd.ipld.car;order=invalid\"\n",
 		},
 		{
 			name:       "400 on invalid format query param",
 			method:     "GET",
 			path:       "/ipfs/bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4?format=invalid",
 			wantStatus: http.StatusBadRequest,
-			wantBody:   "requested non-supported format invalid\n",
+			wantBody:   "invalid format parameter; unsupported: \"invalid\"\n",
 		},
 		{
 			name:       "400 on missing Accept header and format query param",
 			method:     "GET",
 			path:       "/ipfs/bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4",
 			wantStatus: http.StatusBadRequest,
-			wantBody:   "neither a valid accept header or format parameter were provided\n",
+			wantBody:   "neither a valid Accept header nor format parameter were provided\n",
 		},
 		{
 			name:       "400 on missing extension in filename query param",
@@ -92,7 +93,7 @@ func TestIpfsHandler(t *testing.T) {
 			path:       "/ipfs/bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4?filename=birb",
 			headers:    map[string]string{"Accept": "application/vnd.ipld.car"},
 			wantStatus: http.StatusBadRequest,
-			wantBody:   "filename missing extension\n",
+			wantBody:   "invalid filename parameter; missing extension\n",
 		},
 		{
 			name:       "400 on non-supported extension in filename query param",
@@ -100,15 +101,15 @@ func TestIpfsHandler(t *testing.T) {
 			path:       "/ipfs/bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4?filename=birb.tar",
 			headers:    map[string]string{"Accept": "application/vnd.ipld.car"},
 			wantStatus: http.StatusBadRequest,
-			wantBody:   "filename uses non-supported extension .tar\n",
+			wantBody:   "invalid filename parameter; unsupported extension: \".tar\"\n",
 		},
 		{
-			name:       "500 when we fail to parse the CID path param",
+			name:       "400 when we fail to parse the CID path param",
 			method:     "GET",
 			path:       "/ipfs/bafyfoo",
 			headers:    map[string]string{"Accept": "application/vnd.ipld.car"},
-			wantStatus: http.StatusInternalServerError,
-			wantBody:   "failed to parse CID path parameter\n",
+			wantStatus: http.StatusBadRequest,
+			wantBody:   "failed to parse root CID\n",
 		},
 		{
 			name:       "400 on invalid dag-scope query parameter",
@@ -170,9 +171,9 @@ func TestIpfsHandler(t *testing.T) {
 			path:    "/ipfs/bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4/birb.mp4?dag-scope=entity",
 			headers: map[string]string{"Accept": "application/vnd.ipld.car"},
 			fetchFunc: func(ctx context.Context, r types.RetrievalRequest, cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
-				require.Equal(t, "bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4", r.Cid.String())
+				require.Equal(t, "bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4", r.Root.String())
 				require.Equal(t, "birb.mp4", r.Path)
-				require.Equal(t, types.DagScopeEntity, r.Scope)
+				require.Equal(t, trustlessutils.DagScopeEntity, r.Scope)
 				require.Equal(t, uint64(0), r.MaxBlocks)
 				return &types.RetrievalStats{}, nil
 			},
@@ -264,7 +265,7 @@ func TestIpfsHandler(t *testing.T) {
 			}
 
 			if tt.wantBody != "" && rr.Body.String() != tt.wantBody {
-				t.Errorf("handler returned unexpected body: got %v want %v",
+				t.Errorf("handler returned unexpected body: got [%v] want [%v]",
 					rr.Body.String(), tt.wantBody)
 			}
 		})

@@ -17,6 +17,7 @@ import (
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	trustlessutils "github.com/ipld/go-trustless-utils"
 	"github.com/ipni/go-libipni/metadata"
 	crypto "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -90,7 +91,7 @@ func GenerateRetrievalRequests(t *testing.T, n int) []types.RetrievalRequest {
 	for i := 0; i < n; i++ {
 		requests = append(requests, types.RetrievalRequest{
 			RetrievalID: rids[i],
-			Cid:         cids[i],
+			Request:     trustlessutils.Request{Root: cids[i]},
 			LinkSystem:  cidlink.DefaultLinkSystem(),
 		})
 	}

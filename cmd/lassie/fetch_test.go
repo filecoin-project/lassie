@@ -10,8 +10,8 @@ import (
 	"github.com/filecoin-project/lassie/pkg/indexerlookup"
 	l "github.com/filecoin-project/lassie/pkg/lassie"
 	"github.com/filecoin-project/lassie/pkg/retriever"
-	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
+	trustlessutils "github.com/ipld/go-trustless-utils"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
 	"github.com/stretchr/testify/require"
@@ -32,7 +32,7 @@ func TestFetchCommandFlags(t *testing.T) {
 				// fetch specific params
 				require.Equal(t, "bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4", rootCid.String())
 				require.Equal(t, "", path)
-				require.Equal(t, string(types.DagScopeAll), dagScope)
+				require.Equal(t, string(trustlessutils.DagScopeAll), dagScope)
 				require.Empty(t, entityBytes)
 				require.Equal(t, false, progress)
 				require.Equal(t, "bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4.car", outfile)
@@ -85,7 +85,7 @@ func TestFetchCommandFlags(t *testing.T) {
 				"bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4",
 			},
 			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, entityBytes string, tempDir string, progress bool, outfile string) error {
-				require.Equal(t, string(types.DagScopeEntity), dagScope)
+				require.Equal(t, string(trustlessutils.DagScopeEntity), dagScope)
 				return nil
 			},
 		},
@@ -98,7 +98,7 @@ func TestFetchCommandFlags(t *testing.T) {
 				"bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4",
 			},
 			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path string, dagScope string, entityBytes string, tempDir string, progress bool, outfile string) error {
-				require.Equal(t, string(types.DagScopeBlock), dagScope)
+				require.Equal(t, string(trustlessutils.DagScopeBlock), dagScope)
 				return nil
 			},
 		},

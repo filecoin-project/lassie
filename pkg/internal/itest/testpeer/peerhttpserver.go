@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-unixfsnode"
 	"github.com/ipld/go-car/v2"
@@ -21,6 +20,7 @@ import (
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
+	trustlessutils "github.com/ipld/go-trustless-utils"
 	servertiming "github.com/mitchellh/go-server-timing"
 )
 
@@ -125,21 +125,21 @@ func MockIpfsHandler(ctx context.Context, lsys linking.LinkSystem) func(http.Res
 		}
 
 		// Parse car scope and use it to get selector
-		var dagScope types.DagScope
+		var dagScope trustlessutils.DagScope
 		switch req.URL.Query().Get("dag-scope") {
 		case "all":
-			dagScope = types.DagScopeAll
+			dagScope = trustlessutils.DagScopeAll
 		case "entity":
-			dagScope = types.DagScopeEntity
+			dagScope = trustlessutils.DagScopeEntity
 		case "block":
-			dagScope = types.DagScopeBlock
+			dagScope = trustlessutils.DagScopeBlock
 		default:
 			http.Error(res, fmt.Sprintf("Invalid dag-scope parameter: %s", req.URL.Query().Get("dag-scope")), http.StatusBadRequest)
 			return
 		}
-		var byteRange *types.ByteRange
+		var byteRange *trustlessutils.ByteRange
 		if req.URL.Query().Get("entity-bytes") != "" {
-			br, err := types.ParseByteRange(req.URL.Query().Get("entity-bytes"))
+			br, err := trustlessutils.ParseByteRange(req.URL.Query().Get("entity-bytes"))
 			if err != nil {
 				http.Error(res, fmt.Sprintf("Invalid entity-bytes parameter: %s", req.URL.Query().Get("entity-bytes")), http.StatusBadRequest)
 				return
@@ -147,7 +147,7 @@ func MockIpfsHandler(ctx context.Context, lsys linking.LinkSystem) func(http.Res
 			byteRange = &br
 		}
 
-		sel, err := selector.CompileSelector(types.PathScopeSelector(unixfsPath, dagScope, byteRange))
+		sel, err := selector.CompileSelector(trustlessutils.Request{Path: unixfsPath, Scope: dagScope, Bytes: byteRange}.Selector())
 		if err != nil {
 			http.Error(res, fmt.Sprintf("Failed to compile selector from dag-scope: %v", err), http.StatusInternalServerError)
 			return

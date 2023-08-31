@@ -5,15 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-unixfsnode"
-	"github.com/ipld/go-ipld-prime/node/basicnode"
-	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/ipni/go-libipni/maurl"
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -262,94 +257,4 @@ func RetrievalIDFromContext(ctx context.Context) (RetrievalID, error) {
 		return RetrievalID{}, ErrIncorrectContextValue
 	}
 	return id, nil
-}
-
-type DagScope string
-
-const DagScopeAll DagScope = "all"
-const DagScopeEntity DagScope = "entity"
-const DagScopeBlock DagScope = "block"
-
-var matcherSelector = builder.NewSelectorSpecBuilder(basicnode.Prototype.Any).Matcher()
-
-func (ds DagScope) TerminalSelectorSpec() builder.SelectorSpec {
-	switch ds {
-	case DagScopeAll:
-		return unixfsnode.ExploreAllRecursivelySelector
-	case DagScopeEntity:
-		return unixfsnode.MatchUnixFSEntitySelector
-	case DagScopeBlock:
-		return matcherSelector
-	case DagScope(""):
-		return unixfsnode.ExploreAllRecursivelySelector // default to explore-all for zero-value DagScope
-	}
-	panic(fmt.Sprintf("unknown DagScope: [%s]", string(ds)))
-}
-
-func ParseDagScope(s string) (DagScope, error) {
-	switch s {
-	case "all":
-		return DagScopeAll, nil
-	case "entity":
-		return DagScopeEntity, nil
-	case "block":
-		return DagScopeBlock, nil
-	default:
-		return DagScopeAll, errors.New("invalid dag-scope")
-	}
-}
-
-func (ds DagScope) AcceptHeader() string {
-	return "application/vnd.ipld.car;version=1;order=dfs;dups=y"
-}
-
-// ByteRange represents a range of bytes in a file. The default value is 0 to
-// the end of the file, [0:*].
-// The range is inclusive at both ends, so the case of From==To selects a single
-// byte.
-// Where the end is * or beyond the end of the file, the end of the file is
-// selected.
-type ByteRange struct {
-	From int64
-	To   *int64
-}
-
-// IsDefault is roughly equivalent to the range matching [0:*]
-func (br *ByteRange) IsDefault() bool {
-	return br == nil || br.From == 0 && br.To == nil
-}
-
-func (br *ByteRange) String() string {
-	if br.IsDefault() {
-		return "0:*"
-	}
-	to := "*" // default to end of file
-	if br.To != nil {
-		to = strconv.FormatInt(*br.To, 10)
-	}
-	return fmt.Sprintf("%d:%s", br.From, to)
-}
-
-func ParseByteRange(s string) (ByteRange, error) {
-	br := ByteRange{}
-	if s == "" {
-		return br, nil
-	}
-	parts := strings.Split(s, ":")
-	if len(parts) != 2 {
-		return br, fmt.Errorf("invalid entity-bytes: %s", s)
-	}
-	var err error
-	br.From, err = strconv.ParseInt(parts[0], 10, 64)
-	if err != nil {
-		return br, fmt.Errorf("invalid entity-bytes: %s (%w)", s, err)
-	}
-	if parts[1] != "*" {
-		to, err := strconv.ParseInt(parts[1], 10, 64)
-		if err != nil {
-			return br, fmt.Errorf("invalid entity-bytes: %s (%w)", s, err)
-		}
-		br.To = &to
-	}
-	return br, nil
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/ipld/go-car/v2/storage"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	trustlessutils "github.com/ipld/go-trustless-utils"
 	host "github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -116,7 +117,7 @@ func TestDirectFetch(t *testing.T) {
 			}()
 			outCar, err := storage.NewReadableWritable(outFile, []cid.Cid{srcData1.Root}, carv2.WriteAsCarV1(true))
 			req.NoError(err)
-			request, err := types.NewRequestForPath(outCar, srcData1.Root, "", types.DagScopeAll, nil)
+			request, err := types.NewRequestForPath(outCar, srcData1.Root, "", trustlessutils.DagScopeAll, nil)
 			req.NoError(err)
 			_, err = lassie.Fetch(ctx, request, func(types.RetrievalEvent) {})
 			req.NoError(err)

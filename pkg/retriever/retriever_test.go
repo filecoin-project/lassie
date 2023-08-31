@@ -20,6 +20,7 @@ import (
 	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
+	trustlessutils "github.com/ipld/go-trustless-utils"
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
@@ -40,7 +41,7 @@ func TestRetrieverStart(t *testing.T) {
 	result, err := ret.Retrieve(context.Background(), types.RetrievalRequest{
 		LinkSystem:  cidlink.DefaultLinkSystem(),
 		RetrievalID: types.RetrievalID(uuid.New()),
-		Cid:         cid.MustParse("bafkqaalb"),
+		Request:     trustlessutils.Request{Root: cid.MustParse("bafkqaalb")},
 	}, func(types.RetrievalEvent) {})
 	require.ErrorIs(t, err, ErrRetrieverNotStarted)
 	require.Nil(t, result)
@@ -60,7 +61,7 @@ func TestRetriever(t *testing.T) {
 		candidates         []types.RetrievalCandidate
 		path               string
 		dups               bool
-		scope              types.DagScope
+		scope              trustlessutils.DagScope
 		returns_connected  map[string]testutil.DelayedConnectReturn
 		returns_retrievals map[string]testutil.DelayedClientReturn
 		cancelAfter        time.Duration
@@ -141,7 +142,7 @@ func TestRetriever(t *testing.T) {
 			},
 			path:  "some/path/to/request",
 			dups:  true,
-			scope: types.DagScopeBlock,
+			scope: trustlessutils.DagScopeBlock,
 			returns_connected: map[string]testutil.DelayedConnectReturn{
 				string(peerA): {Err: nil, Delay: time.Millisecond * 20},
 			},
@@ -829,10 +830,12 @@ func TestRetriever(t *testing.T) {
 					return ret.Retrieve(retCtx, types.RetrievalRequest{
 						LinkSystem:  cidlink.DefaultLinkSystem(),
 						RetrievalID: rid,
-						Cid:         cid1,
-						Path:        tc.path,
-						Scope:       tc.scope,
-						Duplicates:  tc.dups,
+						Request: trustlessutils.Request{
+							Root:       cid1,
+							Path:       tc.path,
+							Scope:      tc.scope,
+							Duplicates: tc.dups,
+						},
 					}, cb)
 				}},
 			)
@@ -974,7 +977,7 @@ func TestLinkSystemPerRequest(t *testing.T) {
 			return ret.Retrieve(context.Background(), types.RetrievalRequest{
 				LinkSystem:  lsA,
 				RetrievalID: rid,
-				Cid:         cid1,
+				Request:     trustlessutils.Request{Root: cid1},
 			}, cb)
 		},
 	})
@@ -1040,7 +1043,7 @@ func TestLinkSystemPerRequest(t *testing.T) {
 			return ret.Retrieve(context.Background(), types.RetrievalRequest{
 				LinkSystem:  lsB,
 				RetrievalID: rid,
-				Cid:         cid1,
+				Request:     trustlessutils.Request{Root: cid1},
 			}, cb)
 		},
 	})
