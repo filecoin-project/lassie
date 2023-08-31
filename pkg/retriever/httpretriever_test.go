@@ -2,6 +2,7 @@ package retriever_test
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"math"
 	"net/http"
@@ -63,6 +64,10 @@ func TestHTTPRetriever(t *testing.T) {
 	funkyPath, funkyLinks := mkFunky(lsys)
 	funkyCands := testutil.GenerateRetrievalCandidatesForCID(t, 1, funkyLinks[0], metadata.IpfsGatewayHttp{})
 
+	// testing our ability to handle duplicates or not
+	dupyLinks, dupyLinksDeduped := mkDupy(lsys)
+	dupyCands := testutil.GenerateRetrievalCandidatesForCID(t, 1, dupyLinks[0], metadata.IpfsGatewayHttp{})
+
 	rid1 := types.RetrievalID(uuid.New())
 	rid2 := types.RetrievalID(uuid.New())
 	remoteBlockDuration := 50 * time.Millisecond
@@ -76,6 +81,7 @@ func TestHTTPRetriever(t *testing.T) {
 		requestPath    map[cid.Cid]string
 		requestScope   map[cid.Cid]trustlessutils.DagScope
 		remotes        map[cid.Cid][]testutil.MockRoundTripRemote
+		sendDuplicates map[cid.Cid]bool // will default to true
 		expectedStats  map[cid.Cid]*types.RetrievalStats
 		expectedErrors map[cid.Cid]struct{}
 		expectedCids   map[cid.Cid][]cid.Cid // expected in this order
@@ -663,6 +669,166 @@ func TestHTTPRetriever(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:           "dag with duplicates, peer sending duplicates",
+			requests:       map[cid.Cid]types.RetrievalID{dupyLinks[0]: rid1},
+			sendDuplicates: map[cid.Cid]bool{dupyLinks[0]: true},
+			remotes: map[cid.Cid][]testutil.MockRoundTripRemote{
+				dupyLinks[0]: {
+					{
+						Peer:       dupyCands[0].MinerPeer,
+						LinkSystem: lsys,
+						Selector:   allSelector,
+						RespondAt:  startTime.Add(initialPause + time.Millisecond*40),
+					},
+				},
+			},
+			expectedStats: map[cid.Cid]*types.RetrievalStats{
+				dupyLinks[0]: {
+					RootCid:           dupyLinks[0],
+					StorageProviderId: dupyCands[0].MinerPeer.ID,
+					Size:              sizeOfStored(lsys, dupyLinks),
+					Blocks:            uint64(len(dupyLinks)),
+					Duration:          40*time.Millisecond + remoteBlockDuration*time.Duration(len(dupyLinks)),
+					AverageSpeed:      uint64(float64(sizeOfStored(lsys, dupyLinks)) / (40*time.Millisecond + remoteBlockDuration*time.Duration(len(dupyLinks))).Seconds()),
+					TimeToFirstByte:   40 * time.Millisecond,
+					TotalPayment:      big.Zero(),
+					AskPrice:          big.Zero(),
+				},
+			},
+			expectedCids: map[cid.Cid][]cid.Cid{dupyLinks[0]: dupyLinks},
+			expectSequence: []testutil.ExpectedActionsAtTime{
+				{
+					AfterStart: 0,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.StartedRetrieval(startTime, rid1, toCandidate(dupyLinks[0], dupyCands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp),
+						events.ConnectedToProvider(startTime, rid1, toCandidate(dupyLinks[0], dupyCands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp),
+					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_Connect, Provider: dupyCands[0].MinerPeer.ID},
+					},
+				},
+				{
+					AfterStart:         initialPause,
+					ReceivedRetrievals: []peer.ID{dupyCands[0].MinerPeer.ID},
+				},
+				{
+					AfterStart: initialPause + time.Millisecond*40,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.FirstByte(startTime.Add(initialPause+time.Millisecond*40), rid1, toCandidate(dupyLinks[0], dupyCands[0].MinerPeer), time.Millisecond*40, multicodec.TransportIpfsGatewayHttp),
+					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_FirstByte, Provider: dupyCands[0].MinerPeer.ID, Duration: time.Millisecond * 40},
+					},
+				},
+				{
+					AfterStart: initialPause + time.Millisecond*40 + remoteBlockDuration*time.Duration(len(dupyLinks)),
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Success(
+							startTime.Add(initialPause+time.Millisecond*40+remoteBlockDuration*time.Duration(len(dupyLinks))),
+							rid1,
+							toCandidate(dupyLinks[0], dupyCands[0].MinerPeer),
+							sizeOfStored(lsys, dupyLinks),
+							uint64(len(dupyLinks)),
+							time.Millisecond*40+remoteBlockDuration*time.Duration(len(dupyLinks)),
+							multicodec.TransportIpfsGatewayHttp,
+						),
+					},
+					CompletedRetrievals: []peer.ID{dupyCands[0].MinerPeer.ID},
+					ServedRetrievals: []testutil.RemoteStats{
+						{
+							Peer:      dupyCands[0].MinerPeer.ID,
+							Root:      dupyLinks[0],
+							ByteCount: sizeOfStored(lsys, dupyLinks),
+							Blocks:    dupyLinks,
+						},
+					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_Success, Provider: dupyCands[0].MinerPeer.ID, Value: math.Trunc(float64(sizeOfStored(lsys, dupyLinks)) / (time.Millisecond*40 + remoteBlockDuration*time.Duration(len(dupyLinks))).Seconds())},
+					},
+				},
+			},
+		},
+		{
+			name:           "dag with duplicates, peer not sending duplicates",
+			requests:       map[cid.Cid]types.RetrievalID{dupyLinks[0]: rid1},
+			sendDuplicates: map[cid.Cid]bool{dupyLinks[0]: false},
+			remotes: map[cid.Cid][]testutil.MockRoundTripRemote{
+				dupyLinks[0]: {
+					{
+						Peer:       dupyCands[0].MinerPeer,
+						LinkSystem: lsys,
+						Selector:   allSelector,
+						RespondAt:  startTime.Add(initialPause + time.Millisecond*40),
+					},
+				},
+			},
+			expectedStats: map[cid.Cid]*types.RetrievalStats{
+				dupyLinks[0]: {
+					RootCid:           dupyLinks[0],
+					StorageProviderId: dupyCands[0].MinerPeer.ID,
+					Size:              sizeOfStored(lsys, dupyLinksDeduped),
+					Blocks:            uint64(len(dupyLinksDeduped)),
+					Duration:          40*time.Millisecond + remoteBlockDuration*time.Duration(len(dupyLinksDeduped)),
+					AverageSpeed:      uint64(float64(sizeOfStored(lsys, dupyLinksDeduped)) / (40*time.Millisecond + remoteBlockDuration*time.Duration(len(dupyLinksDeduped))).Seconds()),
+					TimeToFirstByte:   40 * time.Millisecond,
+					TotalPayment:      big.Zero(),
+					AskPrice:          big.Zero(),
+				},
+			},
+			expectedCids: map[cid.Cid][]cid.Cid{dupyLinks[0]: dupyLinksDeduped},
+			expectSequence: []testutil.ExpectedActionsAtTime{
+				{
+					AfterStart: 0,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.StartedRetrieval(startTime, rid1, toCandidate(dupyLinks[0], dupyCands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp),
+						events.ConnectedToProvider(startTime, rid1, toCandidate(dupyLinks[0], dupyCands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp),
+					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_Connect, Provider: dupyCands[0].MinerPeer.ID},
+					},
+				},
+				{
+					AfterStart:         initialPause,
+					ReceivedRetrievals: []peer.ID{dupyCands[0].MinerPeer.ID},
+				},
+				{
+					AfterStart: initialPause + time.Millisecond*40,
+					ExpectedEvents: []types.RetrievalEvent{
+						events.FirstByte(startTime.Add(initialPause+time.Millisecond*40), rid1, toCandidate(dupyLinks[0], dupyCands[0].MinerPeer), time.Millisecond*40, multicodec.TransportIpfsGatewayHttp),
+					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_FirstByte, Provider: dupyCands[0].MinerPeer.ID, Duration: time.Millisecond * 40},
+					},
+				},
+				{
+					AfterStart: initialPause + time.Millisecond*40 + remoteBlockDuration*time.Duration(len(dupyLinksDeduped)),
+					ExpectedEvents: []types.RetrievalEvent{
+						events.Success(
+							startTime.Add(initialPause+time.Millisecond*40+remoteBlockDuration*time.Duration(len(dupyLinksDeduped))),
+							rid1,
+							toCandidate(dupyLinks[0], dupyCands[0].MinerPeer),
+							sizeOfStored(lsys, dupyLinksDeduped),
+							uint64(len(dupyLinksDeduped)),
+							time.Millisecond*40+remoteBlockDuration*time.Duration(len(dupyLinksDeduped)),
+							multicodec.TransportIpfsGatewayHttp,
+						),
+					},
+					CompletedRetrievals: []peer.ID{dupyCands[0].MinerPeer.ID},
+					ServedRetrievals: []testutil.RemoteStats{
+						{
+							Peer:      dupyCands[0].MinerPeer.ID,
+							Root:      dupyLinks[0],
+							ByteCount: sizeOfStored(lsys, dupyLinksDeduped),
+							Blocks:    dupyLinksDeduped,
+						},
+					},
+					ExpectedMetrics: []testutil.SessionMetric{
+						{Type: testutil.SessionMetric_Success, Provider: dupyCands[0].MinerPeer.ID, Value: math.Trunc(float64(sizeOfStored(lsys, dupyLinksDeduped)) / (time.Millisecond*40 + remoteBlockDuration*time.Duration(len(dupyLinksDeduped))).Seconds())},
+					},
+				},
+			},
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -677,7 +843,16 @@ func TestHTTPRetriever(t *testing.T) {
 			clock := clock.NewMock()
 			clock.Set(startTime)
 
-			roundTripper := testutil.NewMockRoundTripper(t, ctx, clock, remoteBlockDuration, testCase.requestPath, testCase.requestScope, testCase.remotes)
+			roundTripper := testutil.NewMockRoundTripper(
+				t,
+				ctx,
+				clock,
+				remoteBlockDuration,
+				testCase.requestPath,
+				testCase.requestScope,
+				testCase.remotes,
+				testCase.sendDuplicates,
+			)
 			client := &http.Client{Transport: roundTripper}
 
 			mockSession := testutil.NewMockSession(ctx)
@@ -830,4 +1005,36 @@ func mkFunky(lsys linking.LinkSystem) (string, []cid.Cid) {
 	funkyLinks = append(funkyLinks, mkBlockWithLink(lsys, funkyLinks[len(funkyLinks)-1], "=funky"))
 	slices.Reverse(funkyLinks)
 	return funkyPath, funkyLinks
+}
+
+func mkDupy(lsys linking.LinkSystem) ([]cid.Cid, []cid.Cid) {
+	dupy := mkBlockWithBytes(lsys, []byte("duplicate data"))
+
+	n, err := qp.BuildMap(dagpb.Type.PBNode, 1, func(ma datamodel.MapAssembler) {
+		qp.MapEntry(ma, "Links", qp.List(100, func(la datamodel.ListAssembler) {
+			for i := 0; i < 100; i++ {
+				qp.ListEntry(la, qp.Map(2, func(ma datamodel.MapAssembler) {
+					qp.MapEntry(ma, "Name", qp.String(fmt.Sprintf("%03d", i)))
+					qp.MapEntry(ma, "Hash", qp.Link(cidlink.Link{Cid: dupy}))
+				}))
+			}
+		}))
+	})
+	if err != nil {
+		panic(err)
+	}
+	l, err := lsys.Store(linking.LinkContext{}, pblp, n)
+	if err != nil {
+		panic(err)
+	}
+
+	// dupyLinks contains the duplicates
+	dupyLinks := []cid.Cid{l.(cidlink.Link).Cid}
+	for i := 0; i < 100; i++ {
+		dupyLinks = append(dupyLinks, dupy)
+	}
+	// dupyLinksDeduped contains just the unique links
+	dupyLinksDeduped := []cid.Cid{l.(cidlink.Link).Cid, dupy}
+
+	return dupyLinks, dupyLinksDeduped
 }

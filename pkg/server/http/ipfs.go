@@ -149,6 +149,7 @@ func checkGet(req *http.Request, res http.ResponseWriter, statusLogger *statusLo
 	errorResponse(res, statusLogger, http.StatusMethodNotAllowed, errors.New("method not allowed"))
 	return false
 }
+
 func decodeRequest(res http.ResponseWriter, req *http.Request, statusLogger *statusLogger) (bool, trustlessutils.Request) {
 	rootCid, path, err := trustlesshttp.ParseUrlPath(req.URL.Path)
 	if err != nil {
