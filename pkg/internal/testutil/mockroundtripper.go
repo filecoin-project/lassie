@@ -45,6 +45,7 @@ type MockRoundTripper struct {
 	expectedPath        map[cid.Cid]string
 	expectedScope       map[cid.Cid]trustlessutils.DagScope
 	remotes             map[cid.Cid][]MockRoundTripRemote
+	sendDuplicates      map[cid.Cid]bool
 	startsCh            chan peer.ID
 	statsCh             chan RemoteStats
 	endsCh              chan peer.ID
@@ -61,6 +62,7 @@ func NewMockRoundTripper(
 	expectedPath map[cid.Cid]string,
 	expectedScope map[cid.Cid]trustlessutils.DagScope,
 	remotes map[cid.Cid][]MockRoundTripRemote,
+	sendDuplicates map[cid.Cid]bool,
 ) *MockRoundTripper {
 	return &MockRoundTripper{
 		t,
@@ -70,6 +72,7 @@ func NewMockRoundTripper(
 		expectedPath,
 		expectedScope,
 		remotes,
+		sendDuplicates,
 		make(chan peer.ID, 32),
 		make(chan RemoteStats, 32),
 		make(chan peer.ID, 32),
@@ -130,9 +133,21 @@ func (mrt *MockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 		}
 	}
 
+	sendDuplicates := true
+	if d, ok := mrt.sendDuplicates[root]; ok {
+		sendDuplicates = d
+	}
+
+	header := make(http.Header)
+	dupsyn := "y"
+	if !sendDuplicates {
+		dupsyn = "n"
+	}
+	header.Add("Content-Type", "application/vnd.ipld.car; version=1; order=dfs; dups="+dupsyn)
 	return &http.Response{
 		StatusCode: http.StatusOK,
-		Body:       newDeferredBody(mrt, remote, root),
+		Header:     header,
+		Body:       newDeferredBody(mrt, remote, root, sendDuplicates),
 	}, nil
 }
 
@@ -186,19 +201,21 @@ func (mrt *MockRoundTripper) VerifyRetrievalsCompleted(ctx context.Context, t *t
 // deferredBody is simply a Reader that lazily starts a CAR writer on the first
 // Read call.
 type deferredBody struct {
-	mrt    *MockRoundTripper
-	remote MockRoundTripRemote
-	root   cid.Cid
+	mrt        *MockRoundTripper
+	remote     MockRoundTripRemote
+	root       cid.Cid
+	duplicates bool
 
 	r    io.ReadCloser
 	once sync.Once
 }
 
-func newDeferredBody(mrt *MockRoundTripper, remote MockRoundTripRemote, root cid.Cid) *deferredBody {
+func newDeferredBody(mrt *MockRoundTripper, remote MockRoundTripRemote, root cid.Cid, duplicates bool) *deferredBody {
 	return &deferredBody{
-		mrt:    mrt,
-		remote: remote,
-		root:   root,
+		mrt:        mrt,
+		remote:     remote,
+		root:       root,
+		duplicates: duplicates,
 	}
 }
 
@@ -229,7 +246,7 @@ func (d *deferredBody) makeBody() io.ReadCloser {
 		}
 
 		// instantiating this writes a CARv1 header and waits for more Put()s
-		carWriter, err := storage.NewWritable(carW, []cid.Cid{d.root}, car.WriteAsCarV1(true), car.AllowDuplicatePuts(false))
+		carWriter, err := storage.NewWritable(carW, []cid.Cid{d.root}, car.WriteAsCarV1(true), car.AllowDuplicatePuts(d.duplicates))
 		req.NoError(err)
 
 		// intercept the StorageReadOpener of the LinkSystem so that for each
@@ -237,6 +254,7 @@ func (d *deferredBody) makeBody() io.ReadCloser {
 		// to the CARv1 writer.
 		lsys := d.remote.LinkSystem
 		originalSRO := lsys.StorageReadOpener
+		seen := make(map[cid.Cid]struct{})
 		lsys.StorageReadOpener = func(lc linking.LinkContext, lnk datamodel.Link) (io.Reader, error) {
 			r, err := originalSRO(lc, lnk)
 			if err != nil {
@@ -246,19 +264,22 @@ func (d *deferredBody) makeBody() io.ReadCloser {
 			if err != nil {
 				return nil, err
 			}
-			err = carWriter.Put(d.mrt.ctx, lnk.(cidlink.Link).Cid.KeyString(), byts)
-			req.NoError(err)
-			stats.Blocks = append(stats.Blocks, lnk.(cidlink.Link).Cid)
-			stats.ByteCount += uint64(len(byts)) // only the length of the bytes, not the rest of the CAR infrastructure
+			if _, ok := seen[lnk.(cidlink.Link).Cid]; d.duplicates || !ok {
+				err = carWriter.Put(d.mrt.ctx, lnk.(cidlink.Link).Cid.KeyString(), byts)
+				seen[lnk.(cidlink.Link).Cid] = struct{}{}
+				req.NoError(err)
+				stats.Blocks = append(stats.Blocks, lnk.(cidlink.Link).Cid)
+				stats.ByteCount += uint64(len(byts)) // only the length of the bytes, not the rest of the CAR infrastructure
 
-			// ensure there is blockDuration between each block send
-			sendAt := d.remote.RespondAt.Add(d.mrt.remoteBlockDuration * time.Duration(len(stats.Blocks)))
-			if d.mrt.clock.Until(sendAt) > 0 {
-				select {
-				case <-d.mrt.ctx.Done():
-					return nil, d.mrt.ctx.Err()
-				case <-d.mrt.clock.After(d.mrt.clock.Until(sendAt)):
-					time.Sleep(1 * time.Millisecond) // let em goroutines breathe
+				// ensure there is blockDuration between each block send
+				sendAt := d.remote.RespondAt.Add(d.mrt.remoteBlockDuration * time.Duration(len(stats.Blocks)))
+				if d.mrt.clock.Until(sendAt) > 0 {
+					select {
+					case <-d.mrt.ctx.Done():
+						return nil, d.mrt.ctx.Err()
+					case <-d.mrt.clock.After(d.mrt.clock.Until(sendAt)):
+						time.Sleep(1 * time.Millisecond) // let em goroutines breathe
+					}
 				}
 			}
 			return bytes.NewReader(byts), nil
