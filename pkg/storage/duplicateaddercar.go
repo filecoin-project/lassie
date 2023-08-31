@@ -8,14 +8,14 @@ import (
 	"io"
 	"sync"
 
-	"github.com/filecoin-project/lassie/pkg/types"
-	"github.com/filecoin-project/lassie/pkg/verifiedcar"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	trustlessutils "github.com/ipld/go-trustless-utils"
+	"github.com/ipld/go-trustless-utils/traversal"
 )
 
 type DuplicateAdderCar struct {
@@ -23,8 +23,8 @@ type DuplicateAdderCar struct {
 	ctx                context.Context
 	root               cid.Cid
 	path               string
-	scope              types.DagScope
-	bytes              *types.ByteRange
+	scope              trustlessutils.DagScope
+	bytes              *trustlessutils.ByteRange
 	store              *DeferredStorageCar
 	blockStream        *blockStream
 	streamCompletion   chan error
@@ -35,8 +35,8 @@ func NewDuplicateAdderCarForStream(
 	ctx context.Context,
 	root cid.Cid,
 	path string,
-	scope types.DagScope,
-	bytes *types.ByteRange,
+	scope trustlessutils.DagScope,
+	bytes *trustlessutils.ByteRange,
 	store *DeferredStorageCar,
 	outStream io.Writer,
 ) *DuplicateAdderCar {
@@ -64,10 +64,10 @@ func (da *DuplicateAdderCar) addDupes() {
 	defer func() {
 		da.streamCompletion <- err
 	}()
-	sel := types.PathScopeSelector(da.path, da.scope, da.bytes)
+	sel := trustlessutils.Request{Path: da.path, Scope: da.scope, Bytes: da.bytes}.Selector()
 
 	// we're going to do a verified car where we add dupes back in
-	cfg := verifiedcar.Config{
+	cfg := traversal.Config{
 		Root:               da.root,
 		Selector:           sel,
 		WriteDuplicatesOut: true,
@@ -82,7 +82,7 @@ func (da *DuplicateAdderCar) addDupes() {
 	lsys.TrustedStorage = true
 
 	// run the verification
-	_, _, err = cfg.VerifyBlockStream(da.ctx, da.blockStream, lsys)
+	_, err = cfg.VerifyBlockStream(da.ctx, da.blockStream, lsys)
 }
 
 func (da *DuplicateAdderCar) BlockWriteOpener() linking.BlockWriteOpener {
@@ -159,7 +159,7 @@ func (bs *blockStream) WriteBlock(blk blocks.Block) error {
 	return nil
 }
 
-func (bs *blockStream) Next() (blocks.Block, error) {
+func (bs *blockStream) Next(ctx context.Context) (blocks.Block, error) {
 	bs.mu.Lock()
 	defer bs.mu.Unlock()
 
@@ -167,6 +167,8 @@ func (bs *blockStream) Next() (blocks.Block, error) {
 		select {
 		case <-bs.ctx.Done():
 			return nil, bs.ctx.Err()
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		default:
 		}
 		if e := bs.blockBuffer.Front(); e != nil {

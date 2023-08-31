@@ -12,6 +12,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	trustlessutils "github.com/ipld/go-trustless-utils"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/require"
 )
@@ -186,7 +187,7 @@ func TestAssignableCandidateFinder(t *testing.T) {
 
 			err = retrievalCandidateFinder.FindCandidates(ctx, types.RetrievalRequest{
 				RetrievalID: rid1,
-				Cid:         cid1,
+				Request:     trustlessutils.Request{Root: cid1},
 				LinkSystem:  cidlink.DefaultLinkSystem(),
 				FixedPeers:  allFixedPeers[cid1],
 			}, retrievalCollector, candidateCollector)
@@ -200,7 +201,7 @@ func TestAssignableCandidateFinder(t *testing.T) {
 			candidates = nil
 			err = retrievalCandidateFinder.FindCandidates(ctx, types.RetrievalRequest{
 				RetrievalID: rid2,
-				Cid:         cid2,
+				Request:     trustlessutils.Request{Root: cid2},
 				LinkSystem:  cidlink.DefaultLinkSystem(),
 				FixedPeers:  allFixedPeers[cid2],
 			}, retrievalCollector, candidateCollector)

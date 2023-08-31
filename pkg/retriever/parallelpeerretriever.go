@@ -210,7 +210,7 @@ func (retrieval *retrieval) RetrieveFromAsyncCandidates(asyncCandidates types.In
 			logger.Errorf(
 				"Possible leak: unable to successfully cancel all %s retrieval attempts for %s within 100ms",
 				retrieval.Protocol.Code().String(),
-				retrieval.request.Cid.String(),
+				retrieval.request.Root.String(),
 			)
 		}
 	}
@@ -258,7 +258,7 @@ func (retrieval *retrieval) filterCandidates(ctx context.Context, asyncCandidate
 		// update or add new candidate metadata
 		currMetadata, seenCandidate := retrieval.candidateMetadata[candidate.MinerPeer.ID]
 		newMetadata := candidate.Metadata.Get(multicodec.Code(retrieval.Protocol.Code()))
-		candidateMetadata := retrieval.Protocol.GetMergedMetadata(retrieval.request.Cid, currMetadata, newMetadata)
+		candidateMetadata := retrieval.Protocol.GetMergedMetadata(retrieval.request.Root, currMetadata, newMetadata)
 		retrieval.candidateMetadata[candidate.MinerPeer.ID] = candidateMetadata
 		// if it's a new candidate, include it, otherwise don't start a new retrieval for it
 		if !seenCandidate {

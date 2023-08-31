@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,15 +18,11 @@ import (
 	"github.com/ipfs/boxo/bitswap/network"
 	"github.com/ipfs/boxo/blockservice"
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-unixfsnode"
-	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/linking/preload"
-	"github.com/ipld/go-ipld-prime/node/basicnode"
-	"github.com/ipld/go-ipld-prime/traversal"
-	"github.com/ipld/go-ipld-prime/traversal/selector"
+	"github.com/ipld/go-trustless-utils/traversal"
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -132,7 +127,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	selector := br.request.GetSelector()
 	startTime := br.clock.Now()
 	// this is a hack cause we aren't able to track bitswap fetches per peer for now, so instead we just create a single peer for all events
-	bitswapCandidate := types.NewRetrievalCandidate(peer.ID(""), nil, br.request.Cid, metadata.Bitswap{})
+	bitswapCandidate := types.NewRetrievalCandidate(peer.ID(""), nil, br.request.Root, metadata.Bitswap{})
 
 	// setup the linksystem to record bytes & blocks written -- since this isn't automatic w/o go-data-transfer
 	retrievalCtx, cancel := context.WithCancel(br.ctx)
@@ -235,14 +230,12 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	}
 
 	// run the retrieval
-	err = easyTraverse(
-		retrievalCtx,
-		cidlink.Link{Cid: br.request.Cid},
-		selector,
-		traversalLinkSys,
-		preloader,
-		br.request.MaxBlocks,
-	)
+	_, err = traversal.Config{
+		Root:      br.request.Root,
+		Selector:  selector,
+		MaxBlocks: br.request.MaxBlocks,
+	}.Traverse(retrievalCtx, traversalLinkSys, preloader)
+
 	if storage != nil {
 		storage.Stop()
 	}
@@ -291,7 +284,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	// return stats
 	return &types.RetrievalStats{
 		StorageProviderId: peer.ID(""),
-		RootCid:           br.request.Cid,
+		RootCid:           br.request.Root,
 		Size:              totalWritten.Load(),
 		Blocks:            blockCount.Load(),
 		Duration:          duration,
@@ -321,71 +314,4 @@ func loaderForSession(retrievalID types.RetrievalID, inProgressCids InProgressCi
 		}
 		return bytes.NewReader(blk.RawData()), nil
 	}
-}
-
-func easyTraverse(
-	ctx context.Context,
-	root datamodel.Link,
-	traverseSelector datamodel.Node,
-	lsys linking.LinkSystem,
-	preloader preload.Loader,
-	maxBlocks uint64,
-) error {
-
-	lsys, ecr := newErrorCapturingReader(lsys)
-	protoChooser := dagpb.AddSupportToChooser(basicnode.Chooser)
-
-	// retrieve first node
-	prototype, err := protoChooser(root, linking.LinkContext{Ctx: ctx})
-	if err != nil {
-		return err
-	}
-	node, err := lsys.Load(linking.LinkContext{Ctx: ctx}, root, prototype)
-	if err != nil {
-		return err
-	}
-
-	progress := traversal.Progress{
-		Cfg: &traversal.Config{
-			Ctx:                            ctx,
-			LinkSystem:                     lsys,
-			LinkTargetNodePrototypeChooser: protoChooser,
-			Preloader:                      preloader,
-		},
-	}
-	if maxBlocks > 0 {
-		progress.Budget = &traversal.Budget{
-			LinkBudget: int64(maxBlocks) - 1, // first block is already loaded
-			NodeBudget: math.MaxInt64,
-		}
-	}
-	progress.LastBlock.Link = root
-	compiledSelector, err := selector.ParseSelector(traverseSelector)
-	if err != nil {
-		return err
-	}
-
-	if err := progress.WalkMatching(node, compiledSelector, unixfsnode.BytesConsumingMatcher); err != nil {
-		return err
-	}
-	return ecr.Error
-}
-
-type errorCapturingReader struct {
-	sro   linking.BlockReadOpener
-	Error error
-}
-
-func newErrorCapturingReader(lsys linking.LinkSystem) (linking.LinkSystem, *errorCapturingReader) {
-	ecr := &errorCapturingReader{sro: lsys.StorageReadOpener}
-	lsys.StorageReadOpener = ecr.StorageReadOpener
-	return lsys, ecr
-}
-
-func (ecr *errorCapturingReader) StorageReadOpener(lc linking.LinkContext, l datamodel.Link) (io.Reader, error) {
-	r, err := ecr.sro(lc, l)
-	if err != nil {
-		ecr.Error = err
-	}
-	return r, err
 }

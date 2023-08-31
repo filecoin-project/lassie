@@ -13,8 +13,9 @@ import (
 	"github.com/filecoin-project/lassie/pkg/build"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/types"
-	"github.com/filecoin-project/lassie/pkg/verifiedcar"
 	"github.com/ipfs/go-cid"
+	trustlesshttp "github.com/ipld/go-trustless-utils/http"
+	"github.com/ipld/go-trustless-utils/traversal"
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/multiformats/go-multicodec"
 )
@@ -121,26 +122,26 @@ func (ph *ProtocolHttp) Retrieve(
 		ttfb = retrieval.Clock.Since(retrievalStart)
 		shared.sendEvent(ctx, events.FirstByte(retrieval.Clock.Now(), retrieval.request.RetrievalID, candidate, ttfb, multicodec.TransportIpfsGatewayHttp))
 	})
-	cfg := verifiedcar.Config{
-		Root:               retrieval.request.Cid,
+	cfg := traversal.Config{
+		Root:               retrieval.request.Root,
 		Selector:           retrieval.request.GetSelector(),
-		ExpectDuplicatesIn: true,
+		ExpectDuplicatesIn: true, // TODO: parse Content-Type and set this appropriately
 		MaxBlocks:          retrieval.request.MaxBlocks,
 	}
 
-	blockCount, byteCount, err := cfg.VerifyCar(ctx, rdr, retrieval.request.LinkSystem)
+	traversalResult, err := cfg.VerifyCar(ctx, rdr, retrieval.request.LinkSystem)
 	if err != nil {
 		return nil, err
 	}
 
 	duration := retrieval.Clock.Since(retrievalStart)
-	speed := uint64(float64(byteCount) / duration.Seconds())
+	speed := uint64(float64(traversalResult.Bytes) / duration.Seconds())
 
 	return &types.RetrievalStats{
 		RootCid:           candidate.RootCid,
 		StorageProviderId: candidate.MinerPeer.ID,
-		Size:              byteCount,
-		Blocks:            blockCount,
+		Size:              traversalResult.Bytes,
+		Blocks:            traversalResult.Blocks,
 		Duration:          duration,
 		AverageSpeed:      speed,
 		TotalPayment:      big.Zero(),
@@ -166,19 +167,19 @@ func makeRequest(ctx context.Context, request types.RetrievalRequest, candidate 
 		return nil, fmt.Errorf("%w: %v", ErrNoHttpForPeer, err)
 	}
 
-	path, err := request.GetUrlPath()
+	path, err := request.Request.UrlPath()
 	if err != nil {
 		logger.Warnf("Couldn't construct a url path for request: %v", err)
 		return nil, fmt.Errorf("%w: %v", ErrBadPathForRequest, err)
 	}
 
-	reqURL := fmt.Sprintf("%s/ipfs/%s%s", candidateURL, request.Cid, path)
+	reqURL := fmt.Sprintf("%s/ipfs/%s%s", candidateURL, request.Root, path)
 	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
 		logger.Warnf("Couldn't construct a http request %s: %v", candidate.MinerPeer.ID, err)
 		return nil, fmt.Errorf("%w for peer %s: %v", ErrBadPathForRequest, candidate.MinerPeer.ID, err)
 	}
-	req.Header.Add("Accept", request.Scope.AcceptHeader())
+	req.Header.Add("Accept", trustlesshttp.RequestAcceptHeader(true)) // prefer duplicates
 	req.Header.Add("X-Request-Id", request.RetrievalID.String())
 	req.Header.Add("User-Agent", build.UserAgent)
 

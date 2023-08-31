@@ -26,6 +26,7 @@ import (
 	"github.com/ipld/go-ipld-prime/storage/memstore"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
+	trustlessutils "github.com/ipld/go-trustless-utils"
 	"github.com/stretchr/testify/require"
 )
 
@@ -336,7 +337,7 @@ func TestBitswapRetriever(t *testing.T) {
 					}
 					req1 := types.RetrievalRequest{
 						RetrievalID:       rid1,
-						Cid:               cid1,
+						Request:           trustlessutils.Request{Root: cid1},
 						LinkSystem:        *linkSystemForCid(cid1, localLinkSystems),
 						PreloadLinkSystem: preloadLinkSys1,
 						Selector:          sel,
@@ -351,7 +352,7 @@ func TestBitswapRetriever(t *testing.T) {
 					}
 					req2 := types.RetrievalRequest{
 						RetrievalID:       rid2,
-						Cid:               cid2,
+						Request:           trustlessutils.Request{Root: cid2},
 						LinkSystem:        *linkSystemForCid(cid2, localLinkSystems),
 						PreloadLinkSystem: preloadLinkSys2,
 						Selector:          sel,

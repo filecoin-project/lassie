@@ -135,12 +135,12 @@ func (retriever *Retriever) Retrieve(
 	if !retriever.eventManager.IsStarted() {
 		return nil, ErrRetrieverNotStarted
 	}
-	if !retriever.session.RegisterRetrieval(request.RetrievalID, request.Cid, request.GetSelector()) {
-		return nil, fmt.Errorf("%w: %s", ErrRetrievalAlreadyRunning, request.Cid)
+	if !retriever.session.RegisterRetrieval(request.RetrievalID, request.Root, request.GetSelector()) {
+		return nil, fmt.Errorf("%w: %s", ErrRetrievalAlreadyRunning, request.Root)
 	}
 	defer func() {
 		if err := retriever.session.EndRetrieval(request.RetrievalID); err != nil {
-			logger.Errorf("failed to end retrieval tracking for %s: %s", request.Cid, err.Error())
+			logger.Errorf("failed to end retrieval tracking for %s: %s", request.Root, err.Error())
 		}
 	}()
 
@@ -149,7 +149,7 @@ func (retriever *Retriever) Retrieve(
 	onRetrievalEvent := makeOnRetrievalEvent(ctx,
 		retriever.eventManager,
 		retriever.session,
-		request.Cid,
+		request.Root,
 		request.RetrievalID,
 		eventStats,
 		eventsCB,
@@ -159,10 +159,10 @@ func (retriever *Retriever) Retrieve(
 	if err != nil {
 		return nil, err
 	}
-	descriptor = strings.TrimPrefix(descriptor, "/ipfs/"+request.Cid.String())
+	descriptor = strings.TrimPrefix(descriptor, "/ipfs/"+request.Root.String())
 
 	// Emit a StartedFetch event signaling that the Lassie fetch has started
-	onRetrievalEvent(events.StartedFetch(retriever.clock.Now(), request.RetrievalID, request.Cid, descriptor, request.GetSupportedProtocols(retriever.protocols)...))
+	onRetrievalEvent(events.StartedFetch(retriever.clock.Now(), request.RetrievalID, request.Root, descriptor, request.GetSupportedProtocols(retriever.protocols)...))
 
 	// retrieve, note that we could get a successful retrieval
 	// (retrievalStats!=nil) _and_ also an error return because there may be
@@ -175,7 +175,7 @@ func (retriever *Retriever) Retrieve(
 	)
 
 	// Emit a Finished event denoting that the entire fetch has finished
-	onRetrievalEvent(events.Finished(retriever.clock.Now(), request.RetrievalID, types.RetrievalCandidate{RootCid: request.Cid}))
+	onRetrievalEvent(events.Finished(retriever.clock.Now(), request.RetrievalID, types.RetrievalCandidate{RootCid: request.Root}))
 
 	if err != nil && retrievalStats == nil {
 		return nil, err
@@ -188,7 +188,7 @@ func (retriever *Retriever) Retrieve(
 			"\tBytes Received: %s\n"+
 			"\tTotal Payment: %s",
 		retrievalStats.StorageProviderId,
-		request.Cid,
+		request.Root,
 		retrievalStats.Duration,
 		humanize.IBytes(retrievalStats.Size),
 		types.FIL(retrievalStats.TotalPayment),

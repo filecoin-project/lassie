@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/benbjohnson/clock"
-	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/v2"
@@ -25,6 +24,7 @@ import (
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
+	trustlessutils "github.com/ipld/go-trustless-utils"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/require"
 )
@@ -43,7 +43,7 @@ type MockRoundTripper struct {
 	clock               *clock.Mock
 	remoteBlockDuration time.Duration
 	expectedPath        map[cid.Cid]string
-	expectedScope       map[cid.Cid]types.DagScope
+	expectedScope       map[cid.Cid]trustlessutils.DagScope
 	remotes             map[cid.Cid][]MockRoundTripRemote
 	startsCh            chan peer.ID
 	statsCh             chan RemoteStats
@@ -59,7 +59,7 @@ func NewMockRoundTripper(
 	clock *clock.Mock,
 	remoteBlockDuration time.Duration,
 	expectedPath map[cid.Cid]string,
-	expectedScope map[cid.Cid]types.DagScope,
+	expectedScope map[cid.Cid]trustlessutils.DagScope,
 	remotes map[cid.Cid][]MockRoundTripRemote,
 ) *MockRoundTripper {
 	return &MockRoundTripper{
@@ -101,16 +101,12 @@ func (mrt *MockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 	} else {
 		require.Equal(mrt.t, path, expectedPath)
 	}
-	expectedScope := types.DagScopeAll
+	expectedScope := trustlessutils.DagScopeAll
 	if scope, ok := mrt.expectedScope[root]; ok {
 		expectedScope = scope
 	}
-	legacyScope := string(expectedScope)
-	if legacyScope == string(types.DagScopeEntity) {
-		legacyScope = "file"
-	}
-	require.Equal(mrt.t, req.URL.RawQuery, fmt.Sprintf("dag-scope=%s&car-scope=%s", expectedScope, legacyScope))
-	require.Equal(mrt.t, req.Header["Accept"], []string{"application/vnd.ipld.car;version=1;order=dfs;dups=y"})
+	require.Equal(mrt.t, req.URL.RawQuery, fmt.Sprintf("dag-scope=%s", expectedScope))
+	require.Equal(mrt.t, []string{"application/vnd.ipld.car; version=1; order=dfs; dups=y"}, req.Header["Accept"])
 	reqId := req.Header["X-Request-Id"]
 	require.Len(mrt.t, reqId, 1)
 	_, err = uuid.Parse(reqId[0])

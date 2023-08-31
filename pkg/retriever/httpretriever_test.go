@@ -25,6 +25,7 @@ import (
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/storage/memstore"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
+	trustlessutils "github.com/ipld/go-trustless-utils"
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
@@ -73,7 +74,7 @@ func TestHTTPRetriever(t *testing.T) {
 		name           string
 		requests       map[cid.Cid]types.RetrievalID
 		requestPath    map[cid.Cid]string
-		requestScope   map[cid.Cid]types.DagScope
+		requestScope   map[cid.Cid]trustlessutils.DagScope
 		remotes        map[cid.Cid][]testutil.MockRoundTripRemote
 		expectedStats  map[cid.Cid]*types.RetrievalStats
 		expectedErrors map[cid.Cid]struct{}
@@ -704,10 +705,12 @@ func TestHTTPRetriever(t *testing.T) {
 				retrievals = append(retrievals, func(eventsCb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
 					request := types.RetrievalRequest{
 						RetrievalID: rid,
-						Cid:         c,
-						LinkSystem:  *lsys,
-						Path:        testCase.requestPath[c],
-						Scope:       testCase.requestScope[c],
+						Request: trustlessutils.Request{
+							Root:  c,
+							Path:  testCase.requestPath[c],
+							Scope: testCase.requestScope[c],
+						},
+						LinkSystem: *lsys,
 					}
 					candidates := toCandidates(c, testCase.remotes[c])
 					return retriever.Retrieve(context.Background(), request, eventsCb).

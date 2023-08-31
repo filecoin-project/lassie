@@ -17,6 +17,7 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
+	trustlessutils "github.com/ipld/go-trustless-utils"
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
@@ -711,7 +712,7 @@ func TestRetrievalRacing(t *testing.T) {
 				tc.cancelAfter,
 				[]testutil.RunRetrieval{func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
 					return cfg.Retrieve(retCtx, types.RetrievalRequest{
-						Cid:         cid.Undef,
+						Request:     trustlessutils.Request{Root: cid.Undef},
 						RetrievalID: retrievalID,
 						LinkSystem:  cidlink.DefaultLinkSystem(),
 					}, cb).RetrieveFromAsyncCandidates(makeAsyncCandidates(t, candidates))
@@ -884,7 +885,7 @@ func TestMultipleRetrievals(t *testing.T) {
 	}.RunWithVerification(ctx, t, clock, mockClient, nil, session, nil, 0, []testutil.RunRetrieval{
 		func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
 			return cfg.Retrieve(context.Background(), types.RetrievalRequest{
-				Cid:         cid1,
+				Request:     trustlessutils.Request{Root: cid1},
 				RetrievalID: retrievalID1,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
 			}, cb).RetrieveFromAsyncCandidates(makeAsyncCandidates(t, []types.RetrievalCandidate{
@@ -895,7 +896,7 @@ func TestMultipleRetrievals(t *testing.T) {
 		},
 		func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
 			return cfg.Retrieve(context.Background(), types.RetrievalRequest{
-				Cid:         cid2,
+				Request:     trustlessutils.Request{Root: cid2},
 				RetrievalID: retrievalID2,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
 			}, cb).RetrieveFromAsyncCandidates(makeAsyncCandidates(t, []types.RetrievalCandidate{
@@ -943,7 +944,7 @@ func TestRetrievalSelector(t *testing.T) {
 	selector := selectorparse.CommonSelector_MatchPoint
 
 	retrieval := cfg.Retrieve(context.Background(), types.RetrievalRequest{
-		Cid:         cid1,
+		Request:     trustlessutils.Request{Root: cid1},
 		RetrievalID: retrievalID,
 		LinkSystem:  cidlink.DefaultLinkSystem(),
 		Selector:    selector,
@@ -1074,7 +1075,7 @@ func TestDuplicateRetreivals(t *testing.T) {
 	}.RunWithVerification(ctx, t, clock, mockClient, nil, session, nil, 0, []testutil.RunRetrieval{
 		func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
 			return cfg.Retrieve(context.Background(), types.RetrievalRequest{
-				Cid:         cid1,
+				Request:     trustlessutils.Request{Root: cid1},
 				RetrievalID: retrievalID,
 				LinkSystem:  cidlink.DefaultLinkSystem(),
 			}, cb).RetrieveFromAsyncCandidates(makeAsyncCandidates(t, []types.RetrievalCandidate{
