@@ -15,6 +15,7 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	trustlessutils "github.com/ipld/go-trustless-utils"
 	"github.com/urfave/cli/v2"
 )
 
@@ -39,9 +40,9 @@ var fetchFlags = []cli.Flag{
 		Value:       "all",
 		Action: func(cctx *cli.Context, v string) error {
 			switch v {
-			case string(types.DagScopeAll):
-			case string(types.DagScopeEntity):
-			case string(types.DagScopeBlock):
+			case string(trustlessutils.DagScopeAll):
+			case string(trustlessutils.DagScopeEntity):
+			case string(trustlessutils.DagScopeBlock):
 			default:
 				return fmt.Errorf("invalid dag-scope parameter, must be of value [all, entity, block]")
 			}
@@ -55,7 +56,7 @@ var fetchFlags = []cli.Flag{
 			" Valid values should be of the form from:to, where from and to are byte offsets and to may be '*'",
 		DefaultText: "defaults to the entire file, 0:*",
 		Action: func(cctx *cli.Context, v string) error {
-			if _, err := types.ParseByteRange(v); err != nil {
+			if _, err := trustlessutils.ParseByteRange(v); err != nil {
 				return fmt.Errorf("invalid entity-bytes parameter, must be of the form from:to," +
 					" where from and to are byte offsets and to may be '*'")
 			}
@@ -278,12 +279,12 @@ func defaultFetchRun(
 		}
 	}, false)
 
-	byteRange, _ := types.ParseByteRange(entityBytes)
-	var br *types.ByteRange
+	byteRange, _ := trustlessutils.ParseByteRange(entityBytes)
+	var br *trustlessutils.ByteRange
 	if !byteRange.IsDefault() {
 		br = &byteRange
 	}
-	request, err := types.NewRequestForPath(carStore, rootCid, path, types.DagScope(dagScope), br)
+	request, err := types.NewRequestForPath(carStore, rootCid, path, trustlessutils.DagScope(dagScope), br)
 	if err != nil {
 		return err
 	}

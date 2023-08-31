@@ -2,6 +2,8 @@ module github.com/filecoin-project/lassie
 
 go 1.20
 
+replace github.com/ipld/go-trustless-utils => ../../ipld/go-trustless-utils
+
 require (
 	github.com/benbjohnson/clock v1.3.5
 	github.com/cespare/xxhash/v2 v2.2.0
@@ -12,21 +14,22 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/hannahhoward/go-pubsub v1.0.0
 	github.com/ipfs/boxo v0.11.1-0.20230817065640-7ec68c5e5adf
-	github.com/ipfs/go-block-format v0.1.2
+	github.com/ipfs/go-block-format v0.2.0
 	github.com/ipfs/go-cid v0.4.1
 	github.com/ipfs/go-datastore v0.6.0
-	github.com/ipfs/go-graphsync v0.14.7
+	github.com/ipfs/go-graphsync v0.14.8
 	github.com/ipfs/go-ipfs-blockstore v1.3.0
 	github.com/ipfs/go-ipfs-blocksutil v0.0.1
 	github.com/ipfs/go-ipfs-delay v0.0.1
 	github.com/ipfs/go-ipfs-exchange-interface v0.2.0
-	github.com/ipfs/go-ipld-format v0.5.0
+	github.com/ipfs/go-ipld-format v0.6.0
 	github.com/ipfs/go-log/v2 v2.5.1
-	github.com/ipfs/go-unixfsnode v1.7.4
+	github.com/ipfs/go-unixfsnode v1.8.0
 	github.com/ipld/go-car/v2 v2.11.0
 	github.com/ipld/go-codec-dagpb v1.6.0
 	github.com/ipld/go-ipld-prime v0.21.0
-	github.com/ipld/ipld/specs v0.0.0-20230816230151-73f8fbea1783
+	github.com/ipld/go-trustless-utils v0.0.0
+	github.com/ipld/ipld/specs v0.0.0-20230826120441-91918996e8eb
 	github.com/ipni/go-libipni v0.0.8-0.20230425184153-86a1fcb7f7ff
 	github.com/libp2p/go-libp2p v0.30.0
 	github.com/libp2p/go-libp2p-routing-helpers v0.7.0
@@ -46,6 +49,7 @@ require (
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bep/debounce v1.2.0 // indirect
+	github.com/cespare/xxhash v1.1.0 // indirect
 	github.com/containerd/cgroups v1.1.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect

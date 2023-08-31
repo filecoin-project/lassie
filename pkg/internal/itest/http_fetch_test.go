@@ -23,7 +23,6 @@ import (
 	"github.com/filecoin-project/lassie/pkg/lassie"
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	httpserver "github.com/filecoin-project/lassie/pkg/server/http"
-	"github.com/filecoin-project/lassie/pkg/verifiedcar"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	unixfs "github.com/ipfs/go-unixfsnode/testutil"
@@ -35,6 +34,7 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/storage/memstore"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
+	"github.com/ipld/go-trustless-utils/traversal"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
 	"github.com/stretchr/testify/require"
@@ -895,7 +895,7 @@ func TestHttpFetch(t *testing.T) {
 				lsys := cidlink.DefaultLinkSystem()
 				lsys.SetReadStorage(store)
 				lsys.SetWriteStorage(store)
-				_, _, err := verifiedcar.Config{
+				_, err := traversal.Config{
 					Root:               srcData.Root,
 					Selector:           selectorparse.CommonSelector_ExploreAllRecursively,
 					ExpectDuplicatesIn: true,
@@ -1139,9 +1139,11 @@ func TestHttpFetch(t *testing.T) {
 					}
 					req.Regexp(`^lassie/v\d+\.\d+\.\d+-\w+$`, resp.Header.Get("Server"))
 					req.Equal(fmt.Sprintf(`attachment; filename="%s.car"`, srcData[i].Root.String()), resp.Header.Get("Content-Disposition"))
-					req.Equal("none", resp.Header.Get("Accept-Ranges"))
+					req.Equal("bytes", resp.Header.Get("Accept-Ranges"))
 					req.Equal("public, max-age=29030400, immutable", resp.Header.Get("Cache-Control"))
-					req.Equal("application/vnd.ipld.car; version=1", resp.Header.Get("Content-Type"))
+					ct := resp.Header.Get("Content-Type")
+					// TODO: check the noDups() case and assert accordingly
+					req.Equal("application/vnd.ipld.car; version=1; order=dfs; dups=", ct[:len(ct)-1]) // strip off y|n from the end
 					req.Equal("nosniff", resp.Header.Get("X-Content-Type-Options"))
 					etagStart := fmt.Sprintf(`"%s.car.`, srcData[i].Root.String())
 					etagGot := resp.Header.Get("ETag")

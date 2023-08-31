@@ -12,127 +12,47 @@ import (
 	"github.com/filecoin-project/lassie/pkg/storage"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
-	"github.com/ipld/go-ipld-prime/datamodel"
+	"github.com/ipfs/go-unixfsnode"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	trustlessutils "github.com/ipld/go-trustless-utils"
+	trustlesshttp "github.com/ipld/go-trustless-utils/http"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
-)
-
-const (
-	MimeTypeCar                = "application/vnd.ipld.car"            // The only accepted MIME type
-	MimeTypeCarVersion         = "1"                                   // We only accept version 1 of the MIME type
-	FormatParameterCar         = "car"                                 // The only valid format parameter value
-	FilenameExtCar             = ".car"                                // The only valid filename extension
-	DefaultIncludeDupes        = true                                  // The default value for an unspecified "dups" parameter. See https://github.com/ipfs/specs/pull/412.
-	ResponseAcceptRangesHeader = "none"                                // We currently don't accept range requests
-	ResponseCacheControlHeader = "public, max-age=29030400, immutable" // Magic cache control values
-)
-
-var (
-	ResponseChunkDelimeter    = []byte("0\r\n") // An http/1.1 chunk delimeter, used for specifying an early end to the response
-	ResponseContentTypeHeader = fmt.Sprintf("%s; version=%s", MimeTypeCar, MimeTypeCarVersion)
 )
 
 func IpfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
 		statusLogger := newStatusLogger(req.Method, req.URL.Path)
-		path := datamodel.ParsePath(req.URL.Path)
-		_, path = path.Shift() // remove /ipfs
 
-		// filter out everything but GET requests
-		switch req.Method {
-		case http.MethodGet:
-			break
-		default:
-			res.Header().Add("Allow", http.MethodGet)
-			errorResponse(res, statusLogger, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		if !checkGet(req, res, statusLogger) {
 			return
 		}
 
-		// check if CID path param is missing
-		if path.Len() == 0 {
-			// not a valid path to hit
-			errorResponse(res, statusLogger, http.StatusNotFound, errors.New("not found"))
+		ok, request := decodeRetrievalRequest(cfg, res, req, statusLogger)
+		if !ok {
 			return
 		}
 
-		includeDupes, err := CheckFormat(req)
-		if err != nil {
-			errorResponse(res, statusLogger, http.StatusBadRequest, err)
+		ok, fileName := decodeFilename(res, req, statusLogger, request.Root)
+		if !ok {
 			return
 		}
 
-		fileName, err := ParseFilename(req)
-		if err != nil {
-			errorResponse(res, statusLogger, http.StatusBadRequest, err)
-			return
-		}
-
-		// validate CID path parameter
-		var cidSeg datamodel.PathSegment
-		cidSeg, path = path.Shift()
-		rootCid, err := cid.Parse(cidSeg.String())
-		if err != nil {
-			errorResponse(res, statusLogger, http.StatusInternalServerError, errors.New("failed to parse CID path parameter"))
-			return
-		}
-
-		dagScope, err := ParseScope(req)
-		if err != nil {
-			errorResponse(res, statusLogger, http.StatusBadRequest, err)
-			return
-		}
-
-		byteRange, err := ParseByteRange(req)
-		if err != nil {
-			errorResponse(res, statusLogger, http.StatusBadRequest, err)
-			return
-		}
-
-		protocols, err := parseProtocols(req)
-		if err != nil {
-			errorResponse(res, statusLogger, http.StatusBadRequest, err)
-			return
-		}
-
-		fixedPeers, err := parseProviders(req)
-		if err != nil {
-			errorResponse(res, statusLogger, http.StatusBadRequest, err)
-			return
-		}
-
-		// for setting Content-Disposition header based on filename url parameter
-		if fileName == "" {
-			fileName = fmt.Sprintf("%s%s", rootCid.String(), FilenameExtCar)
-		}
-
-		retrievalId, err := types.NewRetrievalID()
-		if err != nil {
-			errorResponse(res, statusLogger, http.StatusInternalServerError, fmt.Errorf("failed to generate retrieval ID: %w", err))
-			return
-		}
-
-		// TODO: we should propogate this value throughout logs so
-		// that we can correlate specific requests to related logs.
-		// For now just using to log the corrolation and return the
-		// X-Trace-Id header.
+		// TODO: this needs to be propagated through the request, perhaps on
+		// RetrievalRequest or we decode it as a UUID and override RetrievalID?
 		requestId := req.Header.Get("X-Request-Id")
 		if requestId == "" {
-			requestId = retrievalId.String()
+			requestId = request.RetrievalID.String()
 		} else {
-			logger.Debugw("Corrolating provided request ID with retrieval ID", "request_id", requestId, "retrieval_id", retrievalId)
+			logger.Debugw("custom X-Request-Id fore retrieval", "request_id", requestId, "retrieval_id", request.RetrievalID)
 		}
 
-		// bytesWritten will be closed once we've started writing CAR content to
-		// the response writer. Once closed, no other content should be written.
-		bytesWritten := make(chan struct{}, 1)
-
-		tempStore := storage.NewDeferredStorageCar(cfg.TempDir, rootCid)
+		tempStore := storage.NewDeferredStorageCar(cfg.TempDir, request.Root)
 		var carWriter storage.DeferredWriter
-		if includeDupes {
-			carWriter = storage.NewDuplicateAdderCarForStream(req.Context(), rootCid, path.String(), dagScope, byteRange, tempStore, res)
+		if request.Duplicates {
+			carWriter = storage.NewDuplicateAdderCarForStream(req.Context(), request.Root, request.Path, request.Scope, request.Bytes, tempStore, res)
 		} else {
-			carWriter = storage.NewDeferredCarWriterForStream(rootCid, res)
+			carWriter = storage.NewDeferredCarWriterForStream(request.Root, res)
 		}
 		carStore := storage.NewCachingTempStore(carWriter.BlockWriteOpener(), tempStore)
 		defer func() {
@@ -140,34 +60,9 @@ func IpfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.Response
 				logger.Errorf("error closing temp store: %s", err)
 			}
 		}()
-		var store types.ReadableWritableStorage = carStore
 
-		request, err := types.NewRequestForPath(store, rootCid, path.String(), dagScope, byteRange)
-		if err != nil {
-			errorResponse(res, statusLogger, http.StatusInternalServerError, fmt.Errorf("failed to create request: %w", err))
-			return
-		}
-		request.Protocols = protocols
-		request.FixedPeers = fixedPeers
-		request.RetrievalID = retrievalId
-		request.Duplicates = includeDupes // needed for etag
-
-		carWriter.OnPut(func(int) {
-			// called once we start writing blocks into the CAR (on the first Put())
-			res.Header().Set("Server", build.UserAgent) // "lassie/vx.y.z-<git commit hash>"
-			res.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", fileName))
-			res.Header().Set("Accept-Ranges", ResponseAcceptRangesHeader)
-			res.Header().Set("Cache-Control", ResponseCacheControlHeader)
-			res.Header().Set("Content-Type", ResponseContentTypeHeader)
-			res.Header().Set("Etag", request.Etag())
-			res.Header().Set("X-Content-Type-Options", "nosniff")
-			res.Header().Set("X-Ipfs-Path", types.PathEscape(req.URL.Path))
-			// TODO: set X-Ipfs-Roots header when we support root+path
-			// see https://github.com/ipfs/kubo/pull/8720
-			res.Header().Set("X-Trace-Id", requestId)
-			statusLogger.logStatus(200, "OK")
-			close(bytesWritten)
-		}, true)
+		request.LinkSystem.SetWriteStorage(carStore)
+		request.LinkSystem.SetReadStorage(carStore)
 
 		// setup preload storage for bitswap, the temporary CAR store can set up a
 		// separate preload space in its storage
@@ -177,38 +72,35 @@ func IpfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.Response
 		request.PreloadLinkSystem.SetWriteStorage(preloadStore)
 		request.PreloadLinkSystem.TrustedStorage = true
 
-		// extract block limit from query param as needed
-		var blockLimit uint64
-		if req.URL.Query().Has("blockLimit") {
-			if parsedBlockLimit, err := strconv.ParseUint(req.URL.Query().Get("blockLimit"), 10, 64); err == nil {
-				blockLimit = parsedBlockLimit
-			}
-		}
-		if cfg.MaxBlocksPerRequest > 0 || blockLimit > 0 {
-			// use the lowest non-zero value for block limit
-			if blockLimit == 0 || (cfg.MaxBlocksPerRequest > 0 && blockLimit > cfg.MaxBlocksPerRequest) {
-				blockLimit = cfg.MaxBlocksPerRequest
-			}
-			request.MaxBlocks = blockLimit
-		}
+		// bytesWritten will be closed once we've started writing CAR content to
+		// the response writer. Once closed, no other content should be written.
+		bytesWritten := make(chan struct{}, 1)
 
-		// servertiming metrics
-		logger.Debugw("fetching CID",
-			"retrievalId",
-			retrievalId,
-			"CID",
-			rootCid.String(),
-			"path",
-			path.String(),
-			"dagScope",
-			dagScope,
-			"byteRange",
-			byteRange,
-			"includeDupes",
-			includeDupes,
-			"blockLimit",
-			blockLimit,
+		carWriter.OnPut(func(int) {
+			// called once we start writing blocks into the CAR (on the first Put())
+			res.Header().Set("Server", build.UserAgent) // "lassie/vx.y.z-<git commit hash>"
+			res.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", fileName))
+			res.Header().Set("Accept-Ranges", trustlesshttp.ResponseAcceptRangesHeader)
+			res.Header().Set("Cache-Control", trustlesshttp.ResponseCacheControlHeader)
+			res.Header().Set("Content-Type", trustlesshttp.ResponseContentTypeHeader(request.Duplicates))
+			res.Header().Set("Etag", request.Etag())
+			res.Header().Set("X-Content-Type-Options", "nosniff")
+			res.Header().Set("X-Ipfs-Path", trustlessutils.PathEscape(req.URL.Path))
+			res.Header().Set("X-Trace-Id", requestId)
+			statusLogger.logStatus(200, "OK")
+			close(bytesWritten)
+		}, true)
+
+		logger.Debugw("fetching",
+			"retrieval_id", request.RetrievalID,
+			"root", request.Root.String(),
+			"path", request.Path,
+			"dag-scope", request.Scope,
+			"entity-bytes", request.Bytes,
+			"dups", request.Duplicates,
+			"maxBlocks", request.MaxBlocks,
 		)
+
 		stats, err := fetcher.Fetch(req.Context(), request, servertimingsSubscriber(req))
 
 		// force all blocks to flush
@@ -219,7 +111,7 @@ func IpfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.Response
 		if err != nil {
 			select {
 			case <-bytesWritten:
-				logger.Debugw("unclean close", "cid", request.Cid, "retrievalID", request.RetrievalID)
+				logger.Debugw("unclean close", "cid", request.Root, "retrievalID", request.RetrievalID)
 				if err := closeWithUnterminatedChunk(res); err != nil {
 					logger.Infow("unable to send early termination", "err", err)
 				}
@@ -233,13 +125,131 @@ func IpfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.Response
 			}
 			return
 		}
-		logger.Debugw("successfully fetched CID",
-			"retrievalId", retrievalId,
-			"CID", rootCid,
+
+		logger.Debugw("successfully fetched",
+			"retrieval_id", request.RetrievalID,
+			"root", request.Root.String(),
+			"path", request.Path,
+			"dag-scope", request.Scope,
+			"entity-bytes", request.Bytes,
+			"dups", request.Duplicates,
+			"maxBlocks", request.MaxBlocks,
 			"duration", stats.Duration,
 			"bytes", stats.Size,
 		)
 	}
+}
+
+func checkGet(req *http.Request, res http.ResponseWriter, statusLogger *statusLogger) bool {
+	// filter out everything but GET requests
+	if req.Method == http.MethodGet {
+		return true
+	}
+	res.Header().Add("Allow", http.MethodGet)
+	errorResponse(res, statusLogger, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+	return false
+}
+func decodeRequest(res http.ResponseWriter, req *http.Request, statusLogger *statusLogger) (bool, trustlessutils.Request) {
+	rootCid, path, err := trustlesshttp.ParseUrlPath(req.URL.Path)
+	if err != nil {
+		if errors.Is(err, trustlesshttp.ErrPathNotFound) {
+			errorResponse(res, statusLogger, http.StatusNotFound, err)
+		} else if errors.Is(err, trustlesshttp.ErrBadCid) {
+			errorResponse(res, statusLogger, http.StatusBadRequest, err)
+		} else {
+			errorResponse(res, statusLogger, http.StatusInternalServerError, err)
+		}
+		return false, trustlessutils.Request{}
+	}
+
+	includeDupes, err := trustlesshttp.CheckFormat(req)
+	if err != nil {
+		errorResponse(res, statusLogger, http.StatusBadRequest, err)
+		return false, trustlessutils.Request{}
+	}
+
+	dagScope, err := trustlesshttp.ParseScope(req)
+	if err != nil {
+		errorResponse(res, statusLogger, http.StatusBadRequest, err)
+		return false, trustlessutils.Request{}
+	}
+
+	byteRange, err := trustlesshttp.ParseByteRange(req)
+	if err != nil {
+		errorResponse(res, statusLogger, http.StatusBadRequest, err)
+		return false, trustlessutils.Request{}
+	}
+
+	return true, trustlessutils.Request{
+		Root:       rootCid,
+		Path:       path.String(),
+		Scope:      dagScope,
+		Bytes:      byteRange,
+		Duplicates: includeDupes,
+	}
+}
+
+func decodeRetrievalRequest(cfg HttpServerConfig, res http.ResponseWriter, req *http.Request, statusLogger *statusLogger) (bool, types.RetrievalRequest) {
+	ok, request := decodeRequest(res, req, statusLogger)
+	if !ok {
+		return false, types.RetrievalRequest{}
+	}
+
+	protocols, err := parseProtocols(req)
+	if err != nil {
+		errorResponse(res, statusLogger, http.StatusBadRequest, err)
+		return false, types.RetrievalRequest{}
+	}
+
+	fixedPeers, err := parseProviders(req)
+	if err != nil {
+		errorResponse(res, statusLogger, http.StatusBadRequest, err)
+		return false, types.RetrievalRequest{}
+	}
+
+	// extract block limit from query param as needed
+	var maxBlocks uint64
+	if req.URL.Query().Has("blockLimit") {
+		if parsedBlockLimit, err := strconv.ParseUint(req.URL.Query().Get("blockLimit"), 10, 64); err == nil {
+			maxBlocks = parsedBlockLimit
+		}
+	}
+	// use the lowest non-zero value for block limit
+	if maxBlocks == 0 || (cfg.MaxBlocksPerRequest > 0 && maxBlocks > cfg.MaxBlocksPerRequest) {
+		maxBlocks = cfg.MaxBlocksPerRequest
+	}
+
+	retrievalId, err := types.NewRetrievalID()
+	if err != nil {
+		errorResponse(res, statusLogger, http.StatusInternalServerError, fmt.Errorf("failed to generate retrieval ID: %w", err))
+		return false, types.RetrievalRequest{}
+	}
+
+	linkSystem := cidlink.DefaultLinkSystem()
+	linkSystem.TrustedStorage = true
+	unixfsnode.AddUnixFSReificationToLinkSystem(&linkSystem)
+
+	return true, types.RetrievalRequest{
+		Request:     request,
+		RetrievalID: retrievalId,
+		LinkSystem:  linkSystem,
+		Protocols:   protocols,
+		FixedPeers:  fixedPeers,
+		MaxBlocks:   maxBlocks,
+	}
+}
+
+func decodeFilename(res http.ResponseWriter, req *http.Request, statusLogger *statusLogger, root cid.Cid) (bool, string) {
+	fileName, err := trustlesshttp.ParseFilename(req)
+	if err != nil {
+		errorResponse(res, statusLogger, http.StatusBadRequest, err)
+		return false, ""
+	}
+	// for setting Content-Disposition header based on filename url parameter
+	if fileName == "" {
+		fileName = fmt.Sprintf("%s%s", root, trustlesshttp.FilenameExtCar)
+	}
+	return true, fileName
 }
 
 // statusLogger is a logger for logging response statuses for a given request
@@ -291,7 +301,7 @@ func closeWithUnterminatedChunk(res http.ResponseWriter) error {
 	if err != nil {
 		return fmt.Errorf("unable to access conn through hijack interface: %w", err)
 	}
-	if _, err := buf.Write(ResponseChunkDelimeter); err != nil {
+	if _, err := buf.Write(trustlesshttp.ResponseChunkDelimeter); err != nil {
 		return fmt.Errorf("writing response chunk delimiter: %w", err)
 	}
 	if err := buf.Flush(); err != nil {

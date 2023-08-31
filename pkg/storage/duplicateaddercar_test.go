@@ -8,13 +8,13 @@ import (
 
 	"github.com/filecoin-project/lassie/pkg/internal/testutil"
 	"github.com/filecoin-project/lassie/pkg/storage"
-	"github.com/filecoin-project/lassie/pkg/types"
 	blocks "github.com/ipfs/go-block-format"
 	unixfs "github.com/ipfs/go-unixfsnode/testutil"
 	carv2 "github.com/ipld/go-car/v2"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/storage/memstore"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
+	trustlessutils "github.com/ipld/go-trustless-utils"
 	"github.com/stretchr/testify/require"
 )
 
@@ -33,7 +33,7 @@ func TestDuplicateAdderCar(t *testing.T) {
 
 	store := storage.NewDeferredStorageCar("", unixfsFileWithDups.Root)
 	ctx := context.Background()
-	carWriter := storage.NewDuplicateAdderCarForStream(ctx, unixfsFileWithDups.Root, "", types.DagScopeAll, nil, store, buf)
+	carWriter := storage.NewDuplicateAdderCarForStream(ctx, unixfsFileWithDups.Root, "", trustlessutils.DagScopeAll, nil, store, buf)
 	cachingTempStore := storage.NewCachingTempStore(carWriter.BlockWriteOpener(), store)
 
 	// write the root block, containing sharding metadata

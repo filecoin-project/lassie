@@ -36,11 +36,11 @@ func (acf AssignableCandidateFinder) FindCandidates(ctx context.Context, request
 	ctx, cancelCtx := context.WithCancel(ctx)
 	defer cancelCtx()
 
-	eventsCallback(events.StartedFindingCandidates(acf.clock.Now(), request.RetrievalID, request.Cid))
+	eventsCallback(events.StartedFindingCandidates(acf.clock.Now(), request.RetrievalID, request.Root))
 
 	var totalCandidates atomic.Uint64
 	candidateBuffer := candidatebuffer.NewCandidateBuffer(func(candidates []types.RetrievalCandidate) {
-		eventsCallback(events.CandidatesFound(acf.clock.Now(), request.RetrievalID, request.Cid, candidates))
+		eventsCallback(events.CandidatesFound(acf.clock.Now(), request.RetrievalID, request.Root, candidates))
 
 		acceptableCandidates := make([]types.RetrievalCandidate, 0)
 		for _, candidate := range candidates {
@@ -58,25 +58,25 @@ func (acf AssignableCandidateFinder) FindCandidates(ctx context.Context, request
 			return
 		}
 
-		eventsCallback(events.CandidatesFiltered(acf.clock.Now(), request.RetrievalID, request.Cid, acceptableCandidates))
+		eventsCallback(events.CandidatesFiltered(acf.clock.Now(), request.RetrievalID, request.Root, acceptableCandidates))
 		totalCandidates.Add(uint64(len(acceptableCandidates)))
 		onCandidates(acceptableCandidates)
 	}, acf.clock)
 
 	err := candidateBuffer.BufferStream(ctx, func(ctx context.Context, onNextCandidate candidatebuffer.OnNextCandidate) error {
 		if len(request.FixedPeers) > 0 {
-			return sendFixedPeers(request.Cid, request.FixedPeers, onNextCandidate)
+			return sendFixedPeers(request.Root, request.FixedPeers, onNextCandidate)
 		}
-		return acf.candidateFinder.FindCandidatesAsync(ctx, request.Cid, onNextCandidate)
+		return acf.candidateFinder.FindCandidatesAsync(ctx, request.Root, onNextCandidate)
 	}, BufferWindow)
 
 	if err != nil {
-		eventsCallback(events.Failed(acf.clock.Now(), request.RetrievalID, types.RetrievalCandidate{RootCid: request.Cid}, err.Error()))
-		return fmt.Errorf("could not get retrieval candidates for %s: %w", request.Cid, err)
+		eventsCallback(events.Failed(acf.clock.Now(), request.RetrievalID, types.RetrievalCandidate{RootCid: request.Root}, err.Error()))
+		return fmt.Errorf("could not get retrieval candidates for %s: %w", request.Root, err)
 	}
 
 	if totalCandidates.Load() == 0 {
-		eventsCallback(events.Failed(acf.clock.Now(), request.RetrievalID, types.RetrievalCandidate{RootCid: request.Cid}, ErrNoCandidates.Error()))
+		eventsCallback(events.Failed(acf.clock.Now(), request.RetrievalID, types.RetrievalCandidate{RootCid: request.Root}, ErrNoCandidates.Error()))
 		return ErrNoCandidates
 	}
 	return nil
