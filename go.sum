@@ -324,6 +324,8 @@ github.com/ipld/go-codec-dagpb v1.6.0/go.mod h1:ANzFhfP2uMJxRBr8CE+WQWs5UsNa0pYt
 github.com/ipld/go-ipld-prime v0.21.0 h1:n4JmcpOlPDIxBcY037SVfpd1G+Sj1nKZah0m6QH9C2E=
 github.com/ipld/go-ipld-prime v0.21.0/go.mod h1:3RLqy//ERg/y5oShXXdx5YIp50cFGOanyMctpPjsvxQ=
 github.com/ipld/go-ipld-prime/storage/bsadapter v0.0.0-20230102063945-1a409dc236dd h1:gMlw/MhNr2Wtp5RwGdsW23cs+yCuj9k2ON7i9MiJlRo=
+github.com/ipld/go-trustless-utils v0.0.0 h1:X+hY7lWZSd6kdBGfmGtEIjCUeqETaeahMKjont7+OGo=
+github.com/ipld/go-trustless-utils v0.0.0/go.mod h1:rqvDGdgk2acsKiGyV5mzCZZRK8JtnEZqvUBxLuYxR6A=
 github.com/ipld/ipld/specs v0.0.0-20230826120441-91918996e8eb h1:5ARxkQ9NqZq33RM7i/Eq3bvBj2RBxx2xE63hqfa+9KY=
 github.com/ipld/ipld/specs v0.0.0-20230826120441-91918996e8eb/go.mod h1:AfGlAr20WOjV5PyCowEnGY3pAm5x5i+o0R8IUeir6cs=
 github.com/ipni/go-libipni v0.0.8-0.20230425184153-86a1fcb7f7ff h1:xbKrIvnpQkbF8iHPk/HGcegsypCDpcXWHhzBCLyCWf8=
