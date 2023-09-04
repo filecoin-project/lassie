@@ -151,7 +151,7 @@ func TestIpfsHandler(t *testing.T) {
 			fetchFunc: func(ctx context.Context, r types.RetrievalRequest, cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
 				return nil, retriever.ErrNoCandidates
 			},
-			wantStatus: http.StatusNotFound,
+			wantStatus: http.StatusBadGateway,
 			wantBody:   "no candidates found\n",
 		},
 		{
