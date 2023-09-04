@@ -13,6 +13,7 @@ import (
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/retriever/bitswaphelpers"
+	"github.com/filecoin-project/lassie/pkg/retriever/bitswaphelpers/groupworkpool"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/boxo/bitswap/client"
 	"github.com/ipfs/boxo/bitswap/network"
@@ -29,8 +30,6 @@ import (
 	"github.com/multiformats/go-multicodec"
 	"go.uber.org/multierr"
 )
-
-const DefaultConcurrency = 6
 
 // IndexerRouting are the required methods to track indexer routing
 type IndexerRouting interface {
@@ -64,18 +63,24 @@ type BitswapRetriever struct {
 	cfg            BitswapConfig
 	// this is purely for testing purposes, to ensure that we receive all candidates
 	awaitReceivedCandidates chan<- struct{}
+	groupWorkPool           groupworkpool.GroupWorkPool
 }
 
 const shortenedDelay = 4 * time.Millisecond
 
 // BitswapConfig contains configurable parameters for bitswap fetching
 type BitswapConfig struct {
-	BlockTimeout time.Duration
-	Concurrency  int
+	BlockTimeout            time.Duration
+	Concurrency             int
+	ConcurrencyPerRetrieval int
 }
 
 // NewBitswapRetrieverFromHost constructs a new bitswap retriever for the given libp2p host
-func NewBitswapRetrieverFromHost(ctx context.Context, host host.Host, cfg BitswapConfig) *BitswapRetriever {
+func NewBitswapRetrieverFromHost(
+	ctx context.Context,
+	host host.Host,
+	cfg BitswapConfig,
+) *BitswapRetriever {
 	bstore := bitswaphelpers.NewMultiblockstore()
 	inProgressCids := bitswaphelpers.NewInProgressCids()
 	routing := bitswaphelpers.NewIndexerRouting(inProgressCids.Get)
@@ -87,11 +92,23 @@ func NewBitswapRetrieverFromHost(ctx context.Context, host host.Host, cfg Bitswa
 		<-ctx.Done()
 		bsnet.Stop()
 	}()
-	return NewBitswapRetrieverFromDeps(bsrv, routing, inProgressCids, bstore, cfg, clock.New(), nil)
+	return NewBitswapRetrieverFromDeps(ctx, bsrv, routing, inProgressCids, bstore, cfg, clock.New(), nil)
 }
 
 // NewBitswapRetrieverFromDeps is primarily for testing, constructing behavior from direct dependencies
-func NewBitswapRetrieverFromDeps(bsrv blockservice.BlockService, routing IndexerRouting, inProgressCids InProgressCids, bstore MultiBlockstore, cfg BitswapConfig, clock clock.Clock, awaitReceivedCandidates chan<- struct{}) *BitswapRetriever {
+func NewBitswapRetrieverFromDeps(
+	ctx context.Context,
+	bsrv blockservice.BlockService,
+	routing IndexerRouting,
+	inProgressCids InProgressCids,
+	bstore MultiBlockstore,
+	cfg BitswapConfig,
+	clock clock.Clock,
+	awaitReceivedCandidates chan<- struct{},
+) *BitswapRetriever {
+	gwp := groupworkpool.New(cfg.Concurrency, cfg.ConcurrencyPerRetrieval)
+	gwp.Start(ctx)
+
 	return &BitswapRetriever{
 		bstore:                  bstore,
 		inProgressCids:          inProgressCids,
@@ -100,11 +117,16 @@ func NewBitswapRetrieverFromDeps(bsrv blockservice.BlockService, routing Indexer
 		clock:                   clock,
 		cfg:                     cfg,
 		awaitReceivedCandidates: awaitReceivedCandidates,
+		groupWorkPool:           gwp,
 	}
 }
 
 // Retrieve initializes a new bitswap session
-func (br *BitswapRetriever) Retrieve(ctx context.Context, request types.RetrievalRequest, events func(types.RetrievalEvent)) types.CandidateRetrieval {
+func (br *BitswapRetriever) Retrieve(
+	ctx context.Context,
+	request types.RetrievalRequest,
+	events func(types.RetrievalEvent),
+) types.CandidateRetrieval {
 	return &bitswapRetrieval{
 		BitswapRetriever: br,
 		bsGetter:         blockservice.NewSession(ctx, br.blockService),
@@ -192,24 +214,15 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	// set up the storage system, including the preloader if configured
 	var preloader preload.Loader
 	traversalLinkSys := br.request.LinkSystem
-	var storage *bitswaphelpers.PreloadCachingStorage
 
 	if br.request.HasPreloadLinkSystem() {
-		concurrency := br.BitswapRetriever.cfg.Concurrency
-		if concurrency <= 0 {
-			concurrency = DefaultConcurrency
-		}
-
 		var err error
-		storage, err = bitswaphelpers.NewPreloadCachingStorage(
+		storage, err := bitswaphelpers.NewPreloadCachingStorage(
 			br.request.LinkSystem,
 			br.request.PreloadLinkSystem,
 			loader,
-			concurrency,
+			br.groupWorkPool.AddGroup(retrievalCtx),
 		)
-		if err == nil {
-			err = storage.Start(retrievalCtx)
-		}
 		if err != nil {
 			cancel()
 			return nil, err
@@ -236,9 +249,6 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		MaxBlocks: br.request.MaxBlocks,
 	}.Traverse(retrievalCtx, traversalLinkSys, preloader)
 
-	if storage != nil {
-		storage.Stop()
-	}
 	cancel()
 
 	// unregister relevant provider records & LinkSystem

@@ -2,14 +2,12 @@ package bitswaphelpers
 
 import (
 	"bytes"
-	"container/list"
-	"context"
-	"errors"
 	"fmt"
 	"io"
 	"math"
 	"sync"
 
+	"github.com/filecoin-project/lassie/pkg/retriever/bitswaphelpers/groupworkpool"
 	carstorage "github.com/ipld/go-car/v2/storage"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/linking"
@@ -24,18 +22,12 @@ type preloadingLink struct {
 	err        error
 }
 
-type request struct {
-	linkCtx linking.LinkContext
-	link    ipld.Link
-}
-
 type PreloadCachingStorage struct {
 	parentLinkSystem linking.LinkSystem
 	fetcher          linking.BlockReadOpener
-	concurrency      int
+	workGroup        groupworkpool.Group
 
 	cacheLinkSystem linking.LinkSystem
-	cancel          context.CancelFunc
 
 	TraversalLinkSystem *linking.LinkSystem
 	BitswapLinkSystem   *linking.LinkSystem
@@ -43,7 +35,6 @@ type PreloadCachingStorage struct {
 	notFound   map[string]struct{}
 	preloadsLk sync.RWMutex
 	preloads   map[ipld.Link]*preloadingLink
-	requests   chan request
 
 	loadCount      int
 	preloadedHits  int
@@ -133,23 +124,19 @@ func (cs *PreloadCachingStorage) GetStats() PreloadStats {
 //
 // The fetcher is used by both the preloader and the loader to fetch blocks. It
 // should be able to fetch blocks in a thread-safe manner.
-//
-// The concurrency parameter controls how many blocks can be preloaded at once
-// (the preloader will fetch up to this many blocks at once using the fetcher).
 func NewPreloadCachingStorage(
 	parentLinkSystem linking.LinkSystem,
 	cacheLinkSystem linking.LinkSystem,
 	fetcher linking.BlockReadOpener,
-	concurrency int,
+	workGroup groupworkpool.Group,
 ) (*PreloadCachingStorage, error) {
 	cs := &PreloadCachingStorage{
 		fetcher:          fetcher,
 		parentLinkSystem: parentLinkSystem,
-		concurrency:      concurrency,
+		workGroup:        workGroup,
 		cacheLinkSystem:  cacheLinkSystem,
 		notFound:         make(map[string]struct{}),
 		preloads:         make(map[ipld.Link]*preloadingLink),
-		requests:         make(chan request),
 	}
 	// LinkSystem for traversal is a copy of the parent but with the read
 	// operation replaced with our multi-functional loader
@@ -212,18 +199,15 @@ func (cs *PreloadCachingStorage) Preloader(preloadCtx preload.PreloadContext, li
 	}
 
 	// haven't seen this link before, queue for preloading
-	cs.preloads[link.Link] = &preloadingLink{
+	pl := &preloadingLink{
 		loaded: make(chan struct{}),
 		refCnt: 1,
 	}
-	req := request{
-		linkCtx: linkCtx,
-		link:    link.Link,
-	}
-	select {
-	case <-preloadCtx.Ctx.Done():
-	case cs.requests <- req:
-	}
+	cs.preloads[link.Link] = pl
+
+	cs.workGroup.Enqueue(func() {
+		cs.preloadLink(pl, linkCtx, link.Link)
+	})
 }
 
 // Loader is compatible with go-ipld-prime's StorageReadOpener. It is not
@@ -388,79 +372,6 @@ func (cs *PreloadCachingStorage) preloadLink(pl *preloadingLink, linkCtx linking
 			}
 		}
 	})
-}
-
-// Start the preloader; this will start the background goroutines that will
-// fetch blocks from the fetcher and cache them as they are flagged by the
-// preloader. If you Start(), you should also Stop().
-func (cs *PreloadCachingStorage) Start(ctx context.Context) error {
-	if cs.cancel != nil {
-		return errors.New("already started")
-	}
-	ctx, cs.cancel = context.WithCancel(ctx)
-	go cs.run(ctx)
-	return nil
-}
-
-func (cs *PreloadCachingStorage) run(ctx context.Context) {
-	feed := make(chan *request)
-	defer func() {
-		close(feed)
-	}()
-
-	for i := 0; i < cs.concurrency; i++ {
-		go func() {
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case request, ok := <-feed:
-					if !ok {
-						return
-					}
-					cs.preloadsLk.RLock()
-					pl, ok := cs.preloads[request.link]
-					cs.preloadsLk.RUnlock()
-					if !ok {
-						continue
-					}
-					cs.preloadLink(pl, request.linkCtx, request.link)
-				}
-			}
-		}()
-	}
-
-	requestBuffer := list.New()
-	var send chan<- *request
-	var next *request
-	for {
-		select {
-		case request := <-cs.requests:
-			if next == nil {
-				next = &request
-				send = feed
-			} else {
-				requestBuffer.PushBack(&request)
-			}
-		case send <- next:
-			if requestBuffer.Len() > 0 {
-				next = requestBuffer.Remove(requestBuffer.Front()).(*request)
-			} else {
-				next = nil
-				send = nil
-			}
-		case <-ctx.Done():
-			return
-		}
-	}
-}
-
-// Stop the preloader; this will stop the background goroutines.
-func (cs *PreloadCachingStorage) Stop() {
-	if cs.cancel != nil {
-		cs.cancel()
-		cs.cancel = nil
-	}
 }
 
 // linkSystemHas is a Has() for a LinkSystem.

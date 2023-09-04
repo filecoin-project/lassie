@@ -116,7 +116,13 @@ func buildLassieConfigFromCLIContext(cctx *cli.Context, lassieOpts []lassie.Lass
 	}
 
 	if bitswapConcurrency > 0 {
-		lassieOpts = append(lassieOpts, lassie.WithBitswapConcurrency(bitswapConcurrency))
+		// single retrieval, so we set the bitswap concurrency to the same value
+		// as the bitswap concurrency per retrieval
+		lassieOpts = append(
+			lassieOpts,
+			lassie.WithBitswapConcurrency(bitswapConcurrency),
+			lassie.WithBitswapConcurrencyPerRetrieval(bitswapConcurrency),
+		)
 	}
 
 	return lassie.NewLassieConfig(lassieOpts...), nil
