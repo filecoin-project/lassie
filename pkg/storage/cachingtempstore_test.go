@@ -4,13 +4,20 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"math/rand"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
+	"github.com/ipld/go-car/v2/storage/deferred"
+	mh "github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/require"
 )
+
+var rng = rand.New(rand.NewSource(3333))
+var rngLk sync.Mutex
 
 func TestDeferredCarWriterWritesCARv1(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -48,7 +55,7 @@ func TestDeferredCarWriterWritesCARv1(t *testing.T) {
 			testCid2, testData2 := randBlock()
 
 			var buf bytes.Buffer
-			cw := NewDeferredCarWriterForStream(testCid1, &buf)
+			cw := deferred.NewDeferredCarWriterForStream(&buf, []cid.Cid{testCid1})
 			ss := NewCachingTempStore(cw.BlockWriteOpener(), NewDeferredStorageCar("", testCid1))
 			t.Cleanup(func() { ss.Close() })
 
@@ -154,4 +161,21 @@ func TestDeferredCarWriterWritesCARv1(t *testing.T) {
 			require.Equal(t, testData2, blk.RawData())
 		})
 	}
+}
+
+func randBlock() (cid.Cid, []byte) {
+	data := make([]byte, 1024)
+	rngLk.Lock()
+	rng.Read(data)
+	rngLk.Unlock()
+	h, err := mh.Sum(data, mh.SHA2_512, -1)
+	if err != nil {
+		panic(err)
+	}
+	return cid.NewCidV1(cid.Raw, h), data
+}
+
+func randCid() cid.Cid {
+	c, _ := randBlock()
+	return c
 }

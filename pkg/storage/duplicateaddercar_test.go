@@ -33,7 +33,7 @@ func TestDuplicateAdderCar(t *testing.T) {
 
 	store := storage.NewDeferredStorageCar("", unixfsFileWithDups.Root)
 	ctx := context.Background()
-	carWriter := storage.NewDuplicateAdderCarForStream(ctx, unixfsFileWithDups.Root, "", trustlessutils.DagScopeAll, nil, store, buf)
+	carWriter := storage.NewDuplicateAdderCarForStream(ctx, buf, unixfsFileWithDups.Root, "", trustlessutils.DagScopeAll, nil, store)
 	cachingTempStore := storage.NewCachingTempStore(carWriter.BlockWriteOpener(), store)
 
 	// write the root block, containing sharding metadata
