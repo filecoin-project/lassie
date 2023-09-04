@@ -119,7 +119,7 @@ func IpfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.Response
 			default:
 			}
 			if errors.Is(err, retriever.ErrNoCandidates) {
-				errorResponse(res, statusLogger, http.StatusNotFound, errors.New("no candidates found"))
+				errorResponse(res, statusLogger, http.StatusBadGateway, errors.New("no candidates found"))
 			} else {
 				errorResponse(res, statusLogger, http.StatusGatewayTimeout, fmt.Errorf("failed to fetch CID: %w", err))
 			}
