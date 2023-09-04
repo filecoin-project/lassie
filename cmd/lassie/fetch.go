@@ -13,6 +13,8 @@ import (
 	"github.com/filecoin-project/lassie/pkg/storage"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
+	"github.com/ipld/go-car/v2"
+	"github.com/ipld/go-car/v2/storage/deferred"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	trustlessutils "github.com/ipld/go-trustless-utils"
@@ -253,14 +255,14 @@ func defaultFetchRun(
 		lassie.RegisterSubscriber(pp.subscriber)
 	}
 
-	var carWriter *storage.DeferredCarWriter
+	var carWriter *deferred.DeferredCarWriter
 	if outfile == stdoutFileString {
 		// we need the onlyWriter because stdout is presented as an os.File, and
 		// therefore pretend to support seeks, so feature-checking in go-car
 		// will make bad assumptions about capabilities unless we hide it
-		carWriter = storage.NewDeferredCarWriterForStream(rootCid, &onlyWriter{dataWriter})
+		carWriter = deferred.NewDeferredCarWriterForStream(&onlyWriter{dataWriter}, []cid.Cid{rootCid})
 	} else {
-		carWriter = storage.NewDeferredCarWriterForPath(rootCid, outfile)
+		carWriter = deferred.NewDeferredCarWriterForPath(outfile, []cid.Cid{rootCid}, car.WriteAsCarV1(true))
 	}
 
 	tempStore := storage.NewDeferredStorageCar(tempDir, rootCid)
