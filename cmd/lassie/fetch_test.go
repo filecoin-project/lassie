@@ -48,7 +48,7 @@ func TestFetchCommandFlags(t *testing.T) {
 				require.Equal(t, 0, len(lCfg.ProviderBlockList))
 				require.Equal(t, 0, len(lCfg.ProviderAllowList))
 				// require.Equal(t, "/tmp", lCfg.TempDir) // TODO: Default TempDir doesn't work with CI
-				require.Equal(t, 6, lCfg.BitswapConcurrency)
+				require.Equal(t, 12, lCfg.BitswapConcurrency)
 
 				// event recorder config
 				require.Equal(t, "", erCfg.EndpointURL)

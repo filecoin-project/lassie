@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/filecoin-project/lassie/pkg/lassie"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -24,7 +25,7 @@ var (
 )
 
 const (
-	defaultBitswapConcurrency int           = 6                // 6 concurrent requests
+	defaultBitswapConcurrency int           = lassie.DefaultBitswapConcurrencyPerRetrieval
 	defaultProviderTimeout    time.Duration = 20 * time.Second // 20 seconds
 )
 
