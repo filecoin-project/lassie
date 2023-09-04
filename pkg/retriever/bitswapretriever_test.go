@@ -388,7 +388,7 @@ func TestBitswapRetriever(t *testing.T) {
 					mir := newMockIndexerRouting()
 					mipc := &mockInProgressCids{}
 					awaitReceivedCandidates := make(chan struct{}, 1)
-					bsr := retriever.NewBitswapRetrieverFromDeps(bsrv, mir, mipc, mbs, testCase.cfg, clock, awaitReceivedCandidates)
+					bsr := retriever.NewBitswapRetrieverFromDeps(ctx, bsrv, mir, mipc, mbs, testCase.cfg, clock, awaitReceivedCandidates)
 					receivedEvents := make(map[cid.Cid][]types.RetrievalEvent)
 					retrievalCollector := func(evt types.RetrievalEvent) {
 						receivedEvents[evt.PayloadCid()] = append(receivedEvents[evt.PayloadCid()], evt)
