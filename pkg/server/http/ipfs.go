@@ -13,6 +13,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-unixfsnode"
+	"github.com/ipld/go-car/v2/storage/deferred"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	trustlessutils "github.com/ipld/go-trustless-utils"
 	trustlesshttp "github.com/ipld/go-trustless-utils/http"
@@ -50,9 +51,9 @@ func IpfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.Response
 		tempStore := storage.NewDeferredStorageCar(cfg.TempDir, request.Root)
 		var carWriter storage.DeferredWriter
 		if request.Duplicates {
-			carWriter = storage.NewDuplicateAdderCarForStream(req.Context(), request.Root, request.Path, request.Scope, request.Bytes, tempStore, res)
+			carWriter = storage.NewDuplicateAdderCarForStream(req.Context(), res, request.Root, request.Path, request.Scope, request.Bytes, tempStore)
 		} else {
-			carWriter = storage.NewDeferredCarWriterForStream(request.Root, res)
+			carWriter = deferred.NewDeferredCarWriterForStream(res, []cid.Cid{request.Root})
 		}
 		carStore := storage.NewCachingTempStore(carWriter.BlockWriteOpener(), tempStore)
 		defer func() {

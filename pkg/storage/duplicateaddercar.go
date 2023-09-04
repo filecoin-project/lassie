@@ -11,15 +11,26 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
+	"github.com/ipld/go-car/v2/storage/deferred"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	ipldstorage "github.com/ipld/go-ipld-prime/storage"
 	trustlessutils "github.com/ipld/go-trustless-utils"
 	"github.com/ipld/go-trustless-utils/traversal"
 )
 
+type DeferredWriter interface {
+	ipldstorage.WritableStorage
+	io.Closer
+	BlockWriteOpener() linking.BlockWriteOpener
+	OnPut(cb func(int), once bool)
+}
+
+var _ DeferredWriter = (*DuplicateAdderCar)(nil)
+
 type DuplicateAdderCar struct {
-	*DeferredCarWriter
+	*deferred.DeferredCarWriter
 	ctx                context.Context
 	root               cid.Cid
 	path               string
@@ -33,12 +44,12 @@ type DuplicateAdderCar struct {
 
 func NewDuplicateAdderCarForStream(
 	ctx context.Context,
+	outStream io.Writer,
 	root cid.Cid,
 	path string,
 	scope trustlessutils.DagScope,
 	bytes *trustlessutils.ByteRange,
 	store *DeferredStorageCar,
-	outStream io.Writer,
 ) *DuplicateAdderCar {
 
 	blockStream := &blockStream{ctx: ctx, seen: make(map[cid.Cid]struct{})}
@@ -46,7 +57,7 @@ func NewDuplicateAdderCarForStream(
 	blockStream.cond = sync.NewCond(&blockStream.mu)
 
 	// create the car writer for the final stream
-	outgoing := NewDeferredCarWriterForStream(root, outStream, carv2.AllowDuplicatePuts(true))
+	outgoing := deferred.NewDeferredCarWriterForStream(outStream, []cid.Cid{root}, carv2.AllowDuplicatePuts(true))
 	return &DuplicateAdderCar{
 		DeferredCarWriter: outgoing,
 		ctx:               ctx,
