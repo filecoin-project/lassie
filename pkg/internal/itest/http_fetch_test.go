@@ -1154,14 +1154,12 @@ func TestHttpFetch(t *testing.T) {
 					require.NotEmpty(t, requestId)
 					_, err := uuid.Parse(requestId)
 					req.NoError(err)
-					body, err := io.ReadAll(resp.Body)
-					if !testCase.expectUncleanEnd {
-						req.NoError(err)
-					} else {
-						req.Error(err)
+					expectBodyReadError := ""
+					if testCase.expectUncleanEnd {
+						expectBodyReadError = "http: unexpected EOF reading trailer"
 					}
-					err = resp.Body.Close()
-					req.NoError(err)
+					body := readAllBody(t, resp.Body, expectBodyReadError)
+					req.NoError(resp.Body.Close())
 
 					if DEBUG_DATA {
 						t.Logf("Creating CAR %s in temp dir", fmt.Sprintf("%s_received%d.car", testCase.name, i))
@@ -1268,4 +1266,32 @@ func debugRemotes(t *testing.T, ctx context.Context, name string, remotes []test
 		}(ii, r)
 	}
 	return carFiles
+}
+
+func readAllBody(t *testing.T, r io.Reader, expectError string) []byte {
+	if expectError == "" {
+		body, err := io.ReadAll(r)
+		require.NoError(t, err)
+		return body
+	}
+	// expect an error, so let's creep up on it and collect as much of the body
+	// as we can before the error blocks us
+	// see readLocked() in src/net/http/transfer.go:
+	// → b.src.Read(p)
+	// → followed by b.readTrailer() which should error; we want to capture both
+	var buf bytes.Buffer
+	var byt [1]byte
+	var err error
+	var n int
+	for {
+		n, err = r.Read(byt[:])
+		// record the bytes we read, the error should come after the normal body
+		// read and then it attempts to read trailers where it should fail
+		buf.Write(byt[:n])
+		if err != nil {
+			require.EqualError(t, err, expectError)
+			break
+		}
+	}
+	return buf.Bytes()
 }
