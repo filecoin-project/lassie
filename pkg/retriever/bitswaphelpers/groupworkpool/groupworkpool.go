@@ -94,9 +94,10 @@ func (p *pool) Stop() {
 }
 
 func (p *pool) worker() {
+	p.lk.Lock()
+	defer p.lk.Unlock()
 	for p.ctx.Err() == nil {
 		// pop work from the pool and execute it
-		p.lk.Lock()
 		next := p.work.Front()
 		if next != nil {
 			p.work.Remove(next)
@@ -106,12 +107,12 @@ func (p *pool) worker() {
 			gw.f()
 			// notify group that work is done
 			gw.group.workDone()
+			p.lk.Lock()
 			continue
 		}
 		if p.ctx.Err() == nil {
 			p.cond.Wait()
 		}
-		p.lk.Unlock()
 	}
 }
 
