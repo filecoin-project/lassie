@@ -35,7 +35,8 @@ func TestDaemonCommandFlags(t *testing.T) {
 				require.Equal(t, 0, len(lCfg.Protocols))
 				require.Equal(t, 0, len(lCfg.ProviderBlockList))
 				require.Equal(t, 0, len(lCfg.ProviderAllowList))
-				require.Equal(t, 12, lCfg.BitswapConcurrency)
+				require.Equal(t, 32, lCfg.BitswapConcurrency)
+				require.Equal(t, 12, lCfg.BitswapConcurrencyPerRetrieval)
 
 				// http server config
 				require.Equal(t, "127.0.0.1", hCfg.Address)

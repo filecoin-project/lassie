@@ -72,6 +72,7 @@ func buildLassieConfigFromCLIContext(cctx *cli.Context, lassieOpts []lassie.Lass
 	providerTimeout := cctx.Duration("provider-timeout")
 	globalTimeout := cctx.Duration("global-timeout")
 	bitswapConcurrency := cctx.Int("bitswap-concurrency")
+	bitswapConcurrencyPerRetrieval := cctx.Int("bitswap-concurrency-per-retrieval")
 
 	lassieOpts = append(lassieOpts, lassie.WithProviderTimeout(providerTimeout))
 
@@ -116,13 +117,13 @@ func buildLassieConfigFromCLIContext(cctx *cli.Context, lassieOpts []lassie.Lass
 	}
 
 	if bitswapConcurrency > 0 {
-		// single retrieval, so we set the bitswap concurrency to the same value
-		// as the bitswap concurrency per retrieval
-		lassieOpts = append(
-			lassieOpts,
-			lassie.WithBitswapConcurrency(bitswapConcurrency),
-			lassie.WithBitswapConcurrencyPerRetrieval(bitswapConcurrency),
-		)
+		lassieOpts = append(lassieOpts, lassie.WithBitswapConcurrency(bitswapConcurrency))
+	}
+
+	if bitswapConcurrencyPerRetrieval > 0 {
+		lassieOpts = append(lassieOpts, lassie.WithBitswapConcurrencyPerRetrieval(bitswapConcurrencyPerRetrieval))
+	} else if bitswapConcurrency > 0 {
+		lassieOpts = append(lassieOpts, lassie.WithBitswapConcurrencyPerRetrieval(bitswapConcurrency))
 	}
 
 	return lassie.NewLassieConfig(lassieOpts...), nil
