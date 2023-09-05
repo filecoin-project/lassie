@@ -73,6 +73,7 @@ var daemonFlags = []cli.Flag{
 	FlagExcludeProviders,
 	FlagTempDir,
 	FlagBitswapConcurrency,
+	FlagBitswapConcurrencyPerRetrieval,
 	FlagGlobalTimeout,
 	FlagProviderTimeout,
 	&cli.StringFlag{
