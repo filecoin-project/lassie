@@ -25,8 +25,7 @@ var (
 )
 
 const (
-	defaultBitswapConcurrency int           = lassie.DefaultBitswapConcurrencyPerRetrieval
-	defaultProviderTimeout    time.Duration = 20 * time.Second // 20 seconds
+	defaultProviderTimeout time.Duration = 20 * time.Second // 20 seconds
 )
 
 // FlagVerbose enables verbose mode, which shows info information about
@@ -166,9 +165,16 @@ var FlagTempDir = &cli.StringFlag{
 
 var FlagBitswapConcurrency = &cli.IntFlag{
 	Name:    "bitswap-concurrency",
-	Usage:   "maximum number of concurrent bitswap requests per retrieval",
-	Value:   defaultBitswapConcurrency,
+	Usage:   "maximum number of concurrent bitswap requests",
+	Value:   lassie.DefaultBitswapConcurrency,
 	EnvVars: []string{"LASSIE_BITSWAP_CONCURRENCY"},
+}
+
+var FlagBitswapConcurrencyPerRetrieval = &cli.IntFlag{
+	Name:    "bitswap-concurrency-per-retrieval",
+	Usage:   "maximum number of concurrent bitswap requests per retrieval",
+	Value:   lassie.DefaultBitswapConcurrencyPerRetrieval,
+	EnvVars: []string{"LASSIE_BITSWAP_CONCURRENCY_PER_RETRIEVAL"},
 }
 
 var FlagGlobalTimeout = &cli.DurationFlag{
