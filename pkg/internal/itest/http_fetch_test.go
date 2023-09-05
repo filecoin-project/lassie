@@ -154,9 +154,15 @@ func TestHttpFetch(t *testing.T) {
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20)}
 			},
-			// no validation, Go's body parser will fail on the unclean end and we're unlikely
-			// to have enough content quick enough to parse before it encounters the unclean end
-			// and returns nothing
+			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
+				// 3 blocks max, start at the root and then two blocks into the sharded data
+				wantCids := []cid.Cid{
+					srcData.Root,
+					srcData.SelfCids[0],
+					srcData.SelfCids[1],
+				}
+				validateCarBody(t, body, srcData.Root, wantCids, true)
+			}},
 		},
 		{
 			name:             "graphsync max block limit in request",
@@ -170,9 +176,15 @@ func TestHttpFetch(t *testing.T) {
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20)}
 			},
-			// no validation, Go's body parser will fail on the unclean end and we're unlikely
-			// to have enough content quick enough to parse before it encounters the unclean end
-			// and returns nothing
+			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
+				// 3 blocks max, start at the root and then two blocks into the sharded data
+				wantCids := []cid.Cid{
+					srcData.Root,
+					srcData.SelfCids[0],
+					srcData.SelfCids[1],
+				}
+				validateCarBody(t, body, srcData.Root, wantCids, true)
+			}},
 		},
 		{
 			name:             "bitswap max block limit",
@@ -185,9 +197,15 @@ func TestHttpFetch(t *testing.T) {
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20)}
 			},
-			// no validation, Go's body parser will fail on the unclean end and we're unlikely
-			// to have enough content quick enough to parse before it encounters the unclean end
-			// and returns nothing
+			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
+				// 3 blocks max, start at the root and then two blocks into the sharded data
+				wantCids := []cid.Cid{
+					srcData.Root,
+					srcData.SelfCids[0],
+					srcData.SelfCids[1],
+				}
+				validateCarBody(t, body, srcData.Root, wantCids, true)
+			}},
 		},
 		{
 			name:             "http max block limit",
@@ -200,9 +218,15 @@ func TestHttpFetch(t *testing.T) {
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20)}
 			},
-			// no validation, Go's body parser will fail on the unclean end and we're unlikely
-			// to have enough content quick enough to parse before it encounters the unclean end
-			// and returns nothing
+			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
+				// 3 blocks max, start at the root and then two blocks into the sharded data
+				wantCids := []cid.Cid{
+					srcData.Root,
+					srcData.SelfCids[0],
+					srcData.SelfCids[1],
+				}
+				validateCarBody(t, body, srcData.Root, wantCids, true)
+			}},
 		},
 		{
 			name:             "bitswap block timeout from missing block",
@@ -216,9 +240,15 @@ func TestHttpFetch(t *testing.T) {
 				remotes[0].Blockstore().DeleteBlock(context.Background(), file.SelfCids[2])
 				return []unixfs.DirEntry{file}
 			},
-			// no validation, Go's body parser will fail on the unclean end and we're unlikely
-			// to have enough content quick enough to parse before it encounters the unclean end
-			// and returns nothing
+			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
+				// 3 blocks max, start at the root and then two blocks into the sharded data
+				wantCids := []cid.Cid{
+					srcData.Root,
+					srcData.SelfCids[0],
+					srcData.SelfCids[1],
+				}
+				validateCarBody(t, body, srcData.Root, wantCids, true)
+			}},
 		},
 		{
 			name:           "same content, http missing block, bitswap completes",
@@ -1143,19 +1173,14 @@ func TestHttpFetch(t *testing.T) {
 						carFiles = append(carFiles, dstf)
 					}
 
-					if !testCase.expectUncleanEnd {
-						if testCase.validateBodies != nil && testCase.validateBodies[i] != nil {
-							testCase.validateBodies[i](t, srcData[i], body)
-						} else {
-							// gotDir := CarToDirEntry(t, bytes.NewReader(body), srcData[i].Root, true)
-							gotLsys := CarBytesLinkSystem(t, bytes.NewReader(body))
-							gotDir := unixfs.ToDirEntry(t, gotLsys, srcData[i].Root, true)
-							unixfs.CompareDirEntries(t, srcData[i], gotDir)
-						}
+					if testCase.validateBodies != nil && testCase.validateBodies[i] != nil {
+						testCase.validateBodies[i](t, srcData[i], body)
+					} else {
+						// gotDir := CarToDirEntry(t, bytes.NewReader(body), srcData[i].Root, true)
+						gotLsys := CarBytesLinkSystem(t, bytes.NewReader(body))
+						gotDir := unixfs.ToDirEntry(t, gotLsys, srcData[i].Root, true)
+						unixfs.CompareDirEntries(t, srcData[i], gotDir)
 					}
-					// else don't bother trying to validate, we may or may not have got the body
-					// before the Go HTTP client decided the dirty end meant it was improper to
-					// provide any body.
 				}
 			}
 
