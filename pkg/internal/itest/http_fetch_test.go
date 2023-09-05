@@ -61,6 +61,11 @@ func TestHttpFetch(t *testing.T) {
 	type queryModifier func(url.Values, []testpeer.TestPeer)
 	type bodyValidator func(*testing.T, unixfs.DirEntry, []byte)
 	type lassieOptsGen func(*testing.T, *mocknet.MockRetrievalNet) []lassie.LassieOption
+	type response struct {
+		StatusCode int
+		Header     http.Header
+		Body       []byte
+	}
 	wrapPath := "/want2/want1/want0"
 
 	testCases := []struct {
@@ -1077,9 +1082,9 @@ func TestHttpFetch(t *testing.T) {
 				}
 			}
 
-			responseChans := make([]chan *http.Response, 0)
+			responseChans := make([]chan response, 0)
 			for i := 0; i < len(srcData); i++ {
-				responseChan := make(chan *http.Response, 1)
+				responseChan := make(chan response, 1)
 				responseChans = append(responseChans, responseChan)
 				go func(i int) {
 					// Make a request for our CID and read the complete CAR bytes
@@ -1099,11 +1104,17 @@ func TestHttpFetch(t *testing.T) {
 					t.Log("Fetching", getReq.URL.String())
 					resp, err := http.DefaultClient.Do(getReq)
 					req.NoError(err)
-					responseChan <- resp
+					expectBodyReadError := ""
+					if testCase.expectUncleanEnd {
+						expectBodyReadError = "http: unexpected EOF reading trailer"
+					}
+					body := readAllBody(t, resp.Body, expectBodyReadError)
+					req.NoError(resp.Body.Close())
+					responseChan <- response{StatusCode: resp.StatusCode, Header: resp.Header, Body: body}
 				}(i)
 			}
 
-			responses := make([]*http.Response, 0)
+			responses := make([]response, 0)
 			for _, responseChan := range responseChans {
 				select {
 				case resp := <-responseChan:
@@ -1133,9 +1144,7 @@ func TestHttpFetch(t *testing.T) {
 					req.Equal(http.StatusUnauthorized, resp.StatusCode)
 				} else {
 					if resp.StatusCode != http.StatusOK {
-						body, err := io.ReadAll(resp.Body)
-						req.NoError(err)
-						req.Failf("200 response code not received", "got code: %d, body: %s", resp.StatusCode, string(body))
+						req.Failf("200 response code not received", "got code: %d, body: %s", resp.StatusCode, string(resp.Body))
 					}
 					req.Regexp(`^lassie/v\d+\.\d+\.\d+-\w+$`, resp.Header.Get("Server"))
 					req.Equal(fmt.Sprintf(`attachment; filename="%s.car"`, srcData[i].Root.String()), resp.Header.Get("Content-Disposition"))
@@ -1154,28 +1163,21 @@ func TestHttpFetch(t *testing.T) {
 					require.NotEmpty(t, requestId)
 					_, err := uuid.Parse(requestId)
 					req.NoError(err)
-					expectBodyReadError := ""
-					if testCase.expectUncleanEnd {
-						expectBodyReadError = "http: unexpected EOF reading trailer"
-					}
-					body := readAllBody(t, resp.Body, expectBodyReadError)
-					req.NoError(resp.Body.Close())
 
 					if DEBUG_DATA {
 						t.Logf("Creating CAR %s in temp dir", fmt.Sprintf("%s_received%d.car", testCase.name, i))
 						dstf, err := os.CreateTemp("", fmt.Sprintf("%s_received%d.car", testCase.name, i))
 						req.NoError(err)
 						t.Logf("Writing received data to CAR @ %s", dstf.Name())
-						_, err = dstf.Write(body)
+						_, err = dstf.Write(resp.Body)
 						req.NoError(err)
 						carFiles = append(carFiles, dstf)
 					}
 
 					if testCase.validateBodies != nil && testCase.validateBodies[i] != nil {
-						testCase.validateBodies[i](t, srcData[i], body)
+						testCase.validateBodies[i](t, srcData[i], resp.Body)
 					} else {
-						// gotDir := CarToDirEntry(t, bytes.NewReader(body), srcData[i].Root, true)
-						gotLsys := CarBytesLinkSystem(t, bytes.NewReader(body))
+						gotLsys := CarBytesLinkSystem(t, bytes.NewReader(resp.Body))
 						gotDir := unixfs.ToDirEntry(t, gotLsys, srcData[i].Root, true)
 						unixfs.CompareDirEntries(t, srcData[i], gotDir)
 					}
