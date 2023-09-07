@@ -109,7 +109,7 @@ func (mrt *MockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 		expectedScope = scope
 	}
 	require.Equal(mrt.t, req.URL.RawQuery, fmt.Sprintf("dag-scope=%s", expectedScope))
-	require.Equal(mrt.t, []string{"application/vnd.ipld.car; version=1; order=dfs; dups=y"}, req.Header["Accept"])
+	require.Equal(mrt.t, []string{"application/vnd.ipld.car;version=1;order=dfs;dups=y"}, req.Header["Accept"])
 	reqId := req.Header["X-Request-Id"]
 	require.Len(mrt.t, reqId, 1)
 	_, err = uuid.Parse(reqId[0])

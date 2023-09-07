@@ -82,7 +82,7 @@ func IpfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.Response
 			res.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", fileName))
 			res.Header().Set("Accept-Ranges", "none")
 			res.Header().Set("Cache-Control", trustlesshttp.ResponseCacheControlHeader)
-			res.Header().Set("Content-Type", trustlesshttp.ResponseContentTypeHeader(request.Duplicates))
+			res.Header().Set("Content-Type", trustlesshttp.DefaultContentType().WithDuplicates(request.Duplicates).String())
 			res.Header().Set("Etag", request.Etag())
 			res.Header().Set("X-Content-Type-Options", "nosniff")
 			res.Header().Set("X-Ipfs-Path", trustlessutils.PathEscape(req.URL.Path))
@@ -163,7 +163,7 @@ func decodeRequest(res http.ResponseWriter, req *http.Request, statusLogger *sta
 		return false, trustlessutils.Request{}
 	}
 
-	includeDupes, err := trustlesshttp.CheckFormat(req)
+	accept, err := trustlesshttp.CheckFormat(req)
 	if err != nil {
 		errorResponse(res, statusLogger, http.StatusBadRequest, err)
 		return false, trustlessutils.Request{}
@@ -186,7 +186,7 @@ func decodeRequest(res http.ResponseWriter, req *http.Request, statusLogger *sta
 		Path:       path.String(),
 		Scope:      dagScope,
 		Bytes:      byteRange,
-		Duplicates: includeDupes,
+		Duplicates: accept.Duplicates,
 	}
 }
 
