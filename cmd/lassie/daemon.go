@@ -62,6 +62,7 @@ var daemonFlags = []cli.Flag{
 		DefaultText: "no limit",
 		EnvVars:     []string{"LASSIE_CONCURRENT_SP_RETRIEVALS"},
 	},
+	FlagIPNIEndpoint,
 	FlagEventRecorderAuth,
 	FlagEventRecorderInstanceId,
 	FlagEventRecorderUrl,
@@ -115,7 +116,7 @@ func daemonAction(cctx *cli.Context) error {
 
 	lassieCfg, err := buildLassieConfigFromCLIContext(cctx, lassieOpts, libp2pOpts)
 	if err != nil {
-		return cli.Exit(err, 1)
+		return err
 	}
 
 	// http server config
@@ -165,7 +166,6 @@ func defaultDaemonRun(
 	httpServerCfg httpserver.HttpServerConfig,
 	eventRecorderCfg *aggregateeventrecorder.EventRecorderConfig,
 ) error {
-
 	lassie, err := lassie.NewLassieWithConfig(ctx, lassieCfg)
 	if err != nil {
 		return nil
