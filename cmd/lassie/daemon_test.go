@@ -6,6 +6,7 @@ import (
 	"time"
 
 	a "github.com/filecoin-project/lassie/pkg/aggregateeventrecorder"
+	"github.com/filecoin-project/lassie/pkg/indexerlookup"
 	l "github.com/filecoin-project/lassie/pkg/lassie"
 	h "github.com/filecoin-project/lassie/pkg/server/http"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -17,9 +18,10 @@ import (
 
 func TestDaemonCommandFlags(t *testing.T) {
 	tests := []struct {
-		name   string
-		args   []string
-		assert daemonRunFunc
+		name        string
+		args        []string
+		shouldError bool
+		assert      daemonRunFunc
 	}{
 		{
 			name: "with default args",
@@ -150,6 +152,19 @@ func TestDaemonCommandFlags(t *testing.T) {
 			},
 		},
 		{
+			name: "with ipni endpoint",
+			args: []string{"daemon", "--ipni-endpoint", "https://cid.contact"},
+			assert: func(ctx context.Context, lCfg *l.LassieConfig, hCfg h.HttpServerConfig, erCfg *a.EventRecorderConfig) error {
+				require.IsType(t, &indexerlookup.IndexerCandidateFinder{}, lCfg.Finder, "finder should be an IndexerCandidateFinder when providing an ipni endpoint")
+				return nil
+			},
+		},
+		{
+			name:        "with bad ipni endpoint",
+			args:        []string{"daemon", "--ipni-endpoint", "not-a-url"},
+			shouldError: true,
+		},
+		{
 			name: "with event recorder url",
 			args: []string{"daemon", "--event-recorder-url", "https://myeventrecorder.com/v1/retrieval-events"},
 			assert: func(ctx context.Context, lCfg *l.LassieConfig, hCfg h.HttpServerConfig, erCfg *a.EventRecorderConfig) error {
@@ -185,6 +200,10 @@ func TestDaemonCommandFlags(t *testing.T) {
 
 	for _, test := range tests {
 		daemonRun = test.assert
+		if test.shouldError {
+			daemonRun = noopDaemonRun
+		}
+
 		app := &cli.App{
 			Name:     "cli-test",
 			Flags:    daemonFlags,
@@ -193,9 +212,17 @@ func TestDaemonCommandFlags(t *testing.T) {
 
 		t.Run(test.name, func(t *testing.T) {
 			err := app.Run(append([]string{"cli-test"}, test.args...))
-			if err != nil {
+			if err != nil && !test.shouldError {
 				t.Fatal(err)
+			}
+
+			if err == nil && test.shouldError {
+				t.Fatal("expected error")
 			}
 		})
 	}
+}
+
+func noopDaemonRun(ctx context.Context, lCfg *l.LassieConfig, hCfg h.HttpServerConfig, erCfg *a.EventRecorderConfig) error {
+	return nil
 }
