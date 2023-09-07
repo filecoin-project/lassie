@@ -34,6 +34,7 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/storage/memstore"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
+	trustlesshttp "github.com/ipld/go-trustless-utils/http"
 	"github.com/ipld/go-trustless-utils/traversal"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
@@ -79,6 +80,7 @@ func TestHttpFetch(t *testing.T) {
 		modifyQueries      []queryModifier
 		validateBodies     []bodyValidator
 		lassieOpts         lassieOptsGen
+		expectNoDups       bool
 	}{
 		{
 			name:             "graphsync large sharded file",
@@ -904,9 +906,10 @@ func TestHttpFetch(t *testing.T) {
 			}},
 		},
 		{
-			name:        "http large sharded file with dups, no dups response requested",
-			httpRemotes: 1,
-			setHeader:   noDups,
+			name:         "http large sharded file with dups, no dups response requested",
+			httpRemotes:  1,
+			setHeader:    noDups,
+			expectNoDups: true,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, testutil.ZeroReader{}, 4<<20)}
 			},
@@ -917,6 +920,84 @@ func TestHttpFetch(t *testing.T) {
 					srcData.SelfCids[len(srcData.SelfCids)-1],
 				}
 				validateCarBody(t, body, srcData.Root, wantCids, true)
+			}},
+		},
+		{
+			name:        "http large sharded file with dups, */* gives dups",
+			httpRemotes: 1,
+			setHeader:   func(h http.Header) { h.Set("Accept", "*/*") },
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, testutil.ZeroReader{}, 4<<20)}
+			},
+			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
+				store := &testutil.CorrectedMemStore{ParentStore: &memstore.Store{
+					Bag: make(map[string][]byte),
+				}}
+				lsys := cidlink.DefaultLinkSystem()
+				lsys.SetReadStorage(store)
+				lsys.SetWriteStorage(store)
+				_, err := traversal.Config{
+					Root:               srcData.Root,
+					Selector:           selectorparse.CommonSelector_ExploreAllRecursively,
+					ExpectDuplicatesIn: true,
+				}.VerifyCar(context.Background(), bytes.NewReader(body), lsys)
+				require.NoError(t, err)
+			}},
+		}, {
+			name:         "http large sharded file with dups, multiple accept, priority to no dups",
+			httpRemotes:  1,
+			expectNoDups: true,
+			setHeader: func(h http.Header) {
+				h.Set("Accept",
+					strings.Join([]string{
+						"text/html",
+						trustlesshttp.DefaultContentType().WithDuplicates(true).WithQuality(0.7).String(),
+						trustlesshttp.DefaultContentType().WithDuplicates(false).WithQuality(0.8).String(),
+						"*/*;q=0.1",
+					}, ", "),
+				)
+			},
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, testutil.ZeroReader{}, 4<<20)}
+			},
+			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
+				wantCids := []cid.Cid{
+					srcData.Root, // "/""
+					srcData.SelfCids[1],
+					srcData.SelfCids[len(srcData.SelfCids)-1],
+				}
+				validateCarBody(t, body, srcData.Root, wantCids, true)
+			}},
+		},
+		{
+			name:        "http large sharded file with dups, multiple accept, priority to dups",
+			httpRemotes: 1,
+			setHeader: func(h http.Header) {
+				h.Set("Accept",
+					strings.Join([]string{
+						"text/html",
+						trustlesshttp.DefaultContentType().WithDuplicates(true).WithQuality(0.8).String(),
+						trustlesshttp.DefaultContentType().WithDuplicates(false).WithQuality(0.7).String(),
+						"*/*;q=0.1",
+					}, ", "),
+				)
+			},
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, testutil.ZeroReader{}, 4<<20)}
+			},
+			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
+				store := &testutil.CorrectedMemStore{ParentStore: &memstore.Store{
+					Bag: make(map[string][]byte),
+				}}
+				lsys := cidlink.DefaultLinkSystem()
+				lsys.SetReadStorage(store)
+				lsys.SetWriteStorage(store)
+				_, err := traversal.Config{
+					Root:               srcData.Root,
+					Selector:           selectorparse.CommonSelector_ExploreAllRecursively,
+					ExpectDuplicatesIn: true,
+				}.VerifyCar(context.Background(), bytes.NewReader(body), lsys)
+				require.NoError(t, err)
 			}},
 		},
 		{
@@ -1141,9 +1222,7 @@ func TestHttpFetch(t *testing.T) {
 					req.Equal(fmt.Sprintf(`attachment; filename="%s.car"`, srcData[i].Root.String()), resp.Header.Get("Content-Disposition"))
 					req.Equal("none", resp.Header.Get("Accept-Ranges"))
 					req.Equal("public, max-age=29030400, immutable", resp.Header.Get("Cache-Control"))
-					ct := resp.Header.Get("Content-Type")
-					// TODO: check the noDups() case and assert accordingly
-					req.Equal("application/vnd.ipld.car; version=1; order=dfs; dups=", ct[:len(ct)-1]) // strip off y|n from the end
+					req.Equal(trustlesshttp.DefaultContentType().WithDuplicates(!testCase.expectNoDups).String(), resp.Header.Get("Content-Type"))
 					req.Equal("nosniff", resp.Header.Get("X-Content-Type-Options"))
 					etagStart := fmt.Sprintf(`"%s.car.`, srcData[i].Root.String())
 					etagGot := resp.Header.Get("ETag")

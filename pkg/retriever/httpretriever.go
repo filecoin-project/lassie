@@ -118,9 +118,10 @@ func (ph *ProtocolHttp) Retrieve(
 		return nil, ErrHttpRequestFailure{Code: resp.StatusCode}
 	}
 
-	// if Content-Type is not valid, it will default to
-	// trustlesshttp.DefaultIncludeDupes (true)
-	_, expectDuplicates := trustlesshttp.ParseContentType(resp.Header.Get("Content-Type"))
+	var expectDuplicates = trustlesshttp.DefaultIncludeDupes
+	if contentType, valid := trustlesshttp.ParseContentType(resp.Header.Get("Content-Type")); valid {
+		expectDuplicates = contentType.Duplicates
+	} // else be permissive and just expect duplicates (DefaultIncludeDupes)
 
 	var ttfb time.Duration
 	rdr := newTimeToFirstByteReader(resp.Body, func() {
@@ -188,7 +189,7 @@ func makeRequest(ctx context.Context, request types.RetrievalRequest, candidate 
 		logger.Warnf("Couldn't construct a http request %s: %v", candidate.MinerPeer.ID, err)
 		return nil, fmt.Errorf("%w for peer %s: %v", ErrBadPathForRequest, candidate.MinerPeer.ID, err)
 	}
-	req.Header.Add("Accept", trustlesshttp.RequestAcceptHeader(true)) // prefer duplicates
+	req.Header.Add("Accept", trustlesshttp.DefaultContentType().String()) // prefer duplicates
 	req.Header.Add("X-Request-Id", request.RetrievalID.String())
 	req.Header.Add("User-Agent", build.UserAgent)
 

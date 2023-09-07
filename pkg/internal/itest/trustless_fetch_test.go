@@ -27,7 +27,7 @@ import (
 func TestTrustlessUnixfsFetch(t *testing.T) {
 	req := require.New(t)
 
-	testCases, err := trustlesspathing.Unixfs20mVarietyCases()
+	testCases, _, err := trustlesspathing.Unixfs20mVarietyCases()
 	req.NoError(err)
 	storage, closer, err := trustlesspathing.Unixfs20mVarietyReadableStorage()
 	req.NoError(err)
@@ -112,7 +112,7 @@ func TestTrustlessUnixfsFetch(t *testing.T) {
 				req.Equal(fmt.Sprintf(`attachment; filename="%s.car"`, tc.Root.String()), resp.Header.Get("Content-Disposition"))
 				req.Equal("none", resp.Header.Get("Accept-Ranges"))
 				req.Equal("public, max-age=29030400, immutable", resp.Header.Get("Cache-Control"))
-				req.Equal("application/vnd.ipld.car; version=1; order=dfs; dups=y", resp.Header.Get("Content-Type"))
+				req.Equal("application/vnd.ipld.car;version=1;order=dfs;dups=y", resp.Header.Get("Content-Type"))
 				req.Equal("nosniff", resp.Header.Get("X-Content-Type-Options"))
 				etagStart := fmt.Sprintf(`"%s.car.`, tc.Root.String())
 				etagGot := resp.Header.Get("ETag")
