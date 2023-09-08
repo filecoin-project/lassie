@@ -263,9 +263,6 @@ func TestHttpFetch(t *testing.T) {
 			name:           "same content, http missing block, bitswap completes",
 			bitswapRemotes: 1,
 			httpRemotes:    1,
-			lassieOpts: func(t *testing.T, mrn *mocknet.MockRetrievalNet) []lassie.LassieOption {
-				return []lassie.LassieOption{lassie.WithProviderTimeout(500 * time.Millisecond)}
-			},
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				file := unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20)
 				for _, c := range file.SelfCids {
