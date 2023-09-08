@@ -160,7 +160,7 @@ func (cs *PreloadCachingStorage) Preloader(preloadCtx preload.PreloadContext, li
 	cs.preloadsLk.Lock()
 	defer cs.preloadsLk.Unlock()
 
-	logger.Debugw("preload link", "link", link)
+	logger.Debugw("Preloader()", "link", link)
 
 	// links coming in here aren't necessarily deduplicated and may be ones we've
 	// already attempted to load or are queued for loading, so we have to check
@@ -205,7 +205,9 @@ func (cs *PreloadCachingStorage) Preloader(preloadCtx preload.PreloadContext, li
 	}
 	cs.preloads[link.Link] = pl
 
+	logger.Debugw("queueing preload link", "link", link.Link.String())
 	cs.workGroup.Enqueue(func() {
+		logger.Debugw("executing preload link", "link", link.Link.String())
 		cs.preloadLink(pl, linkCtx, link.Link)
 	})
 }
@@ -216,7 +218,7 @@ func (cs *PreloadCachingStorage) Preloader(preloadCtx preload.PreloadContext, li
 func (cs *PreloadCachingStorage) Loader(linkCtx linking.LinkContext, link ipld.Link) (io.Reader, error) {
 	cs.loadCount++
 
-	logger.Debugw("load link", "link", link)
+	logger.Debugw("Loader()", "link", link)
 
 	// 1. Check the parent LinkSystem: we may already have the the block we need
 	//    next in the traversal; allow for duplicates or a pre-filled parent
@@ -276,6 +278,7 @@ func (cs *PreloadCachingStorage) Loader(linkCtx linking.LinkContext, link ipld.L
 		// 4a. If the block is not in the preload list
 		cs.preloadMisses++
 		// load directly from the fetcher, if it can be fetched
+		logger.Debugw("preload miss, fetching directly", "link", link)
 		r, err := cs.fetcher(linkCtx, link)
 		if err != nil {
 			if nf, ok := err.(interface{ NotFound() bool }); ok && nf.NotFound() {
@@ -296,6 +299,7 @@ func (cs *PreloadCachingStorage) Loader(linkCtx linking.LinkContext, link ipld.L
 	// preloadLink() will process it right now if it's in the queue, or be a
 	// noop if it's in progress with the preloader; either way we wait on
 	// pl.loaded.
+	logger.Debugw("preload hit link, fetching directly via preload queue", "link", link.String())
 	cs.preloadLink(pl, linkCtx, link)
 
 	select {
@@ -347,6 +351,7 @@ func (cs *PreloadCachingStorage) loadToParent(reader io.Reader, linkCtx linking.
 
 func (cs *PreloadCachingStorage) preloadLink(pl *preloadingLink, linkCtx linking.LinkContext, link ipld.Link) {
 	pl.loadSyncer.Do(func() {
+		logger.Debugw("preloadLink fetching", "link", link.String())
 		defer close(pl.loaded)
 		reader, err := cs.fetcher(linkCtx, link)
 		if err != nil {
