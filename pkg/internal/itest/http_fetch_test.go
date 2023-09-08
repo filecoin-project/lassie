@@ -240,7 +240,9 @@ func TestHttpFetch(t *testing.T) {
 			bitswapRemotes:   1,
 			expectUncleanEnd: true,
 			lassieOpts: func(t *testing.T, mrn *mocknet.MockRetrievalNet) []lassie.LassieOption {
-				return []lassie.LassieOption{lassie.WithProviderTimeout(500 * time.Millisecond)}
+				// this delay is going to depend on CI, if it's too short then a slower machine
+				// won't get bitswap setup in time to get the block
+				return []lassie.LassieOption{lassie.WithProviderTimeout(1 * time.Second)}
 			},
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				file := unixfs.GenerateFile(t, remotes[0].LinkSystem, rndReader, 4<<20)
