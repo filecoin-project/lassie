@@ -1,0 +1,65 @@
+name: Container
+
+on:
+  push:
+    branches:
+      - 'main'
+    tags:
+      - 'v*'
+  workflow_run:
+    workflows: [ Releaser ]
+    types:
+      - completed
+  pull_request:
+
+jobs:
+  prepare-checkout:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    name: Prepare ref
+    runs-on: ubuntu-latest
+    outputs:
+      ref: ${{ github.event_name != 'workflow_run' && github.ref || steps.releaser.outputs.version }}
+    steps:
+      - name: Get Ref from releaser
+        id: releaser
+        if: github.event_name == 'workflow_run'
+        uses: pl-strflt/uci/.github/actions/inspect-releaser@v0.0
+        with:
+          artifacts-url: ${{ github.event.workflow_run.artifacts_url }}
+  build:
+    name: Publish
+    needs: [ prepare-checkout ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ needs.prepare_checkout.outputs.ref }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Log in to the Container registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=ref,event=branch
+      - name: Publish
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
