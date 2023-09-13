@@ -6,7 +6,7 @@ COPY go.* .
 RUN go mod download
 COPY . .
 
-RUN go build -o /go/bin/lassie ./cmd/lassie
+RUN CGO_ENABLED=0 go build -o /go/bin/lassie ./cmd/lassie
 
 FROM gcr.io/distroless/static-debian12
 COPY --from=build /go/bin/lassie /usr/bin/
