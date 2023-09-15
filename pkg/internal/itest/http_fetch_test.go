@@ -1025,6 +1025,11 @@ func verifyHeaders(t *testing.T, resp response, root cid.Cid, path string, expec
 	req.Equal("public, max-age=29030400, immutable", resp.Header.Get("Cache-Control"))
 	req.Equal(trustlesshttp.DefaultContentType().WithDuplicates(!expectNoDups).String(), resp.Header.Get("Content-Type"))
 	req.Equal("nosniff", resp.Header.Get("X-Content-Type-Options"))
+	st := resp.Header.Get("Server-Timing")
+	req.Contains(st, "started-finding-candidates")
+	req.Contains(st, "candidates-found=")
+	req.Contains(st, "retrieval-")
+	req.Contains(st, "dur=") // at lest one of these
 	etagStart := fmt.Sprintf(`"%s.car.`, root.String())
 	etagGot := resp.Header.Get("ETag")
 	req.True(strings.HasPrefix(etagGot, etagStart), "ETag should start with [%s], got [%s]", etagStart, etagGot)
