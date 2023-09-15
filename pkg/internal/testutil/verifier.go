@@ -105,13 +105,13 @@ func (rv RetrievalVerifier) RunWithVerification(
 	return results
 }
 
-func DataReceivedActions(baseTime time.Time, baseAfterStart time.Duration, rid types.RetrievalID, candidate types.RetrievalCandidate, protocol multicodec.Code, blockTime time.Duration, blks []blocks.Block) []ExpectedActionsAtTime {
+func BlockReceivedActions(baseTime time.Time, baseAfterStart time.Duration, rid types.RetrievalID, candidate types.RetrievalCandidate, protocol multicodec.Code, blockTime time.Duration, blks []blocks.Block) []ExpectedActionsAtTime {
 	var actions []ExpectedActionsAtTime
 	for i, blk := range blks {
 		actions = append(actions, ExpectedActionsAtTime{
 			AfterStart: baseAfterStart + time.Duration(i)*blockTime,
 			ExpectedEvents: []types.RetrievalEvent{
-				events.DataReceived(baseTime.Add(baseAfterStart+time.Duration(i)*blockTime), rid, candidate, protocol, uint64(len(blk.RawData()))),
+				events.BlockReceived(baseTime.Add(baseAfterStart+time.Duration(i)*blockTime), rid, candidate, protocol, uint64(len(blk.RawData()))),
 			},
 		})
 	}
