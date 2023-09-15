@@ -125,6 +125,7 @@ func TestRetriever(t *testing.T) {
 						events.Proposed(startTime.Add(25*time.Millisecond+initialPause), rid, types.NewRetrievalCandidate(peerA, nil, cid1)),
 						events.Accepted(startTime.Add(25*time.Millisecond+initialPause), rid, types.NewRetrievalCandidate(peerA, nil, cid1)),
 						events.FirstByte(startTime.Add(25*time.Millisecond+initialPause), rid, types.NewRetrievalCandidate(peerA, nil, cid1), 5*time.Millisecond, multicodec.TransportGraphsyncFilecoinv1),
+						events.DataReceived(startTime.Add(25*time.Millisecond+initialPause), rid, types.NewRetrievalCandidate(peerA, nil, cid1), multicodec.TransportGraphsyncFilecoinv1, 100),
 						events.Success(startTime.Add(25*time.Millisecond+initialPause), rid, types.NewRetrievalCandidate(peerA, nil, cid1), 1, 2, 3*time.Second, multicodec.TransportGraphsyncFilecoinv1),
 						events.Finished(startTime.Add(25*time.Millisecond+initialPause), rid, types.RetrievalCandidate{RootCid: cid1}),
 					},
