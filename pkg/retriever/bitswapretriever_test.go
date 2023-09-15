@@ -610,18 +610,6 @@ func sizeOf(blocks []blocks.Block) uint64 {
 	return total
 }
 
-func sizeOfStored(lsys linking.LinkSystem, links []cid.Cid) uint64 {
-	total := uint64(0)
-	for _, c := range links {
-		b, err := lsys.LoadRaw(linking.LinkContext{}, cidlink.Link{Cid: c})
-		if err != nil {
-			panic(err)
-		}
-		total += uint64(len(b))
-	}
-	return total
-}
-
 type mockInProgressCids struct {
 	incremented []cid.Cid
 	decremented []cid.Cid
