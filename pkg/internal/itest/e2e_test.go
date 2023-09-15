@@ -27,6 +27,9 @@ func TestTrustlessGatewayE2E(t *testing.T) {
 	if os.Getenv("CI") != "" && runtime.GOOS == "windows" {
 		t.Skip("skipping on windows in CI")
 	}
+	if os.Getenv("SKIP_E2E") != "" {
+		t.Skip("skipping e2e tests")
+	}
 
 	req := require.New(t)
 
