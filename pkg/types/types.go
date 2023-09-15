@@ -204,7 +204,7 @@ const (
 	FailedRetrievalCode          EventCode = "failed-retrieval"
 	SuccessCode                  EventCode = "success"
 	FinishedCode                 EventCode = "finished"
-	DataReceivedCode             EventCode = "data-received"
+	BlockReceivedCode            EventCode = "block-received"
 )
 
 type RetrievalEvent interface {

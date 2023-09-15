@@ -205,7 +205,7 @@ func (pg *ProtocolGraphsync) Retrieve(
 			lastReceived := totalReceived
 			totalReceived = channelState.Received()
 			if totalReceived > lastReceived {
-				shared.sendEvent(ctx, events.DataReceived(retrieval.Clock.Now(), retrieval.request.RetrievalID, candidate, multicodec.TransportGraphsyncFilecoinv1, totalReceived-lastReceived))
+				shared.sendEvent(ctx, events.BlockReceived(retrieval.Clock.Now(), retrieval.request.RetrievalID, candidate, multicodec.TransportGraphsyncFilecoinv1, totalReceived-lastReceived))
 			}
 			if lastBytesReceivedTimer != nil {
 				doneLk.Lock()

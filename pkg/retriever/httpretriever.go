@@ -138,7 +138,7 @@ func (ph *ProtocolHttp) Retrieve(
 		WriteDuplicatesOut: expectDuplicates,
 		MaxBlocks:          retrieval.request.MaxBlocks,
 		OnBlockIn: func(read uint64) {
-			shared.sendEvent(ctx, events.DataReceived(retrieval.Clock.Now(), retrieval.request.RetrievalID, candidate, multicodec.TransportIpfsGatewayHttp, read))
+			shared.sendEvent(ctx, events.BlockReceived(retrieval.Clock.Now(), retrieval.request.RetrievalID, candidate, multicodec.TransportIpfsGatewayHttp, read))
 		},
 	}
 

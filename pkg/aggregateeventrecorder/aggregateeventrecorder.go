@@ -200,7 +200,7 @@ func (a *aggregateEventRecorder) ingestEvents() {
 					}
 				}
 
-			case events.DataReceivedEvent:
+			case events.BlockReceivedEvent:
 				// data received is unique in that it always has a provider
 				spid := ret.ProviderId().String()
 				attempt, ok := tempData.retrievalAttempts[spid]
@@ -210,12 +210,10 @@ func (a *aggregateEventRecorder) ingestEvents() {
 					tempData.retrievalAttempts[spid] = attempt
 				}
 				attempt.BytesTransferred += ret.ByteCount()
-				fmt.Println("data received", spid, ret.ByteCount())
 				if ret.Protocol() == multicodec.TransportBitswap {
 					// record the total under the bitswap identifier as well
 					if _, ok := tempData.retrievalAttempts[types.BitswapIndentifier]; ok {
 						tempData.retrievalAttempts[types.BitswapIndentifier].BytesTransferred += ret.ByteCount()
-						fmt.Println("data received", types.BitswapIndentifier, ret.ByteCount())
 					}
 				}
 
