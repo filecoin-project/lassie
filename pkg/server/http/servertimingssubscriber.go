@@ -28,7 +28,7 @@ import (
 // Additionally, we use the `dur` field to record the time since the `started-fetch` event
 // instead of the duration of the event itself. We do this to render something in the browser
 // since the "dur" field is the only field rendered.
-func servertimingsSubscriber(req *http.Request) types.RetrievalEventSubscriber {
+func servertimingsSubscriber(req *http.Request, bytesWritten chan struct{}) types.RetrievalEventSubscriber {
 	var fetchStartTime time.Time
 
 	var candidateFindingMetric *servertiming.Metric
@@ -38,6 +38,13 @@ func servertimingsSubscriber(req *http.Request) types.RetrievalEventSubscriber {
 	retrievalTimingMap := make(map[string]time.Time)
 
 	return func(re types.RetrievalEvent) {
+		// if bytesWritten is closed, there's nothing to do
+		select {
+		case <-bytesWritten:
+			return
+		default:
+		}
+
 		timing := servertiming.FromContext(req.Context())
 		if timing == nil {
 			return
@@ -88,8 +95,9 @@ func servertimingsSubscriber(req *http.Request) types.RetrievalEventSubscriber {
 				retrievalMetric.Duration = re.Time().Sub(retrievalTimingMap[name])
 			}
 
-		// Due to the timing in which the Server-Timing header is written,
-		// the success and finished events are never emitted in time to make it into the header.
+			// Due to the timing in which the Server-Timing header is written,
+			// the data received, success and finished events are never emitted in time to make it into the header.
+		case events.BlockReceivedEvent:
 		case events.SucceededEvent:
 		case events.FinishedEvent:
 
