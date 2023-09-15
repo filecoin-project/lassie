@@ -102,7 +102,7 @@ func IpfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.Response
 			"maxBlocks", request.MaxBlocks,
 		)
 
-		stats, err := fetcher.Fetch(req.Context(), request, servertimingsSubscriber(req))
+		stats, err := fetcher.Fetch(req.Context(), request, types.WithEventsCallback(servertimingsSubscriber(req)))
 
 		// force all blocks to flush
 		if cerr := carWriter.Close(); cerr != nil && !errors.Is(cerr, context.Canceled) {

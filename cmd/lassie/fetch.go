@@ -298,7 +298,7 @@ func defaultFetchRun(
 	request.PreloadLinkSystem.SetWriteStorage(preloadStore)
 	request.PreloadLinkSystem.TrustedStorage = true
 
-	stats, err := lassie.Fetch(ctx, request, func(types.RetrievalEvent) {})
+	stats, err := lassie.Fetch(ctx, request)
 	if err != nil {
 		fmt.Fprintln(msgWriter)
 		return err
