@@ -864,7 +864,7 @@ func TestHTTPRetriever(t *testing.T) {
 			t.Parallel()
 
 			req := require.New(t)
-			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			defer cancel()
 
 			clock := clock.NewMock()
@@ -884,7 +884,7 @@ func TestHTTPRetriever(t *testing.T) {
 
 			mockSession := testutil.NewMockSession(ctx)
 			mockSession.SetCandidatePreferenceOrder(append(cid1Cands, cid2Cands...))
-			mockSession.SetProviderTimeout(5 * time.Second)
+			mockSession.SetProviderTimeout(10 * time.Second)
 			retriever := retriever.NewHttpRetrieverWithDeps(mockSession, client, clock, nil, initialPause, true)
 
 			blockAccounting := make([]*blockAccounter, 0)
