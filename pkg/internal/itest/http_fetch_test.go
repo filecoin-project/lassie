@@ -606,6 +606,7 @@ func TestHttpFetch(t *testing.T) {
 				lsys := cidlink.DefaultLinkSystem()
 				lsys.SetReadStorage(store)
 				lsys.SetWriteStorage(store)
+				lsys.TrustedStorage = true
 				_, err := traversal.Config{
 					Root:               srcData.Root,
 					Selector:           selectorparse.CommonSelector_ExploreAllRecursively,
@@ -645,6 +646,7 @@ func TestHttpFetch(t *testing.T) {
 				lsys := cidlink.DefaultLinkSystem()
 				lsys.SetReadStorage(store)
 				lsys.SetWriteStorage(store)
+				lsys.TrustedStorage = true
 				_, err := traversal.Config{
 					Root:               srcData.Root,
 					Selector:           selectorparse.CommonSelector_ExploreAllRecursively,
@@ -701,6 +703,7 @@ func TestHttpFetch(t *testing.T) {
 				lsys := cidlink.DefaultLinkSystem()
 				lsys.SetReadStorage(store)
 				lsys.SetWriteStorage(store)
+				lsys.TrustedStorage = true
 				_, err := traversal.Config{
 					Root:               srcData.Root,
 					Selector:           selectorparse.CommonSelector_ExploreAllRecursively,
