@@ -33,11 +33,7 @@ func TestTrustlessGatewayE2E(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	indexerReady := test.NewIndexerReadyWatcher()
-	frisbiiReady := test.NewStdoutWatcher("frisbii", "Announce() complete")
-	lassieDaemonReady := test.NewStdoutWatcher("lassie", "Lassie daemon listening on address")
-
-	tr := test.NewTestIndexerRunner(t, ctx, t.TempDir(), indexerReady, frisbiiReady, lassieDaemonReady)
+	tr := test.NewTestIpniRunner(t, ctx, t.TempDir())
 
 	t.Log("Running in test directory:", tr.Dir)
 
@@ -53,20 +49,21 @@ func TestTrustlessGatewayE2E(t *testing.T) {
 
 	// install the indexer to announce to
 	indexer := filepath.Join(tr.Dir, "storetheindex")
-	tr.Run("go", "install", "github.com/ipni/storetheindex@e56485343dd8e235581191b4668b5bfc0cea0781") // TODO: use @latest when we have a release
+	tr.Run("go", "install", "github.com/ipni/storetheindex@HEAD") // TODO: use @latest when we have a release
 	// install the ipni cli to inspect the indexer
 	ipni := filepath.Join(tr.Dir, "ipni")
 	tr.Run("go", "install", "github.com/ipni/ipni-cli/cmd/ipni@latest")
 	// install frisbii to serve the content
 	frisbii := filepath.Join(tr.Dir, "frisbii")
-	tr.Run("go", "install", "github.com/ipld/frisbii/cmd/frisbii@3eac6a9cd83f2051febda40e709a7c14891b6d8f") // TODO: use @latest when we have a release
+	tr.Run("go", "install", "github.com/ipld/frisbii/cmd/frisbii@latest")
 
 	err = os.Chdir(cwd)
 	req.NoError(err)
 
 	// initialise and start the indexer and adjust the config
 	tr.Run(indexer, "init", "--store", "pebble", "--pubsub-topic", "/indexer/ingest/mainnet", "--no-bootstrap")
-	cmdIndexer := tr.Start(indexer, "daemon")
+	indexerReady := test.NewStdoutWatcher(test.IndexerReadyMatch)
+	cmdIndexer := tr.Start(test.NewExecution(indexer, "daemon").WithWatcher(indexerReady))
 	select {
 	case <-indexerReady.Signal:
 	case <-ctx.Done():
@@ -79,13 +76,14 @@ func TestTrustlessGatewayE2E(t *testing.T) {
 	carPath := trustlesspathing.Unixfs20mVarietyCARPath()
 
 	// start frisbii with the fixture CAR
-	cmdFrisbii := tr.Start(frisbii,
+	frisbiiReady := test.NewStdoutWatcher("Announce() complete")
+	cmdFrisbii := tr.Start(test.NewExecution(frisbii,
 		"--listen", "localhost:37471",
 		"--announce", "roots",
 		"--announce-url", "http://localhost:3001/announce",
 		"--verbose",
 		"--car", carPath,
-	)
+	).WithWatcher(frisbiiReady))
 
 	select {
 	case <-frisbiiReady.Signal:
@@ -134,11 +132,12 @@ func TestTrustlessGatewayE2E(t *testing.T) {
 	})
 
 	// start lassie daemon
-	cmdLassieDaemon := tr.Start(lassie, "daemon",
+	lassieDaemonReady := test.NewStdoutWatcher("Lassie daemon listening on address")
+	cmdLassieDaemon := tr.Start(test.NewExecution(lassie, "daemon",
 		"-vv",
 		"--port", "30000",
 		"--ipni-endpoint", "http://localhost:3000",
-	)
+	).WithWatcher(lassieDaemonReady))
 
 	select {
 	case <-lassieDaemonReady.Signal:

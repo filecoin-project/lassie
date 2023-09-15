@@ -28,9 +28,9 @@ require (
 	github.com/ipld/go-trustless-utils v0.2.0
 	github.com/ipld/ipld/specs v0.0.0-20230907004443-0e4ff95ff474
 	github.com/ipni/go-libipni v0.5.0
-	github.com/ipni/storetheindex v0.7.9-0.20230912093039-8042ebe82b42
+	github.com/ipni/storetheindex v0.7.9-0.20230914224616-e6658bcf60c5
 	github.com/libp2p/go-libp2p v0.31.0
-	github.com/libp2p/go-libp2p-routing-helpers v0.7.0
+	github.com/libp2p/go-libp2p-routing-helpers v0.7.1
 	github.com/libp2p/go-libp2p-testing v0.12.0
 	github.com/mitchellh/go-server-timing v1.0.1
 	github.com/multiformats/go-multiaddr v0.11.0
@@ -45,6 +45,7 @@ require (
 )
 
 require (
+	github.com/Jorropo/jsync v1.0.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
 	github.com/cespare/xxhash v1.1.0 // indirect
@@ -58,7 +59,7 @@ require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.2.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/elastic/gosigar v0.14.2 // indirect
-	github.com/felixge/httpsnoop v1.0.0 // indirect
+	github.com/felixge/httpsnoop v1.0.3 // indirect
 	github.com/filecoin-project/go-address v1.1.0 // indirect
 	github.com/filecoin-project/go-amt-ipld/v4 v4.0.0 // indirect
 	github.com/filecoin-project/go-cbor-util v0.0.1 // indirect
@@ -78,6 +79,7 @@ require (
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/google/pprof v0.0.0-20230821062121-407c9e7a662f // indirect
+	github.com/gopherjs/gopherjs v1.17.2 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/hannahhoward/cbor-gen-for v0.0.0-20230214144701-5d17c9d5243c // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
@@ -154,11 +156,12 @@ require (
 	github.com/whyrusleeping/chunker v0.0.0-20181014151217-fe64bd25879f // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
 	go.opentelemetry.io/otel/metric v1.16.0 // indirect
-	go.opentelemetry.io/otel/sdk v1.14.0 // indirect
+	go.opentelemetry.io/otel/sdk v1.16.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/dig v1.17.0 // indirect
 	go.uber.org/fx v1.20.0 // indirect
 	go.uber.org/zap v1.25.0 // indirect
+	go4.org v0.0.0-20230225012048-214862532bf5 // indirect
 	golang.org/x/crypto v0.12.0 // indirect
 	golang.org/x/mod v0.12.0 // indirect
 	golang.org/x/net v0.14.0 // indirect
