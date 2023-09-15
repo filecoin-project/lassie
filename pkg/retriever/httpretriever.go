@@ -164,6 +164,7 @@ func (ph *ProtocolHttp) Retrieve(
 func (ph *ProtocolHttp) beginRequest(ctx context.Context, request types.RetrievalRequest, candidate types.RetrievalCandidate) (resp *http.Response, err error) {
 	var req *http.Request
 	req, err = makeRequest(ctx, request, candidate)
+	logger.Debugf("HTTP request: %s", req.URL.String())
 	if err == nil {
 		resp, err = ph.Client.Do(req)
 	}
