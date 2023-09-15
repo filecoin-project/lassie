@@ -128,6 +128,7 @@ func (a *aggregateEventRecorder) ingestEvents() {
 	for {
 		select {
 		case <-a.ctx.Done():
+			return
 
 		// Read incoming data
 		case event := <-a.ingestChan:
@@ -297,6 +298,7 @@ func (a *aggregateEventRecorder) postEvents() {
 		select {
 		case <-a.ctx.Done():
 			return
+
 		case batchedData := <-a.postChan:
 			byts, err := json.Marshal(batchedEvents{batchedData})
 			if err != nil {
