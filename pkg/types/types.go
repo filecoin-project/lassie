@@ -16,15 +16,46 @@ import (
 )
 
 type Fetcher interface {
-	Fetch(context.Context, RetrievalRequest, func(RetrievalEvent)) (*RetrievalStats, error)
+	Fetch(context.Context, RetrievalRequest, ...FetchOption) (*RetrievalStats, error)
 }
 
+type FetchConfig struct {
+	EventsCallback func(RetrievalEvent)
+}
+
+type FetchOption func(cfg *FetchConfig)
+
+// WithEventsCallback sets the callback function for events that occur during
+// the retrieval process. Only one callback can be set per retrieval.
+func WithEventsCallback(callback func(RetrievalEvent)) FetchOption {
+	return func(cfg *FetchConfig) {
+		cfg.EventsCallback = callback
+	}
+}
+
+// NewFetchConfig creates a new FetchConfig with the given options.
+func NewFetchConfig(opts ...FetchOption) FetchConfig {
+	cfg := FetchConfig{
+		EventsCallback: func(RetrievalEvent) {},
+	}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	return cfg
+}
+
+// RetrievalCandidate describes a peer and CID combination that can be used to
+// retrieve data from the peer. The Metadata field contains information about
+// the protocols supported by the peer that may be used to further refine
+// how the retrieval is performed.
 type RetrievalCandidate struct {
 	MinerPeer peer.AddrInfo
 	RootCid   cid.Cid
 	Metadata  metadata.Metadata
 }
 
+// NewRetrievalCandidate creates a new RetrievalCandidate with the given
+// parameters.
 func NewRetrievalCandidate(pid peer.ID, addrs []multiaddr.Multiaddr, rootCid cid.Cid, protocols ...metadata.Protocol) RetrievalCandidate {
 	md := metadata.Default.New(protocols...)
 	return RetrievalCandidate{

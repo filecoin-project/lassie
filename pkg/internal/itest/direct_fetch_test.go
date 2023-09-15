@@ -119,7 +119,7 @@ func TestDirectFetch(t *testing.T) {
 			req.NoError(err)
 			request, err := types.NewRequestForPath(outCar, srcData1.Root, "", trustlessutils.DagScopeAll, nil)
 			req.NoError(err)
-			_, err = lassie.Fetch(ctx, request, func(types.RetrievalEvent) {})
+			_, err = lassie.Fetch(ctx, request)
 			req.NoError(err)
 			err = outCar.Finalize()
 			req.NoError(err)

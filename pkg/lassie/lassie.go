@@ -232,13 +232,17 @@ func WithBitswapConcurrencyPerRetrieval(concurrency int) LassieOption {
 	}
 }
 
-func (l *Lassie) Fetch(ctx context.Context, request types.RetrievalRequest, eventsCb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
+// Fetch initiates a retrieval request and returns either some details about
+// the retrieval or an error. The request should contain all of the parameters
+// of the requested retrieval, including the LinkSystem where the blocks are
+// intended to be stored.
+func (l *Lassie) Fetch(ctx context.Context, request types.RetrievalRequest, opts ...types.FetchOption) (*types.RetrievalStats, error) {
 	var cancel context.CancelFunc
 	if l.cfg.GlobalTimeout != time.Duration(0) {
 		ctx, cancel = context.WithTimeout(ctx, l.cfg.GlobalTimeout)
 		defer cancel()
 	}
-	return l.retriever.Retrieve(ctx, request, eventsCb)
+	return l.retriever.Retrieve(ctx, request, types.NewFetchConfig(opts...).EventsCallback)
 }
 
 // RegisterSubscriber registers a subscriber to receive retrieval events.
