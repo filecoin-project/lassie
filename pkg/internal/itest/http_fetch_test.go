@@ -836,11 +836,9 @@ func TestHttpFetch(t *testing.T) {
 			lassie, err := lassie.NewLassie(ctx, opts...)
 			req.NoError(err)
 
-			var aggregateEvents = []aggregateeventrecorder.AggregateEvent{}
-			var aggregateEventsCh = make(chan struct{})
-
+			var aggregateEventsCh = make(chan []aggregateeventrecorder.AggregateEvent)
 			if len(testCase.expectAggregateEvents) > 0 {
-				closer := setupAggregateEventRecorder(t, ctx, len(srcData), lassie, &aggregateEvents, aggregateEventsCh)
+				closer := setupAggregateEventRecorder(t, ctx, len(srcData), lassie, aggregateEventsCh)
 				defer closer.Close()
 			}
 
@@ -956,13 +954,14 @@ func TestHttpFetch(t *testing.T) {
 			}
 
 			if len(testCase.expectAggregateEvents) > 0 {
+				var events []aggregateeventrecorder.AggregateEvent
 				// check that the event recorder got and event for this by looking for the root cid
 				select {
-				case <-aggregateEventsCh:
+				case events = <-aggregateEventsCh:
 				case <-ctx.Done():
 					req.FailNow("Did not receive aggregate events")
 				}
-				verifyAggregateEvents(t, mrn.Remotes, srcData, testCase.expectAggregateEvents, aggregateEvents)
+				verifyAggregateEvents(t, mrn.Remotes, srcData, testCase.expectAggregateEvents, events)
 			}
 
 			if DEBUG_DATA {
@@ -1037,8 +1036,9 @@ func verifyHeaders(t *testing.T, resp response, root cid.Cid, path string, expec
 	req.NoError(err)
 }
 
-func setupAggregateEventRecorder(t *testing.T, ctx context.Context, expectCount int, lassie *lassie.Lassie, aggregateEvents *[]aggregateeventrecorder.AggregateEvent, aggregateEventsCh chan struct{}) interface{ Close() } {
+func setupAggregateEventRecorder(t *testing.T, ctx context.Context, expectCount int, lassie *lassie.Lassie, aggregateEventsCh chan []aggregateeventrecorder.AggregateEvent) interface{ Close() } {
 	var aggregateEventsLk sync.Mutex
+	events := make([]aggregateeventrecorder.AggregateEvent, 0)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "Basic listenup", r.Header.Get("Authorization"))
 		type batch struct {
@@ -1048,9 +1048,12 @@ func setupAggregateEventRecorder(t *testing.T, ctx context.Context, expectCount 
 		err := json.NewDecoder(r.Body).Decode(&b)
 		require.NoError(t, err)
 		aggregateEventsLk.Lock()
-		*aggregateEvents = append(*aggregateEvents, b.Events...)
-		if len(*aggregateEvents) == expectCount {
-			close(aggregateEventsCh)
+		events = append(events, b.Events...)
+		if len(events) == expectCount {
+			select {
+			case <-ctx.Done():
+			case aggregateEventsCh <- events:
+			}
 		}
 		aggregateEventsLk.Unlock()
 	}))
