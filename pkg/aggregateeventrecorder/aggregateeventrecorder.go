@@ -11,6 +11,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-log/v2"
+	"github.com/multiformats/go-multicodec"
 )
 
 var logger = log.Logger("lassie/aggregateeventrecorder")
@@ -209,6 +210,15 @@ func (a *aggregateEventRecorder) ingestEvents() {
 					tempData.retrievalAttempts[spid] = attempt
 				}
 				attempt.BytesTransferred += ret.ByteCount()
+				fmt.Println("data received", spid, ret.ByteCount())
+				if ret.Protocol() == multicodec.TransportBitswap {
+					// record the total under the bitswap identifier as well
+					if _, ok := tempData.retrievalAttempts[types.BitswapIndentifier]; ok {
+						tempData.retrievalAttempts[types.BitswapIndentifier].BytesTransferred += ret.ByteCount()
+						fmt.Println("data received", types.BitswapIndentifier, ret.ByteCount())
+					}
+				}
+
 			case events.FailedRetrievalEvent:
 				// Add an error message to the retrieval attempt
 				spid := events.Identifier(ret)
