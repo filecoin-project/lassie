@@ -40,6 +40,7 @@ func TestBitswapRetriever(t *testing.T) {
 	lsys := cidlink.DefaultLinkSystem()
 	lsys.SetReadStorage(store)
 	lsys.SetWriteStorage(store)
+	lsys.TrustedStorage = true
 	tbc1 := gstestutil.SetupBlockChain(ctx, t, lsys, 1000, 100)
 	tbc2 := gstestutil.SetupBlockChain(ctx, t, lsys, 1000, 100)
 	var tbc1Cids []cid.Cid
@@ -599,6 +600,7 @@ func makeLsys(blocks []blocks.Block, threadsafe bool) *linking.LinkSystem {
 	}
 	lsys.SetReadStorage(store)
 	lsys.SetWriteStorage(store)
+	lsys.TrustedStorage = true
 	return &lsys
 }
 

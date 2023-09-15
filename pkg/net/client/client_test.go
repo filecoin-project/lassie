@@ -36,6 +36,7 @@ func TestClient(t *testing.T) {
 	}
 	p := peer.ID("testpeer")
 	linkSys := cidlink.DefaultLinkSystem()
+	linkSys.TrustedStorage = true
 	gotLoadFor := cid.Undef
 	linkSys.StorageReadOpener = func(linkCtx ipld.LinkContext, lnk ipld.Link) (io.Reader, error) {
 		gotLoadFor = lnk.(cidlink.Link).Cid
@@ -89,6 +90,7 @@ func TestClient_BadSelector(t *testing.T) {
 	}
 	p := peer.ID("testpeer")
 	linkSys := cidlink.DefaultLinkSystem()
+	linkSys.TrustedStorage = true
 	selector := basicnode.NewFloat(100.2)
 	proposal := &retrievaltypes.DealProposal{
 		PayloadCID: cid.MustParse("bafyreibdoxfay27gf4ye3t5a7aa5h4z2azw7hhhz36qrbf5qleldj76qfa"),
