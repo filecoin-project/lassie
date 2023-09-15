@@ -316,7 +316,13 @@ func (br *bitswapRetrieval) loader(lctx linking.LinkContext, lnk datamodel.Link)
 	}
 	blk, err := br.blockService.GetBlock(lctx.Ctx, cidLink.Cid)
 	if traceableBlock, ok := blk.(traceability.Block); ok {
-		br.events(events.DataReceived(br.clock.Now(), br.request.RetrievalID, types.RetrievalCandidate{RootCid: br.request.Root, MinerPeer: peer.AddrInfo{ID: traceableBlock.From}}, multicodec.TransportBitswap, uint64(len(blk.RawData()))))
+		br.events(events.DataReceived(
+			br.clock.Now(),
+			br.request.RetrievalID,
+			types.RetrievalCandidate{RootCid: br.request.Root, MinerPeer: peer.AddrInfo{ID: traceableBlock.From}},
+			multicodec.TransportBitswap,
+			uint64(len(blk.RawData()))),
+		)
 	}
 	br.inProgressCids.Dec(cidLink.Cid, br.request.RetrievalID)
 	if err != nil {
