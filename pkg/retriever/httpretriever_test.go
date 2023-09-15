@@ -16,6 +16,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/google/uuid"
+	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	gstestutil "github.com/ipfs/go-graphsync/testutil"
 	dagpb "github.com/ipld/go-codec-dagpb"
@@ -61,12 +62,12 @@ func TestHTTPRetriever(t *testing.T) {
 	cid2Cands := testutil.GenerateRetrievalCandidatesForCID(t, 10, cid2, metadata.IpfsGatewayHttp{})
 
 	// testing our strange paths that need to propagate through http requests
-	funkyPath, funkyLinks := mkFunky(lsys)
-	funkyCands := testutil.GenerateRetrievalCandidatesForCID(t, 1, funkyLinks[0], metadata.IpfsGatewayHttp{})
+	funkyPath, funkyBlocks := mkFunky(lsys)
+	funkyCands := testutil.GenerateRetrievalCandidatesForCID(t, 1, funkyBlocks[0].Cid(), metadata.IpfsGatewayHttp{})
 
 	// testing our ability to handle duplicates or not
-	dupyLinks, dupyLinksDeduped := mkDupy(lsys)
-	dupyCands := testutil.GenerateRetrievalCandidatesForCID(t, 1, dupyLinks[0], metadata.IpfsGatewayHttp{})
+	dupyBlocks, dupyBlocksDeduped := mkDupy(lsys)
+	dupyCands := testutil.GenerateRetrievalCandidatesForCID(t, 1, dupyBlocks[0].Cid(), metadata.IpfsGatewayHttp{})
 
 	rid1 := types.RetrievalID(uuid.New())
 	rid2 := types.RetrievalID(uuid.New())
@@ -608,10 +609,10 @@ func TestHTTPRetriever(t *testing.T) {
 		},
 		{
 			name:        "single, funky path",
-			requests:    map[cid.Cid]types.RetrievalID{funkyLinks[0]: rid1},
-			requestPath: map[cid.Cid]string{funkyLinks[0]: funkyPath},
+			requests:    map[cid.Cid]types.RetrievalID{funkyBlocks[0].Cid(): rid1},
+			requestPath: map[cid.Cid]string{funkyBlocks[0].Cid(): funkyPath},
 			remotes: map[cid.Cid][]testutil.MockRoundTripRemote{
-				funkyLinks[0]: {
+				funkyBlocks[0].Cid(): {
 					{
 						Peer:       funkyCands[0].MinerPeer,
 						LinkSystem: lsys,
@@ -621,25 +622,25 @@ func TestHTTPRetriever(t *testing.T) {
 				},
 			},
 			expectedStats: map[cid.Cid]*types.RetrievalStats{
-				funkyLinks[0]: {
-					RootCid:           funkyLinks[0],
+				funkyBlocks[0].Cid(): {
+					RootCid:           funkyBlocks[0].Cid(),
 					StorageProviderId: funkyCands[0].MinerPeer.ID,
-					Size:              sizeOfStored(lsys, funkyLinks),
-					Blocks:            uint64(len(funkyLinks)),
-					Duration:          40*time.Millisecond + remoteBlockDuration*time.Duration(len(funkyLinks)),
-					AverageSpeed:      uint64(float64(sizeOfStored(lsys, funkyLinks)) / (40*time.Millisecond + remoteBlockDuration*time.Duration(len(funkyLinks))).Seconds()),
+					Size:              sizeOf(funkyBlocks),
+					Blocks:            uint64(len(funkyBlocks)),
+					Duration:          40*time.Millisecond + remoteBlockDuration*time.Duration(len(funkyBlocks)),
+					AverageSpeed:      uint64(float64(sizeOf(funkyBlocks)) / (40*time.Millisecond + remoteBlockDuration*time.Duration(len(funkyBlocks))).Seconds()),
 					TimeToFirstByte:   40 * time.Millisecond,
 					TotalPayment:      big.Zero(),
 					AskPrice:          big.Zero(),
 				},
 			},
-			expectedCids: map[cid.Cid][]cid.Cid{funkyLinks[0]: funkyLinks},
-			expectSequence: []testutil.ExpectedActionsAtTime{
+			expectedCids: map[cid.Cid][]cid.Cid{funkyBlocks[0].Cid(): toCids(funkyBlocks)},
+			expectSequence: append(append([]testutil.ExpectedActionsAtTime{
 				{
 					AfterStart: 0,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.StartedRetrieval(startTime, rid1, toCandidate(funkyLinks[0], funkyCands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp),
-						events.ConnectedToProvider(startTime, rid1, toCandidate(funkyLinks[0], funkyCands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp),
+						events.StartedRetrieval(startTime, rid1, toCandidate(funkyBlocks[0].Cid(), funkyCands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp),
+						events.ConnectedToProvider(startTime, rid1, toCandidate(funkyBlocks[0].Cid(), funkyCands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: funkyCands[0].MinerPeer.ID},
@@ -652,22 +653,25 @@ func TestHTTPRetriever(t *testing.T) {
 				{
 					AfterStart: initialPause + time.Millisecond*40,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.FirstByte(startTime.Add(initialPause+time.Millisecond*40), rid1, toCandidate(funkyLinks[0], funkyCands[0].MinerPeer), time.Millisecond*40, multicodec.TransportIpfsGatewayHttp),
+						events.FirstByte(startTime.Add(initialPause+time.Millisecond*40), rid1, toCandidate(funkyBlocks[0].Cid(), funkyCands[0].MinerPeer), time.Millisecond*40, multicodec.TransportIpfsGatewayHttp),
+						events.DataReceived(startTime.Add(initialPause+time.Millisecond*40), rid1, toCandidate(funkyBlocks[0].Cid(), funkyCands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp, uint64(sizeOf(funkyBlocks[:0]))),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_FirstByte, Provider: funkyCands[0].MinerPeer.ID, Duration: time.Millisecond * 40},
 					},
 				},
+			},
+				testutil.DataReceivedActions(startTime, initialPause+time.Millisecond*40+remoteBlockDuration, rid1, toCandidate(funkyBlocks[0].Cid(), funkyCands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp, remoteBlockDuration, funkyBlocks[1:])...), []testutil.ExpectedActionsAtTime{
 				{
-					AfterStart: initialPause + time.Millisecond*40 + remoteBlockDuration*time.Duration(len(funkyLinks)),
+					AfterStart: initialPause + time.Millisecond*40 + remoteBlockDuration*time.Duration(len(funkyBlocks)),
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Success(
-							startTime.Add(initialPause+time.Millisecond*40+remoteBlockDuration*time.Duration(len(funkyLinks))),
+							startTime.Add(initialPause+time.Millisecond*40+remoteBlockDuration*time.Duration(len(funkyBlocks))),
 							rid1,
-							toCandidate(funkyLinks[0], funkyCands[0].MinerPeer),
-							sizeOfStored(lsys, funkyLinks),
-							uint64(len(funkyLinks)),
-							time.Millisecond*40+remoteBlockDuration*time.Duration(len(funkyLinks)),
+							toCandidate(funkyBlocks[0].Cid(), funkyCands[0].MinerPeer),
+							sizeOf(funkyBlocks),
+							uint64(len(funkyBlocks)),
+							time.Millisecond*40+remoteBlockDuration*time.Duration(len(funkyBlocks)),
 							multicodec.TransportIpfsGatewayHttp,
 						),
 					},
@@ -675,23 +679,23 @@ func TestHTTPRetriever(t *testing.T) {
 					ServedRetrievals: []testutil.RemoteStats{
 						{
 							Peer:      funkyCands[0].MinerPeer.ID,
-							Root:      funkyLinks[0],
-							ByteCount: sizeOfStored(lsys, funkyLinks),
-							Blocks:    funkyLinks,
+							Root:      funkyBlocks[0].Cid(),
+							ByteCount: sizeOf(funkyBlocks),
+							Blocks:    toCids(funkyBlocks),
 						},
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
-						{Type: testutil.SessionMetric_Success, Provider: funkyCands[0].MinerPeer.ID, Value: math.Trunc(float64(sizeOfStored(lsys, funkyLinks)) / (time.Millisecond*40 + remoteBlockDuration*time.Duration(len(funkyLinks))).Seconds())},
+						{Type: testutil.SessionMetric_Success, Provider: funkyCands[0].MinerPeer.ID, Value: math.Trunc(float64(sizeOf(funkyBlocks)) / (time.Millisecond*40 + remoteBlockDuration*time.Duration(len(funkyBlocks))).Seconds())},
 					},
 				},
-			},
+			}...),
 		},
 		{
 			name:           "dag with duplicates, peer sending duplicates",
-			requests:       map[cid.Cid]types.RetrievalID{dupyLinks[0]: rid1},
-			sendDuplicates: map[cid.Cid]bool{dupyLinks[0]: true},
+			requests:       map[cid.Cid]types.RetrievalID{dupyBlocks[0].Cid(): rid1},
+			sendDuplicates: map[cid.Cid]bool{dupyBlocks[0].Cid(): true},
 			remotes: map[cid.Cid][]testutil.MockRoundTripRemote{
-				dupyLinks[0]: {
+				dupyBlocks[0].Cid(): {
 					{
 						Peer:       dupyCands[0].MinerPeer,
 						LinkSystem: lsys,
@@ -701,25 +705,25 @@ func TestHTTPRetriever(t *testing.T) {
 				},
 			},
 			expectedStats: map[cid.Cid]*types.RetrievalStats{
-				dupyLinks[0]: {
-					RootCid:           dupyLinks[0],
+				dupyBlocks[0].Cid(): {
+					RootCid:           dupyBlocks[0].Cid(),
 					StorageProviderId: dupyCands[0].MinerPeer.ID,
-					Size:              sizeOfStored(lsys, dupyLinks),
-					Blocks:            uint64(len(dupyLinks)),
-					Duration:          40*time.Millisecond + remoteBlockDuration*time.Duration(len(dupyLinks)),
-					AverageSpeed:      uint64(float64(sizeOfStored(lsys, dupyLinks)) / (40*time.Millisecond + remoteBlockDuration*time.Duration(len(dupyLinks))).Seconds()),
+					Size:              sizeOf(dupyBlocks),
+					Blocks:            uint64(len(dupyBlocks)),
+					Duration:          40*time.Millisecond + remoteBlockDuration*time.Duration(len(dupyBlocks)),
+					AverageSpeed:      uint64(float64(sizeOf(dupyBlocks)) / (40*time.Millisecond + remoteBlockDuration*time.Duration(len(dupyBlocks))).Seconds()),
 					TimeToFirstByte:   40 * time.Millisecond,
 					TotalPayment:      big.Zero(),
 					AskPrice:          big.Zero(),
 				},
 			},
-			expectedCids: map[cid.Cid][]cid.Cid{dupyLinks[0]: dupyLinks},
-			expectSequence: []testutil.ExpectedActionsAtTime{
+			expectedCids: map[cid.Cid][]cid.Cid{dupyBlocks[0].Cid(): toCids(dupyBlocks)},
+			expectSequence: append(append([]testutil.ExpectedActionsAtTime{
 				{
 					AfterStart: 0,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.StartedRetrieval(startTime, rid1, toCandidate(dupyLinks[0], dupyCands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp),
-						events.ConnectedToProvider(startTime, rid1, toCandidate(dupyLinks[0], dupyCands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp),
+						events.StartedRetrieval(startTime, rid1, toCandidate(dupyBlocks[0].Cid(), dupyCands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp),
+						events.ConnectedToProvider(startTime, rid1, toCandidate(dupyBlocks[0].Cid(), dupyCands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: dupyCands[0].MinerPeer.ID},
@@ -732,22 +736,25 @@ func TestHTTPRetriever(t *testing.T) {
 				{
 					AfterStart: initialPause + time.Millisecond*40,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.FirstByte(startTime.Add(initialPause+time.Millisecond*40), rid1, toCandidate(dupyLinks[0], dupyCands[0].MinerPeer), time.Millisecond*40, multicodec.TransportIpfsGatewayHttp),
+						events.FirstByte(startTime.Add(initialPause+time.Millisecond*40), rid1, toCandidate(dupyBlocks[0].Cid(), dupyCands[0].MinerPeer), time.Millisecond*40, multicodec.TransportIpfsGatewayHttp),
+						events.DataReceived(startTime.Add(initialPause+time.Millisecond*40), rid1, toCandidate(dupyBlocks[0].Cid(), dupyCands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp, uint64(sizeOf(dupyBlocks[:0]))),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_FirstByte, Provider: dupyCands[0].MinerPeer.ID, Duration: time.Millisecond * 40},
 					},
 				},
+			},
+				testutil.DataReceivedActions(startTime, initialPause+time.Millisecond*40+remoteBlockDuration, rid1, toCandidate(dupyBlocks[0].Cid(), dupyCands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp, remoteBlockDuration, dupyBlocks[1:])...), []testutil.ExpectedActionsAtTime{
 				{
-					AfterStart: initialPause + time.Millisecond*40 + remoteBlockDuration*time.Duration(len(dupyLinks)),
+					AfterStart: initialPause + time.Millisecond*40 + remoteBlockDuration*time.Duration(len(dupyBlocks)),
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Success(
-							startTime.Add(initialPause+time.Millisecond*40+remoteBlockDuration*time.Duration(len(dupyLinks))),
+							startTime.Add(initialPause+time.Millisecond*40+remoteBlockDuration*time.Duration(len(dupyBlocks))),
 							rid1,
-							toCandidate(dupyLinks[0], dupyCands[0].MinerPeer),
-							sizeOfStored(lsys, dupyLinks),
-							uint64(len(dupyLinks)),
-							time.Millisecond*40+remoteBlockDuration*time.Duration(len(dupyLinks)),
+							toCandidate(dupyBlocks[0].Cid(), dupyCands[0].MinerPeer),
+							sizeOf(dupyBlocks),
+							uint64(len(dupyBlocks)),
+							time.Millisecond*40+remoteBlockDuration*time.Duration(len(dupyBlocks)),
 							multicodec.TransportIpfsGatewayHttp,
 						),
 					},
@@ -755,23 +762,23 @@ func TestHTTPRetriever(t *testing.T) {
 					ServedRetrievals: []testutil.RemoteStats{
 						{
 							Peer:      dupyCands[0].MinerPeer.ID,
-							Root:      dupyLinks[0],
-							ByteCount: sizeOfStored(lsys, dupyLinks),
-							Blocks:    dupyLinks,
+							Root:      dupyBlocks[0].Cid(),
+							ByteCount: sizeOf(dupyBlocks),
+							Blocks:    toCids(dupyBlocks),
 						},
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
-						{Type: testutil.SessionMetric_Success, Provider: dupyCands[0].MinerPeer.ID, Value: math.Trunc(float64(sizeOfStored(lsys, dupyLinks)) / (time.Millisecond*40 + remoteBlockDuration*time.Duration(len(dupyLinks))).Seconds())},
+						{Type: testutil.SessionMetric_Success, Provider: dupyCands[0].MinerPeer.ID, Value: math.Trunc(float64(sizeOf(dupyBlocks)) / (time.Millisecond*40 + remoteBlockDuration*time.Duration(len(dupyBlocks))).Seconds())},
 					},
 				},
-			},
+			}...),
 		},
 		{
 			name:           "dag with duplicates, peer not sending duplicates",
-			requests:       map[cid.Cid]types.RetrievalID{dupyLinks[0]: rid1},
-			sendDuplicates: map[cid.Cid]bool{dupyLinks[0]: false},
+			requests:       map[cid.Cid]types.RetrievalID{dupyBlocks[0].Cid(): rid1},
+			sendDuplicates: map[cid.Cid]bool{dupyBlocks[0].Cid(): false},
 			remotes: map[cid.Cid][]testutil.MockRoundTripRemote{
-				dupyLinks[0]: {
+				dupyBlocks[0].Cid(): {
 					{
 						Peer:       dupyCands[0].MinerPeer,
 						LinkSystem: lsys,
@@ -781,25 +788,25 @@ func TestHTTPRetriever(t *testing.T) {
 				},
 			},
 			expectedStats: map[cid.Cid]*types.RetrievalStats{
-				dupyLinks[0]: {
-					RootCid:           dupyLinks[0],
+				dupyBlocks[0].Cid(): {
+					RootCid:           dupyBlocks[0].Cid(),
 					StorageProviderId: dupyCands[0].MinerPeer.ID,
-					Size:              sizeOfStored(lsys, dupyLinksDeduped),
-					Blocks:            uint64(len(dupyLinksDeduped)),
-					Duration:          40*time.Millisecond + remoteBlockDuration*time.Duration(len(dupyLinksDeduped)),
-					AverageSpeed:      uint64(float64(sizeOfStored(lsys, dupyLinksDeduped)) / (40*time.Millisecond + remoteBlockDuration*time.Duration(len(dupyLinksDeduped))).Seconds()),
+					Size:              sizeOf(dupyBlocksDeduped),
+					Blocks:            uint64(len(dupyBlocksDeduped)),
+					Duration:          40*time.Millisecond + remoteBlockDuration*time.Duration(len(dupyBlocksDeduped)),
+					AverageSpeed:      uint64(float64(sizeOf(dupyBlocksDeduped)) / (40*time.Millisecond + remoteBlockDuration*time.Duration(len(dupyBlocksDeduped))).Seconds()),
 					TimeToFirstByte:   40 * time.Millisecond,
 					TotalPayment:      big.Zero(),
 					AskPrice:          big.Zero(),
 				},
 			},
-			expectedCids: map[cid.Cid][]cid.Cid{dupyLinks[0]: dupyLinksDeduped},
-			expectSequence: []testutil.ExpectedActionsAtTime{
+			expectedCids: map[cid.Cid][]cid.Cid{dupyBlocks[0].Cid(): toCids(dupyBlocksDeduped)},
+			expectSequence: append(append([]testutil.ExpectedActionsAtTime{
 				{
 					AfterStart: 0,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.StartedRetrieval(startTime, rid1, toCandidate(dupyLinks[0], dupyCands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp),
-						events.ConnectedToProvider(startTime, rid1, toCandidate(dupyLinks[0], dupyCands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp),
+						events.StartedRetrieval(startTime, rid1, toCandidate(dupyBlocks[0].Cid(), dupyCands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp),
+						events.ConnectedToProvider(startTime, rid1, toCandidate(dupyBlocks[0].Cid(), dupyCands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Connect, Provider: dupyCands[0].MinerPeer.ID},
@@ -812,22 +819,25 @@ func TestHTTPRetriever(t *testing.T) {
 				{
 					AfterStart: initialPause + time.Millisecond*40,
 					ExpectedEvents: []types.RetrievalEvent{
-						events.FirstByte(startTime.Add(initialPause+time.Millisecond*40), rid1, toCandidate(dupyLinks[0], dupyCands[0].MinerPeer), time.Millisecond*40, multicodec.TransportIpfsGatewayHttp),
+						events.FirstByte(startTime.Add(initialPause+time.Millisecond*40), rid1, toCandidate(dupyBlocks[0].Cid(), dupyCands[0].MinerPeer), time.Millisecond*40, multicodec.TransportIpfsGatewayHttp),
+						events.DataReceived(startTime.Add(initialPause+time.Millisecond*40), rid1, toCandidate(dupyBlocks[0].Cid(), dupyCands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp, uint64(sizeOf(dupyBlocks[:0]))),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_FirstByte, Provider: dupyCands[0].MinerPeer.ID, Duration: time.Millisecond * 40},
 					},
 				},
+			},
+				testutil.DataReceivedActions(startTime, initialPause+time.Millisecond*40+remoteBlockDuration, rid1, toCandidate(dupyBlocks[0].Cid(), dupyCands[0].MinerPeer), multicodec.TransportIpfsGatewayHttp, remoteBlockDuration, dupyBlocksDeduped[1:])...), []testutil.ExpectedActionsAtTime{
 				{
-					AfterStart: initialPause + time.Millisecond*40 + remoteBlockDuration*time.Duration(len(dupyLinksDeduped)),
+					AfterStart: initialPause + time.Millisecond*40 + remoteBlockDuration*time.Duration(len(dupyBlocksDeduped)),
 					ExpectedEvents: []types.RetrievalEvent{
 						events.Success(
-							startTime.Add(initialPause+time.Millisecond*40+remoteBlockDuration*time.Duration(len(dupyLinksDeduped))),
+							startTime.Add(initialPause+time.Millisecond*40+remoteBlockDuration*time.Duration(len(dupyBlocksDeduped))),
 							rid1,
-							toCandidate(dupyLinks[0], dupyCands[0].MinerPeer),
-							sizeOfStored(lsys, dupyLinksDeduped),
-							uint64(len(dupyLinksDeduped)),
-							time.Millisecond*40+remoteBlockDuration*time.Duration(len(dupyLinksDeduped)),
+							toCandidate(dupyBlocks[0].Cid(), dupyCands[0].MinerPeer),
+							sizeOf(dupyBlocksDeduped),
+							uint64(len(dupyBlocksDeduped)),
+							time.Millisecond*40+remoteBlockDuration*time.Duration(len(dupyBlocksDeduped)),
 							multicodec.TransportIpfsGatewayHttp,
 						),
 					},
@@ -835,16 +845,16 @@ func TestHTTPRetriever(t *testing.T) {
 					ServedRetrievals: []testutil.RemoteStats{
 						{
 							Peer:      dupyCands[0].MinerPeer.ID,
-							Root:      dupyLinks[0],
-							ByteCount: sizeOfStored(lsys, dupyLinksDeduped),
-							Blocks:    dupyLinksDeduped,
+							Root:      dupyBlocks[0].Cid(),
+							ByteCount: sizeOf(dupyBlocksDeduped),
+							Blocks:    toCids(dupyBlocksDeduped),
 						},
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
-						{Type: testutil.SessionMetric_Success, Provider: dupyCands[0].MinerPeer.ID, Value: math.Trunc(float64(sizeOfStored(lsys, dupyLinksDeduped)) / (time.Millisecond*40 + remoteBlockDuration*time.Duration(len(dupyLinksDeduped))).Seconds())},
+						{Type: testutil.SessionMetric_Success, Provider: dupyCands[0].MinerPeer.ID, Value: math.Trunc(float64(sizeOf(dupyBlocksDeduped)) / (time.Millisecond*40 + remoteBlockDuration*time.Duration(len(dupyBlocksDeduped))).Seconds())},
 					},
 				},
-			},
+			}...),
 		},
 	}
 
@@ -983,15 +993,19 @@ var rawlp = cidlink.LinkPrototype{
 	},
 }
 
-func mkBlockWithBytes(lsys linking.LinkSystem, bytes []byte) cid.Cid {
+func mkBlockWithBytes(lsys linking.LinkSystem, bytes []byte) blocks.Block {
 	l, err := lsys.Store(linking.LinkContext{}, rawlp, basicnode.NewBytes(bytes))
 	if err != nil {
 		panic(err)
 	}
-	return l.(cidlink.Link).Cid
+	b, err := lsys.LoadRaw(linking.LinkContext{}, l)
+	if err != nil {
+		panic(err)
+	}
+	return must(blocks.NewBlockWithCid(b, l.(cidlink.Link).Cid))
 }
 
-func mkBlockWithLink(lsys linking.LinkSystem, c cid.Cid, name string) cid.Cid {
+func mkBlockWithLink(lsys linking.LinkSystem, c cid.Cid, name string) blocks.Block {
 	n, err := qp.BuildMap(dagpb.Type.PBNode, 1, func(ma datamodel.MapAssembler) {
 		qp.MapEntry(ma, "Links", qp.List(1, func(la datamodel.ListAssembler) {
 			qp.ListEntry(la, qp.Map(2, func(ma datamodel.MapAssembler) {
@@ -1007,24 +1021,28 @@ func mkBlockWithLink(lsys linking.LinkSystem, c cid.Cid, name string) cid.Cid {
 	if err != nil {
 		panic(err)
 	}
-	return l.(cidlink.Link).Cid
+	b, err := lsys.LoadRaw(linking.LinkContext{}, l)
+	if err != nil {
+		panic(err)
+	}
+	return must(blocks.NewBlockWithCid(b, l.(cidlink.Link).Cid))
 }
 
-func mkFunky(lsys linking.LinkSystem) (string, []cid.Cid) {
+func mkFunky(lsys linking.LinkSystem) (string, []blocks.Block) {
 	funkyPath := `=funky/ path/#/with?/weird%/c+h+a+r+s`
-	funkyLinks := make([]cid.Cid, 0)
-	funkyLinks = append(funkyLinks, mkBlockWithBytes(lsys, []byte("funky data")))
-	funkyLinks = append(funkyLinks, mkBlockWithLink(lsys, funkyLinks[len(funkyLinks)-1], "c+h+a+r+s"))
-	funkyLinks = append(funkyLinks, mkBlockWithLink(lsys, funkyLinks[len(funkyLinks)-1], "weird%"))
-	funkyLinks = append(funkyLinks, mkBlockWithLink(lsys, funkyLinks[len(funkyLinks)-1], "with?"))
-	funkyLinks = append(funkyLinks, mkBlockWithLink(lsys, funkyLinks[len(funkyLinks)-1], "#"))
-	funkyLinks = append(funkyLinks, mkBlockWithLink(lsys, funkyLinks[len(funkyLinks)-1], " path"))
-	funkyLinks = append(funkyLinks, mkBlockWithLink(lsys, funkyLinks[len(funkyLinks)-1], "=funky"))
-	slices.Reverse(funkyLinks)
-	return funkyPath, funkyLinks
+	funkyBlocks := make([]blocks.Block, 0)
+	funkyBlocks = append(funkyBlocks, mkBlockWithBytes(lsys, []byte("funky data")))
+	funkyBlocks = append(funkyBlocks, mkBlockWithLink(lsys, funkyBlocks[len(funkyBlocks)-1].Cid(), "c+h+a+r+s"))
+	funkyBlocks = append(funkyBlocks, mkBlockWithLink(lsys, funkyBlocks[len(funkyBlocks)-1].Cid(), "weird%"))
+	funkyBlocks = append(funkyBlocks, mkBlockWithLink(lsys, funkyBlocks[len(funkyBlocks)-1].Cid(), "with?"))
+	funkyBlocks = append(funkyBlocks, mkBlockWithLink(lsys, funkyBlocks[len(funkyBlocks)-1].Cid(), "#"))
+	funkyBlocks = append(funkyBlocks, mkBlockWithLink(lsys, funkyBlocks[len(funkyBlocks)-1].Cid(), " path"))
+	funkyBlocks = append(funkyBlocks, mkBlockWithLink(lsys, funkyBlocks[len(funkyBlocks)-1].Cid(), "=funky"))
+	slices.Reverse(funkyBlocks)
+	return funkyPath, funkyBlocks
 }
 
-func mkDupy(lsys linking.LinkSystem) ([]cid.Cid, []cid.Cid) {
+func mkDupy(lsys linking.LinkSystem) ([]blocks.Block, []blocks.Block) {
 	dupy := mkBlockWithBytes(lsys, []byte("duplicate data"))
 
 	n, err := qp.BuildMap(dagpb.Type.PBNode, 1, func(ma datamodel.MapAssembler) {
@@ -1032,7 +1050,7 @@ func mkDupy(lsys linking.LinkSystem) ([]cid.Cid, []cid.Cid) {
 			for i := 0; i < 100; i++ {
 				qp.ListEntry(la, qp.Map(2, func(ma datamodel.MapAssembler) {
 					qp.MapEntry(ma, "Name", qp.String(fmt.Sprintf("%03d", i)))
-					qp.MapEntry(ma, "Hash", qp.Link(cidlink.Link{Cid: dupy}))
+					qp.MapEntry(ma, "Hash", qp.Link(cidlink.Link{Cid: dupy.Cid()}))
 				}))
 			}
 		}))
@@ -1044,14 +1062,32 @@ func mkDupy(lsys linking.LinkSystem) ([]cid.Cid, []cid.Cid) {
 	if err != nil {
 		panic(err)
 	}
-
-	// dupyLinks contains the duplicates
-	dupyLinks := []cid.Cid{l.(cidlink.Link).Cid}
-	for i := 0; i < 100; i++ {
-		dupyLinks = append(dupyLinks, dupy)
+	b, err := lsys.LoadRaw(linking.LinkContext{}, l)
+	if err != nil {
+		panic(err)
 	}
-	// dupyLinksDeduped contains just the unique links
-	dupyLinksDeduped := []cid.Cid{l.(cidlink.Link).Cid, dupy}
+	// dupyBlocks contains the duplicates
+	dupyBlocks := []blocks.Block{must(blocks.NewBlockWithCid(b, l.(cidlink.Link).Cid))}
+	for i := 0; i < 100; i++ {
+		dupyBlocks = append(dupyBlocks, dupy)
+	}
+	// dupyBlocksDeduped contains just the unique links
+	dupyBlocksDeduped := []blocks.Block{must(blocks.NewBlockWithCid(b, l.(cidlink.Link).Cid)), dupy}
 
-	return dupyLinks, dupyLinksDeduped
+	return dupyBlocks, dupyBlocksDeduped
+}
+
+func toCids(blocks []blocks.Block) []cid.Cid {
+	cids := make([]cid.Cid, len(blocks))
+	for i, b := range blocks {
+		cids[i] = b.Cid()
+	}
+	return cids
+}
+
+func must[T any](t T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return t
 }

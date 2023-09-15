@@ -25,7 +25,7 @@ require (
 	github.com/ipld/go-car/v2 v2.13.1
 	github.com/ipld/go-codec-dagpb v1.6.0
 	github.com/ipld/go-ipld-prime v0.21.0
-	github.com/ipld/go-trustless-utils v0.2.0
+	github.com/ipld/go-trustless-utils v0.2.1-0.20230915024348-66303847b834
 	github.com/ipld/ipld/specs v0.0.0-20230907004443-0e4ff95ff474
 	github.com/ipni/go-libipni v0.5.0
 	github.com/ipni/storetheindex v0.7.9-0.20230914224616-e6658bcf60c5
