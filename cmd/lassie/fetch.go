@@ -256,13 +256,18 @@ func defaultFetchRun(
 	}
 
 	var carWriter *deferred.DeferredCarWriter
+	carOpts := []car.Option{
+		car.WriteAsCarV1(true),
+		car.StoreIdentityCIDs(false),
+		car.UseWholeCIDs(false),
+	}
 	if outfile == stdoutFileString {
 		// we need the onlyWriter because stdout is presented as an os.File, and
 		// therefore pretend to support seeks, so feature-checking in go-car
 		// will make bad assumptions about capabilities unless we hide it
-		carWriter = deferred.NewDeferredCarWriterForStream(&onlyWriter{dataWriter}, []cid.Cid{rootCid})
+		carWriter = deferred.NewDeferredCarWriterForStream(&onlyWriter{dataWriter}, []cid.Cid{rootCid}, carOpts...)
 	} else {
-		carWriter = deferred.NewDeferredCarWriterForPath(outfile, []cid.Cid{rootCid}, car.WriteAsCarV1(true))
+		carWriter = deferred.NewDeferredCarWriterForPath(outfile, []cid.Cid{rootCid}, carOpts...)
 	}
 
 	tempStore := storage.NewDeferredStorageCar(tempDir, rootCid)

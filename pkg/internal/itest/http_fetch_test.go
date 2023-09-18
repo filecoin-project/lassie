@@ -19,14 +19,13 @@ import (
 	datatransfer "github.com/filecoin-project/go-data-transfer/v2"
 	"github.com/filecoin-project/lassie/pkg/internal/itest/mocknet"
 	"github.com/filecoin-project/lassie/pkg/internal/itest/testpeer"
-	"github.com/filecoin-project/lassie/pkg/internal/testutil"
 	"github.com/filecoin-project/lassie/pkg/lassie"
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	httpserver "github.com/filecoin-project/lassie/pkg/server/http"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	unixfs "github.com/ipfs/go-unixfsnode/testutil"
-	carv2 "github.com/ipld/go-car/v2"
+	"github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/storage"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/datamodel"
@@ -35,6 +34,7 @@ import (
 	"github.com/ipld/go-ipld-prime/storage/memstore"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	trustlesshttp "github.com/ipld/go-trustless-utils/http"
+	trustlesstestutil "github.com/ipld/go-trustless-utils/testutil"
 	"github.com/ipld/go-trustless-utils/traversal"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
@@ -892,10 +892,10 @@ func TestHttpFetch(t *testing.T) {
 			name:        "http large sharded file with dups",
 			httpRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, testutil.ZeroReader{}, 4<<20)}
+				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, trustlesstestutil.ZeroReader{}, 4<<20)}
 			},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
-				store := &testutil.CorrectedMemStore{ParentStore: &memstore.Store{
+				store := &trustlesstestutil.CorrectedMemStore{ParentStore: &memstore.Store{
 					Bag: make(map[string][]byte),
 				}}
 				lsys := cidlink.DefaultLinkSystem()
@@ -915,7 +915,7 @@ func TestHttpFetch(t *testing.T) {
 			setHeader:    noDups,
 			expectNoDups: true,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, testutil.ZeroReader{}, 4<<20)}
+				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, trustlesstestutil.ZeroReader{}, 4<<20)}
 			},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := []cid.Cid{
@@ -931,10 +931,10 @@ func TestHttpFetch(t *testing.T) {
 			httpRemotes: 1,
 			setHeader:   func(h http.Header) { h.Set("Accept", "*/*") },
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, testutil.ZeroReader{}, 4<<20)}
+				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, trustlesstestutil.ZeroReader{}, 4<<20)}
 			},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
-				store := &testutil.CorrectedMemStore{ParentStore: &memstore.Store{
+				store := &trustlesstestutil.CorrectedMemStore{ParentStore: &memstore.Store{
 					Bag: make(map[string][]byte),
 				}}
 				lsys := cidlink.DefaultLinkSystem()
@@ -962,7 +962,7 @@ func TestHttpFetch(t *testing.T) {
 				)
 			},
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, testutil.ZeroReader{}, 4<<20)}
+				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, trustlesstestutil.ZeroReader{}, 4<<20)}
 			},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := []cid.Cid{
@@ -987,10 +987,10 @@ func TestHttpFetch(t *testing.T) {
 				)
 			},
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, testutil.ZeroReader{}, 4<<20)}
+				return []unixfs.DirEntry{unixfs.GenerateFile(t, remotes[0].LinkSystem, trustlesstestutil.ZeroReader{}, 4<<20)}
 			},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
-				store := &testutil.CorrectedMemStore{ParentStore: &memstore.Store{
+				store := &trustlesstestutil.CorrectedMemStore{ParentStore: &memstore.Store{
 					Bag: make(map[string][]byte),
 				}}
 				lsys := cidlink.DefaultLinkSystem()
@@ -1091,6 +1091,27 @@ func TestHttpFetch(t *testing.T) {
 				header.Add("Accept", "application/vnd.ipld.car")
 			},
 			expectUnauthorized: false,
+		},
+		{
+			name:             "non-unixfs graphsync",
+			graphsyncRemotes: 1,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				return []unixfs.DirEntry{trustlesstestutil.MakeDagWithIdentity(t, *remotes[0].LinkSystem)}
+			},
+		},
+		{
+			name:           "non-unixfs bitswap",
+			bitswapRemotes: 1,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				return []unixfs.DirEntry{trustlesstestutil.MakeDagWithIdentity(t, *remotes[0].LinkSystem)}
+			},
+		},
+		{
+			name:        "non-unixfs http",
+			httpRemotes: 1,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				return []unixfs.DirEntry{trustlesstestutil.MakeDagWithIdentity(t, *remotes[0].LinkSystem)}
+			},
 		},
 	}
 
@@ -1287,7 +1308,7 @@ func TestHttpFetch(t *testing.T) {
 // onlyWantCids is true, it also validates that wantCids are the only CIDs in
 // the CAR (with no duplicates).
 func validateCarBody(t *testing.T, body []byte, root cid.Cid, wantCids []cid.Cid, onlyWantCids bool) {
-	br, err := carv2.NewBlockReader(bytes.NewReader(body))
+	br, err := car.NewBlockReader(bytes.NewReader(body))
 	require.NoError(t, err)
 	require.Equal(t, []cid.Cid{root}, br.Roots)
 	gotCids := make([]cid.Cid, 0)
@@ -1325,7 +1346,7 @@ func debugRemotes(t *testing.T, ctx context.Context, name string, remotes []test
 			require.NoError(t, err)
 			t.Logf("Writing source data to CAR @ %s", carFile.Name())
 			carFiles = append(carFiles, carFile)
-			carW, err := storage.NewWritable(carFile, []cid.Cid{}, carv2.WriteAsCarV1(true), carv2.AllowDuplicatePuts(true))
+			carW, err := storage.NewWritable(carFile, []cid.Cid{}, car.WriteAsCarV1(true), car.AllowDuplicatePuts(true))
 			require.NoError(t, err)
 			swo := r.LinkSystem.StorageWriteOpener
 			r.LinkSystem.StorageWriteOpener = func(lc linking.LinkContext) (io.Writer, linking.BlockWriteCommitter, error) {

@@ -57,7 +57,13 @@ func NewDuplicateAdderCarForStream(
 	blockStream.cond = sync.NewCond(&blockStream.mu)
 
 	// create the car writer for the final stream
-	outgoing := deferred.NewDeferredCarWriterForStream(outStream, []cid.Cid{root}, carv2.AllowDuplicatePuts(true))
+	outgoing := deferred.NewDeferredCarWriterForStream(
+		outStream,
+		[]cid.Cid{root},
+		carv2.AllowDuplicatePuts(true),
+		carv2.StoreIdentityCIDs(false),
+		carv2.UseWholeCIDs(true),
+	)
 	return &DuplicateAdderCar{
 		DeferredCarWriter: outgoing,
 		ctx:               ctx,

@@ -15,11 +15,12 @@ import (
 	"github.com/ipld/go-ipld-prime/storage/memstore"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	trustlessutils "github.com/ipld/go-trustless-utils"
+	trustlesstestutil "github.com/ipld/go-trustless-utils/testutil"
 	"github.com/stretchr/testify/require"
 )
 
 func TestDuplicateAdderCar(t *testing.T) {
-	setupStore := &testutil.CorrectedMemStore{ParentStore: &memstore.Store{
+	setupStore := &trustlesstestutil.CorrectedMemStore{ParentStore: &memstore.Store{
 		Bag: make(map[string][]byte),
 	}}
 	lsys := cidlink.DefaultLinkSystem()
@@ -27,7 +28,7 @@ func TestDuplicateAdderCar(t *testing.T) {
 	lsys.SetReadStorage(setupStore)
 	lsys.SetWriteStorage(setupStore)
 
-	unixfsFileWithDups := unixfs.GenerateFile(t, &lsys, testutil.ZeroReader{}, 4<<20)
+	unixfsFileWithDups := unixfs.GenerateFile(t, &lsys, trustlesstestutil.ZeroReader{}, 4<<20)
 	unixfsFileWithDupsBlocks := testutil.ToBlocks(t, lsys, unixfsFileWithDups.Root, selectorparse.CommonSelector_ExploreAllRecursively)
 	buf := new(bytes.Buffer)
 

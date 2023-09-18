@@ -27,6 +27,7 @@ import (
 	"github.com/ipld/go-ipld-prime/storage/memstore"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	trustlessutils "github.com/ipld/go-trustless-utils"
+	trustlesstestutil "github.com/ipld/go-trustless-utils/testutil"
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
@@ -38,7 +39,7 @@ import (
 func TestHTTPRetriever(t *testing.T) {
 	ctx := context.Background()
 
-	store := &testutil.CorrectedMemStore{ParentStore: &memstore.Store{
+	store := &trustlesstestutil.CorrectedMemStore{ParentStore: &memstore.Store{
 		Bag: make(map[string][]byte),
 	}}
 	lsys := cidlink.DefaultLinkSystem()

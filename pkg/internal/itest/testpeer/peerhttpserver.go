@@ -21,6 +21,7 @@ import (
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	trustlessutils "github.com/ipld/go-trustless-utils"
+	trustlesstestutil "github.com/ipld/go-trustless-utils/testutil"
 	servertiming "github.com/mitchellh/go-server-timing"
 )
 
@@ -154,7 +155,7 @@ func MockIpfsHandler(ctx context.Context, lsys linking.LinkSystem) func(http.Res
 		}
 
 		// Write to response writer
-		carWriter, err := storage.NewWritable(res, []cid.Cid{rootCid}, car.WriteAsCarV1(true), car.AllowDuplicatePuts(includeDupes))
+		carWriter, err := storage.NewWritable(res, []cid.Cid{rootCid}, car.StoreIdentityCIDs(false), car.WriteAsCarV1(true), car.AllowDuplicatePuts(includeDupes))
 		if err != nil {
 			http.Error(res, fmt.Sprintf("Failed to create car writer: %v", err), http.StatusInternalServerError)
 			return
@@ -163,6 +164,12 @@ func MockIpfsHandler(ctx context.Context, lsys linking.LinkSystem) func(http.Res
 		// Extend the StorageReadOpener func to write to the carWriter
 		originalSRO := lsys.StorageReadOpener
 		lsys.StorageReadOpener = func(lc linking.LinkContext, lnk datamodel.Link) (io.Reader, error) {
+			if digest, ok, err := trustlesstestutil.AsIdentity(lnk.(cidlink.Link).Cid.KeyString()); ok {
+				return bytes.NewReader(digest), err
+			} else if err != nil {
+				return nil, err
+			}
+
 			r, err := originalSRO(lc, lnk)
 			if err != nil {
 				return nil, err

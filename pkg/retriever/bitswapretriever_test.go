@@ -27,13 +27,14 @@ import (
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	trustlessutils "github.com/ipld/go-trustless-utils"
+	trustlesstestutil "github.com/ipld/go-trustless-utils/testutil"
 	"github.com/stretchr/testify/require"
 )
 
 func TestBitswapRetriever(t *testing.T) {
 	ctx := context.Background()
 
-	store := &testutil.CorrectedMemStore{ParentStore: &memstore.Store{
+	store := &trustlesstestutil.CorrectedMemStore{ParentStore: &memstore.Store{
 		Bag: make(map[string][]byte),
 	}}
 	lsys := cidlink.DefaultLinkSystem()
@@ -586,7 +587,7 @@ func makeLsys(blocks []blocks.Block, threadsafe bool) *linking.LinkSystem {
 		bag[cidlink.Link{Cid: block.Cid()}.Binary()] = block.RawData()
 	}
 	lsys := cidlink.DefaultLinkSystem()
-	var store testutil.ParentStore = &testutil.CorrectedMemStore{ParentStore: &memstore.Store{Bag: bag}}
+	var store testutil.ParentStore = &trustlesstestutil.CorrectedMemStore{ParentStore: &memstore.Store{Bag: bag}}
 	if threadsafe {
 		store = &testutil.ThreadsafeStore{ParentStore: store}
 	}
