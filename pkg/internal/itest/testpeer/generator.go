@@ -301,7 +301,7 @@ func newTestPeer(
 	if cfg.bstore == nil {
 		var err error
 		cfg.bstore, err = blockstore.CachedBlockstore(ctx,
-			blockstore.NewBlockstore(dstoreDelayed),
+			blockstore.NewIdStore(blockstore.NewBlockstore(dstoreDelayed)),
 			blockstore.DefaultCacheOpts())
 		if err != nil {
 			return TestPeer{}, nil, err

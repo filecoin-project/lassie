@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
 	carstorage "github.com/ipld/go-car/v2/storage"
+	"github.com/multiformats/go-multihash"
 )
 
 var _ ReadableWritableStorage = (*DeferredStorageCar)(nil)
@@ -74,6 +76,12 @@ func (dcs *DeferredStorageCar) Has(ctx context.Context, key string) (bool, error
 
 // Get returns data from the underlying CARv1.
 func (dcs *DeferredStorageCar) Get(ctx context.Context, key string) ([]byte, error) {
+	if digest, ok, err := AsIdentity(key); ok {
+		return digest, nil
+	} else if err != nil {
+		return nil, err
+	}
+
 	dcs.lk.Lock()
 	defer dcs.lk.Unlock()
 
@@ -92,8 +100,19 @@ func (dcs *DeferredStorageCar) Get(ctx context.Context, key string) ([]byte, err
 	}
 }
 
+func cidCast(b []byte) cid.Cid {
+	c, _ := cid.Cast(b)
+	return c
+}
+
 // GetStream returns data from the underlying CARv1.
 func (dcs *DeferredStorageCar) GetStream(ctx context.Context, key string) (io.ReadCloser, error) {
+	if digest, ok, err := AsIdentity(key); ok {
+		return io.NopCloser(bytes.NewReader(digest)), nil
+	} else if err != nil {
+		return nil, err
+	}
+
 	dcs.lk.Lock()
 	defer dcs.lk.Unlock()
 
@@ -115,6 +134,12 @@ func (dcs *DeferredStorageCar) GetStream(ctx context.Context, key string) (io.Re
 // Put writes data to the underlying CARv1 which will be initialised on the
 // first call to Put.
 func (dcs *DeferredStorageCar) Put(ctx context.Context, key string, data []byte) error {
+	if _, ok, err := AsIdentity(key); ok {
+		return nil
+	} else if err != nil {
+		return err
+	}
+
 	dcs.lk.Lock()
 	defer dcs.lk.Unlock()
 
@@ -138,11 +163,31 @@ func (dcs *DeferredStorageCar) readWrite() (ReadableWritableStorage, error) {
 		if dcs.f, err = os.CreateTemp(dcs.tempDir, "lassie_carstorage"); err != nil {
 			return nil, err
 		}
-		rw, err := carstorage.NewReadableWritable(dcs.f, []cid.Cid{dcs.root}, carv2.WriteAsCarV1(true))
+		rw, err := carstorage.NewReadableWritable(
+			dcs.f,
+			[]cid.Cid{dcs.root},
+			carv2.WriteAsCarV1(true),
+			carv2.StoreIdentityCIDs(false),
+			carv2.UseWholeCIDs(false),
+		)
 		if err != nil {
 			return nil, err
 		}
 		dcs.rw = rw
 	}
 	return dcs.rw, nil
+}
+
+func AsIdentity(key string) (digest []byte, ok bool, err error) {
+	keyCid, err := cid.Cast([]byte(key))
+	if err != nil {
+		return nil, false, err
+	}
+	dmh, err := multihash.Decode(keyCid.Hash())
+	if err != nil {
+		return nil, false, err
+	}
+	ok = dmh.Code == multihash.IDENTITY
+	digest = dmh.Digest
+	return digest, ok, nil
 }

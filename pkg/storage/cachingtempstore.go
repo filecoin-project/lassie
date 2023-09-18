@@ -100,7 +100,8 @@ func (ttrw *CachingTempStore) GetStream(ctx context.Context, key string) (io.Rea
 	if rw, err := ttrw.store.readWrite(); err != nil {
 		return nil, err
 	} else {
-		return rw.GetStream(ctx, key)
+		r, err := rw.GetStream(ctx, key)
+		return r, err
 	}
 }
 
