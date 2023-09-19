@@ -14,18 +14,18 @@ require (
 	github.com/ipfs/go-block-format v0.2.0
 	github.com/ipfs/go-cid v0.4.1
 	github.com/ipfs/go-datastore v0.6.0
-	github.com/ipfs/go-graphsync v0.14.9-0.20230918113440-276c78beb186
+	github.com/ipfs/go-graphsync v0.14.9
 	github.com/ipfs/go-ipfs-blockstore v1.3.0
 	github.com/ipfs/go-ipfs-blocksutil v0.0.1
 	github.com/ipfs/go-ipfs-delay v0.0.1
 	github.com/ipfs/go-ipfs-exchange-interface v0.2.0
 	github.com/ipfs/go-ipld-format v0.6.0
 	github.com/ipfs/go-log/v2 v2.5.1
-	github.com/ipfs/go-unixfsnode v1.8.1-0.20230918113936-6f1f7afd4250
+	github.com/ipfs/go-unixfsnode v1.8.1
 	github.com/ipld/go-car/v2 v2.13.1
 	github.com/ipld/go-codec-dagpb v1.6.0
 	github.com/ipld/go-ipld-prime v0.21.0
-	github.com/ipld/go-trustless-utils v0.2.1-0.20230918110635-984f28fe717b
+	github.com/ipld/go-trustless-utils v0.3.0
 	github.com/ipld/ipld/specs v0.0.0-20230907004443-0e4ff95ff474
 	github.com/ipni/go-libipni v0.5.0
 	github.com/ipni/storetheindex v0.7.9-0.20230914224616-e6658bcf60c5
