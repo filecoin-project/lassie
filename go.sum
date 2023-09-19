@@ -264,8 +264,8 @@ github.com/ipfs/go-datastore v0.6.0 h1:JKyz+Gvz1QEZw0LsX1IBn+JFCJQH4SJVFtM4uWU0M
 github.com/ipfs/go-datastore v0.6.0/go.mod h1:rt5M3nNbSO/8q1t4LNkLyUwRs8HupMeN/8O4Vn9YAT8=
 github.com/ipfs/go-detect-race v0.0.1 h1:qX/xay2W3E4Q1U7d9lNs1sU9nvguX0a7319XbyQ6cOk=
 github.com/ipfs/go-detect-race v0.0.1/go.mod h1:8BNT7shDZPo99Q74BpGMK+4D8Mn4j46UU0LZ723meps=
-github.com/ipfs/go-graphsync v0.14.9-0.20230918113440-276c78beb186 h1:IR/OtAlPa+6gvOkq2dgmARgNvuaU2d8wsOAnIxC7uew=
-github.com/ipfs/go-graphsync v0.14.9-0.20230918113440-276c78beb186/go.mod h1:qyHjUvHey6EfKUDMQPwCuVkMOurRG3hcjRm+FaVP6bE=
+github.com/ipfs/go-graphsync v0.14.9 h1:AZ1TxnU5LNANXesKr4ZjUtj0rLpqp0Qt5PL6Xf7uhc4=
+github.com/ipfs/go-graphsync v0.14.9/go.mod h1:qyHjUvHey6EfKUDMQPwCuVkMOurRG3hcjRm+FaVP6bE=
 github.com/ipfs/go-hamt-ipld v0.1.1/go.mod h1:1EZCr2v0jlCnhpa+aZ0JZYp8Tt2w16+JJOAVz17YcDk=
 github.com/ipfs/go-ipfs-blockstore v1.3.0 h1:m2EXaWgwTzAfsmt5UdJ7Is6l4gJcaM/A12XwJyvYvMM=
 github.com/ipfs/go-ipfs-blockstore v1.3.0/go.mod h1:KgtZyc9fq+P2xJUiCAzbRdhhqJHvsw8u2Dlqy2MyRTE=
@@ -320,8 +320,8 @@ github.com/ipfs/go-metrics-interface v0.0.1/go.mod h1:6s6euYU4zowdslK0GKHmqaIZ3j
 github.com/ipfs/go-peertaskqueue v0.8.1 h1:YhxAs1+wxb5jk7RvS0LHdyiILpNmRIRnZVztekOF0pg=
 github.com/ipfs/go-peertaskqueue v0.8.1/go.mod h1:Oxxd3eaK279FxeydSPPVGHzbwVeHjatZ2GA8XD+KbPU=
 github.com/ipfs/go-unixfs v0.4.5 h1:wj8JhxvV1G6CD7swACwSKYa+NgtdWC1RUit+gFnymDU=
-github.com/ipfs/go-unixfsnode v1.8.1-0.20230918113936-6f1f7afd4250 h1:OA4yF8ipaE/DDskdgXUGvHbNQDsW3tZZQL/SvROFsJc=
-github.com/ipfs/go-unixfsnode v1.8.1-0.20230918113936-6f1f7afd4250/go.mod h1:HxRu9HYHOjK6HUqFBAi++7DVoWAHn0o4v/nZ/VA+0g8=
+github.com/ipfs/go-unixfsnode v1.8.1 h1:nEWQl2XL+Zoyh6u0OMzNI8mUeCKLyRgg65WDbTm/oNU=
+github.com/ipfs/go-unixfsnode v1.8.1/go.mod h1:HxRu9HYHOjK6HUqFBAi++7DVoWAHn0o4v/nZ/VA+0g8=
 github.com/ipfs/go-verifcid v0.0.2 h1:XPnUv0XmdH+ZIhLGKg6U2vaPaRDXb9urMyNVCE7uvTs=
 github.com/ipld/go-car/v2 v2.13.1 h1:KnlrKvEPEzr5IZHKTXLAEub+tPrzeAFQVRlSQvuxBO4=
 github.com/ipld/go-car/v2 v2.13.1/go.mod h1:QkdjjFNGit2GIkpQ953KBwowuoukoM75nP/JI1iDJdo=
@@ -330,8 +330,8 @@ github.com/ipld/go-codec-dagpb v1.6.0/go.mod h1:ANzFhfP2uMJxRBr8CE+WQWs5UsNa0pYt
 github.com/ipld/go-ipld-prime v0.21.0 h1:n4JmcpOlPDIxBcY037SVfpd1G+Sj1nKZah0m6QH9C2E=
 github.com/ipld/go-ipld-prime v0.21.0/go.mod h1:3RLqy//ERg/y5oShXXdx5YIp50cFGOanyMctpPjsvxQ=
 github.com/ipld/go-ipld-prime/storage/bsadapter v0.0.0-20230102063945-1a409dc236dd h1:gMlw/MhNr2Wtp5RwGdsW23cs+yCuj9k2ON7i9MiJlRo=
-github.com/ipld/go-trustless-utils v0.2.1-0.20230918110635-984f28fe717b h1:jWVWOEWTFnIbRGXldXC/CZwwzP2RuKzK8/T9dPEKbtY=
-github.com/ipld/go-trustless-utils v0.2.1-0.20230918110635-984f28fe717b/go.mod h1:nbUA6YuKZqNHYd3mYKALxOQa5aC8fnr2w+OxirSSOqc=
+github.com/ipld/go-trustless-utils v0.3.0 h1:Dx0t5362uOqub3orC8fPr60FdMkF+O3WNa0dkHjWPLU=
+github.com/ipld/go-trustless-utils v0.3.0/go.mod h1:nbUA6YuKZqNHYd3mYKALxOQa5aC8fnr2w+OxirSSOqc=
 github.com/ipld/ipld/specs v0.0.0-20230907004443-0e4ff95ff474 h1:CiDtcUFyzRwhKyiS4Gn+fzdraMoNVtPHd+wVIekExPc=
 github.com/ipld/ipld/specs v0.0.0-20230907004443-0e4ff95ff474/go.mod h1:WcT0DfRe+e2QFY0kcbsOnuT6jL5Q0JNZ83I5DHIdStg=
 github.com/ipni/go-libipni v0.5.0 h1:UTVq4U9cReNz/rbeVeUvl+JTLexdfb7yjmBgouSteJ8=

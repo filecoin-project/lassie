@@ -100,11 +100,6 @@ func (dcs *DeferredStorageCar) Get(ctx context.Context, key string) ([]byte, err
 	}
 }
 
-func cidCast(b []byte) cid.Cid {
-	c, _ := cid.Cast(b)
-	return c
-}
-
 // GetStream returns data from the underlying CARv1.
 func (dcs *DeferredStorageCar) GetStream(ctx context.Context, key string) (io.ReadCloser, error) {
 	if digest, ok, err := AsIdentity(key); ok {
