@@ -299,13 +299,13 @@ func newTestPeer(
 	dstoreDelayed := delayed.New(dstore, bsdelay)
 
 	if cfg.bstore == nil {
-		var err error
-		cfg.bstore, err = blockstore.CachedBlockstore(ctx,
-			blockstore.NewIdStore(blockstore.NewBlockstore(dstoreDelayed)),
+		bstore, err := blockstore.CachedBlockstore(ctx,
+			blockstore.NewBlockstore(dstoreDelayed),
 			blockstore.DefaultCacheOpts())
 		if err != nil {
 			return TestPeer{}, nil, err
 		}
+		cfg.bstore = blockstore.NewIdStore(bstore)
 	}
 	lsys := storeutil.LinkSystemForBlockstore(cfg.bstore)
 	tp := TestPeer{

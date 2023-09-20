@@ -817,6 +817,35 @@ func TestHttpFetch(t *testing.T) {
 				return []unixfs.DirEntry{trustlesstestutil.MakeDagWithIdentity(t, *remotes[0].LinkSystem)}
 			},
 		},
+		// noDups variants are important because handling of these happens all the
+		// way up to DuplicateAdderCar
+		{
+			name:             "non-unixfs graphsync /w noDups",
+			setHeader:        noDups,
+			expectNoDups:     true,
+			graphsyncRemotes: 1,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				return []unixfs.DirEntry{trustlesstestutil.MakeDagWithIdentity(t, *remotes[0].LinkSystem)}
+			},
+		},
+		{
+			name:           "non-unixfs bitswap /w noDups",
+			setHeader:      noDups,
+			expectNoDups:   true,
+			bitswapRemotes: 1,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				return []unixfs.DirEntry{trustlesstestutil.MakeDagWithIdentity(t, *remotes[0].LinkSystem)}
+			},
+		},
+		{
+			name:         "non-unixfs http /w noDups",
+			setHeader:    noDups,
+			expectNoDups: true,
+			httpRemotes:  1,
+			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
+				return []unixfs.DirEntry{trustlesstestutil.MakeDagWithIdentity(t, *remotes[0].LinkSystem)}
+			},
+		},
 	}
 
 	for _, testCase := range testCases {

@@ -18,6 +18,7 @@ import (
 	ipldstorage "github.com/ipld/go-ipld-prime/storage"
 	trustlessutils "github.com/ipld/go-trustless-utils"
 	"github.com/ipld/go-trustless-utils/traversal"
+	"github.com/multiformats/go-multihash"
 )
 
 type DeferredWriter interface {
@@ -114,6 +115,13 @@ func (da *DuplicateAdderCar) BlockWriteOpener() linking.BlockWriteOpener {
 		var buf bytes.Buffer
 		var written bool
 		return &buf, func(lnk ipld.Link) error {
+			// assume that we will never want to write out identity CIDs, and they
+			// won't be expected by a traversal (i.e. go-trustless-utils won't expect
+			// them in a block stream)
+			if lnk.(cidlink.Link).Cid.Prefix().MhType == multihash.IDENTITY {
+				return nil
+			}
+
 			if written {
 				return fmt.Errorf("WriteCommitter already used")
 			}
