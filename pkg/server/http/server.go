@@ -98,11 +98,10 @@ func (s *HttpServer) Start() error {
 		logger.Errorw("failed to start http server", "err", err)
 		return err
 	}
-
 	return nil
 }
 
-// Close shutsdown the server and cancels the server context
+// Close shuts down the server and cancels the server context
 func (s *HttpServer) Close() error {
 	logger.Info("closing http server")
 	s.cancel()

@@ -76,6 +76,7 @@ func TestTrustlessUnixfsFetch(t *testing.T) {
 				go func() {
 					serverError <- httpServer.Start()
 				}()
+				defer httpServer.Close()
 				responseChan := make(chan *http.Response, 1)
 				go func() {
 					// Make a request for our CID and read the complete CAR bytes
