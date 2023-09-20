@@ -14,7 +14,7 @@ require (
 	github.com/ipfs/go-block-format v0.2.0
 	github.com/ipfs/go-cid v0.4.1
 	github.com/ipfs/go-datastore v0.6.0
-	github.com/ipfs/go-graphsync v0.14.9
+	github.com/ipfs/go-graphsync v0.14.10
 	github.com/ipfs/go-ipfs-blockstore v1.3.0
 	github.com/ipfs/go-ipfs-blocksutil v0.0.1
 	github.com/ipfs/go-ipfs-delay v0.0.1

@@ -17,7 +17,6 @@ import (
 	"github.com/ipfs/boxo/blockservice"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
-	gstestutil "github.com/ipfs/go-graphsync/testutil"
 	exchange "github.com/ipfs/go-ipfs-exchange-interface"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/datamodel"
@@ -42,8 +41,8 @@ func TestBitswapRetriever(t *testing.T) {
 	lsys.SetReadStorage(store)
 	lsys.SetWriteStorage(store)
 	lsys.TrustedStorage = true
-	tbc1 := gstestutil.SetupBlockChain(ctx, t, lsys, 1000, 100)
-	tbc2 := gstestutil.SetupBlockChain(ctx, t, lsys, 1000, 100)
+	tbc1 := trustlesstestutil.SetupBlockChain(ctx, t, lsys, 1000, 100)
+	tbc2 := trustlesstestutil.SetupBlockChain(ctx, t, lsys, 1000, 100)
 	var tbc1Cids []cid.Cid
 	for _, blk := range tbc1.AllBlocks() {
 		tbc1Cids = append(tbc1Cids, blk.Cid())
