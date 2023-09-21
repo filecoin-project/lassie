@@ -115,7 +115,8 @@ func graphsyncMetadataCompare(a, b *metadata.GraphsyncFilecoinV1, defaultValue b
 	return defaultValue
 }
 
-func (pg *ProtocolGraphsync) Connect(ctx context.Context, retrieval *retrieval, startTime time.Time, candidate types.RetrievalCandidate) (time.Duration, error) {
+func (pg *ProtocolGraphsync) Connect(ctx context.Context, retrieval *retrieval, candidate types.RetrievalCandidate) (time.Duration, error) {
+	startTime := pg.Clock.Now()
 	if err := pg.Client.Connect(ctx, candidate.MinerPeer); err != nil {
 		return 0, err
 	}
