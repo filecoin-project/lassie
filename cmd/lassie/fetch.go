@@ -244,10 +244,14 @@ func defaultFetchRun(
 		setupLassieEventRecorder(ctx, eventRecorderCfg, lassie)
 	}
 
+	printPath := path
+	if printPath != "" {
+		printPath = "/" + printPath
+	}
 	if len(fetchProviderAddrInfos) == 0 {
-		fmt.Fprintf(msgWriter, "Fetching %s", rootCid.String()+path)
+		fmt.Fprintf(msgWriter, "Fetching %s", rootCid.String()+printPath)
 	} else {
-		fmt.Fprintf(msgWriter, "Fetching %s from specified provider(s)", rootCid.String()+path)
+		fmt.Fprintf(msgWriter, "Fetching %s from specified provider(s)", rootCid.String()+printPath)
 	}
 	if progress {
 		fmt.Fprintln(msgWriter)
