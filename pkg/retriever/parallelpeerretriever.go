@@ -26,7 +26,7 @@ type GetStorageProviderTimeout func(peer peer.ID) time.Duration
 type TransportProtocol interface {
 	Code() multicodec.Code
 	GetMergedMetadata(cid cid.Cid, currentMetadata, newMetadata metadata.Protocol) metadata.Protocol
-	Connect(ctx context.Context, retrieval *retrieval, startTime time.Time, candidate types.RetrievalCandidate) (time.Duration, error)
+	Connect(ctx context.Context, retrieval *retrieval, candidate types.RetrievalCandidate) (time.Duration, error)
 	Retrieve(
 		ctx context.Context,
 		retrieval *retrieval,
@@ -158,7 +158,6 @@ func (retrieval *retrieval) RetrieveFromAsyncCandidates(asyncCandidates types.In
 	}
 
 	// start retrievals
-	startTime := retrieval.Clock.Now()
 	var waitGroup sync.WaitGroup
 	waitGroup.Add(1)
 	go func() {
@@ -174,7 +173,7 @@ func (retrieval *retrieval) RetrieveFromAsyncCandidates(asyncCandidates types.In
 				waitGroup.Add(1)
 				go func() {
 					defer waitGroup.Done()
-					retrieval.runRetrievalCandidate(ctx, shared, startTime, candidate)
+					retrieval.runRetrievalCandidate(ctx, shared, candidate)
 				}()
 			}
 		}
@@ -306,7 +305,6 @@ func collectResults(ctx context.Context, shared *retrievalShared, eventsCallback
 func (retrieval *retrieval) runRetrievalCandidate(
 	ctx context.Context,
 	shared *retrievalShared,
-	startTime time.Time,
 	candidate types.RetrievalCandidate,
 ) {
 	timeout := retrieval.Session.GetStorageProviderTimeout(candidate.MinerPeer.ID)
@@ -324,7 +322,7 @@ func (retrieval *retrieval) runRetrievalCandidate(
 	}
 
 	// Setup in parallel
-	connectTime, err := retrieval.Protocol.Connect(connectCtx, retrieval, startTime, candidate)
+	connectTime, err := retrieval.Protocol.Connect(connectCtx, retrieval, candidate)
 	if err != nil {
 		// Exclude the case where the context was cancelled by the parent, which likely means that
 		// another protocol has succeeded.
