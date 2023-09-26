@@ -25,7 +25,7 @@ func CarBytesLinkSystem(t *testing.T, carReader io.ReaderAt) ipld.LinkSystem {
 	return linkSys
 }
 
-// CarToDirEntry is ToDirEntry but around a CAR body as the source of data.
-func CarToDirEntry(t *testing.T, carReader io.ReaderAt, root cid.Cid, expectFull bool) unixfs.DirEntry {
-	return unixfs.ToDirEntry(t, CarBytesLinkSystem(t, carReader), root, expectFull)
+// carToDirEntry is ToDirEntry but around a CAR body as the source of data.
+func carToDirEntry(t *testing.T, carReader io.ReaderAt, root cid.Cid, rootPath string, expectFull bool) unixfs.DirEntry {
+	return unixfs.ToDirEntryFrom(t, CarBytesLinkSystem(t, carReader), root, rootPath, expectFull)
 }
