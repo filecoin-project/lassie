@@ -29,6 +29,7 @@ import (
 	unixfs "github.com/ipfs/go-unixfsnode/testutil"
 	"github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/storage"
+	unixfsgen "github.com/ipld/go-fixtureplate/generator"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/linking"
@@ -51,7 +52,29 @@ import (
 // for inspection if tests fail; otherwise they are cleaned up as tests
 // proceed.
 const DEBUG_DATA = false
-const wrapPath = "/want2/want1/want0"
+
+// UnixFS data generation specs used by github.com/ipld/go-fixtureplate/generator
+const (
+	unixfsSpec_smallFile              = `file:1KiB`
+	unixfsSpec_largeShardedFile       = `file:4MiB`
+	unixfsSpec_largeShardedFileZeroed = `file:4MiB{zero}`
+	unixfsSpec_largeDirectory         = `dir(~10*file:1,~5*dir(~10*file:~10k,~5*dir(~4*file:~200k)),~5*file:~300k)`
+	unixfsSpec_largeShardedDirectory  = `dir{sharded}(~20*file:1,~10*file:~1k,~5*dir(~5*file:~10k,~5*dir(~4*file:~200k)),~2*file:~300k)`
+
+	// wrapPath is the path within "wrapped" content (below) that the content we
+	// care about is located, we use this to test path-nested retrievals and make
+	// sure we ignore surrounding content outside of this path.
+	wrapPath = "/want2/want1/want0"
+)
+
+var (
+	// same as unixfsSpec_largeShardedFile but nested within wrapPath, surrounded by other directories
+	unixfsSpec_largeShardedFileWrapped = wrapSpec(unixfsSpec_largeShardedFile)
+	// same as unixfsSpec_largeDirectory but nested within wrapPath, surrounded by other directories
+	unixfsSpec_largeDirectoryWrapped = wrapSpec(unixfsSpec_largeDirectory)
+	// same as unixfsSpec_largeShardedDirectory but nested within wrapPath, surrounded by other directories
+	unixfsSpec_largeShardedDirectoryWrapped = wrapSpec(unixfsSpec_largeShardedDirectory)
+)
 
 type generateFn func(*testing.T, io.Reader, []testpeer.TestPeer) []unixfs.DirEntry
 type bodyValidator func(*testing.T, unixfs.DirEntry, []byte)
@@ -97,7 +120,7 @@ func TestHttpFetch(t *testing.T) {
 		{
 			name:             "graphsync large sharded file",
 			graphsyncRemotes: 1,
-			generate:         generateLargeShardedFile(),
+			generate:         singlePeerGenerator(unixfsSpec_largeShardedFile),
 			expectAggregateEvents: []aggregateeventrecorder.AggregateEvent{{
 				Success:            true,
 				URLPath:            "?dag-scope=all&dups=y",
@@ -108,7 +131,7 @@ func TestHttpFetch(t *testing.T) {
 		{
 			name:           "bitswap large sharded file",
 			bitswapRemotes: 1,
-			generate:       generateLargeShardedFile(),
+			generate:       singlePeerGenerator(unixfsSpec_largeShardedFile),
 			expectAggregateEvents: []aggregateeventrecorder.AggregateEvent{{
 				Success:            true,
 				URLPath:            "?dag-scope=all&dups=y",
@@ -119,7 +142,7 @@ func TestHttpFetch(t *testing.T) {
 		{
 			name:        "http large sharded file",
 			httpRemotes: 1,
-			generate:    generateLargeShardedFile(),
+			generate:    singlePeerGenerator(unixfsSpec_largeShardedFile),
 			expectAggregateEvents: []aggregateeventrecorder.AggregateEvent{{
 				Success:            true,
 				URLPath:            "?dag-scope=all&dups=y",
@@ -130,32 +153,32 @@ func TestHttpFetch(t *testing.T) {
 		{
 			name:             "graphsync large directory",
 			graphsyncRemotes: 1,
-			generate:         generateLargeDirectory(),
+			generate:         singlePeerGenerator(unixfsSpec_largeDirectory),
 		},
 		{
 			name:           "bitswap large directory",
 			bitswapRemotes: 1,
-			generate:       generateLargeDirectory(),
+			generate:       singlePeerGenerator(unixfsSpec_largeDirectory),
 		},
 		{
 			name:        "http large directory",
 			httpRemotes: 1,
-			generate:    generateLargeDirectory(),
+			generate:    singlePeerGenerator(unixfsSpec_largeDirectory),
 		},
 		{
 			name:             "graphsync large sharded directory",
 			graphsyncRemotes: 1,
-			generate:         generateLargeShardedDirectory(),
+			generate:         singlePeerGenerator(unixfsSpec_largeShardedDirectory),
 		},
 		{
 			name:           "bitswap large sharded directory",
 			bitswapRemotes: 1,
-			generate:       generateLargeShardedDirectory(),
+			generate:       singlePeerGenerator(unixfsSpec_largeShardedDirectory),
 		},
 		{
 			name:        "http large sharded directory",
 			httpRemotes: 1,
-			generate:    generateLargeShardedDirectory(),
+			generate:    singlePeerGenerator(unixfsSpec_largeShardedDirectory),
 		},
 		{
 			name:             "graphsync max block limit",
@@ -165,7 +188,7 @@ func TestHttpFetch(t *testing.T) {
 				cfg.MaxBlocksPerRequest = 3
 				return cfg
 			},
-			generate:       generateLargeShardedFile(),
+			generate:       singlePeerGenerator(unixfsSpec_largeShardedFile),
 			validateBodies: validateFirstThreeBlocksOnly,
 		},
 		{
@@ -177,7 +200,7 @@ func TestHttpFetch(t *testing.T) {
 					values.Add("blockLimit", "3")
 				},
 			},
-			generate:       generateLargeShardedFile(),
+			generate:       singlePeerGenerator(unixfsSpec_largeShardedFile),
 			validateBodies: validateFirstThreeBlocksOnly,
 		},
 		{
@@ -188,7 +211,7 @@ func TestHttpFetch(t *testing.T) {
 				cfg.MaxBlocksPerRequest = 3
 				return cfg
 			},
-			generate:       generateLargeShardedFile(),
+			generate:       singlePeerGenerator(unixfsSpec_largeShardedFile),
 			validateBodies: validateFirstThreeBlocksOnly,
 		},
 		{
@@ -199,7 +222,7 @@ func TestHttpFetch(t *testing.T) {
 				cfg.MaxBlocksPerRequest = 3
 				return cfg
 			},
-			generate:       generateLargeShardedFile(),
+			generate:       singlePeerGenerator(unixfsSpec_largeShardedFile),
 			validateBodies: validateFirstThreeBlocksOnly,
 		},
 		{
@@ -212,7 +235,7 @@ func TestHttpFetch(t *testing.T) {
 				return []lassie.LassieOption{lassie.WithProviderTimeout(1 * time.Second)}
 			},
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				file := largeShardedFile(t, rndReader, remotes[0])
+				file := generateFor(t, unixfsSpec_largeShardedFile, rndReader, *remotes[0].LinkSystem)
 				remotes[0].Blockstore().DeleteBlock(context.Background(), file.SelfCids[2])
 				return []unixfs.DirEntry{file}
 			},
@@ -223,7 +246,7 @@ func TestHttpFetch(t *testing.T) {
 			bitswapRemotes: 1,
 			httpRemotes:    1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				file := largeShardedFile(t, rndReader, remotes[0])
+				file := generateFor(t, unixfsSpec_largeShardedFile, rndReader, *remotes[0].LinkSystem)
 				for _, c := range file.SelfCids {
 					blk, err := remotes[0].Blockstore().Get(context.Background(), c)
 					require.NoError(t, err)
@@ -242,20 +265,20 @@ func TestHttpFetch(t *testing.T) {
 			// dag-scope entity fetch should get the same DAG as full for a plain file
 			name:             "graphsync large sharded file, dag-scope entity",
 			graphsyncRemotes: 1,
-			generate:         generateLargeShardedFile(),
+			generate:         singlePeerGenerator(unixfsSpec_largeShardedFile),
 			modifyQueries:    []queryModifier{entityQuery},
 		},
 		{
 			// dag-scope entity fetch should get the same DAG as full for a plain file
 			name:           "bitswap large sharded file, dag-scope entity",
 			bitswapRemotes: 1,
-			generate:       generateLargeShardedFile(),
+			generate:       singlePeerGenerator(unixfsSpec_largeShardedFile),
 			modifyQueries:  []queryModifier{entityQuery},
 		},
 		{
 			name:             "graphsync nested large sharded file, with path, dag-scope entity",
 			graphsyncRemotes: 1,
-			generate:         generateLargeShardedFileWrapped(),
+			generate:         singlePeerGenerator(unixfsSpec_largeShardedFileWrapped),
 			paths:            []string{wrapPath},
 			modifyQueries:    []queryModifier{entityQuery},
 			validateBodies:   validatePathedEntityContent,
@@ -263,7 +286,7 @@ func TestHttpFetch(t *testing.T) {
 		{
 			name:           "bitswap nested large sharded file, with path, dag-scope entity",
 			bitswapRemotes: 1,
-			generate:       generateLargeShardedFileWrapped(),
+			generate:       singlePeerGenerator(unixfsSpec_largeShardedFileWrapped),
 			paths:          []string{wrapPath},
 			modifyQueries:  []queryModifier{entityQuery},
 			validateBodies: validatePathedEntityContent,
@@ -271,7 +294,7 @@ func TestHttpFetch(t *testing.T) {
 		{
 			name:           "http nested large sharded file, with path, dag-scope entity",
 			httpRemotes:    1,
-			generate:       generateLargeShardedFileWrapped(),
+			generate:       singlePeerGenerator(unixfsSpec_largeShardedFileWrapped),
 			paths:          []string{wrapPath},
 			modifyQueries:  []queryModifier{entityQuery},
 			validateBodies: validatePathedEntityContent,
@@ -279,28 +302,28 @@ func TestHttpFetch(t *testing.T) {
 		{
 			name:             "graphsync large directory, dag-scope entity",
 			graphsyncRemotes: 1,
-			generate:         generateLargeDirectory(),
+			generate:         singlePeerGenerator(unixfsSpec_largeDirectory),
 			modifyQueries:    []queryModifier{entityQuery},
 			validateBodies:   validateOnlyRoot,
 		},
 		{
 			name:           "bitswap large directory, dag-scope entity",
 			bitswapRemotes: 1,
-			generate:       generateLargeDirectory(),
+			generate:       singlePeerGenerator(unixfsSpec_largeDirectory),
 			modifyQueries:  []queryModifier{entityQuery},
 			validateBodies: validateOnlyRoot,
 		},
 		{
 			name:           "http large directory, dag-scope entity",
 			httpRemotes:    1,
-			generate:       generateLargeDirectory(),
+			generate:       singlePeerGenerator(unixfsSpec_largeDirectory),
 			modifyQueries:  []queryModifier{entityQuery},
 			validateBodies: validateOnlyRoot,
 		},
 		{
 			name:             "graphsync nested large directory, with path, dag-scope entity",
 			graphsyncRemotes: 1,
-			generate:         generateLargeDirectoryWrapped(),
+			generate:         singlePeerGenerator(unixfsSpec_largeDirectoryWrapped),
 			paths:            []string{wrapPath},
 			modifyQueries:    []queryModifier{entityQuery},
 			validateBodies:   validatePathedEntityContent,
@@ -308,7 +331,7 @@ func TestHttpFetch(t *testing.T) {
 		{
 			name:           "bitswap nested large directory, with path, dag-scope entity",
 			bitswapRemotes: 1,
-			generate:       generateLargeDirectoryWrapped(),
+			generate:       singlePeerGenerator(unixfsSpec_largeDirectoryWrapped),
 			paths:          []string{wrapPath},
 			modifyQueries:  []queryModifier{entityQuery},
 			validateBodies: validatePathedEntityContent,
@@ -316,7 +339,7 @@ func TestHttpFetch(t *testing.T) {
 		{
 			name:           "http nested large directory, with path, dag-scope entity",
 			httpRemotes:    1,
-			generate:       generateLargeDirectoryWrapped(),
+			generate:       singlePeerGenerator(unixfsSpec_largeDirectoryWrapped),
 			paths:          []string{wrapPath},
 			modifyQueries:  []queryModifier{entityQuery},
 			validateBodies: validatePathedEntityContent,
@@ -324,49 +347,49 @@ func TestHttpFetch(t *testing.T) {
 		{
 			name:             "graphsync nested large directory, with path, full",
 			graphsyncRemotes: 1,
-			generate:         generateLargeDirectoryWrapped(),
+			generate:         singlePeerGenerator(unixfsSpec_largeDirectoryWrapped),
 			paths:            []string{wrapPath},
 			validateBodies:   validatePathedFullContent,
 		},
 		{
 			name:           "bitswap nested large directory, with path, full",
 			bitswapRemotes: 1,
-			generate:       generateLargeDirectoryWrapped(),
+			generate:       singlePeerGenerator(unixfsSpec_largeDirectoryWrapped),
 			paths:          []string{wrapPath},
 			validateBodies: validatePathedFullContent,
 		},
 		{
 			name:           "bitswap nested large directory, with path, full",
 			httpRemotes:    1,
-			generate:       generateLargeDirectoryWrapped(),
+			generate:       singlePeerGenerator(unixfsSpec_largeDirectoryWrapped),
 			paths:          []string{wrapPath},
 			validateBodies: validatePathedFullContent,
 		},
 		{
 			name:             "graphsync nested large sharded directory, dag-scope entity",
 			graphsyncRemotes: 1,
-			generate:         generateLargeShardedDirectory(),
+			generate:         singlePeerGenerator(unixfsSpec_largeShardedDirectory),
 			modifyQueries:    []queryModifier{entityQuery},
 			validateBodies:   validateOnlyEntity,
 		},
 		{
 			name:           "bitswap nested large sharded directory, dag-scope entity",
 			bitswapRemotes: 1,
-			generate:       generateLargeShardedDirectory(),
+			generate:       singlePeerGenerator(unixfsSpec_largeShardedDirectory),
 			modifyQueries:  []queryModifier{entityQuery},
 			validateBodies: validateOnlyEntity,
 		},
 		{
 			name:           "http nested large sharded directory, dag-scope entity",
 			httpRemotes:    1,
-			generate:       generateLargeShardedDirectory(),
+			generate:       singlePeerGenerator(unixfsSpec_largeShardedDirectory),
 			modifyQueries:  []queryModifier{entityQuery},
 			validateBodies: validateOnlyEntity,
 		},
 		{
 			name:             "graphsync nested large sharded directory, with path, dag-scope entity",
 			graphsyncRemotes: 1,
-			generate:         generateLargeShardedDirectoryWrapped(),
+			generate:         singlePeerGenerator(unixfsSpec_largeShardedDirectoryWrapped),
 			paths:            []string{wrapPath},
 			modifyQueries:    []queryModifier{entityQuery},
 			validateBodies:   validatePathedEntityContent,
@@ -374,7 +397,7 @@ func TestHttpFetch(t *testing.T) {
 		{
 			name:           "bitswap nested large sharded directory, with path, dag-scope entity",
 			bitswapRemotes: 1,
-			generate:       generateLargeShardedDirectoryWrapped(),
+			generate:       singlePeerGenerator(unixfsSpec_largeShardedDirectoryWrapped),
 			paths:          []string{wrapPath},
 			modifyQueries:  []queryModifier{entityQuery},
 			validateBodies: validatePathedEntityContent,
@@ -382,7 +405,7 @@ func TestHttpFetch(t *testing.T) {
 		{
 			name:           "http nested large sharded directory, with path, dag-scope entity",
 			httpRemotes:    1,
-			generate:       generateLargeShardedDirectoryWrapped(),
+			generate:       singlePeerGenerator(unixfsSpec_largeShardedDirectoryWrapped),
 			paths:          []string{wrapPath},
 			modifyQueries:  []queryModifier{entityQuery},
 			validateBodies: validatePathedEntityContent,
@@ -390,21 +413,21 @@ func TestHttpFetch(t *testing.T) {
 		{
 			name:             "graphsync nested large sharded directory, with path, full",
 			graphsyncRemotes: 1,
-			generate:         generateLargeShardedDirectoryWrapped(),
+			generate:         singlePeerGenerator(unixfsSpec_largeShardedDirectoryWrapped),
 			paths:            []string{wrapPath},
 			validateBodies:   validatePathedFullContent,
 		},
 		{
 			name:           "bitswap nested large sharded directory, with path, full",
 			bitswapRemotes: 1,
-			generate:       generateLargeShardedDirectoryWrapped(),
+			generate:       singlePeerGenerator(unixfsSpec_largeShardedDirectoryWrapped),
 			paths:          []string{wrapPath},
 			validateBodies: validatePathedFullContent,
 		},
 		{
 			name:           "http nested large sharded directory, with path, full",
 			httpRemotes:    1,
-			generate:       generateLargeShardedDirectoryWrapped(),
+			generate:       singlePeerGenerator(unixfsSpec_largeShardedDirectoryWrapped),
 			paths:          []string{wrapPath},
 			validateBodies: validatePathedFullContent,
 		},
@@ -455,8 +478,8 @@ func TestHttpFetch(t *testing.T) {
 			bitswapRemotes: 2,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{
-					largeShardedFile(t, rndReader, remotes[0]),
-					largeDirectory(t, rndReader, remotes[1]),
+					generateFor(t, unixfsSpec_largeShardedFile, rndReader, *remotes[0].LinkSystem),
+					generateFor(t, unixfsSpec_largeDirectory, rndReader, *remotes[1].LinkSystem),
 				}
 			},
 		},
@@ -465,8 +488,8 @@ func TestHttpFetch(t *testing.T) {
 			graphsyncRemotes: 2,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{
-					largeShardedFile(t, rndReader, remotes[0]),
-					largeDirectory(t, rndReader, remotes[1]),
+					generateFor(t, unixfsSpec_largeShardedFile, rndReader, *remotes[0].LinkSystem),
+					generateFor(t, unixfsSpec_largeDirectory, rndReader, *remotes[1].LinkSystem),
 				}
 			},
 		},
@@ -477,8 +500,8 @@ func TestHttpFetch(t *testing.T) {
 			expectFail:       true,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{
-					largeShardedFile(t, rndReader, remotes[0]),
-					largeDirectory(t, rndReader, remotes[1]),
+					generateFor(t, unixfsSpec_largeShardedFile, rndReader, *remotes[0].LinkSystem),
+					generateFor(t, unixfsSpec_largeDirectory, rndReader, *remotes[1].LinkSystem),
 				}
 			},
 			expectAggregateEvents: []aggregateeventrecorder.AggregateEvent{
@@ -502,8 +525,8 @@ func TestHttpFetch(t *testing.T) {
 			bitswapRemotes:   1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{
-					largeShardedFile(t, rndReader, remotes[0]),
-					largeDirectory(t, rndReader, remotes[1]),
+					generateFor(t, unixfsSpec_largeShardedFile, rndReader, *remotes[0].LinkSystem),
+					generateFor(t, unixfsSpec_largeDirectory, rndReader, *remotes[1].LinkSystem),
 				}
 			},
 		},
@@ -511,14 +534,14 @@ func TestHttpFetch(t *testing.T) {
 			// dag-scope block fetch should only get the the root node for a plain file
 			name:             "graphsync large sharded file, dag-scope block",
 			graphsyncRemotes: 1,
-			generate:         generateLargeShardedFile(),
+			generate:         singlePeerGenerator(unixfsSpec_largeShardedFile),
 			modifyQueries:    []queryModifier{blockQuery},
 			validateBodies:   validateOnlyRoot,
 		},
 		{
 			name:             "graphsync nested large sharded file, with path, dag-scope block",
 			graphsyncRemotes: 1,
-			generate:         generateLargeShardedFileWrapped(),
+			generate:         singlePeerGenerator(unixfsSpec_largeShardedFileWrapped),
 			paths:            []string{wrapPath},
 			modifyQueries:    []queryModifier{blockQuery},
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
@@ -535,7 +558,7 @@ func TestHttpFetch(t *testing.T) {
 			name:             "graphsync large sharded file, fixedPeer",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				fileEntry := largeShardedFile(t, rndReader, remotes[0])
+				fileEntry := generateFor(t, unixfsSpec_largeShardedFile, rndReader, *remotes[0].LinkSystem)
 				// wipe content routing information for remote
 				remotes[0].Cids = make(map[cid.Cid]struct{})
 				return []unixfs.DirEntry{fileEntry}
@@ -553,7 +576,7 @@ func TestHttpFetch(t *testing.T) {
 			name:             "graphsync large sharded file, fixedPeer through startup opts",
 			graphsyncRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				fileEntry := largeShardedFile(t, rndReader, remotes[0])
+				fileEntry := generateFor(t, unixfsSpec_largeShardedFile, rndReader, *remotes[0].LinkSystem)
 				// wipe content routing information for remote
 				remotes[0].Cids = make(map[cid.Cid]struct{})
 				return []unixfs.DirEntry{fileEntry}
@@ -566,7 +589,7 @@ func TestHttpFetch(t *testing.T) {
 			name:           "bitswap large sharded file, fixedPeer",
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				fileEntry := largeShardedFile(t, rndReader, remotes[0])
+				fileEntry := generateFor(t, unixfsSpec_largeShardedFile, rndReader, *remotes[0].LinkSystem)
 				// wipe content routing information for remote
 				remotes[0].Cids = make(map[cid.Cid]struct{})
 				return []unixfs.DirEntry{fileEntry}
@@ -584,7 +607,7 @@ func TestHttpFetch(t *testing.T) {
 			name:           "bitswap large sharded file, fixedPeer through startup opts",
 			bitswapRemotes: 1,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				fileEntry := largeShardedFile(t, rndReader, remotes[0])
+				fileEntry := generateFor(t, unixfsSpec_largeShardedFile, rndReader, *remotes[0].LinkSystem)
 				// wipe content routing information for remote
 				remotes[0].Cids = make(map[cid.Cid]struct{})
 				return []unixfs.DirEntry{fileEntry}
@@ -620,9 +643,7 @@ func TestHttpFetch(t *testing.T) {
 			httpRemotes:  1,
 			setHeader:    noDups,
 			expectNoDups: true,
-			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				return []unixfs.DirEntry{largeShardedFile(t, trustlesstestutil.ZeroReader{}, remotes[0])}
-			},
+			generate:     singlePeerGenerator(unixfsSpec_largeShardedFileZeroed),
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := []cid.Cid{
 					srcData.Root, // "/""
@@ -636,9 +657,7 @@ func TestHttpFetch(t *testing.T) {
 			name:        "http large sharded file with dups, */* gives dups",
 			httpRemotes: 1,
 			setHeader:   func(h http.Header) { h.Set("Accept", "*/*") },
-			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				return []unixfs.DirEntry{largeShardedFile(t, trustlesstestutil.ZeroReader{}, remotes[0])}
-			},
+			generate:    singlePeerGenerator(unixfsSpec_largeShardedFileZeroed),
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				store := &trustlesstestutil.CorrectedMemStore{ParentStore: &memstore.Store{
 					Bag: make(map[string][]byte),
@@ -668,9 +687,7 @@ func TestHttpFetch(t *testing.T) {
 					}, ", "),
 				)
 			},
-			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				return []unixfs.DirEntry{largeShardedFile(t, trustlesstestutil.ZeroReader{}, remotes[0])}
-			},
+			generate: singlePeerGenerator(unixfsSpec_largeShardedFileZeroed),
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				wantCids := []cid.Cid{
 					srcData.Root, // "/""
@@ -693,9 +710,7 @@ func TestHttpFetch(t *testing.T) {
 					}, ", "),
 				)
 			},
-			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-				return []unixfs.DirEntry{largeShardedFile(t, trustlesstestutil.ZeroReader{}, remotes[0])}
-			},
+			generate: singlePeerGenerator(unixfsSpec_largeShardedFileZeroed),
 			validateBodies: []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {
 				store := &trustlesstestutil.CorrectedMemStore{ParentStore: &memstore.Store{
 					Bag: make(map[string][]byte),
@@ -775,7 +790,7 @@ func TestHttpFetch(t *testing.T) {
 		{
 			name:        "with access token - rejects anonymous requests",
 			httpRemotes: 1,
-			generate:    generateSmallFile(),
+			generate:    singlePeerGenerator(unixfsSpec_smallFile),
 			modifyHttpConfig: func(cfg httpserver.HttpServerConfig) httpserver.HttpServerConfig {
 				cfg.AccessToken = "super-secret"
 				return cfg
@@ -785,7 +800,7 @@ func TestHttpFetch(t *testing.T) {
 		{
 			name:        "with access token - allows requests with authorization header",
 			httpRemotes: 1,
-			generate:    generateSmallFile(),
+			generate:    singlePeerGenerator(unixfsSpec_smallFile),
 			modifyHttpConfig: func(cfg httpserver.HttpServerConfig) httpserver.HttpServerConfig {
 				cfg.AccessToken = "super-secret"
 				return cfg
@@ -987,8 +1002,7 @@ func TestHttpFetch(t *testing.T) {
 					verifyHeaders(t, resp, srcData[i].Root, paths[i], testCase.expectNoDups)
 
 					if DEBUG_DATA {
-						t.Logf("Creating CAR %s in temp dir", fmt.Sprintf("%s_received%d.car", testCase.name, i))
-						dstf, err := os.CreateTemp("", fmt.Sprintf("%s_received%d.car", testCase.name, i))
+						dstf, err := os.CreateTemp("", fmt.Sprintf("%s_received%d.car", strings.Replace(testCase.name, "/", "__", -1), i))
 						req.NoError(err)
 						t.Logf("Writing received data to CAR @ %s", dstf.Name())
 						_, err = dstf.Write(resp.Body)
@@ -1177,7 +1191,7 @@ func debugRemotes(t *testing.T, ctx context.Context, name string, remotes []test
 	carFiles := make([]*os.File, 0)
 	for ii, r := range remotes {
 		func(ii int, r testpeer.TestPeer) {
-			carFile, err := os.CreateTemp("", fmt.Sprintf("%s_remote%d.car", name, ii))
+			carFile, err := os.CreateTemp("", fmt.Sprintf("%s_remote%d.car", strings.Replace(name, "/", "__", -1), ii))
 			require.NoError(t, err)
 			t.Logf("Writing source data to CAR @ %s", carFile.Name())
 			carFiles = append(carFiles, carFile)
@@ -1232,74 +1246,41 @@ func readAllBody(t *testing.T, r io.Reader, expectError string) []byte {
 	return buf.Bytes()
 }
 
-func smallFile(t *testing.T, rndReader io.Reader, remote testpeer.TestPeer) unixfs.DirEntry {
-	return unixfs.GenerateFile(t, remote.LinkSystem, rndReader, 1024)
+// wrapSpec wraps the given spec in a directory structure that has a
+// subdirectory before and after the subdirectory we want to path through at
+// each level, according to wrapPath. Tests should be able to ignore the
+// extraneous content generated by this function's spec.
+func wrapSpec(spec string) string {
+	return `dir(
+		dir{name:"!before"}(~10*file:~1k),dir{name:"want2"}(
+			dir{name:"!before"}(~10*file:~2k),dir{name:"want1"}(
+				dir{name:"!before"}(~10*file:~1k),dir{name:"want0"}(
+					dir{name:"!before"}(~10*file:~100),` + spec + `,dir{name:"~after"}(~10*file:~100)),
+				dir{name:"~after"}(~10*file:~2kb)),
+			dir{name:"~after"}(~10*file:~1kb)),
+		dir{name:"~after"}(~10*file:~2kb))`
 }
 
-func generateSmallFile() generateFn {
+// a utility function where a test only involves a single peer
+func singlePeerGenerator(spec string) generateFn {
 	return func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-		return []unixfs.DirEntry{smallFile(t, rndReader, remotes[0])}
+		return []unixfs.DirEntry{generateFor(t, spec, rndReader, *remotes[0].LinkSystem)}
 	}
 }
 
-func largeShardedFile(t *testing.T, rndReader io.Reader, remote testpeer.TestPeer) unixfs.DirEntry {
-	return unixfs.GenerateFile(t, remote.LinkSystem, rndReader, 4<<20)
-}
-
-func generateLargeShardedFile() generateFn {
-	return func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-		return []unixfs.DirEntry{largeShardedFile(t, rndReader, remotes[0])}
+// given a spec, generate that UnixFS content into the given LinkSystem.
+func generateFor(t *testing.T, spec string, rndReader io.Reader, lsys linking.LinkSystem) unixfs.DirEntry {
+	ss := strings.Split(spec, "\n")
+	for i, s := range ss {
+		ss[i] = strings.TrimSpace(s)
 	}
-}
-
-func largeShardedFileWrapped(t *testing.T, rndReader io.Reader, remote testpeer.TestPeer) unixfs.DirEntry {
-	return unixfs.WrapContent(t, rndReader, remote.LinkSystem, unixfs.GenerateFile(t, remote.LinkSystem, rndReader, 4<<20), wrapPath, false)
-}
-
-func generateLargeShardedFileWrapped() generateFn {
-	return func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-		return []unixfs.DirEntry{largeShardedFileWrapped(t, rndReader, remotes[0])}
-	}
-}
-
-func largeDirectory(t *testing.T, rndReader io.Reader, remote testpeer.TestPeer) unixfs.DirEntry {
-	return unixfs.GenerateDirectory(t, remote.LinkSystem, rndReader, 16<<20, false)
-}
-
-func generateLargeDirectory() generateFn {
-	return func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-		return []unixfs.DirEntry{largeDirectory(t, rndReader, remotes[0])}
-	}
-}
-
-func largeDirectoryWrapped(t *testing.T, rndReader io.Reader, remote testpeer.TestPeer) unixfs.DirEntry {
-	return unixfs.WrapContent(t, rndReader, remote.LinkSystem, unixfs.GenerateDirectory(t, remote.LinkSystem, rndReader, 16<<20, false), wrapPath, false)
-}
-
-func generateLargeDirectoryWrapped() generateFn {
-	return func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-		return []unixfs.DirEntry{largeDirectoryWrapped(t, rndReader, remotes[0])}
-	}
-}
-
-func largeShardedDirectory(t *testing.T, rndReader io.Reader, remote testpeer.TestPeer) unixfs.DirEntry {
-	return unixfs.GenerateDirectory(t, remote.LinkSystem, rndReader, 16<<20, true)
-}
-
-func generateLargeShardedDirectory() generateFn {
-	return func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-		return []unixfs.DirEntry{largeShardedDirectory(t, rndReader, remotes[0])}
-	}
-}
-
-func largeShardedDirectoryWrapped(t *testing.T, rndReader io.Reader, remote testpeer.TestPeer) unixfs.DirEntry {
-	return unixfs.WrapContent(t, rndReader, remote.LinkSystem, unixfs.GenerateDirectory(t, remote.LinkSystem, rndReader, 16<<20, true), wrapPath, false)
-}
-
-func generateLargeShardedDirectoryWrapped() generateFn {
-	return func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
-		return []unixfs.DirEntry{largeShardedDirectoryWrapped(t, rndReader, remotes[0])}
-	}
+	spec = strings.Join(ss, "")
+	entity, err := unixfsgen.Parse(spec)
+	require.NoError(t, err)
+	t.Logf("Generating: %s", entity.Describe(""))
+	rootEnt, err := entity.Generate(lsys, rndReader)
+	require.NoError(t, err)
+	return rootEnt
 }
 
 var validateFirstThreeBlocksOnly = []bodyValidator{func(t *testing.T, srcData unixfs.DirEntry, body []byte) {

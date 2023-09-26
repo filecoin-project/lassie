@@ -21,12 +21,13 @@ require (
 	github.com/ipfs/go-ipfs-exchange-interface v0.2.0
 	github.com/ipfs/go-ipld-format v0.6.0
 	github.com/ipfs/go-log/v2 v2.5.1
-	github.com/ipfs/go-unixfsnode v1.8.1
+	github.com/ipfs/go-unixfsnode v1.8.2-0.20230925043011-4ff13ddbce13
 	github.com/ipld/go-car/v2 v2.13.1
 	github.com/ipld/go-codec-dagpb v1.6.0
+	github.com/ipld/go-fixtureplate v0.0.0-20230926051342-86406c8117e3
 	github.com/ipld/go-ipld-prime v0.21.0
 	github.com/ipld/go-trustless-utils v0.3.0
-	github.com/ipld/ipld/specs v0.0.0-20230907004443-0e4ff95ff474
+	github.com/ipld/ipld/specs v0.0.0-20230925094718-e68d2f5e1efb
 	github.com/ipni/go-libipni v0.5.0
 	github.com/ipni/storetheindex v0.7.9-0.20230914224616-e6658bcf60c5
 	github.com/libp2p/go-libp2p v0.31.0
