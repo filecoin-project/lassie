@@ -1310,8 +1310,7 @@ var validatePathedFullContent = []bodyValidator{func(t *testing.T, srcData unixf
 	// validate we got the dag-scope entity form
 	validateCarBody(t, body, srcData.Root, wantCids, false)
 	// validate that we got the full depth form under the path
-	gotDir := CarToDirEntry(t, bytes.NewReader(body), srcData.Children[1].Children[1].Children[1].Root, true)
-	gotDir.Path = "want0"
+	gotDir := carToDirEntry(t, bytes.NewReader(body), srcData.Children[1].Children[1].Children[1].Root, wrapPath, true)
 	unixfs.CompareDirEntries(t, srcData.Children[1].Children[1].Children[1], gotDir)
 }}
 

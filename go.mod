@@ -21,7 +21,7 @@ require (
 	github.com/ipfs/go-ipfs-exchange-interface v0.2.0
 	github.com/ipfs/go-ipld-format v0.6.0
 	github.com/ipfs/go-log/v2 v2.5.1
-	github.com/ipfs/go-unixfsnode v1.8.2-0.20230925043011-4ff13ddbce13
+	github.com/ipfs/go-unixfsnode v1.8.2-0.20230926094609-262973f68de6
 	github.com/ipld/go-car/v2 v2.13.1
 	github.com/ipld/go-codec-dagpb v1.6.0
 	github.com/ipld/go-fixtureplate v0.0.0-20230926051342-86406c8117e3
