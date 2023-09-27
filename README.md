@@ -4,17 +4,17 @@
 
 ## Table of Contents
 
-- [Overview](#overview)
-- [Installation](#installation)
-- [Methods of Retrieval](#methods-of-retrieval)
-  - [Command Line Interface](#command-line-interface)
-    - [Extracting Content from a CAR](#extracting-content-from-a-car)
-    - [Fetch Example](#fetch-example)
-  - [HTTP API](#http-api)
-    - [Daemon Example](#daemon-example)
-  - [Golang Library](#golang-library)
-- [Contribute](#contribute)
-- [License](#license)
+* [Overview](#overview)
+* [Installation](#installation)
+* [Methods of Retrieval](#methods-of-retrieval)
+	* [Command Line Interface](#command-line-interface)
+		* [Extracting Content from a CAR](#extracting-content-from-a-car)
+		* [Fetch Example](#fetch-example)
+	* [HTTP API](#http-api)
+		* [Daemon Example](#daemon-example)
+	* [Golang Library](#golang-library)
+* [Contribute](#contribute)
+* [License](#license)
 
 ## Overview
 
@@ -61,6 +61,8 @@ $ lassie fetch [-o <output file>] [-t <timeout>] <CID>[/path/to/content]
 ```
 
 The `lassie fetch` command will return the content of the CID to a file in the current working directory by the name of `<CID>.car`. If the `-o` output flag is used, the content will be written to the specified file. If the `-t` timeout flag is used, the timeout will be set to the specified value. The default timeout is 20 seconds.
+
+`fetch` will also take as input [IPFS Trustless Gateway](https://specs.ipfs.tech/http-gateways/trustless-gateway/) style paths. If the CID is prefixed with `/ipfs/`, the remainder will be interpreted as a URL query, accepting query parameters that the Trustless Gateway spec accepts, including `dag-scope=`, `entity-bytes=`. For example, `lassie fetch '/ipfs/<CID>/path/to/content?dag-scope=all'` will fetch the CID, the blocks required to navigate the path, and all the content at the terminus of the path.
 
 More information about available flags can be found by running `lassie fetch --help`.
 

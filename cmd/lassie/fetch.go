@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"strings"
 
 	"github.com/dustin/go-humanize"
@@ -18,6 +19,7 @@ import (
 	"github.com/ipld/go-ipld-prime/datamodel"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	trustlessutils "github.com/ipld/go-trustless-utils"
+	trustlesshttp "github.com/ipld/go-trustless-utils/http"
 	"github.com/urfave/cli/v2"
 )
 
@@ -96,18 +98,32 @@ func fetchAction(cctx *cli.Context) error {
 	msgWriter := cctx.App.ErrWriter
 	dataWriter := cctx.App.Writer
 
-	dagScope := cctx.String("dag-scope")
-	entityBytes := cctx.String("entity-bytes")
-	tempDir := cctx.String("tempdir")
-	progress := cctx.Bool("progress")
-
-	rootCid, path, err := parseCidPath(cctx.Args().Get(0))
+	root, path, scope, byteRange, err := parseCidPath(cctx.Args().Get(0))
 	if err != nil {
 		return err
 	}
 
+	if cctx.IsSet("dag-scope") {
+		if scope, err = trustlessutils.ParseDagScope(cctx.String("dag-scope")); err != nil {
+			return err
+		}
+	}
+
+	if cctx.IsSet("entity-bytes") {
+		if entityBytes, err := trustlessutils.ParseByteRange(cctx.String("entity-bytes")); err != nil {
+			return err
+		} else if entityBytes.IsDefault() {
+			byteRange = nil
+		} else {
+			byteRange = &entityBytes
+		}
+	}
+
+	tempDir := cctx.String("tempdir")
+	progress := cctx.Bool("progress")
+
 	output := cctx.String("output")
-	outfile := fmt.Sprintf("%s.car", rootCid)
+	outfile := fmt.Sprintf("%s.car", root.String())
 	if output != "" {
 		outfile = output
 	}
@@ -128,10 +144,10 @@ func fetchAction(cctx *cli.Context) error {
 		eventRecorderCfg,
 		msgWriter,
 		dataWriter,
-		rootCid,
+		root,
 		path,
-		dagScope,
-		entityBytes,
+		scope,
+		byteRange,
 		tempDir,
 		progress,
 		outfile,
@@ -143,14 +159,54 @@ func fetchAction(cctx *cli.Context) error {
 	return nil
 }
 
-func parseCidPath(cpath string) (cid.Cid, string, error) {
-	cstr := strings.Split(cpath, "/")[0]
-	path := datamodel.ParsePath(strings.TrimPrefix(cpath, cstr))
-	rootCid, err := cid.Parse(cstr)
-	if err != nil {
-		return cid.Undef, "", err
+func parseCidPath(spec string) (
+	root cid.Cid,
+	path datamodel.Path,
+	scope trustlessutils.DagScope,
+	byteRange *trustlessutils.ByteRange,
+	err error,
+) {
+	scope = trustlessutils.DagScopeAll // default
+
+	if !strings.HasPrefix(spec, "/ipfs/") {
+		cstr := strings.Split(spec, "/")[0]
+		path = datamodel.ParsePath(strings.TrimPrefix(spec, cstr))
+		if root, err = cid.Parse(cstr); err != nil {
+			return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, err
+		}
+		return root, path, scope, byteRange, err
+	} else {
+		specParts := strings.Split(spec, "?")
+		spec = specParts[0]
+
+		if root, path, err = trustlesshttp.ParseUrlPath(spec); err != nil {
+			return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, err
+		}
+
+		switch len(specParts) {
+		case 1:
+		case 2:
+			query, err := url.ParseQuery(specParts[1])
+			if err != nil {
+				return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, err
+			}
+			scope, err = trustlessutils.ParseDagScope(query.Get("dag-scope"))
+			if err != nil {
+				return root, path, scope, byteRange, err
+			}
+			if query.Get("entity-bytes") != "" {
+				br, err := trustlessutils.ParseByteRange(query.Get("entity-bytes"))
+				if err != nil {
+					return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, err
+				}
+				byteRange = &br
+			}
+		default:
+			return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, fmt.Errorf("invalid query: %s", spec)
+		}
+
+		return root, path, scope, byteRange, nil
 	}
-	return rootCid, path.String(), nil
 }
 
 type progressPrinter struct {
@@ -207,9 +263,9 @@ type fetchRunFunc func(
 	msgWriter io.Writer,
 	dataWriter io.Writer,
 	rootCid cid.Cid,
-	path string,
-	dagScope string,
-	entityBytes string,
+	path datamodel.Path,
+	dagScope trustlessutils.DagScope,
+	entityBytes *trustlessutils.ByteRange,
 	tempDir string,
 	progress bool,
 	outfile string,
@@ -227,9 +283,9 @@ func defaultFetchRun(
 	msgWriter io.Writer,
 	dataWriter io.Writer,
 	rootCid cid.Cid,
-	path string,
-	dagScope string,
-	entityBytes string,
+	path datamodel.Path,
+	dagScope trustlessutils.DagScope,
+	entityBytes *trustlessutils.ByteRange,
 	tempDir string,
 	progress bool,
 	outfile string,
@@ -244,7 +300,7 @@ func defaultFetchRun(
 		setupLassieEventRecorder(ctx, eventRecorderCfg, lassie)
 	}
 
-	printPath := path
+	printPath := path.String()
 	if printPath != "" {
 		printPath = "/" + printPath
 	}
@@ -290,12 +346,7 @@ func defaultFetchRun(
 		}
 	}, false)
 
-	byteRange, _ := trustlessutils.ParseByteRange(entityBytes)
-	var br *trustlessutils.ByteRange
-	if !byteRange.IsDefault() {
-		br = &byteRange
-	}
-	request, err := types.NewRequestForPath(carStore, rootCid, path, trustlessutils.DagScope(dagScope), br)
+	request, err := types.NewRequestForPath(carStore, rootCid, path.String(), dagScope, entityBytes)
 	if err != nil {
 		return err
 	}
