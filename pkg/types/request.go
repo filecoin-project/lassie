@@ -80,8 +80,13 @@ type RetrievalRequest struct {
 	FixedPeers []peer.AddrInfo
 }
 
-// NewRequestForPath creates a new RetrievalRequest from the provided parameters
-// and assigns a new RetrievalID to it.
+// NewRequestForPath creates a new RetrievalRequest for the given root CID as
+// the head of the graph to fetch, the path within that graph to fetch, the
+// scope that dictates the depth of fetching withint he graph and the byte
+// range to fetch if intending to fetch part of a large UnixFS file.
+//
+// The byteRange parameter should be left nil if this is not a request for a
+// partial UnixFS file; and if it is set, the dagScope should be DagScopeEntity.
 //
 // The LinkSystem is configured to use the provided store for both reading
 // and writing and it is explicitly set to be trusted (i.e. it will not
@@ -89,7 +94,7 @@ type RetrievalRequest struct {
 // request.LinkSystem.TrustedStore should be set to false after this call.
 func NewRequestForPath(
 	store ipldstorage.WritableStorage,
-	cid cid.Cid,
+	rootCid cid.Cid,
 	path string,
 	dagScope trustlessutils.DagScope,
 	byteRange *trustlessutils.ByteRange,
@@ -110,7 +115,7 @@ func NewRequestForPath(
 
 	return RetrievalRequest{
 		Request: trustlessutils.Request{
-			Root:       cid,
+			Root:       rootCid,
 			Path:       path,
 			Scope:      dagScope,
 			Bytes:      byteRange,
