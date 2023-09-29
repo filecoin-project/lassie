@@ -1,8 +1,10 @@
 package types
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/google/uuid"
@@ -12,7 +14,9 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	ipldstorage "github.com/ipld/go-ipld-prime/storage"
 	trustlessutils "github.com/ipld/go-trustless-utils"
+	"github.com/ipni/go-libipni/maurl"
 	"github.com/libp2p/go-libp2p/core/peer"
+	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multicodec"
 )
 
@@ -230,13 +234,70 @@ func ParseProviderStrings(v string) ([]peer.AddrInfo, error) {
 	vs := strings.Split(v, ",")
 	providerAddrInfos := make([]peer.AddrInfo, 0, len(vs))
 	for _, v := range vs {
-		providerAddrInfo, err := peer.AddrInfoFromString(v)
-		if err != nil {
-			return nil, err
+		var maddr ma.Multiaddr
+
+		// http:// style provider has been specified, parse it as a URL and
+		// transform into a multiaddr with made-up peer ID
+		if strings.HasPrefix(v, "http://") || strings.HasPrefix(v, "https://") {
+			u, err := url.Parse(v)
+			if err != nil {
+				return nil, err
+			}
+			if u.Path != "" {
+				return nil, fmt.Errorf("invalid provider URL, paths not supported: %s", v)
+			}
+			maddr, err = maurl.FromURL(u)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			var err error
+			maddr, err = ma.NewMultiaddr(v)
+			if err != nil {
+				return nil, err
+			}
 		}
+		transport, id := peer.SplitAddr(maddr)
+		if transport == nil {
+			return nil, fmt.Errorf("%w: missing transport", peer.ErrInvalidAddr)
+		}
+		if id == "" {
+			for _, proto := range transport.Protocols() {
+				if proto.Name == "http" || proto.Name == "https" {
+					id = nextUnknownPeerID()
+					break
+				}
+			}
+			if id == "" {
+				return nil, fmt.Errorf("%w: missing peer id", peer.ErrInvalidAddr)
+			}
+		}
+		providerAddrInfo := &peer.AddrInfo{ID: id, Addrs: []ma.Multiaddr{transport}}
 		providerAddrInfos = append(providerAddrInfos, *providerAddrInfo)
 	}
 	return providerAddrInfos, nil
+}
+
+// Make a new random, but valid peer ID for a provider we don't have an ID for
+// (i.e. an HTTP provider the user has specified without a peer ID). Ideally
+// it's human-identifiable as made-up, so we generate one that has "unknown"
+// near the beginning of the string using a fixed prefix, with random trailing
+// bytes.
+//
+// This is only useful where the peer ID doesn't matter, specifically HTTP
+// retrievals where there is limited negotiation. But we still want a peer ID
+// because it's assumed through much of Lassie.
+
+const unknownPeerID = "\x00\x16v\xa5\x9c\xd4\"="
+
+func nextUnknownPeerID() peer.ID {
+	b := make([]byte, 16)
+	rand.Read(b)
+	return peer.ID(append([]byte(unknownPeerID), b...))
+}
+
+func IsUnknownPeerID(p peer.ID) bool {
+	return p[0:len(unknownPeerID)] == unknownPeerID
 }
 
 func ToProviderString(ai []peer.AddrInfo) (string, error) {

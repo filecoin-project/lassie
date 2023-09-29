@@ -122,8 +122,11 @@ var FlagAllowProviders = &cli.StringFlag{
 	Name:        "providers",
 	Aliases:     []string{"provider"},
 	DefaultText: "Providers will be discovered automatically",
-	Usage:       "Addresses of providers, including peer IDs, to use instead of automatic discovery, seperated by a comma. All protocols will be attempted when connecting to these providers. Example: /ip4/1.2.3.4/tcp/1234/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4",
-	EnvVars:     []string{"LASSIE_ALLOW_PROVIDERS"},
+	Usage: "Addresses of providers, including peer IDs, to use instead of " +
+		"automatic discovery, seperated by a comma. Peer ID is optional for HTTP " +
+		"providers, which may also be specified using URL form. Example: " +
+		"/ip4/1.2.3.4/tcp/1234/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4,http://ipfs.io",
+	EnvVars: []string{"LASSIE_ALLOW_PROVIDERS"},
 	Action: func(cctx *cli.Context, v string) error {
 		// Do nothing if given an empty string
 		if v == "" {
