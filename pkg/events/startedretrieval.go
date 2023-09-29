@@ -23,7 +23,7 @@ type StartedRetrievalEvent struct {
 func (e StartedRetrievalEvent) Code() types.EventCode     { return types.StartedRetrievalCode }
 func (e StartedRetrievalEvent) Protocol() multicodec.Code { return e.protocol }
 func (e StartedRetrievalEvent) String() string {
-	return fmt.Sprintf("StartedRetrievalEvent<%s, %s, %s, %s, %s>", e.eventTime, e.retrievalId, e.payloadCid, e.providerId, e.protocol)
+	return fmt.Sprintf("StartedRetrievalEvent<%s, %s, %s, %s, %s>", e.eventTime, e.retrievalId, e.rootCid, e.providerId, e.protocol)
 }
 
 func StartedRetrieval(at time.Time, retrievalId types.RetrievalID, candidate types.RetrievalCandidate, protocol multicodec.Code) StartedRetrievalEvent {

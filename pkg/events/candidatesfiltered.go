@@ -25,11 +25,11 @@ func (e CandidatesFilteredEvent) Code() types.EventCode                  { retur
 func (e CandidatesFilteredEvent) Candidates() []types.RetrievalCandidate { return e.candidates }
 func (e CandidatesFilteredEvent) Protocols() []multicodec.Code           { return e.protocols }
 func (e CandidatesFilteredEvent) String() string {
-	return fmt.Sprintf("CandidatesFilteredEvent<%s, %s, %s, %d>", e.eventTime, e.retrievalId, e.payloadCid, len(e.candidates))
+	return fmt.Sprintf("CandidatesFilteredEvent<%s, %s, %s, %d>", e.eventTime, e.retrievalId, e.rootCid, len(e.candidates))
 }
 
-func CandidatesFiltered(at time.Time, retrievalId types.RetrievalID, payloadCid cid.Cid, candidates []types.RetrievalCandidate) CandidatesFilteredEvent {
+func CandidatesFiltered(at time.Time, retrievalId types.RetrievalID, rootCid cid.Cid, candidates []types.RetrievalCandidate) CandidatesFilteredEvent {
 	c := make([]types.RetrievalCandidate, len(candidates))
 	copy(c, candidates)
-	return CandidatesFilteredEvent{retrievalEvent{at, retrievalId, payloadCid}, c, collectProtocols(c)}
+	return CandidatesFilteredEvent{retrievalEvent{at, retrievalId, rootCid}, c, collectProtocols(c)}
 }

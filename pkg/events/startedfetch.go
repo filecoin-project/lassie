@@ -25,7 +25,7 @@ func (e StartedFetchEvent) Code() types.EventCode        { return types.StartedF
 func (e StartedFetchEvent) UrlPath() string              { return e.urlPath }
 func (e StartedFetchEvent) Protocols() []multicodec.Code { return e.supportedProtocols }
 func (e StartedFetchEvent) String() string {
-	return fmt.Sprintf("StartedFetchEvent<%s, %s, %s>", e.eventTime, e.retrievalId, e.payloadCid)
+	return fmt.Sprintf("StartedFetchEvent<%s, %s, %s>", e.eventTime, e.retrievalId, e.rootCid)
 }
 
 func StartedFetch(at time.Time, retrievalId types.RetrievalID, rootCid cid.Cid, urlPath string, supportedProtocols ...multicodec.Code) StartedFetchEvent {

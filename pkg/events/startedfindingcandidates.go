@@ -19,9 +19,9 @@ func (e StartedFindingCandidatesEvent) Code() types.EventCode {
 	return types.StartedFindingCandidatesCode
 }
 func (e StartedFindingCandidatesEvent) String() string {
-	return fmt.Sprintf("StartedFindingCandidatesEvent<%s, %s, %s>", e.eventTime, e.retrievalId, e.payloadCid)
+	return fmt.Sprintf("StartedFindingCandidatesEvent<%s, %s, %s>", e.eventTime, e.retrievalId, e.rootCid)
 }
 
-func StartedFindingCandidates(at time.Time, retrievalId types.RetrievalID, payloadCid cid.Cid) StartedFindingCandidatesEvent {
-	return StartedFindingCandidatesEvent{retrievalEvent{at, retrievalId, payloadCid}}
+func StartedFindingCandidates(at time.Time, retrievalId types.RetrievalID, rootCid cid.Cid) StartedFindingCandidatesEvent {
+	return StartedFindingCandidatesEvent{retrievalEvent{at, retrievalId, rootCid}}
 }
