@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/filecoin-project/lassie/pkg/heyfil"
 	"github.com/filecoin-project/lassie/pkg/lassie"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-log/v2"
@@ -122,10 +123,13 @@ var FlagAllowProviders = &cli.StringFlag{
 	Name:        "providers",
 	Aliases:     []string{"provider"},
 	DefaultText: "Providers will be discovered automatically",
-	Usage: "Addresses of providers, including peer IDs, to use instead of " +
-		"automatic discovery, seperated by a comma. Peer ID is optional for HTTP " +
-		"providers, which may also be specified using URL form. Example: " +
-		"/ip4/1.2.3.4/tcp/1234/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4,http://ipfs.io",
+	Usage: "Comma-separated addresses of providers, to use instead of " +
+		"automatic discovery. Accepts full multiaddrs including peer ID, " +
+		"multiaddrs without peer ID and url-style addresses for HTTP, Filecoin " +
+		"SP f0 actor addresses, and Filecoin peer IDs. Lassie will attempt to " +
+		"connect to the peer(s). " +
+		"Example: " +
+		"/ip4/1.2.3.4/tcp/1234/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4,http://ipfs.io,f01234",
 	EnvVars: []string{"LASSIE_ALLOW_PROVIDERS"},
 	Action: func(cctx *cli.Context, v string) error {
 		// Do nothing if given an empty string
@@ -133,8 +137,13 @@ var FlagAllowProviders = &cli.StringFlag{
 			return nil
 		}
 
-		var err error
-		fetchProviderAddrInfos, err = types.ParseProviderStrings(v)
+		// in case we have been given peer IDs or filecoin actor addresses we can
+		// look-up with heyfil, do it, otherwise this is a pass-through
+		trans, err := heyfil.TranslateAll(strings.Split(v, ","))
+		if err != nil {
+			return err
+		}
+		fetchProviderAddrInfos, err = types.ParseProviderStrings(strings.Join(trans, ","))
 		return err
 	},
 }
