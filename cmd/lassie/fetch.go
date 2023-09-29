@@ -92,7 +92,11 @@ var fetchCmd = &cli.Command{
 
 func fetchAction(cctx *cli.Context) error {
 	if cctx.Args().Len() != 1 {
-		return fmt.Errorf("usage: lassie fetch [-o <CAR file>] [-t <timeout>] <CID>[/path/to/content]")
+		// "help" becomes a subcommand, clear it to deal with a urfave/cli bug
+		// Ref: https://github.com/urfave/cli/blob/v2.25.7/help.go#L253-L255
+		cctx.Command.Subcommands = nil
+		cli.ShowCommandHelpAndExit(cctx, "fetch", 0)
+		return nil
 	}
 
 	msgWriter := cctx.App.ErrWriter
