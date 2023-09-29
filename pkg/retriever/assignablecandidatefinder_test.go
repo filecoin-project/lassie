@@ -174,7 +174,7 @@ func TestAssignableCandidateFinder(t *testing.T) {
 			}
 			receivedEvents := make(map[cid.Cid][]types.RetrievalEvent)
 			retrievalCollector := func(evt types.RetrievalEvent) {
-				receivedEvents[evt.PayloadCid()] = append(receivedEvents[evt.PayloadCid()], evt)
+				receivedEvents[evt.RootCid()] = append(receivedEvents[evt.RootCid()], evt)
 			}
 			retrievalCandidateFinder := retriever.NewAssignableCandidateFinder(candidateFinder, isAcceptableStorageProvider)
 			rid1, err := types.NewRetrievalID()

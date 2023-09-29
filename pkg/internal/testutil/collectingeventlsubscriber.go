@@ -99,7 +99,7 @@ func VerifyContainsCollectedEvent(t *testing.T, afterStart time.Duration, expect
 func VerifyCollectedEvent(t *testing.T, actual types.RetrievalEvent, expected types.RetrievalEvent) {
 	require.Equal(t, expected.Code(), actual.Code(), "event code")
 	require.Equal(t, expected.RetrievalId(), actual.RetrievalId(), fmt.Sprintf("retrieval id for %s", expected.Code()))
-	require.Equal(t, expected.PayloadCid(), actual.PayloadCid(), fmt.Sprintf("cid for %s", expected.Code()))
+	require.Equal(t, expected.RootCid(), actual.RootCid(), fmt.Sprintf("cid for %s", expected.Code()))
 	require.Equal(t, expected.Time(), actual.Time(), fmt.Sprintf("time for %s", expected.Code()))
 
 	if asp, ok := actual.(events.EventWithProviderID); ok {

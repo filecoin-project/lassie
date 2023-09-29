@@ -12,12 +12,12 @@ import (
 type retrievalEvent struct {
 	eventTime   time.Time
 	retrievalId types.RetrievalID
-	payloadCid  cid.Cid
+	rootCid     cid.Cid
 }
 
 func (r retrievalEvent) Time() time.Time                { return r.eventTime }
 func (r retrievalEvent) RetrievalId() types.RetrievalID { return r.retrievalId }
-func (r retrievalEvent) PayloadCid() cid.Cid            { return r.payloadCid }
+func (r retrievalEvent) RootCid() cid.Cid               { return r.rootCid }
 
 type providerRetrievalEvent struct {
 	retrievalEvent

@@ -25,7 +25,7 @@ func (e BlockReceivedEvent) Code() types.EventCode     { return types.BlockRecei
 func (e BlockReceivedEvent) ByteCount() uint64         { return e.byteCount }
 func (e BlockReceivedEvent) Protocol() multicodec.Code { return e.protocol }
 func (e BlockReceivedEvent) String() string {
-	return fmt.Sprintf("BlockReceivedEvent<%s, %s, %s, %s, %s, %d>", e.eventTime, e.retrievalId, e.payloadCid, e.providerId, e.protocol, e.byteCount)
+	return fmt.Sprintf("BlockReceivedEvent<%s, %s, %s, %s, %s, %d>", e.eventTime, e.retrievalId, e.rootCid, e.providerId, e.protocol, e.byteCount)
 }
 
 func BlockReceived(at time.Time, retrievalId types.RetrievalID, candidate types.RetrievalCandidate, protocol multicodec.Code, byteCount uint64) BlockReceivedEvent {

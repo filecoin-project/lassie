@@ -237,7 +237,7 @@ func handleFailureEvent(
 	logger.Warnf(
 		"Failed to retrieve from miner %s for %s: %s",
 		event.ProviderId(),
-		event.PayloadCid(),
+		event.RootCid(),
 		event.ErrorMessage(),
 	)
 }
@@ -274,7 +274,7 @@ func logEvent(event types.RetrievalEvent) {
 		}
 	}
 	logadd("code", event.Code(),
-		"payloadCid", event.PayloadCid(),
+		"rootCid", event.RootCid(),
 		"storageProviderId", events.Identifier(event))
 	switch tevent := event.(type) {
 	case events.EventWithCandidates:

@@ -22,7 +22,7 @@ func (e GraphsyncAcceptedEvent) Protocol() multicodec.Code {
 	return multicodec.TransportGraphsyncFilecoinv1
 }
 func (e GraphsyncAcceptedEvent) String() string {
-	return fmt.Sprintf("GraphsyncAcceptedEvent<%s, %s, %s, %s>", e.eventTime, e.retrievalId, e.payloadCid, e.providerId)
+	return fmt.Sprintf("GraphsyncAcceptedEvent<%s, %s, %s, %s>", e.eventTime, e.retrievalId, e.rootCid, e.providerId)
 }
 
 func Accepted(at time.Time, retrievalId types.RetrievalID, candidate types.RetrievalCandidate) GraphsyncAcceptedEvent {

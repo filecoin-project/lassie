@@ -145,7 +145,7 @@ func (a *aggregateEventRecorder) ingestEvents() {
 					candidatesFiltered:       0,
 					firstByteTime:            time.Time{},
 					spId:                     "",
-					rootCid:                  startedEvent.PayloadCid().String(),
+					rootCid:                  startedEvent.RootCid().String(),
 					urlPath:                  startedEvent.UrlPath(),
 					success:                  false,
 					bandwidth:                0,

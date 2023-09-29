@@ -393,7 +393,7 @@ func TestBitswapRetriever(t *testing.T) {
 					bsr := retriever.NewBitswapRetrieverFromDeps(ctx, bsrv, mir, mipc, mbs, testCase.cfg, clock, awaitReceivedCandidates)
 					receivedEvents := make(map[cid.Cid][]types.RetrievalEvent)
 					retrievalCollector := func(evt types.RetrievalEvent) {
-						receivedEvents[evt.PayloadCid()] = append(receivedEvents[evt.PayloadCid()], evt)
+						receivedEvents[evt.RootCid()] = append(receivedEvents[evt.RootCid()], evt)
 					}
 
 					// retrieve

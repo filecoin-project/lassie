@@ -221,7 +221,7 @@ type progressPrinter struct {
 func (pp *progressPrinter) subscriber(event types.RetrievalEvent) {
 	switch ret := event.(type) {
 	case events.StartedFindingCandidatesEvent:
-		fmt.Fprintf(pp.writer, "\rQuerying indexer for %s...\n", ret.PayloadCid())
+		fmt.Fprintf(pp.writer, "\rQuerying indexer for %s...\n", ret.RootCid())
 	case events.StartedRetrievalEvent:
 		fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", events.Identifier(ret), ret.Code())
 	case events.ConnectedToProviderEvent:

@@ -18,7 +18,7 @@ type FinishedEvent struct {
 
 func (e FinishedEvent) Code() types.EventCode { return types.FinishedCode }
 func (e FinishedEvent) String() string {
-	return fmt.Sprintf("FinishedEvent<%s, %s, %s, %s>", e.eventTime, e.retrievalId, e.payloadCid, e.providerId)
+	return fmt.Sprintf("FinishedEvent<%s, %s, %s, %s>", e.eventTime, e.retrievalId, e.rootCid, e.providerId)
 }
 
 func Finished(at time.Time, retrievalId types.RetrievalID, candidate types.RetrievalCandidate) FinishedEvent {

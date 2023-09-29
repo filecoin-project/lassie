@@ -21,7 +21,7 @@ type ConnectedToProviderEvent struct {
 func (e ConnectedToProviderEvent) Code() types.EventCode     { return types.ConnectedToProviderCode }
 func (e ConnectedToProviderEvent) Protocol() multicodec.Code { return e.protocol }
 func (e ConnectedToProviderEvent) String() string {
-	return fmt.Sprintf("ConnectedToProviderEvent<%s, %s, %s, %s>", e.eventTime, e.retrievalId, e.payloadCid, e.providerId)
+	return fmt.Sprintf("ConnectedToProviderEvent<%s, %s, %s, %s>", e.eventTime, e.retrievalId, e.rootCid, e.providerId)
 }
 
 func ConnectedToProvider(at time.Time, retrievalId types.RetrievalID, candidate types.RetrievalCandidate, protocol multicodec.Code) ConnectedToProviderEvent {
