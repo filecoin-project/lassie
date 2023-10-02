@@ -280,9 +280,10 @@ func parseProtocols(req *http.Request) ([]multicodec.Code, error) {
 
 func parseProviders(req *http.Request) ([]peer.AddrInfo, error) {
 	if req.URL.Query().Has("providers") {
-		// in case we have been given peer IDs or filecoin actor addresses we can
-		// look-up with heyfil, do it, otherwise this is a pass-through
-		trans, err := heyfil.TranslateAll(strings.Split(req.URL.Query().Get("providers"), ","))
+		// in case we have been given filecoin actor addresses we can look them up
+		// with heyfil and translate to full multiaddrs, otherwise this is a
+		// pass-through
+		trans, err := heyfil.Heyfil{TranslateFaddr: true}.TranslateAll(strings.Split(req.URL.Query().Get("providers"), ","))
 		if err != nil {
 			return nil, err
 		}

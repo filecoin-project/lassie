@@ -34,12 +34,14 @@ func isFilecoinFaddr(s string) bool {
 	return false
 }
 
-func CanHeyfil(s string) bool {
-	return !strings.Contains(s, "/") && (isPeerId(s) || isFilecoinFaddr(s))
+type Heyfil struct {
+	Endpoint        string
+	TranslatePeerId bool
+	TranslateFaddr  bool
 }
 
-type Heyfil struct {
-	Endpoint string
+func (h Heyfil) CanTranslate(s string) bool {
+	return !strings.Contains(s, "/") && ((h.TranslatePeerId && isPeerId(s)) || (h.TranslateFaddr && isFilecoinFaddr(s)))
 }
 
 func (h Heyfil) endpoint() string {
@@ -51,27 +53,13 @@ func (h Heyfil) endpoint() string {
 
 // TranslateAll performs a Translate on all strings in the input slice. If none
 // of the strings can be translated, the input slice is returned as-is.
-func TranslateAll(ss []string) ([]string, error) {
-	return Heyfil{}.TranslateAll(ss)
-}
-
-// Translate will translate an input string to a full multiaddr if the string
-// appears to be a Filecoin SP actor address or a peer id using the Heyfil
-// service. If the input string is not a Filecoin SP actor address or a peer id,
-// it will be returned as-is.
-func Translate(s string) (string, error) {
-	return Heyfil{}.Translate(s)
-}
-
-// TranslateAll performs a Translate on all strings in the input slice. If none
-// of the strings can be translated, the input slice is returned as-is.
 func (h Heyfil) TranslateAll(ss []string) ([]string, error) {
 	translated := make([]string, len(ss))
 	var merr error
 	var translatedLk sync.Mutex
 	var wg sync.WaitGroup
 	for ii, s := range ss {
-		if !CanHeyfil(s) {
+		if !h.CanTranslate(s) {
 			translated[ii] = s
 			continue
 		}
@@ -102,7 +90,7 @@ func (h Heyfil) TranslateAll(ss []string) ([]string, error) {
 // service. If the input string is not a Filecoin SP actor address or a peer id,
 // it will be returned as-is.
 func (h Heyfil) Translate(s string) (string, error) {
-	if isPeerId(s) {
+	if h.TranslatePeerId && isPeerId(s) {
 		res, err := h.translatePeerId(s)
 		if err != nil {
 			logger.Debugw("failed to translate peer id", "input", s, "err", err)
@@ -110,7 +98,7 @@ func (h Heyfil) Translate(s string) (string, error) {
 		}
 		return res, nil
 	}
-	if isFilecoinFaddr(s) {
+	if h.TranslateFaddr && isFilecoinFaddr(s) {
 		res, err := h.translateFaddr(s)
 		if err != nil {
 			logger.Debugw("failed to translate faddr", "input", s, "err", err)
@@ -155,6 +143,11 @@ func (h Heyfil) translateFaddr(s string) (string, error) {
 	if len(addrs) == 0 {
 		return "", fmt.Errorf("expected addr_info.Addrs to be non-empty")
 	}
+	// TODO: only using the first multiaddr for now, this could be expanded to use
+	// all of them, either as separate addrs in the translated string, or, we could
+	// allow a translate that spits out a full AddrInfo that maps directly to the
+	// value here. TranslateAll([]string) ([]string, error) could become
+	// TranslateAll([]string) ([]AddrInfo, []string, error)?
 	addr, ok := addrs[0].(string)
 	if !ok {
 		return "", fmt.Errorf("expected addr_info.Addrs[0] to be string, got %T", addrs[0])
