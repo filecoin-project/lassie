@@ -125,10 +125,9 @@ var FlagAllowProviders = &cli.StringFlag{
 	DefaultText: "Providers will be discovered automatically",
 	Usage: "Comma-separated addresses of providers, to use instead of " +
 		"automatic discovery. Accepts full multiaddrs including peer ID, " +
-		"multiaddrs without peer ID and url-style addresses for HTTP, Filecoin " +
-		"SP f0 actor addresses, and Filecoin peer IDs. Lassie will attempt to " +
-		"connect to the peer(s). " +
-		"Example: " +
+		"multiaddrs without peer ID and url-style addresses for HTTP and " +
+		"Filecoin SP f0 actor addresses. Lassie will attempt to connect to the " +
+		"peer(s). Example: " +
 		"/ip4/1.2.3.4/tcp/1234/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4,http://ipfs.io,f01234",
 	EnvVars: []string{"LASSIE_ALLOW_PROVIDERS"},
 	Action: func(cctx *cli.Context, v string) error {
@@ -137,9 +136,10 @@ var FlagAllowProviders = &cli.StringFlag{
 			return nil
 		}
 
-		// in case we have been given peer IDs or filecoin actor addresses we can
-		// look-up with heyfil, do it, otherwise this is a pass-through
-		trans, err := heyfil.TranslateAll(strings.Split(v, ","))
+		// in case we have been given filecoin actor addresses we can look them up
+		// with heyfil and translate to full multiaddrs, otherwise this is a
+		// pass-through
+		trans, err := heyfil.Heyfil{TranslateFaddr: true}.TranslateAll(strings.Split(v, ","))
 		if err != nil {
 			return err
 		}
