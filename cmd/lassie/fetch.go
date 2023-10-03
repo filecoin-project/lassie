@@ -27,9 +27,10 @@ const stdoutFileString string = "-" // a string representing stdout
 
 var fetchFlags = []cli.Flag{
 	&cli.StringFlag{
-		Name:      "output",
-		Aliases:   []string{"o"},
-		Usage:     "the CAR file to write to, may be an existing or a new CAR, or use '-' to write to stdout",
+		Name:    "output",
+		Aliases: []string{"o"},
+		Usage: "the CAR file to write to, may be an existing or a new CAR, " +
+			"or use '-' to write to stdout",
 		TakesFile: true,
 	},
 	&cli.BoolFlag{
@@ -38,34 +39,43 @@ var fetchFlags = []cli.Flag{
 		Usage:   "print progress output",
 	},
 	&cli.StringFlag{
-		Name:        "dag-scope",
-		Usage:       "describes the fetch behavior at the end of the traversal path. Valid values include [all, entity, block].",
-		DefaultText: "defaults to all, the entire DAG at the end of the path will be fetched",
-		Value:       "all",
+		Name: "dag-scope",
+		Usage: "describes the fetch behavior at the end of the traversal " +
+			"path. Valid values include [all, entity, block].",
+		DefaultText: "defaults to all, the entire DAG at the end of the path will " +
+			"be fetched",
+		Value: "all",
 		Action: func(cctx *cli.Context, v string) error {
 			switch v {
 			case string(trustlessutils.DagScopeAll):
 			case string(trustlessutils.DagScopeEntity):
 			case string(trustlessutils.DagScopeBlock):
 			default:
-				return fmt.Errorf("invalid dag-scope parameter, must be of value [all, entity, block]")
+				return fmt.Errorf("invalid dag-scope parameter, must be of value " +
+					"[all, entity, block]")
 			}
-
 			return nil
 		},
 	},
 	&cli.StringFlag{
 		Name: "entity-bytes",
-		Usage: "describes the byte range to consider when selecting the blocks from a sharded file." +
-			" Valid values should be of the form from:to, where from and to are byte offsets and to may be '*'",
+		Usage: "describes the byte range to consider when selecting the blocks " +
+			"from a sharded file. Valid values should be of the form from:to, where " +
+			"from and to are byte offsets and to may be '*'",
 		DefaultText: "defaults to the entire file, 0:*",
 		Action: func(cctx *cli.Context, v string) error {
 			if _, err := trustlessutils.ParseByteRange(v); err != nil {
-				return fmt.Errorf("invalid entity-bytes parameter, must be of the form from:to," +
-					" where from and to are byte offsets and to may be '*'")
+				return fmt.Errorf("invalid entity-bytes parameter, must be of the " +
+					"form from:to, where from and to are byte offsets and to may be '*'")
 			}
 			return nil
 		},
+	},
+	&cli.BoolFlag{
+		Name: "duplicates",
+		Usage: "allow duplicate blocks to be written to the output CAR, which " +
+			"may be useful for streaming.",
+		Aliases: []string{"dups"},
 	},
 	FlagIPNIEndpoint,
 	FlagEventRecorderAuth,
@@ -102,7 +112,7 @@ func fetchAction(cctx *cli.Context) error {
 	msgWriter := cctx.App.ErrWriter
 	dataWriter := cctx.App.Writer
 
-	root, path, scope, byteRange, err := parseCidPath(cctx.Args().Get(0))
+	root, path, scope, byteRange, duplicates, err := parseCidPath(cctx.Args().Get(0))
 	if err != nil {
 		return err
 	}
@@ -121,6 +131,10 @@ func fetchAction(cctx *cli.Context) error {
 		} else {
 			byteRange = &entityBytes
 		}
+	}
+
+	if cctx.IsSet("duplicates") {
+		duplicates = cctx.Bool("duplicates")
 	}
 
 	tempDir := cctx.String("tempdir")
@@ -152,6 +166,7 @@ func fetchAction(cctx *cli.Context) error {
 		path,
 		scope,
 		byteRange,
+		duplicates,
 		tempDir,
 		progress,
 		outfile,
@@ -168,6 +183,7 @@ func parseCidPath(spec string) (
 	path datamodel.Path,
 	scope trustlessutils.DagScope,
 	byteRange *trustlessutils.ByteRange,
+	duplicates bool,
 	err error,
 ) {
 	scope = trustlessutils.DagScopeAll // default
@@ -176,15 +192,15 @@ func parseCidPath(spec string) (
 		cstr := strings.Split(spec, "/")[0]
 		path = datamodel.ParsePath(strings.TrimPrefix(spec, cstr))
 		if root, err = cid.Parse(cstr); err != nil {
-			return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, err
+			return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, false, err
 		}
-		return root, path, scope, byteRange, err
+		return root, path, scope, byteRange, duplicates, err
 	} else {
 		specParts := strings.Split(spec, "?")
 		spec = specParts[0]
 
 		if root, path, err = trustlesshttp.ParseUrlPath(spec); err != nil {
-			return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, err
+			return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, false, err
 		}
 
 		switch len(specParts) {
@@ -192,24 +208,25 @@ func parseCidPath(spec string) (
 		case 2:
 			query, err := url.ParseQuery(specParts[1])
 			if err != nil {
-				return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, err
+				return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, false, err
 			}
 			scope, err = trustlessutils.ParseDagScope(query.Get("dag-scope"))
 			if err != nil {
-				return root, path, scope, byteRange, err
+				return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, false, err
 			}
 			if query.Get("entity-bytes") != "" {
 				br, err := trustlessutils.ParseByteRange(query.Get("entity-bytes"))
 				if err != nil {
-					return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, err
+					return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, false, err
 				}
 				byteRange = &br
 			}
+			duplicates = query.Get("dups") == "y"
 		default:
-			return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, fmt.Errorf("invalid query: %s", spec)
+			return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, false, fmt.Errorf("invalid query: %s", spec)
 		}
 
-		return root, path, scope, byteRange, nil
+		return root, path, scope, byteRange, duplicates, nil
 	}
 }
 
@@ -270,6 +287,7 @@ type fetchRunFunc func(
 	path datamodel.Path,
 	dagScope trustlessutils.DagScope,
 	entityBytes *trustlessutils.ByteRange,
+	duplicates bool,
 	tempDir string,
 	progress bool,
 	outfile string,
@@ -290,6 +308,7 @@ func defaultFetchRun(
 	path datamodel.Path,
 	dagScope trustlessutils.DagScope,
 	entityBytes *trustlessutils.ByteRange,
+	duplicates bool,
 	tempDir string,
 	progress bool,
 	outfile string,
@@ -324,6 +343,7 @@ func defaultFetchRun(
 		car.WriteAsCarV1(true),
 		car.StoreIdentityCIDs(false),
 		car.UseWholeCIDs(false),
+		car.AllowDuplicatePuts(duplicates),
 	}
 	if outfile == stdoutFileString {
 		// we need the onlyWriter because stdout is presented as an os.File, and
@@ -361,6 +381,7 @@ func defaultFetchRun(
 	request.PreloadLinkSystem.SetReadStorage(preloadStore)
 	request.PreloadLinkSystem.SetWriteStorage(preloadStore)
 	request.PreloadLinkSystem.TrustedStorage = true
+	request.Duplicates = duplicates
 
 	stats, err := lassie.Fetch(ctx, request)
 	if err != nil {
