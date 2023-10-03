@@ -185,7 +185,7 @@ type AsyncRetrievalTask struct {
 	AsyncCandidateRetrieval CandidateRetrieval
 }
 
-// Run executes the asychronous retrieval task
+// Run executes the asynchronous retrieval task
 func (art AsyncRetrievalTask) Run() (*RetrievalStats, error) {
 	return art.AsyncCandidateRetrieval.RetrieveFromAsyncCandidates(art.Candidates)
 }

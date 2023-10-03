@@ -244,7 +244,7 @@ func NewTestHttpPeer(ctx context.Context, mn mocknet.Mocknet, p tnet.Identity, t
 		return TestPeer{}, err
 	}
 
-	// Create http multiaddr from random peer addr and add it to the peer's addreses
+	// Create http multiaddr from random peer addr and add it to the peer's addresses
 	httpAddr := p.Address().Encapsulate(ma.StringCast("/http"))
 	peer.Host.Peerstore().AddAddr(p.ID(), httpAddr, 10*time.Minute) // TODO: Look into ttl duration?
 

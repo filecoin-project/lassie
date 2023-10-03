@@ -50,7 +50,7 @@ type InProgressCids interface {
 }
 
 // BitswapRetriever uses bitswap to retrieve data
-// BitswapRetriever retieves using a combination of a go-bitswap client specially configured per retrieval,
+// BitswapRetriever retrieves using a combination of a go-bitswap client specially configured per retrieval,
 // underneath a blockservice and a go-fetcher Fetcher.
 // Selectors are used to travers the dag to make sure the CARs for bitswap match graphsync
 // Note: this is a tradeoff over go-merkledag for traversal, cause selector execution is slow. But the solution

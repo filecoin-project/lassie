@@ -56,7 +56,7 @@ type AggregateEvent struct {
 	TimeToFirstByte   string    `json:"timeToFirstByte,omitempty"`   // The time it took to receive the first byte in milliseconds
 	Bandwidth         uint64    `json:"bandwidth,omitempty"`         // The bandwidth of the retrieval in bytes per second
 	BytesTransferred  uint64    `json:"bytesTransferred,omitempty"`  // The total transmitted deal size
-	Success           bool      `json:"success"`                     // Wether or not the retreival ended with a success event
+	Success           bool      `json:"success"`                     // Whether or not the retrieval ended with a success event
 	StartTime         time.Time `json:"startTime"`                   // The time the retrieval started
 	EndTime           time.Time `json:"endTime"`                     // The time the retrieval ended
 
