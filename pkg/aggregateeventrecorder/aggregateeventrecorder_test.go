@@ -1,7 +1,7 @@
 package aggregateeventrecorder_test
 
 import (
-	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -24,17 +24,22 @@ import (
 )
 
 func TestAggregateEventRecorder(t *testing.T) {
-	var req datamodel.Node
-	var path string
-	receivedChan := make(chan bool, 1)
+	type gotReq struct {
+		path string
+		auth string
+		node datamodel.Node
+	}
 	authHeaderValue := "applesauce"
+	testPath := "/test-path/here"
+
+	receivedChan := make(chan gotReq, 1)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var err error
-		req, err = ipld.DecodeStreaming(r.Body, dagjson.Decode)
+		got, err := io.ReadAll(r.Body)
 		require.NoError(t, err)
-		path = r.URL.Path
-		require.Equal(t, "Basic applesauce", r.Header.Get("Authorization"))
-		receivedChan <- true
+		t.Logf("got: %s", string(got))
+		req, err := ipld.Decode(got, dagjson.Decode)
+		require.NoError(t, err)
+		receivedChan <- gotReq{r.URL.Path, r.Header.Get("Authorization"), req}
 	}))
 	defer ts.Close()
 
@@ -78,14 +83,17 @@ func TestAggregateEventRecorder(t *testing.T) {
 				subscriber(events.Success(clock.Now(), id, bitswapPeer, uint64(10000), 3030, 4*time.Second, multicodec.TransportBitswap))
 				subscriber(events.Finished(clock.Now(), id, bitswapPeer))
 
+				var req gotReq
 				select {
 				case <-ctx.Done():
 					t.Fatal(ctx.Err())
-				case <-receivedChan:
+				case req = <-receivedChan:
 				}
+				require.Equal(t, testPath, req.path)
+				require.Equal(t, "Basic applesauce", req.auth)
 
-				require.Equal(t, int64(1), req.Length())
-				eventList := verifyListNode(t, req, "events", 1)
+				require.Equal(t, int64(1), req.node.Length())
+				eventList := verifyListNode(t, req.node, "events", 1)
 				event := verifyListElement(t, eventList, 0)
 				// require.Equal(t, int64(18), event.Length())
 				verifyStringNode(t, event, "instanceId", "test-instance")
@@ -147,14 +155,17 @@ func TestAggregateEventRecorder(t *testing.T) {
 				subscriber(events.StartedFetch(clock.Now(), id, testCid1, "/applesauce"))
 				subscriber(events.Finished(clock.Now(), id, types.RetrievalCandidate{RootCid: testCid1}))
 
+				var req gotReq
 				select {
 				case <-ctx.Done():
 					t.Fatal(ctx.Err())
-				case <-receivedChan:
+				case req = <-receivedChan:
 				}
+				require.Equal(t, testPath, req.path)
+				require.Equal(t, "Basic applesauce", req.auth)
 
-				require.Equal(t, int64(1), req.Length())
-				eventList := verifyListNode(t, req, "events", 1)
+				require.Equal(t, int64(1), req.node.Length())
+				eventList := verifyListNode(t, req.node, "events", 1)
 				event := verifyListElement(t, eventList, 0)
 				require.Equal(t, int64(9), event.Length())
 				verifyStringNode(t, event, "instanceId", "test-instance")
@@ -176,15 +187,13 @@ func TestAggregateEventRecorder(t *testing.T) {
 				ctx,
 				aggregateeventrecorder.EventRecorderConfig{
 					InstanceID:            "test-instance",
-					EndpointURL:           fmt.Sprintf("%s/test-path/here", ts.URL),
+					EndpointURL:           ts.URL + testPath,
 					EndpointAuthorization: authHeaderValue,
 				},
 			).RetrievalEventSubscriber()
 			id, err := types.NewRetrievalID()
 			require.NoError(t, err)
 			test.exec(t, ctx, subscriber, id)
-			require.NotNil(t, req)
-			require.Equal(t, "/test-path/here", path)
 		})
 	}
 }
