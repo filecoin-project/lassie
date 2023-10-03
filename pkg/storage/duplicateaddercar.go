@@ -53,11 +53,6 @@ func NewDuplicateAdderCarForStream(
 	store *DeferredStorageCar,
 ) *DuplicateAdderCar {
 
-	blockStream := &blockStream{ctx: ctx, seen: make(map[cid.Cid]struct{})}
-	blockStream.blockBuffer = list.New()
-	blockStream.cond = sync.NewCond(&blockStream.mu)
-
-	// create the car writer for the final stream
 	outgoing := deferred.NewDeferredCarWriterForStream(
 		outStream,
 		[]cid.Cid{root},
@@ -65,6 +60,43 @@ func NewDuplicateAdderCarForStream(
 		carv2.StoreIdentityCIDs(false),
 		carv2.UseWholeCIDs(true),
 	)
+
+	return newDuplicateAdderCar(ctx, root, path, scope, bytes, store, outgoing)
+}
+
+func NewDuplicateAdderCarForPath(
+	ctx context.Context,
+	outPath string,
+	root cid.Cid,
+	path string,
+	scope trustlessutils.DagScope,
+	bytes *trustlessutils.ByteRange,
+	store *DeferredStorageCar,
+) *DuplicateAdderCar {
+
+	outgoing := deferred.NewDeferredCarWriterForPath(
+		outPath,
+		[]cid.Cid{root},
+		carv2.AllowDuplicatePuts(true),
+		carv2.StoreIdentityCIDs(false),
+		carv2.UseWholeCIDs(true),
+	)
+
+	return newDuplicateAdderCar(ctx, root, path, scope, bytes, store, outgoing)
+}
+
+func newDuplicateAdderCar(
+	ctx context.Context,
+	root cid.Cid,
+	path string,
+	scope trustlessutils.DagScope,
+	bytes *trustlessutils.ByteRange,
+	store *DeferredStorageCar,
+	outgoing *deferred.DeferredCarWriter,
+) *DuplicateAdderCar {
+	blockStream := &blockStream{ctx: ctx, seen: make(map[cid.Cid]struct{})}
+	blockStream.blockBuffer = list.New()
+	blockStream.cond = sync.NewCond(&blockStream.mu)
 	return &DuplicateAdderCar{
 		DeferredCarWriter: outgoing,
 		ctx:               ctx,
@@ -147,7 +179,12 @@ func (da *DuplicateAdderCar) Close() error {
 	if streamCompletion == nil {
 		return nil
 	}
-	return <-streamCompletion
+	err := <-streamCompletion
+	err2 := da.DeferredCarWriter.Close()
+	if err == nil {
+		err = err2
+	}
+	return err
 }
 
 type blockStream struct {
