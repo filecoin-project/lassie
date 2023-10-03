@@ -338,23 +338,34 @@ func defaultFetchRun(
 		lassie.RegisterSubscriber(pp.subscriber)
 	}
 
-	var carWriter *deferred.DeferredCarWriter
+	var carWriter storage.DeferredWriter
 	carOpts := []car.Option{
 		car.WriteAsCarV1(true),
 		car.StoreIdentityCIDs(false),
 		car.UseWholeCIDs(false),
-		car.AllowDuplicatePuts(duplicates),
 	}
+
+	tempStore := storage.NewDeferredStorageCar(tempDir, rootCid)
+
 	if outfile == stdoutFileString {
 		// we need the onlyWriter because stdout is presented as an os.File, and
 		// therefore pretend to support seeks, so feature-checking in go-car
 		// will make bad assumptions about capabilities unless we hide it
-		carWriter = deferred.NewDeferredCarWriterForStream(&onlyWriter{dataWriter}, []cid.Cid{rootCid}, carOpts...)
+		w := &onlyWriter{dataWriter}
+		if duplicates {
+			carWriter = storage.NewDuplicateAdderCarForStream(ctx, w, rootCid, path.String(), dagScope, entityBytes, tempStore)
+		} else {
+			carWriter = deferred.NewDeferredCarWriterForStream(w, []cid.Cid{rootCid}, carOpts...)
+		}
 	} else {
-		carWriter = deferred.NewDeferredCarWriterForPath(outfile, []cid.Cid{rootCid}, carOpts...)
+		if duplicates {
+			carWriter = storage.NewDuplicateAdderCarForPath(ctx, outfile, rootCid, path.String(), dagScope, entityBytes, tempStore)
+		} else {
+			carWriter = deferred.NewDeferredCarWriterForPath(outfile, []cid.Cid{rootCid}, carOpts...)
+		}
 	}
+	defer carWriter.Close()
 
-	tempStore := storage.NewDeferredStorageCar(tempDir, rootCid)
 	carStore := storage.NewCachingTempStore(carWriter.BlockWriteOpener(), tempStore)
 	defer carStore.Close()
 
