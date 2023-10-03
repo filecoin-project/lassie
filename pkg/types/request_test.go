@@ -180,16 +180,25 @@ func TestRequestStringRepresentations(t *testing.T) {
 	})
 
 	t.Run("fixed peer, http:// URL", func(t *testing.T) {
-		pps, err := ParseProviderStrings("http://127.0.0.1:5000")
-		require.NoError(t, err)
-		request := RetrievalRequest{
-			Request:    trustlessutils.Request{Root: testCidV1},
-			FixedPeers: pps,
+		for _, p := range []string{"", "/", "///"} {
+			t.Run("w/ path=["+p+"]", func(t *testing.T) {
+				pps, err := ParseProviderStrings("http://127.0.0.1:5000" + p)
+				require.NoError(t, err)
+				request := RetrievalRequest{
+					Request:    trustlessutils.Request{Root: testCidV1},
+					FixedPeers: pps,
+				}
+				ds, err := request.GetDescriptorString()
+				require.NoError(t, err)
+				expectedStart := "/ipfs/bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi?dag-scope=all&dups=n&providers=/ip4/127.0.0.1/tcp/5000/http/p2p/1TunknownX"
+				require.Equal(t, expectedStart, ds[0:len(expectedStart)])
+			})
 		}
-		ds, err := request.GetDescriptorString()
-		require.NoError(t, err)
-		expectedStart := "/ipfs/bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi?dag-scope=all&dups=n&providers=/ip4/127.0.0.1/tcp/5000/http/p2p/1TunknownX"
-		require.Equal(t, expectedStart, ds[0:len(expectedStart)])
+	})
+
+	t.Run("fixed peer, http:// URL with path err", func(t *testing.T) {
+		_, err := ParseProviderStrings("http://127.0.0.1:5000/nope")
+		require.ErrorContains(t, err, "paths not supported")
 	})
 }
 

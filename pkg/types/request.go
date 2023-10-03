@@ -11,6 +11,7 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-unixfsnode"
 	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/datamodel"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	ipldstorage "github.com/ipld/go-ipld-prime/storage"
 	trustlessutils "github.com/ipld/go-trustless-utils"
@@ -248,9 +249,10 @@ func ParseProviderStrings(v string) ([]peer.AddrInfo, error) {
 			if err != nil {
 				return nil, err
 			}
-			if u.Path != "" {
+			if datamodel.ParsePath(u.Path).Len() != 0 {
 				return nil, fmt.Errorf("invalid provider URL, paths not supported: %s", v)
 			}
+			u.Path = "" // just in case..
 			maddr, err = maurl.FromURL(u)
 			if err != nil {
 				return nil, err
