@@ -261,7 +261,7 @@ Something went wrong with the application.
 
 ### `504` Gateway Timeout
 
-A timeout occured while retrieving the given CID.
+A timeout occurred while retrieving the given CID.
 
 ## Response Headers
 

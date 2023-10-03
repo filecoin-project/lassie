@@ -96,7 +96,7 @@ var providerBlockList map[peer.ID]bool
 var FlagExcludeProviders = &cli.StringFlag{
 	Name:        "exclude-providers",
 	DefaultText: "All providers allowed",
-	Usage:       "Provider peer IDs, seperated by a comma. Example: 12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4",
+	Usage:       "Provider peer IDs, separated by a comma. Example: 12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4",
 	EnvVars:     []string{"LASSIE_EXCLUDE_PROVIDERS"},
 	Action: func(cctx *cli.Context, v string) error {
 		// Do nothing if given an empty string
@@ -152,7 +152,7 @@ var protocols []multicodec.Code
 var FlagProtocols = &cli.StringFlag{
 	Name:        "protocols",
 	DefaultText: "bitswap,graphsync,http",
-	Usage:       "List of retrieval protocols to use, seperated by a comma",
+	Usage:       "List of retrieval protocols to use, separated by a comma",
 	EnvVars:     []string{"LASSIE_SUPPORTED_PROTOCOLS"},
 	Action: func(cctx *cli.Context, v string) error {
 		// Do nothing if given an empty string
