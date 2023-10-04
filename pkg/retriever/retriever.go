@@ -286,6 +286,8 @@ func logEvent(event types.RetrievalEvent) {
 			}
 		}
 		logadd("candidates", cands.String())
+	case events.BlockReceivedEvent:
+		logadd("bytes", tevent.ByteCount())
 	case events.FailedEvent:
 		logadd("errorMessage", tevent.ErrorMessage())
 	case events.SucceededEvent:

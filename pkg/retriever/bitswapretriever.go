@@ -342,6 +342,11 @@ func (br *bitswapRetrieval) loader(ctx context.Context, shared *retrievalShared)
 		default:
 		}
 		blk, err := br.blockService.GetBlock(lctx.Ctx, cidLink.Cid)
+		br.inProgressCids.Dec(cidLink.Cid, br.request.RetrievalID)
+		if err != nil {
+			return nil, err
+		}
+		logger.Debugw("Got block from bitswap", "retrievalID", br.request.RetrievalID, "root", br.request.Root, "block", cidLink.Cid, "size", len(blk.RawData()))
 		if traceableBlock, ok := blk.(traceability.Block); ok {
 			shared.sendEvent(ctx, events.BlockReceived(
 				br.clock.Now(),
@@ -350,10 +355,8 @@ func (br *bitswapRetrieval) loader(ctx context.Context, shared *retrievalShared)
 				multicodec.TransportBitswap,
 				uint64(len(blk.RawData()))),
 			)
-		}
-		br.inProgressCids.Dec(cidLink.Cid, br.request.RetrievalID)
-		if err != nil {
-			return nil, err
+		} else {
+			logger.Warn("Got untraceable block from bitswap")
 		}
 		return bytes.NewReader(blk.RawData()), nil
 	}
