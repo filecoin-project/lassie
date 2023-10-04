@@ -104,7 +104,7 @@ func TestHttpFetch(t *testing.T) {
 		bitswapRemotes        int
 		httpRemotes           int
 		disableGraphsync      bool
-		expectFail            bool
+		expectNoCandidates    bool
 		expectUncleanEnd      bool
 		expectUnauthorized    bool
 		expectAggregateEvents []aggregateeventrecorder.AggregateEvent
@@ -497,7 +497,10 @@ func TestHttpFetch(t *testing.T) {
 			name:             "two separate, parallel graphsync retrievals, with graphsync disabled",
 			graphsyncRemotes: 2,
 			disableGraphsync: true,
-			expectFail:       true,
+			// in practice, rather than "no candidates", it'll likely be a timeout
+			// from waiting for bitswap candidates; in test we short-circuit and send
+			// strictly zero bitswap or http candidates
+			expectNoCandidates: true,
 			generate: func(t *testing.T, rndReader io.Reader, remotes []testpeer.TestPeer) []unixfs.DirEntry {
 				return []unixfs.DirEntry{
 					generateFor(t, unixfsSpec_largeShardedFile, rndReader, *remotes[0].LinkSystem),
@@ -990,13 +993,18 @@ func TestHttpFetch(t *testing.T) {
 			}
 
 			for i, resp := range responses {
-				if testCase.expectFail {
-					req.Equal(http.StatusGatewayTimeout, resp.StatusCode)
+				if testCase.expectNoCandidates {
+					if resp.StatusCode != http.StatusBadGateway {
+						req.Failf("wrong response code not received", "expected %d, got %d; body: [%s]", http.StatusBadGateway, resp.StatusCode, string(resp.Body))
+						req.Contains(string(resp.Body), "no candidates found")
+					}
 				} else if testCase.expectUnauthorized {
-					req.Equal(http.StatusUnauthorized, resp.StatusCode)
+					if resp.StatusCode != http.StatusUnauthorized {
+						req.Failf("wrong response code not received", "expected %d, got %d; body: [%s]", http.StatusUnauthorized, resp.StatusCode, string(resp.Body))
+					}
 				} else {
 					if resp.StatusCode != http.StatusOK {
-						req.Failf("200 response code not received", "got code: %d, body: %s", resp.StatusCode, string(resp.Body))
+						req.Failf("wrong response code not received", "expected %d, got %d; body: [%s]", http.StatusOK, resp.StatusCode, string(resp.Body))
 					}
 
 					verifyHeaders(t, resp, srcData[i].Root, paths[i], testCase.expectNoDups)

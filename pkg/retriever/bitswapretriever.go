@@ -145,15 +145,31 @@ type bitswapRetrieval struct {
 	events   func(types.RetrievalEvent)
 }
 
-// RetrieveFromCandidates retrieves via go-bitswap backed with the given candidates, under the auspices of a fetcher.Fetcher
+// RetrieveFromCandidates retrieves via bitswap, with providers fed from the
+// given asyncCandidates.
 func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.InboundAsyncCandidates) (*types.RetrievalStats, error) {
+	ctx, cancelCtx := context.WithCancel(br.ctx)
+	defer cancelCtx()
+
+	// Perform the retrieval in a goroutine and use retrievalShared{} to handle
+	// event collection and dispatching on this goroutine; a bitswap traversal
+	// can involve many, separate goroutines, all emitting events that need to
+	// be collected and dispatched on this goroutine.
+	shared := newRetrievalShared(nil)
+	go br.runRetrieval(ctx, ayncCandidates, shared)
+	return collectResults(ctx, shared, br.events)
+}
+
+func (br *bitswapRetrieval) runRetrieval(ctx context.Context, ayncCandidates types.InboundAsyncCandidates, shared *retrievalShared) {
 	selector := br.request.GetSelector()
 	startTime := br.clock.Now()
 	// this is a hack cause we aren't able to track bitswap fetches per peer for now, so instead we just create a single peer for all events
 	bitswapCandidate := types.NewRetrievalCandidate(peer.ID(""), nil, br.request.Root, metadata.Bitswap{})
 
+	logger.Debugw("Starting bitswap retrieval", "retrievalID", br.request.RetrievalID, "root", br.request.Root)
+
 	// setup the linksystem to record bytes & blocks written -- since this isn't automatic w/o go-data-transfer
-	retrievalCtx, cancel := context.WithCancel(br.ctx)
+	retrievalCtx, cancel := context.WithCancel(ctx)
 	var lastBytesReceivedTimer *clock.Timer
 	var doneLk sync.Mutex
 	var timedOut bool
@@ -171,7 +187,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	bytesWrittenCb := func(bytesWritten uint64) {
 		// record first byte received
 		if totalWritten.Load() == 0 {
-			br.events(events.FirstByte(br.clock.Now(), br.request.RetrievalID, bitswapCandidate, br.clock.Since(startTime), multicodec.TransportBitswap))
+			shared.sendEvent(ctx, events.FirstByte(br.clock.Now(), br.request.RetrievalID, bitswapCandidate, br.clock.Since(startTime), multicodec.TransportBitswap))
 		}
 		totalWritten.Add(bytesWritten)
 		blockCount.Add(1)
@@ -186,26 +202,30 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	if !hasCandidates || err != nil {
 		cancel()
 		// we never received any candidates, so we give up on bitswap retrieval
-		return nil, nil
+		logger.Debugw("No bitswap candidates received", "retrievalID", br.request.RetrievalID, "root", br.request.Root)
+		shared.sendResult(ctx, retrievalResult{Err: ErrNoCandidates, AllFinished: true})
+		return
 	}
 
-	br.events(events.StartedRetrieval(br.clock.Now(), br.request.RetrievalID, bitswapCandidate, multicodec.TransportBitswap))
+	shared.sendEvent(ctx, events.StartedRetrieval(br.clock.Now(), br.request.RetrievalID, bitswapCandidate, multicodec.TransportBitswap))
 
 	// set initial providers, then start a goroutine to add more as they come in
 	br.routing.AddProviders(br.request.RetrievalID, nextCandidates)
+	logger.Debugf("Adding %d initial bitswap provider(s)", len(nextCandidates))
 	go func() {
 		for {
 			hasCandidates, nextCandidates, err := ayncCandidates.Next(retrievalCtx)
 			if !hasCandidates || err != nil {
 				if br.awaitReceivedCandidates != nil {
 					select {
-					case <-br.ctx.Done():
+					case <-ctx.Done():
 					case br.awaitReceivedCandidates <- struct{}{}:
 					}
 				}
 				return
 			}
 			br.routing.AddProviders(br.request.RetrievalID, nextCandidates)
+			logger.Debugf("Adding %d more bitswap provider(s)", len(nextCandidates))
 		}
 	}()
 
@@ -213,17 +233,20 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	var preloader preload.Loader
 	traversalLinkSys := br.request.LinkSystem
 
+	loader := br.loader(ctx, shared)
+
 	if br.request.HasPreloadLinkSystem() {
 		var err error
 		storage, err := bitswaphelpers.NewPreloadCachingStorage(
 			br.request.LinkSystem,
 			br.request.PreloadLinkSystem,
-			br.loader,
+			loader,
 			br.groupWorkPool.AddGroup(retrievalCtx),
 		)
 		if err != nil {
 			cancel()
-			return nil, err
+			shared.sendResult(ctx, retrievalResult{Err: err, AllFinished: true})
+			return
 		}
 		preloader = storage.Preloader
 		traversalLinkSys = *storage.TraversalLinkSystem
@@ -237,7 +260,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 			br.request.RetrievalID,
 			bitswaphelpers.NewByteCountingLinkSystem(&br.request.LinkSystem, bytesWrittenCb),
 		)
-		traversalLinkSys.StorageReadOpener = br.loader
+		traversalLinkSys.StorageReadOpener = loader
 	}
 
 	// run the retrieval
@@ -253,6 +276,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 	br.routing.RemoveProviders(br.request.RetrievalID)
 	br.bstore.RemoveLinkSystem(br.request.RetrievalID)
 	if err != nil {
+		logger.Debugw("Traversal/retrieval error, cleaning up", "err", err)
 		// check for timeout on the local context
 		// TODO: post 1.19 replace timedOut and doneLk with WithCancelCause and use DeadlineExceeded cause:
 		// if errors.Is(retrievalCtx.Err(), context.Canceled) && errors.Is(context.Cause(retrievalCtx), context.DeadlineExceeded) {
@@ -271,15 +295,18 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		// exclude the case where the context was cancelled by the parent, which likely means that
 		// another protocol has succeeded.
 		if br.ctx.Err() == nil {
-			br.events(events.FailedRetrieval(br.clock.Now(), br.request.RetrievalID, bitswapCandidate, multicodec.TransportBitswap, err.Error()))
+			shared.sendEvent(ctx, events.FailedRetrieval(br.clock.Now(), br.request.RetrievalID, bitswapCandidate, multicodec.TransportBitswap, err.Error()))
+			shared.sendResult(ctx, retrievalResult{Err: err, AllFinished: true})
 		}
-		return nil, err
+		return
 	}
 	duration := br.clock.Since(startTime)
 	speed := uint64(float64(totalWritten.Load()) / duration.Seconds())
 
+	logger.Debugw("Bitswap retrieval success", "retrievalID", br.request.RetrievalID, "root", br.request.Root, "duration", duration, "bytes", totalWritten.Load(), "blocks", blockCount.Load(), "speed", speed)
+
 	// record success
-	br.events(events.Success(
+	shared.sendEvent(ctx, events.Success(
 		br.clock.Now(),
 		br.request.RetrievalID,
 		bitswapCandidate,
@@ -289,8 +316,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		multicodec.TransportBitswap,
 	))
 
-	// return stats
-	return &types.RetrievalStats{
+	shared.sendResult(ctx, retrievalResult{Stats: &types.RetrievalStats{
 		StorageProviderId: peer.ID(""),
 		RootCid:           br.request.Root,
 		Size:              totalWritten.Load(),
@@ -300,33 +326,35 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		TotalPayment:      big.Zero(),
 		NumPayments:       0,
 		AskPrice:          big.Zero(),
-	}, nil
+	}})
 }
 
-func (br *bitswapRetrieval) loader(lctx linking.LinkContext, lnk datamodel.Link) (io.Reader, error) {
-	cidLink, ok := lnk.(cidlink.Link)
-	if !ok {
-		return nil, fmt.Errorf("invalid link type for loading: %v", lnk)
+func (br *bitswapRetrieval) loader(ctx context.Context, shared *retrievalShared) func(lctx linking.LinkContext, lnk datamodel.Link) (io.Reader, error) {
+	return func(lctx linking.LinkContext, lnk datamodel.Link) (io.Reader, error) {
+		cidLink, ok := lnk.(cidlink.Link)
+		if !ok {
+			return nil, fmt.Errorf("invalid link type for loading: %v", lnk)
+		}
+		br.inProgressCids.Inc(cidLink.Cid, br.request.RetrievalID)
+		select {
+		case <-lctx.Ctx.Done():
+			return nil, lctx.Ctx.Err()
+		default:
+		}
+		blk, err := br.blockService.GetBlock(lctx.Ctx, cidLink.Cid)
+		if traceableBlock, ok := blk.(traceability.Block); ok {
+			shared.sendEvent(ctx, events.BlockReceived(
+				br.clock.Now(),
+				br.request.RetrievalID,
+				types.RetrievalCandidate{RootCid: br.request.Root, MinerPeer: peer.AddrInfo{ID: traceableBlock.From}},
+				multicodec.TransportBitswap,
+				uint64(len(blk.RawData()))),
+			)
+		}
+		br.inProgressCids.Dec(cidLink.Cid, br.request.RetrievalID)
+		if err != nil {
+			return nil, err
+		}
+		return bytes.NewReader(blk.RawData()), nil
 	}
-	br.inProgressCids.Inc(cidLink.Cid, br.request.RetrievalID)
-	select {
-	case <-lctx.Ctx.Done():
-		return nil, lctx.Ctx.Err()
-	default:
-	}
-	blk, err := br.blockService.GetBlock(lctx.Ctx, cidLink.Cid)
-	if traceableBlock, ok := blk.(traceability.Block); ok {
-		br.events(events.BlockReceived(
-			br.clock.Now(),
-			br.request.RetrievalID,
-			types.RetrievalCandidate{RootCid: br.request.Root, MinerPeer: peer.AddrInfo{ID: traceableBlock.From}},
-			multicodec.TransportBitswap,
-			uint64(len(blk.RawData()))),
-		)
-	}
-	br.inProgressCids.Dec(cidLink.Cid, br.request.RetrievalID)
-	if err != nil {
-		return nil, err
-	}
-	return bytes.NewReader(blk.RawData()), nil
 }
