@@ -15,7 +15,6 @@ import (
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
-	"go.uber.org/multierr"
 )
 
 type GetStorageProviderTimeout func(peer peer.ID) time.Duration
@@ -83,48 +82,6 @@ type retrievalResult struct {
 	AllFinished bool
 }
 
-// retrievalShared is the shared state and coordination between the per-SP
-// retrieval goroutines.
-type retrievalShared struct {
-	waitQueue  prioritywaitqueue.PriorityWaitQueue[peer.ID]
-	resultChan chan retrievalResult
-	finishChan chan struct{}
-}
-
-// canSendResult will indicate whether a result is likely to be accepted (true)
-// or whether the retrieval is already finished (likely by a success)
-func (shared *retrievalShared) canSendResult() bool {
-	select {
-	case <-shared.finishChan:
-		return false
-	default:
-	}
-	return true
-}
-
-// sendResult will only send a result to the parent goroutine if a retrieval has
-// finished (likely by a success), otherwise it will send the result
-func (shared *retrievalShared) sendResult(ctx context.Context, result retrievalResult) bool {
-	select {
-	case <-ctx.Done():
-	case <-shared.finishChan:
-		return false
-	case shared.resultChan <- result:
-		if result.Stats != nil {
-			// signals to goroutines to bail, this has to be done here, rather than on
-			// the receiving parent end, because immediately after this call we instruct
-			// the prioritywaitqueue that we're done and another may start
-			close(shared.finishChan)
-		}
-	}
-	return true
-}
-
-func (shared *retrievalShared) sendEvent(ctx context.Context, event events.EventWithProviderID) {
-	retrievalEvent := event.(types.RetrievalEvent)
-	shared.sendResult(ctx, retrievalResult{PeerID: event.ProviderId(), Event: &retrievalEvent})
-}
-
 func (cfg *parallelPeerRetriever) Retrieve(
 	ctx context.Context,
 	retrievalRequest types.RetrievalRequest,
@@ -151,11 +108,7 @@ func (retrieval *retrieval) RetrieveFromAsyncCandidates(asyncCandidates types.In
 		pwqOpts = append(pwqOpts, prioritywaitqueue.WithInitialPause[peer.ID](retrieval.QueueInitialPause))
 	}
 
-	shared := &retrievalShared{
-		resultChan: make(chan retrievalResult),
-		finishChan: make(chan struct{}),
-		waitQueue:  prioritywaitqueue.New(retrieval.candidateChooser, pwqOpts...),
-	}
+	shared := newRetrievalShared(prioritywaitqueue.New(retrieval.candidateChooser, pwqOpts...))
 
 	// start retrievals
 	var waitGroup sync.WaitGroup
@@ -182,10 +135,7 @@ func (retrieval *retrieval) RetrieveFromAsyncCandidates(asyncCandidates types.In
 	finishAll := make(chan struct{}, 1)
 	go func() {
 		waitGroup.Wait()
-		select {
-		case <-ctx.Done():
-		case shared.resultChan <- retrievalResult{AllFinished: true}:
-		}
+		shared.sendAllFinished(ctx)
 		finishAll <- struct{}{}
 	}()
 
@@ -266,37 +216,6 @@ func (retrieval *retrieval) filterCandidates(ctx context.Context, asyncCandidate
 	}
 
 	return true, filtered, nil
-}
-
-// collectResults is responsible for receiving query errors, retrieval errors
-// and retrieval results and aggregating into an appropriate return of either
-// a complete RetrievalStats or an bundled multi-error
-func collectResults(ctx context.Context, shared *retrievalShared, eventsCallback func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
-	var retrievalErrors error
-	for {
-		select {
-		case result := <-shared.resultChan:
-			// have we got all responses but no success?
-			if result.AllFinished {
-				// we failed, and got only retrieval errors
-				retrievalErrors = multierr.Append(retrievalErrors, ErrAllRetrievalsFailed)
-				return nil, retrievalErrors
-			}
-
-			if result.Event != nil {
-				eventsCallback(*result.Event)
-				break
-			}
-			if result.Err != nil {
-				retrievalErrors = multierr.Append(retrievalErrors, result.Err)
-			}
-			if result.Stats != nil {
-				return result.Stats, nil
-			}
-		case <-ctx.Done():
-			return nil, context.Canceled
-		}
-	}
 }
 
 // runRetrievalCandidate is a singular CID:SP retrieval, expected to be run in a goroutine
