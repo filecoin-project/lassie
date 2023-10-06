@@ -5,6 +5,7 @@ import (
 
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/linking"
+	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 type cumulativeCountWriter struct {
@@ -32,15 +33,19 @@ func (ccw *cumulativeCountWriter) Commit(link datamodel.Link) error {
 	return nil
 }
 
-func NewByteCountingLinkSystem(lsys *linking.LinkSystem, bytesWritten func(count uint64)) *linking.LinkSystem {
+func NewByteCountingLinkSystem(lsys *linking.LinkSystem, blockWritten func(from *peer.ID, count uint64)) *linking.LinkSystem {
 	newLsys := *lsys // copy all values from old system
 	oldWriteOpener := lsys.StorageWriteOpener
 	newLsys.StorageWriteOpener = func(lctx linking.LinkContext) (io.Writer, linking.BlockWriteCommitter, error) {
+		var from *peer.ID = nil
+		if p, ok := lctx.Ctx.Value(peerIdContextKey).(peer.ID); ok {
+			from = &p
+		}
 		w, committer, err := oldWriteOpener(lctx)
 		if err != nil {
 			return w, committer, err
 		}
-		ccw := &cumulativeCountWriter{w, 0, committer, bytesWritten}
+		ccw := &cumulativeCountWriter{w, 0, committer, func(count uint64) { blockWritten(from, count) }}
 		return ccw, ccw.Commit, err
 	}
 	return &newLsys

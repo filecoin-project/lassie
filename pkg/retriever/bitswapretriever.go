@@ -16,7 +16,6 @@ import (
 	"github.com/filecoin-project/lassie/pkg/retriever/bitswaphelpers/groupworkpool"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/boxo/bitswap/client"
-	"github.com/ipfs/boxo/bitswap/client/traceability"
 	"github.com/ipfs/boxo/bitswap/network"
 	"github.com/ipfs/boxo/blockservice"
 	"github.com/ipfs/go-cid"
@@ -184,13 +183,22 @@ func (br *bitswapRetrieval) runRetrieval(ctx context.Context, ayncCandidates typ
 
 	totalWritten := atomic.Uint64{}
 	blockCount := atomic.Uint64{}
-	bytesWrittenCb := func(bytesWritten uint64) {
+	blockWrittenCb := func(from *peer.ID, bytesWritten uint64) {
 		// record first byte received
 		if totalWritten.Load() == 0 {
 			shared.sendEvent(ctx, events.FirstByte(br.clock.Now(), br.request.RetrievalID, bitswapCandidate, br.clock.Since(startTime), multicodec.TransportBitswap))
 		}
 		totalWritten.Add(bytesWritten)
 		blockCount.Add(1)
+		if from != nil {
+			shared.sendEvent(ctx, events.BlockReceived(
+				br.clock.Now(),
+				br.request.RetrievalID,
+				types.RetrievalCandidate{RootCid: br.request.Root, MinerPeer: peer.AddrInfo{ID: *from}},
+				multicodec.TransportBitswap,
+				bytesWritten,
+			))
+		}
 		// reset the timer
 		if bytesWritten > 0 && lastBytesReceivedTimer != nil {
 			lastBytesReceivedTimer.Reset(br.cfg.BlockTimeout)
@@ -253,12 +261,12 @@ func (br *bitswapRetrieval) runRetrieval(ctx context.Context, ayncCandidates typ
 
 		br.bstore.AddLinkSystem(
 			br.request.RetrievalID,
-			bitswaphelpers.NewByteCountingLinkSystem(storage.BitswapLinkSystem, bytesWrittenCb),
+			bitswaphelpers.NewByteCountingLinkSystem(storage.BitswapLinkSystem, blockWrittenCb),
 		)
 	} else {
 		br.bstore.AddLinkSystem(
 			br.request.RetrievalID,
-			bitswaphelpers.NewByteCountingLinkSystem(&br.request.LinkSystem, bytesWrittenCb),
+			bitswaphelpers.NewByteCountingLinkSystem(&br.request.LinkSystem, blockWrittenCb),
 		)
 		traversalLinkSys.StorageReadOpener = loader
 	}
@@ -347,17 +355,6 @@ func (br *bitswapRetrieval) loader(ctx context.Context, shared *retrievalShared)
 			return nil, err
 		}
 		logger.Debugw("Got block from bitswap", "retrievalID", br.request.RetrievalID, "root", br.request.Root, "block", cidLink.Cid, "size", len(blk.RawData()))
-		if traceableBlock, ok := blk.(traceability.Block); ok {
-			shared.sendEvent(ctx, events.BlockReceived(
-				br.clock.Now(),
-				br.request.RetrievalID,
-				types.RetrievalCandidate{RootCid: br.request.Root, MinerPeer: peer.AddrInfo{ID: traceableBlock.From}},
-				multicodec.TransportBitswap,
-				uint64(len(blk.RawData()))),
-			)
-		} else {
-			logger.Warn("Got untraceable block from bitswap")
-		}
 		return bytes.NewReader(blk.RawData()), nil
 	}
 }

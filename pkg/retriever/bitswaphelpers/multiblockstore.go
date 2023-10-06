@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/filecoin-project/lassie/pkg/types"
+	"github.com/ipfs/boxo/bitswap/client/traceability"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
@@ -22,6 +23,10 @@ var ErrAlreadyRegisterd = errors.New("already registered")
 
 // ErrAlreadyRegistered means there is nothing registered for a retrieval id
 var ErrNotRegistered = errors.New("not registered")
+
+type contextKey string
+
+const peerIdContextKey = contextKey("traceableBlock.peerId")
 
 // MultiBlockstore creates a blockstore based on one or more linkystems, extracting the target linksystem for each request
 // from the retrieval id context key
@@ -123,7 +128,13 @@ func (mbs *MultiBlockstore) PutMany(ctx context.Context, blks []blocks.Block) er
 		return ErrNotRegistered
 	}
 	for _, blk := range blks {
-		w, commit, err := lsys.StorageWriteOpener(linking.LinkContext{Ctx: ctx})
+		lctx := ctx
+		if traceableBlock, ok := blk.(traceability.Block); ok {
+			lctx = context.WithValue(lctx, peerIdContextKey, traceableBlock.From)
+		} else {
+			logger.Warn("Got untraceable block from bitswap")
+		}
+		w, commit, err := lsys.StorageWriteOpener(linking.LinkContext{Ctx: lctx})
 		if err != nil {
 			return err
 		}
