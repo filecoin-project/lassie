@@ -362,18 +362,25 @@ func (cs *PreloadCachingStorage) preloadLink(pl *preloadingLink, linkCtx linking
 			}
 			pl.err = err
 		} else {
-			w, c, err := cs.cacheLinkSystem.StorageWriteOpener(linkCtx)
-			if err != nil {
+			// the user of PreloadCachingStorage may have already wired up the
+			// cacheLinkSystem to receive the blocks from fetcher()
+			if has, err := linkSystemHas(cs.cacheLinkSystem, linkCtx, link); err != nil {
 				pl.err = err
 				return
-			}
-			if _, err := io.Copy(w, reader); err != nil {
-				pl.err = err
-				return
-			}
-			if err := c(link); err != nil {
-				pl.err = err
-				return
+			} else if !has {
+				w, c, err := cs.cacheLinkSystem.StorageWriteOpener(linkCtx)
+				if err != nil {
+					pl.err = err
+					return
+				}
+				if _, err := io.Copy(w, reader); err != nil {
+					pl.err = err
+					return
+				}
+				if err := c(link); err != nil {
+					pl.err = err
+					return
+				}
 			}
 		}
 	})
