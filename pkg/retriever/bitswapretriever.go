@@ -166,21 +166,6 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		})
 	}
 
-	totalWritten := atomic.Uint64{}
-	blockCount := atomic.Uint64{}
-	bytesWrittenCb := func(bytesWritten uint64) {
-		// record first byte received
-		if totalWritten.Load() == 0 {
-			br.events(events.FirstByte(br.clock.Now(), br.request.RetrievalID, bitswapCandidate, br.clock.Since(startTime), multicodec.TransportBitswap))
-		}
-		totalWritten.Add(bytesWritten)
-		blockCount.Add(1)
-		// reset the timer
-		if bytesWritten > 0 && lastBytesReceivedTimer != nil {
-			lastBytesReceivedTimer.Reset(br.cfg.BlockTimeout)
-		}
-	}
-
 	// setup providers for this retrieval
 	hasCandidates, nextCandidates, err := ayncCandidates.Next(retrievalCtx)
 	if !hasCandidates || err != nil {
@@ -189,7 +174,8 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		return nil, nil
 	}
 
-	br.events(events.StartedRetrieval(br.clock.Now(), br.request.RetrievalID, bitswapCandidate, multicodec.TransportBitswap))
+	firstCandidatesTime := br.clock.Now()
+	br.events(events.StartedRetrieval(firstCandidatesTime, br.request.RetrievalID, bitswapCandidate, multicodec.TransportBitswap))
 
 	// set initial providers, then start a goroutine to add more as they come in
 	br.routing.AddProviders(br.request.RetrievalID, nextCandidates)
@@ -208,6 +194,35 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 			br.routing.AddProviders(br.request.RetrievalID, nextCandidates)
 		}
 	}()
+
+	totalWritten := atomic.Uint64{}
+	blockCount := atomic.Uint64{}
+	ttfb := atomic.Int64{}
+	bytesWrittenCb := func(bytesWritten uint64) {
+		// Record first byte received, this is on a per-protocol basis for Bitswap,
+		// individual providers (currently) don't get one of these so we take the
+		// duration from the time we started collecting candidates.
+		// If we end up taking responsibility for dialing peers, and end up with
+		// first-byte events per peer, we could move the first-byte duration up to
+		// the post-connect time to match http and graphsync (alternatively)
+		if totalWritten.Load() == 0 {
+			ttfbD := br.clock.Since(firstCandidatesTime)
+			ttfb.Store(int64(ttfbD))
+			br.events(events.FirstByte(
+				br.clock.Now(),
+				br.request.RetrievalID,
+				bitswapCandidate,
+				ttfbD,
+				multicodec.TransportBitswap,
+			))
+		}
+		totalWritten.Add(bytesWritten)
+		blockCount.Add(1)
+		// reset the timer
+		if bytesWritten > 0 && lastBytesReceivedTimer != nil {
+			lastBytesReceivedTimer.Reset(br.cfg.BlockTimeout)
+		}
+	}
 
 	// set up the storage system, including the preloader if configured
 	var preloader preload.Loader
@@ -300,6 +315,7 @@ func (br *bitswapRetrieval) RetrieveFromAsyncCandidates(ayncCandidates types.Inb
 		TotalPayment:      big.Zero(),
 		NumPayments:       0,
 		AskPrice:          big.Zero(),
+		TimeToFirstByte:   time.Duration(ttfb.Load()),
 	}, nil
 }
 
