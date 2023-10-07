@@ -166,10 +166,23 @@ func decodeRequest(res http.ResponseWriter, req *http.Request, statusLogger *sta
 		return false, trustlessutils.Request{}
 	}
 
-	accept, err := trustlesshttp.CheckFormat(req)
+	accepts, err := trustlesshttp.CheckFormat(req)
 	if err != nil {
 		errorResponse(res, statusLogger, http.StatusBadRequest, err)
 		return false, trustlessutils.Request{}
+	}
+	// TODO: accepts[0] should be acceptable but it may be for a
+	// application/ipld.vnd.raw (IsRaw()) which we don't currently support; we
+	// should add support for it in the daemon and allow accepts[0] to be chosen.
+	var accept trustlesshttp.ContentType
+	for _, a := range accepts {
+		if a.IsCar() {
+			accept = a
+			break
+		}
+	}
+	if !accept.IsCar() {
+		errorResponse(res, statusLogger, http.StatusNotAcceptable, fmt.Errorf("invalid Accept header or format parameter; unsupported %q", req.Header.Get("Accept")))
 	}
 
 	dagScope, err := trustlesshttp.ParseScope(req)
