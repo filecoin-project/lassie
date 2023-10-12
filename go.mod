@@ -26,7 +26,7 @@ require (
 	github.com/ipld/go-codec-dagpb v1.6.0
 	github.com/ipld/go-fixtureplate v0.0.2
 	github.com/ipld/go-ipld-prime v0.21.0
-	github.com/ipld/go-trustless-utils v0.4.1
+	github.com/ipld/go-trustless-utils v0.4.2-0.20231012190436-123cbce5f32a
 	github.com/ipld/ipld/specs v0.0.0-20231012031213-54d3b21deda4
 	github.com/ipni/go-libipni v0.5.3
 	github.com/ipni/storetheindex v0.8.2
