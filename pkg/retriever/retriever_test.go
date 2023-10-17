@@ -619,7 +619,7 @@ func TestRetriever(t *testing.T) {
 					AfterStart:         201*time.Millisecond + initialPause,
 					ReceivedRetrievals: []peer.ID{peerB},
 					ExpectedEvents: []types.RetrievalEvent{
-						events.FailedRetrieval(startTime.Add(201*time.Millisecond+initialPause), rid, types.NewRetrievalCandidate(peerA, nil, cid1), multicodec.TransportGraphsyncFilecoinv1, "timeout after 200ms"),
+						events.FailedRetrieval(startTime.Add(201*time.Millisecond+initialPause), rid, types.NewRetrievalCandidate(peerA, nil, cid1), multicodec.TransportGraphsyncFilecoinv1, "retrieval timed out 200ms"),
 					},
 					ExpectedMetrics: []testutil.SessionMetric{
 						{Type: testutil.SessionMetric_Failure, Provider: peerA},
@@ -977,7 +977,8 @@ func TestLinkSystemPerRequest(t *testing.T) {
 					events.FirstByte(startTime.Add(10*time.Millisecond+initialPause), rid, types.NewRetrievalCandidate(peerA, nil, cid1), 5*time.Millisecond, multicodec.TransportGraphsyncFilecoinv1),
 					events.BlockReceived(startTime.Add(10*time.Millisecond+initialPause), rid, types.NewRetrievalCandidate(peerA, nil, cid1), multicodec.TransportGraphsyncFilecoinv1, 100),
 					events.Success(startTime.Add(10*time.Millisecond+initialPause), rid, types.NewRetrievalCandidate(peerA, nil, cid1), 1, 2, 3*time.Second, multicodec.TransportGraphsyncFilecoinv1),
-					events.Finished(startTime.Add(10*time.Millisecond+initialPause), rid, types.RetrievalCandidate{RootCid: cid1})},
+					events.Finished(startTime.Add(10*time.Millisecond+initialPause), rid, types.RetrievalCandidate{RootCid: cid1}),
+				},
 			},
 		},
 	}.RunWithVerification(ctx, t, clock, client, candidateFinder, nil, nil, 0, []testutil.RunRetrieval{
@@ -1044,7 +1045,8 @@ func TestLinkSystemPerRequest(t *testing.T) {
 					events.FirstByte(startTime.Add((10*time.Millisecond+initialPause)*2), rid, types.NewRetrievalCandidate(peerB, nil, cid1), 5*time.Millisecond, multicodec.TransportGraphsyncFilecoinv1),
 					events.BlockReceived(startTime.Add((10*time.Millisecond+initialPause)*2), rid, types.NewRetrievalCandidate(peerB, nil, cid1), multicodec.TransportGraphsyncFilecoinv1, 100),
 					events.Success(startTime.Add((10*time.Millisecond+initialPause)*2), rid, types.NewRetrievalCandidate(peerB, nil, cid1), 10, 11, 12*time.Second, multicodec.TransportGraphsyncFilecoinv1),
-					events.Finished(startTime.Add((10*time.Millisecond+initialPause)*2), rid, types.RetrievalCandidate{RootCid: cid1})},
+					events.Finished(startTime.Add((10*time.Millisecond+initialPause)*2), rid, types.RetrievalCandidate{RootCid: cid1}),
+				},
 			},
 		},
 	}.RunWithVerification(ctx, t, clock, client, candidateFinder, nil, nil, 0, []testutil.RunRetrieval{

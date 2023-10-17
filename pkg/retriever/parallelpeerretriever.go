@@ -35,8 +35,10 @@ type TransportProtocol interface {
 	) (*types.RetrievalStats, error)
 }
 
-var _ types.CandidateRetriever = (*parallelPeerRetriever)(nil)
-var _ types.CandidateRetrieval = (*retrieval)(nil)
+var (
+	_ types.CandidateRetriever = (*parallelPeerRetriever)(nil)
+	_ types.CandidateRetrieval = (*retrieval)(nil)
+)
 
 // parallelPeerRetriever is an abstract utility type that implements a retrieval
 // flow that retrieves from multiple peers separately but needs to manage that
@@ -87,7 +89,6 @@ func (cfg *parallelPeerRetriever) Retrieve(
 	retrievalRequest types.RetrievalRequest,
 	eventsCallback func(types.RetrievalEvent),
 ) types.CandidateRetrieval {
-
 	if eventsCallback == nil {
 		eventsCallback = func(re types.RetrievalEvent) {}
 	}
@@ -270,7 +271,7 @@ func (retrieval *retrieval) runRetrievalCandidate(
 				if !errors.Is(ctx.Err(), context.Canceled) {
 					msg := retrievalErr.Error()
 					if errors.Is(retrievalErr, ErrRetrievalTimedOut) {
-						msg = fmt.Sprintf("timeout after %s", timeout)
+						msg = fmt.Sprintf("%s after %s", ErrRetrievalTimedOut.Error(), timeout)
 					}
 					shared.sendEvent(ctx, events.FailedRetrieval(retrieval.parallelPeerRetriever.Clock.Now(), retrieval.request.RetrievalID, candidate, retrieval.Protocol.Code(), msg))
 					if err := retrieval.Session.RecordFailure(retrieval.request.RetrievalID, candidate.MinerPeer.ID); err != nil {

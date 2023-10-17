@@ -28,7 +28,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
-	"go.uber.org/multierr"
 )
 
 // IndexerRouting are the required methods to track indexer routing
@@ -290,14 +289,7 @@ func (br *bitswapRetrieval) runRetrieval(ctx context.Context, ayncCandidates typ
 		// if errors.Is(retrievalCtx.Err(), context.Canceled) && errors.Is(context.Cause(retrievalCtx), context.DeadlineExceeded) {
 		doneLk.Lock()
 		if timedOut {
-			// TODO: replace with %w: %w after 1.19
-			err = multierr.Append(ErrRetrievalFailed,
-				fmt.Errorf(
-					"%w after %s",
-					ErrRetrievalTimedOut,
-					br.cfg.BlockTimeout,
-				),
-			)
+			err = fmt.Errorf("%w; %w after %s", ErrRetrievalFailed, ErrRetrievalTimedOut, br.cfg.BlockTimeout)
 		}
 		doneLk.Unlock()
 		// exclude the case where the context was cancelled by the parent, which likely means that

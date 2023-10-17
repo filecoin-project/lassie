@@ -19,7 +19,6 @@ import (
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
-	"go.uber.org/multierr"
 )
 
 // Connect() may be a near-noop for already-connect libp2p connections, so this
@@ -61,7 +60,6 @@ func NewGraphsyncRetrieverWithConfig(
 	initialPause time.Duration,
 	noDirtyClose bool,
 ) types.CandidateRetriever {
-
 	return &parallelPeerRetriever{
 		Protocol: &ProtocolGraphsync{
 			Client: client,
@@ -130,7 +128,6 @@ func (pg *ProtocolGraphsync) Retrieve(
 	timeout time.Duration,
 	candidate types.RetrievalCandidate,
 ) (*types.RetrievalStats, error) {
-
 	retrievalStart := pg.Clock.Now()
 
 	ss := "*"
@@ -152,7 +149,7 @@ func (pg *ProtocolGraphsync) Retrieve(
 
 	params, err := retrievaltypes.NewParamsV1(big.Zero(), 0, 0, selector, nil, big.Zero())
 	if err != nil {
-		return nil, multierr.Append(multierr.Append(ErrRetrievalFailed, ErrProposalCreationFailed), err)
+		return nil, fmt.Errorf("%w; %w; %w", ErrRetrievalFailed, ErrProposalCreationFailed, err)
 	}
 	proposal := &retrievaltypes.DealProposal{
 		PayloadCID: candidate.RootCid,
@@ -233,13 +230,7 @@ func (pg *ProtocolGraphsync) Retrieve(
 	)
 
 	if timedOut {
-		return nil, multierr.Append(ErrRetrievalFailed,
-			fmt.Errorf(
-				"%w after %s",
-				ErrRetrievalTimedOut,
-				timeout,
-			),
-		)
+		return nil, fmt.Errorf("%w; %w after %s", ErrRetrievalFailed, ErrRetrievalTimedOut, timeout)
 	}
 
 	if lastBytesReceivedTimer != nil {
@@ -250,8 +241,7 @@ func (pg *ProtocolGraphsync) Retrieve(
 	}
 
 	if err != nil {
-		// TODO: replace with %w: %w after 1.19
-		return nil, multierr.Append(ErrRetrievalFailed, err)
+		return nil, fmt.Errorf("%w; %w", ErrRetrievalFailed, err)
 	}
 	return stats, nil
 }
