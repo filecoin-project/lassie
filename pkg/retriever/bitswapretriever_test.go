@@ -576,6 +576,7 @@ func newMockIndexerRouting() *mockIndexerRouting {
 		candidatesRemoved:  make(map[types.RetrievalID]struct{}),
 	}
 }
+
 func (mir *mockIndexerRouting) AddProviders(rid types.RetrievalID, candidates []types.RetrievalCandidate) {
 	mir.candidatesAdded[rid] = append(mir.candidatesAdded[rid], candidates...)
 }
