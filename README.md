@@ -142,7 +142,7 @@ $ curl http://127.0.0.1:41443/ipfs/<CID>[/path/to/content]?filename=<filename> -
 
 _CURL Note: With curl we need to also specify the `--output <filename>` option. However, putting the above URL into a browser will download the file with the given filename parameter value upon a successful fetch._
 
-More information about HTTP API requests and responses, as well as the numerous request parameters that can be used to control fetch behavior on a per request basis, can be found in the [HTTP Specification](./HTTP_SPEC.md) document.
+More information about HTTP API requests and responses, as well as the numerous request parameters that can be used to control fetch behavior on a per request basis, can be found in the [HTTP Specification](./docs/HTTP_SPEC.md) document.
 
 #### Daemon Example
 
@@ -199,6 +199,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/storage"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
+	trustlessutils "github.com/ipld/go-trustless-utils"
 )
 
 // main creates a default lassie instance and fetches a CID
@@ -212,15 +213,15 @@ func main() {
 	}
 
 	// Prepare the fetch
-	rootCid := cid.MustParse("bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4") // The CID to fetch
-	store := storage.NewDeferredStorageCar(os.TempDir(), rootCid)                           // The place to put the CAR file
-	request, err := types.NewRequestForPath(store, rootCid, "", types.DagScopeAll)          // The fetch request
+	rootCid := cid.MustParse("bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4") 			// The CID to fetch
+	store := storage.NewDeferredStorageCar(os.TempDir(), rootCid)                           			// The place to put the CAR file
+	request, err := types.NewRequestForPath(store, rootCid, "", trustlessutils.DagScopeAll, nil)  // The fetch request
 	if err != nil {
 		panic(err)
 	}
 
   // Fetch the CID
-	stats, err := lassie.Fetch(ctx, request, nil)
+	stats, err := lassie.Fetch(ctx, request)
 	if err != nil {
 		panic(err)
 	}
@@ -228,6 +229,7 @@ func main() {
 	// Print the stats
 	fmt.Printf("Fetched %d blocks in %d bytes\n", stats.Blocks, stats.Size)
 }
+
 ```
 
 Let's break down the above code.
@@ -252,9 +254,9 @@ Next, we prepare the fetch request:
 
 ```go
 // Prepare the fetch
-rootCid := cid.MustParse("bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4") // The CID to fetch
-store := storage.NewDeferredStorageCar(os.TempDir(), rootCid)                           // The place to put the CAR file
-request, err := types.NewRequestForPath(store, rootCid, "", types.DagScopeAll)          // The fetch request
+rootCid := cid.MustParse("bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4") 			// The CID to fetch
+store := storage.NewDeferredStorageCar(os.TempDir(), rootCid)                           			// The place to put the CAR file
+request, err := types.NewRequestForPath(store, rootCid, "", trustlessutils.DagScopeAll, nil)  // The fetch request
 if err != nil {
   panic(err)
 }
@@ -262,7 +264,7 @@ if err != nil {
 
 The `rootCid` is the CID we want to fetch. The `store` is where we want to write the car file. In this case we are choosing to store it in the OS's temp directory. The `request` is the resulting fetch request that we'll hand to the `lassie.Fetch` function.
 
-The `request` is created using the `NewRequestForPath` function. The only new information that this function takes that we haven't discussed is the `path` and the `dagScope`. The `path` is an optional path string to a file in the CID being requested. In this case we don't have a path, so pass an empty string. The `dagScope` has to do with traversal and describes the shape of the DAG fetched at the terminus of the specified path whose blocks are included in the returned CAR file after the blocks required to traverse path segments. More information on `dagScope` can be found in the [dag-scope HTTP Specification](./HTTP_SPEC.md#dag-scope-request-query-parameter) section. In this case we use `types.DagScopeAll` to specify we want everything from the root CID onward.
+The `request` is created using the `NewRequestForPath` function. The only new information that this function takes that we haven't discussed is the `path` and the `dagScope`. The `path` is an optional path string to a file in the CID being requested. In this case we don't have a path, so pass an empty string. The `dagScope` has to do with traversal and describes the shape of the DAG fetched at the terminus of the specified path whose blocks are included in the returned CAR file after the blocks required to traverse path segments. More information on `dagScope` can be found in the [dag-scope HTTP Specification](./docs/HTTP_SPEC.md#dag-scope-request-query-parameter) section. In this case we use `trustlessutils.DagScopeAll` to specify we want everything from the root CID onward.
 
 The function returns a `*types.Request` and an `error`. The `*types.Request` is the resulting fetch request we'll pass to `lassie.Fetch`, and the `error` is used to indicate if there was an error creating the fetch request.
 
@@ -270,13 +272,13 @@ Finally, we fetch the CID:
 
 ```go
 // Fetch the CID
-stats, err := lassie.Fetch(ctx, request, nil)
+stats, err := lassie.Fetch(ctx, request)
 if err != nil {
   panic(err)
 }
 ```
 
-The `Fetch` function takes a `context.Context`, a `*types.Request`, and a `*types.FetchOptions`. The `context.Context` is used to control the lifecycle of the fetch. The `*types.Request` is the fetch request we made above. The `*types.FetchOptions` is used to control the behavior of the fetch. The function returns a `*types.FetchStats` and an `error`. The `*types.FetchStats` is the fetch stats. The `error` is used to indicate if there was an error fetching the CID.
+The `Fetch` function takes a `context.Context`, a `*types.Request`, and a `*types.FetchOptions`. The `context.Context` is used to control the lifecycle of the fetch. The `*types.Request` is the fetch request we made above. The `*types.FetchOptions` is used to control the behavior of the fetch, but it's variadic, so we don't pass anything. The function returns a `*types.FetchStats` and an `error`. The `*types.FetchStats` is the fetch stats. The `error` is used to indicate if there was an error fetching the CID.
 
 ### Roots, pieces and payloads
 
