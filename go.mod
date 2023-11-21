@@ -28,8 +28,8 @@ require (
 	github.com/ipld/go-ipld-prime v0.21.0
 	github.com/ipld/go-trustless-utils v0.4.1
 	github.com/ipld/ipld/specs v0.0.0-20231012031213-54d3b21deda4
-	github.com/ipni/go-libipni v0.5.6
-	github.com/ipni/storetheindex v0.8.2
+	github.com/ipni/go-libipni v0.5.7
+	github.com/ipni/storetheindex v0.8.9
 	github.com/libp2p/go-libp2p v0.32.1
 	github.com/libp2p/go-libp2p-routing-helpers v0.7.1
 	github.com/libp2p/go-libp2p-testing v0.12.0
@@ -79,6 +79,7 @@ require (
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/google/pprof v0.0.0-20231023181126-ff6d637d2a7b // indirect
+	github.com/gopherjs/gopherjs v1.17.2 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/hannahhoward/cbor-gen-for v0.0.0-20230214144701-5d17c9d5243c // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect

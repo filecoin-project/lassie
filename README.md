@@ -204,7 +204,7 @@ import (
 
 // main creates a default lassie instance and fetches a CID
 func main() {
-  ctx := context.Background()
+	ctx := context.Background()
 
 	// Create a default lassie instance
 	lassie, err := lassie.NewLassie(ctx)
@@ -213,14 +213,14 @@ func main() {
 	}
 
 	// Prepare the fetch
-	rootCid := cid.MustParse("bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4") 			// The CID to fetch
-	store := storage.NewDeferredStorageCar(os.TempDir(), rootCid)                           			// The place to put the CAR file
+	rootCid := cid.MustParse("bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4")       // The CID to fetch
+	store := storage.NewDeferredStorageCar(os.TempDir(), rootCid)                                 // The place to put the CAR file
 	request, err := types.NewRequestForPath(store, rootCid, "", trustlessutils.DagScopeAll, nil)  // The fetch request
 	if err != nil {
 		panic(err)
 	}
 
-  // Fetch the CID
+	// Fetch the CID
 	stats, err := lassie.Fetch(ctx, request)
 	if err != nil {
 		panic(err)
@@ -242,7 +242,7 @@ ctx := context.Background()
 // Create a default lassie instance
 lassie, err := lassie.NewLassie(ctx)
 if err != nil {
-  panic(err)
+	panic(err)
 }
 ```
 
@@ -254,11 +254,11 @@ Next, we prepare the fetch request:
 
 ```go
 // Prepare the fetch
-rootCid := cid.MustParse("bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4") 			// The CID to fetch
-store := storage.NewDeferredStorageCar(os.TempDir(), rootCid)                           			// The place to put the CAR file
+rootCid := cid.MustParse("bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4")       // The CID to fetch
+store := storage.NewDeferredStorageCar(os.TempDir(), rootCid)                                 // The place to put the CAR file
 request, err := types.NewRequestForPath(store, rootCid, "", trustlessutils.DagScopeAll, nil)  // The fetch request
 if err != nil {
-  panic(err)
+	panic(err)
 }
 ```
 
@@ -274,7 +274,7 @@ Finally, we fetch the CID:
 // Fetch the CID
 stats, err := lassie.Fetch(ctx, request)
 if err != nil {
-  panic(err)
+	panic(err)
 }
 ```
 
