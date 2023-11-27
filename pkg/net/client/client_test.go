@@ -161,7 +161,6 @@ func (f *fakeConnManager) Unprotect(id peer.ID, tag string) (protected bool) {
 }
 func (f *fakeConnManager) IsProtected(id peer.ID, tag string) (protected bool) { return f.protected }
 func (f fakeConnManager) Close() error                                         { return nil }
-func (f fakeConnManager) CheckLimit(_ connmgr.GetConnLimiter) error            { return nil }
 
 type fakeStream struct{}
 
