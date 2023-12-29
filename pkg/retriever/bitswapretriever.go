@@ -83,8 +83,8 @@ func NewBitswapRetrieverFromHost(
 	bstore := bitswaphelpers.NewMultiblockstore()
 	inProgressCids := bitswaphelpers.NewInProgressCids()
 	routing := bitswaphelpers.NewIndexerRouting(inProgressCids.Get)
-	bsnet := network.NewFromIpfsHost(host, routing)
-	bitswap := client.New(ctx, bsnet, bstore, client.ProviderSearchDelay(shortenedDelay))
+	bsnet := network.NewFromIpfsHost(host)
+	bitswap := client.New(ctx, bsnet, bstore, client.ProviderSearchDelay(shortenedDelay), client.WithContentSearch(routing))
 	bsnet.Start(bitswap)
 	bsrv := blockservice.New(bstore, bitswap)
 	go func() {

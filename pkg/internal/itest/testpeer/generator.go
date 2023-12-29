@@ -30,7 +30,6 @@ import (
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	routinghelpers "github.com/libp2p/go-libp2p-routing-helpers"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	p2ptestutil "github.com/libp2p/go-libp2p-testing/netutil"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -199,7 +198,7 @@ func NewTestBitswapPeer(
 	if err != nil {
 		return TestPeer{}, err
 	}
-	bsNet := bsnet.NewFromIpfsHost(peer.Host, routinghelpers.Null{}, netOptions...)
+	bsNet := bsnet.NewFromIpfsHost(peer.Host, netOptions...)
 	bs := server.New(ctx, bsNet, peer.blockstore, bsOptions...)
 	bsNet.Start(bs)
 	go func() {
