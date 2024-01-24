@@ -42,7 +42,7 @@ func TestFetchCommandFlags(t *testing.T) {
 				require.Equal(t, "bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4.car", outfile)
 
 				// lassie config
-				require.Equal(t, nil, lCfg.Finder)
+				require.Equal(t, nil, lCfg.Source)
 				require.NotNil(t, lCfg.Host, "host should not be nil")
 				require.Equal(t, 20*time.Second, lCfg.ProviderTimeout)
 				require.Equal(t, uint(0), lCfg.ConcurrentSPRetrievals)
@@ -194,7 +194,7 @@ func TestFetchCommandFlags(t *testing.T) {
 				"bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4",
 			},
 			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path datamodel.Path, dagScope trustlessutils.DagScope, entityBytes *trustlessutils.ByteRange, duplicates bool, tempDir string, progress bool, outfile string) error {
-				require.IsType(t, &retriever.DirectCandidateFinder{}, lCfg.Finder, "finder should be a DirectCandidateFinder when providers are specified")
+				require.IsType(t, &retriever.DirectCandidateSource{}, lCfg.Source, "finder should be a DirectCandidateSource when providers are specified")
 				return nil
 			},
 		},
@@ -207,7 +207,7 @@ func TestFetchCommandFlags(t *testing.T) {
 				"bafybeic56z3yccnla3cutmvqsn5zy3g24muupcsjtoyp3pu5pm5amurjx4",
 			},
 			assertRun: func(ctx context.Context, lCfg *l.LassieConfig, erCfg *a.EventRecorderConfig, msgWriter io.Writer, dataWriter io.Writer, rootCid cid.Cid, path datamodel.Path, dagScope trustlessutils.DagScope, entityBytes *trustlessutils.ByteRange, duplicates bool, tempDir string, progress bool, outfile string) error {
-				require.IsType(t, &indexerlookup.IndexerCandidateFinder{}, lCfg.Finder, "finder should be an IndexerCandidateFinder when providing an ipni endpoint")
+				require.IsType(t, &indexerlookup.IndexerCandidateSource{}, lCfg.Source, "finder should be an IndexerCandidateSource when providing an ipni endpoint")
 				return nil
 			},
 		},

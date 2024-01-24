@@ -2,16 +2,13 @@ package indexerlookup
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
 	"net/http"
 
-	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-log/v2"
@@ -21,26 +18,26 @@ import (
 )
 
 var (
-	_ retriever.CandidateFinder = (*IndexerCandidateFinder)(nil)
+	_ types.CandidateSource = (*IndexerCandidateSource)(nil)
 
 	logger = log.Logger("lassie/indexerlookup")
 )
 
-type IndexerCandidateFinder struct {
+type IndexerCandidateSource struct {
 	*options
 }
 
-func NewCandidateFinder(o ...Option) (*IndexerCandidateFinder, error) {
+func NewCandidateSource(o ...Option) (*IndexerCandidateSource, error) {
 	opts, err := newOptions(o...)
 	if err != nil {
 		return nil, err
 	}
-	return &IndexerCandidateFinder{
+	return &IndexerCandidateSource{
 		options: opts,
 	}, nil
 }
 
-func (idxf *IndexerCandidateFinder) sendJsonRequest(req *http.Request) (*model.FindResponse, error) {
+func (idxf *IndexerCandidateSource) sendJsonRequest(req *http.Request) (*model.FindResponse, error) {
 	req.Header.Set("Accept", "application/json")
 	logger.Debugw("sending outgoing request", "url", req.URL, "accept", req.Header.Get("Accept"))
 	resp, err := idxf.httpClient.Do(req)
@@ -64,41 +61,6 @@ func (idxf *IndexerCandidateFinder) sendJsonRequest(req *http.Request) (*model.F
 	}
 }
 
-func (idxf *IndexerCandidateFinder) FindCandidates(ctx context.Context, cid cid.Cid) ([]types.RetrievalCandidate, error) {
-	req, err := idxf.newFindHttpRequest(ctx, cid)
-	if err != nil {
-		return nil, err
-	}
-	parsedResp, err := idxf.sendJsonRequest(req)
-	if err != nil {
-		return nil, err
-	}
-	// turn parsedResp into records.
-	var matches []types.RetrievalCandidate
-
-	indices := rand.Perm(len(parsedResp.MultihashResults))
-	for _, i := range indices {
-		multihashResult := parsedResp.MultihashResults[i]
-		if !bytes.Equal(cid.Hash(), multihashResult.Multihash) {
-			continue
-		}
-		for _, val := range multihashResult.ProviderResults {
-			// skip results without decodable metadata
-			if md, err := decodeMetadata(val); err == nil {
-				candidate := types.RetrievalCandidate{
-					RootCid:  cid,
-					Metadata: md,
-				}
-				if val.Provider != nil {
-					candidate.MinerPeer = *val.Provider
-				}
-				matches = append(matches, candidate)
-			}
-		}
-	}
-	return matches, nil
-}
-
 func decodeMetadata(pr model.ProviderResult) (metadata.Metadata, error) {
 	if len(pr.Metadata) == 0 {
 		return metadata.Metadata{}, errors.New("no metadata")
@@ -114,7 +76,7 @@ func decodeMetadata(pr model.ProviderResult) (metadata.Metadata, error) {
 	return dtm, nil
 }
 
-func (idxf *IndexerCandidateFinder) FindCandidatesAsync(ctx context.Context, c cid.Cid, cb func(types.RetrievalCandidate)) error {
+func (idxf *IndexerCandidateSource) FindCandidates(ctx context.Context, c cid.Cid, cb func(types.RetrievalCandidate)) error {
 	req, err := idxf.newFindHttpRequest(ctx, c)
 	if err != nil {
 		return err
@@ -136,7 +98,7 @@ func (idxf *IndexerCandidateFinder) FindCandidatesAsync(ctx context.Context, c c
 	}
 }
 
-func (idxf *IndexerCandidateFinder) newFindHttpRequest(ctx context.Context, c cid.Cid) (*http.Request, error) {
+func (idxf *IndexerCandidateSource) newFindHttpRequest(ctx context.Context, c cid.Cid) (*http.Request, error) {
 	endpoint := idxf.findByMultihashEndpoint(c.Hash())
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -158,7 +120,7 @@ func (idxf *IndexerCandidateFinder) newFindHttpRequest(ctx context.Context, c ci
 	return req, nil
 }
 
-func (idxf *IndexerCandidateFinder) decodeProviderResultStream(ctx context.Context, c cid.Cid, from io.ReadCloser, cb func(types.RetrievalCandidate)) error {
+func (idxf *IndexerCandidateSource) decodeProviderResultStream(ctx context.Context, c cid.Cid, from io.ReadCloser, cb func(types.RetrievalCandidate)) error {
 	defer from.Close()
 	scanner := bufio.NewScanner(from)
 	for {
@@ -195,6 +157,6 @@ func (idxf *IndexerCandidateFinder) decodeProviderResultStream(ctx context.Conte
 	}
 }
 
-func (idxf *IndexerCandidateFinder) findByMultihashEndpoint(mh multihash.Multihash) string {
+func (idxf *IndexerCandidateSource) findByMultihashEndpoint(mh multihash.Multihash) string {
 	return idxf.httpEndpoint.JoinPath("multihash", mh.B58String()).String()
 }

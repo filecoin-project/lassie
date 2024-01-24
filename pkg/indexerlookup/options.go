@@ -85,7 +85,7 @@ func WithHttpUserAgent(a string) Option {
 	}
 }
 
-// WithAsyncResultsChanBuffer sets the channel buffer returned by IndexerCandidateFinder.FindCandidatesAsync.
+// WithAsyncResultsChanBuffer sets the channel buffer returned by IndexerCandidateSource.FindCandidates.
 // Defaults to 1 if unspecified.
 func WithAsyncResultsChanBuffer(i int) Option {
 	return func(o *options) error {

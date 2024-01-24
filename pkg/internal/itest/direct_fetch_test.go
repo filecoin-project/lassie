@@ -107,8 +107,8 @@ func TestDirectFetch(t *testing.T) {
 				req.FailNow("unrecognized direct peer test")
 			}
 
-			directFinder := retriever.NewDirectCandidateFinder(mrn.Self, []peer.AddrInfo{addr})
-			lassie, err := lassie.NewLassie(ctx, lassie.WithFinder(directFinder), lassie.WithHost(mrn.Self), lassie.WithGlobalTimeout(5*time.Second))
+			directFinder := retriever.NewDirectCandidateSource(mrn.Self, []peer.AddrInfo{addr})
+			lassie, err := lassie.NewLassie(ctx, lassie.WithCandidateSource(directFinder), lassie.WithHost(mrn.Self), lassie.WithGlobalTimeout(5*time.Second))
 			req.NoError(err)
 			outFile, err := os.CreateTemp(t.TempDir(), "lassie-test-")
 			req.NoError(err)

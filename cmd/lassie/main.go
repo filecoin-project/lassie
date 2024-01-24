@@ -91,7 +91,7 @@ func buildLassieConfigFromCLIContext(cctx *cli.Context, lassieOpts []lassie.Lass
 	lassieOpts = append(lassieOpts, lassie.WithHost(host))
 
 	if len(fetchProviderAddrInfos) > 0 {
-		finderOpt := lassie.WithFinder(retriever.NewDirectCandidateFinder(host, fetchProviderAddrInfos))
+		finderOpt := lassie.WithCandidateSource(retriever.NewDirectCandidateSource(host, fetchProviderAddrInfos))
 		if cctx.IsSet("ipni-endpoint") {
 			logger.Warn("Ignoring ipni-endpoint flag since direct provider is specified")
 		}
@@ -103,12 +103,12 @@ func buildLassieConfigFromCLIContext(cctx *cli.Context, lassieOpts []lassie.Lass
 			logger.Errorw("Failed to parse IPNI endpoint as URL", "err", err)
 			return nil, fmt.Errorf("cannot parse given IPNI endpoint %s as valid URL: %w", endpoint, err)
 		}
-		finder, err := indexerlookup.NewCandidateFinder(indexerlookup.WithHttpEndpoint(endpointUrl))
+		finder, err := indexerlookup.NewCandidateSource(indexerlookup.WithHttpEndpoint(endpointUrl))
 		if err != nil {
 			logger.Errorw("Failed to instantiate IPNI candidate finder", "err", err)
 			return nil, err
 		}
-		lassieOpts = append(lassieOpts, lassie.WithFinder(finder))
+		lassieOpts = append(lassieOpts, lassie.WithCandidateSource(finder))
 		logger.Debug("Using explicit IPNI endpoint to find candidates", "endpoint", endpoint)
 	}
 

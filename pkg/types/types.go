@@ -97,6 +97,10 @@ type Retriever interface {
 	Retrieve(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) (*RetrievalStats, error)
 }
 
+type CandidateSource interface {
+	FindCandidates(context.Context, cid.Cid, func(RetrievalCandidate)) error
+}
+
 type CandidateFinder interface {
 	FindCandidates(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent), onCandidates func([]RetrievalCandidate)) error
 }

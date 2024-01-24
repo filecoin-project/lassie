@@ -66,7 +66,7 @@ func TestTrustlessUnixfsFetch(t *testing.T) {
 					ctx,
 					lassie.WithProviderTimeout(20*time.Second),
 					lassie.WithHost(mrn.Self),
-					lassie.WithFinder(mrn.Finder),
+					lassie.WithCandidateSource(mrn.Source),
 				)
 				req.NoError(err)
 				cfg := httpserver.HttpServerConfig{Address: "127.0.0.1", Port: 0, TempDir: t.TempDir()}

@@ -10,7 +10,6 @@ import (
 	datatransfer "github.com/filecoin-project/go-data-transfer/v2"
 	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
 	"github.com/filecoin-project/lassie/pkg/internal/itest/testpeer"
-	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/types"
 	bsnet "github.com/ipfs/boxo/bitswap/network"
 	bssrv "github.com/ipfs/boxo/bitswap/server"
@@ -38,7 +37,7 @@ type MockRetrievalNet struct {
 	MN           lpmock.Mocknet
 	Self         host.Host
 	Remotes      []testpeer.TestPeer
-	Finder       retriever.CandidateFinder
+	Source       types.CandidateSource
 }
 
 func NewMockRetrievalNet(ctx context.Context, t *testing.T) *MockRetrievalNet {
@@ -49,7 +48,7 @@ func NewMockRetrievalNet(ctx context.Context, t *testing.T) *MockRetrievalNet {
 		RemoteEvents: make([][]datatransfer.Event, 0),
 		FinishedChan: make([]chan struct{}, 0),
 	}
-	mrn.Finder = &mockCandidateFinder{mrn}
+	mrn.Source = &mockCandidateSource{mrn}
 	mrn.t.Cleanup(func() {
 		require.NoError(mrn.t, mrn.TearDown())
 	})
@@ -142,11 +141,11 @@ func (mrn *MockRetrievalNet) TearDown() error {
 	return mrn.MN.Close()
 }
 
-type mockCandidateFinder struct {
+type mockCandidateSource struct {
 	mrn *MockRetrievalNet
 }
 
-func (mcf *mockCandidateFinder) FindCandidates(ctx context.Context, cid cid.Cid) ([]types.RetrievalCandidate, error) {
+func (mcf *mockCandidateSource) findCandidates(ctx context.Context, cid cid.Cid) ([]types.RetrievalCandidate, error) {
 	candidates := make([]types.RetrievalCandidate, 0)
 	for _, h := range mcf.mrn.Remotes {
 		if _, has := h.Cids[cid]; has {
@@ -165,8 +164,8 @@ func (mcf *mockCandidateFinder) FindCandidates(ctx context.Context, cid cid.Cid)
 	return candidates, nil
 }
 
-func (mcf *mockCandidateFinder) FindCandidatesAsync(ctx context.Context, cid cid.Cid, cb func(types.RetrievalCandidate)) error {
-	cand, _ := mcf.FindCandidates(ctx, cid)
+func (mcf *mockCandidateSource) FindCandidates(ctx context.Context, cid cid.Cid, cb func(types.RetrievalCandidate)) error {
+	cand, _ := mcf.findCandidates(ctx, cid)
 	for _, c := range cand {
 		select {
 		case <-ctx.Done():

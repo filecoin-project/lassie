@@ -28,11 +28,11 @@ import (
 )
 
 func TestRetrieverStart(t *testing.T) {
-	candidateFinder := &testutil.MockCandidateFinder{}
+	candidateSource := &testutil.MockCandidateSource{}
 	client := &testutil.MockClient{}
 	session := session.NewSession(nil, true)
 	gsretriever := NewGraphsyncRetriever(session, client)
-	ret, err := NewRetriever(context.Background(), session, candidateFinder, map[multicodec.Code]types.CandidateRetriever{
+	ret, err := NewRetriever(context.Background(), session, candidateSource, map[multicodec.Code]types.CandidateRetriever{
 		multicodec.TransportGraphsyncFilecoinv1: gsretriever,
 	})
 	require.NoError(t, err)
@@ -803,7 +803,7 @@ func TestRetriever(t *testing.T) {
 			clock := clock.NewMock()
 			clock.Set(startTime)
 			// --- setup ---
-			candidateFinder := testutil.NewMockCandidateFinder(nil, map[cid.Cid][]types.RetrievalCandidate{cid1: tc.candidates})
+			candidateSource := testutil.NewMockCandidateSource(nil, map[cid.Cid][]types.RetrievalCandidate{cid1: tc.candidates})
 			client := testutil.NewMockClient(tc.returns_connected, tc.returns_retrievals, clock)
 			session := testutil.NewMockSession(ctx)
 			if tc.setup != nil {
@@ -812,7 +812,7 @@ func TestRetriever(t *testing.T) {
 			gsretriever := NewGraphsyncRetrieverWithConfig(session, client, clock, initialPause, true)
 
 			// --- create ---
-			ret, err := NewRetrieverWithClock(context.Background(), session, candidateFinder, map[multicodec.Code]types.CandidateRetriever{
+			ret, err := NewRetrieverWithClock(context.Background(), session, candidateSource, map[multicodec.Code]types.CandidateRetriever{
 				multicodec.TransportGraphsyncFilecoinv1: gsretriever,
 			}, clock)
 			require.NoError(t, err)
@@ -829,7 +829,7 @@ func TestRetriever(t *testing.T) {
 				t,
 				clock,
 				client,
-				candidateFinder,
+				candidateSource,
 				session,
 				retCancel,
 				tc.cancelAfter,
@@ -912,7 +912,7 @@ func TestLinkSystemPerRequest(t *testing.T) {
 		}, Delay: time.Millisecond * 5},
 	}
 
-	candidateFinder := testutil.NewMockCandidateFinder(nil, map[cid.Cid][]types.RetrievalCandidate{cid1: candidates})
+	candidateFinder := testutil.NewMockCandidateSource(nil, map[cid.Cid][]types.RetrievalCandidate{cid1: candidates})
 	client := testutil.NewMockClient(returnsConnected, returnsRetrievals, clock)
 	session := session.NewSession(nil, true)
 	gsretriever := NewGraphsyncRetrieverWithConfig(session, client, clock, initialPause, true)

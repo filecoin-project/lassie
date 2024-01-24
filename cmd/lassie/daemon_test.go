@@ -28,7 +28,7 @@ func TestDaemonCommandFlags(t *testing.T) {
 			args: []string{"daemon"},
 			assert: func(ctx context.Context, lCfg *l.LassieConfig, hCfg h.HttpServerConfig, erCfg *a.EventRecorderConfig) error {
 				// lassie config
-				require.Equal(t, nil, lCfg.Finder)
+				require.Equal(t, nil, lCfg.Source)
 				require.NotNil(t, lCfg.Host, "host should not be nil")
 				require.Equal(t, 20*time.Second, lCfg.ProviderTimeout)
 				require.Equal(t, uint(0), lCfg.ConcurrentSPRetrievals)
@@ -156,7 +156,7 @@ func TestDaemonCommandFlags(t *testing.T) {
 			name: "with ipni endpoint",
 			args: []string{"daemon", "--ipni-endpoint", "https://cid.contact"},
 			assert: func(ctx context.Context, lCfg *l.LassieConfig, hCfg h.HttpServerConfig, erCfg *a.EventRecorderConfig) error {
-				require.IsType(t, &indexerlookup.IndexerCandidateFinder{}, lCfg.Finder, "finder should be an IndexerCandidateFinder when providing an ipni endpoint")
+				require.IsType(t, &indexerlookup.IndexerCandidateSource{}, lCfg.Source, "finder should be an IndexerCandidateSource when providing an ipni endpoint")
 				return nil
 			},
 		},

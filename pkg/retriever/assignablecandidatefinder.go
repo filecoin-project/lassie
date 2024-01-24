@@ -20,17 +20,17 @@ type FilterIndexerCandidate func(types.RetrievalCandidate) (bool, types.Retrieva
 // AssignableCandidateFinder finds and filters candidates for a given retrieval
 type AssignableCandidateFinder struct {
 	filterIndexerCandidate FilterIndexerCandidate
-	candidateFinder        CandidateFinder
+	candidateSource        types.CandidateSource
 	clock                  clock.Clock
 }
 
 const BufferWindow = 5 * time.Millisecond
 
-func NewAssignableCandidateFinder(candidateFinder CandidateFinder, filterIndexerCandidate FilterIndexerCandidate) AssignableCandidateFinder {
-	return NewAssignableCandidateFinderWithClock(candidateFinder, filterIndexerCandidate, clock.New())
+func NewAssignableCandidateFinder(candidateSource types.CandidateSource, filterIndexerCandidate FilterIndexerCandidate) AssignableCandidateFinder {
+	return NewAssignableCandidateFinderWithClock(candidateSource, filterIndexerCandidate, clock.New())
 }
-func NewAssignableCandidateFinderWithClock(candidateFinder CandidateFinder, filterIndexerCandidate FilterIndexerCandidate, clock clock.Clock) AssignableCandidateFinder {
-	return AssignableCandidateFinder{candidateFinder: candidateFinder, filterIndexerCandidate: filterIndexerCandidate, clock: clock}
+func NewAssignableCandidateFinderWithClock(candidateSource types.CandidateSource, filterIndexerCandidate FilterIndexerCandidate, clock clock.Clock) AssignableCandidateFinder {
+	return AssignableCandidateFinder{candidateSource: candidateSource, filterIndexerCandidate: filterIndexerCandidate, clock: clock}
 }
 func (acf AssignableCandidateFinder) FindCandidates(ctx context.Context, request types.RetrievalRequest, eventsCallback func(types.RetrievalEvent), onCandidates func([]types.RetrievalCandidate)) error {
 	ctx, cancelCtx := context.WithCancel(ctx)
@@ -67,7 +67,7 @@ func (acf AssignableCandidateFinder) FindCandidates(ctx context.Context, request
 		if len(request.FixedPeers) > 0 {
 			return sendFixedPeers(request.Root, request.FixedPeers, onNextCandidate)
 		}
-		return acf.candidateFinder.FindCandidatesAsync(ctx, request.Root, onNextCandidate)
+		return acf.candidateSource.FindCandidates(ctx, request.Root, onNextCandidate)
 	}, BufferWindow)
 
 	if err != nil {

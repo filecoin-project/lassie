@@ -40,7 +40,7 @@ func TestHttpClientClose(t *testing.T) {
 		ctx,
 		lassie.WithProviderTimeout(20*time.Second),
 		lassie.WithHost(mrn.Self),
-		lassie.WithFinder(mrn.Finder),
+		lassie.WithCandidateSource(mrn.Source),
 		lassie.WithProtocols([]multicodec.Code{multicodec.TransportBitswap}),
 	)
 	req.NoError(err)
