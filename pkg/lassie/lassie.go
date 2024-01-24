@@ -32,7 +32,7 @@ type Lassie struct {
 
 // LassieConfig customizes the behavior of a Lassie instance.
 type LassieConfig struct {
-	Finder                         retriever.CandidateFinder
+	Source                         types.CandidateSource
 	Host                           host.Host
 	ProviderTimeout                time.Duration
 	ConcurrentSPRetrievals         uint
@@ -65,9 +65,9 @@ func NewLassieConfig(opts ...LassieOption) *LassieConfig {
 // NewLassieWithConfig creates a new Lassie instance with a custom
 // configuration.
 func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error) {
-	if cfg.Finder == nil {
+	if cfg.Source == nil {
 		var err error
-		cfg.Finder, err = indexerlookup.NewCandidateFinder(indexerlookup.WithHttpClient(&http.Client{}))
+		cfg.Source, err = indexerlookup.NewCandidateSource(indexerlookup.WithHttpClient(&http.Client{}))
 		if err != nil {
 			return nil, err
 		}
@@ -130,7 +130,7 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 		}
 	}
 
-	retriever, err := retriever.NewRetriever(ctx, session, cfg.Finder, protocolRetrievers)
+	retriever, err := retriever.NewRetriever(ctx, session, cfg.Source, protocolRetrievers)
 	if err != nil {
 		return nil, err
 	}
@@ -144,10 +144,10 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 	return lassie, nil
 }
 
-// WithFinder allows you to specify a custom candidate finder.
-func WithFinder(finder retriever.CandidateFinder) LassieOption {
+// WithCandidateSource allows you to specify a custom candidate finder.
+func WithCandidateSource(finder types.CandidateSource) LassieOption {
 	return func(cfg *LassieConfig) {
-		cfg.Finder = finder
+		cfg.Source = finder
 	}
 }
 

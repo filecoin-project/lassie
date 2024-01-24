@@ -95,25 +95,13 @@ func TestCandidateFinder(t *testing.T) {
 			}()
 			indexerURL, err := url.Parse("http://" + mockIndexer.Addr())
 			req.NoError(err)
-			candidateFinder, err := indexerlookup.NewCandidateFinder(indexerlookup.WithHttpEndpoint(indexerURL))
+			candidateSource, err := indexerlookup.NewCandidateSource(indexerlookup.WithHttpEndpoint(indexerURL))
 			req.NoError(err)
 			for cid, expectedReturns := range testCase.expectedReturns {
-				syncCandidates, err := candidateFinder.FindCandidates(ctx, cid)
-				req.NoError(err)
-				if syncCandidates == nil {
-					syncCandidates = []types.RetrievalCandidate{}
-				}
-				req.Equal(expectedReturns, syncCandidates)
-				select {
-				case <-ctx.Done():
-					req.FailNow("cancelled")
-				case recv := <-connectCh:
-					req.Regexp("^/multihash/"+cid.Hash().B58String(), recv)
-				}
 				gatheredCandidates := []types.RetrievalCandidate{}
 				asyncCandidatesErr := make(chan error, 1)
 				go func() {
-					asyncCandidatesErr <- candidateFinder.FindCandidatesAsync(ctx, cid, func(candidate types.RetrievalCandidate) {
+					asyncCandidatesErr <- candidateSource.FindCandidates(ctx, cid, func(candidate types.RetrievalCandidate) {
 						gatheredCandidates = append(gatheredCandidates, candidate)
 					})
 				}()

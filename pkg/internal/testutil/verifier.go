@@ -53,7 +53,7 @@ func (rv RetrievalVerifier) RunWithVerification(
 	t *testing.T,
 	clock *clock.Mock,
 	client VerifierClient,
-	mockCandidateFinder *MockCandidateFinder,
+	mockCandidateFinder *MockCandidateSource,
 	mockSession *MockSession,
 	cancelFunc context.CancelFunc,
 	cancelAfter time.Duration,

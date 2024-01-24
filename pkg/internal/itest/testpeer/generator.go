@@ -318,7 +318,7 @@ func newTestPeer(
 	}
 
 	wo := tp.LinkSystem.StorageWriteOpener
-	// track CIDs put into this store so we can serve via the CandidateFinder
+	// track CIDs put into this store so we can serve via the CandidateSource
 	tp.LinkSystem.StorageWriteOpener = func(lnkCtx linking.LinkContext) (io.Writer, linking.BlockWriteCommitter, error) {
 		w, c, err := wo(lnkCtx)
 		if err != nil {

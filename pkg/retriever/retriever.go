@@ -60,11 +60,6 @@ type Retriever struct {
 	protocols    []multicodec.Code
 }
 
-type CandidateFinder interface {
-	FindCandidates(context.Context, cid.Cid) ([]types.RetrievalCandidate, error)
-	FindCandidatesAsync(context.Context, cid.Cid, func(types.RetrievalCandidate)) error
-}
-
 type eventStats struct {
 	failedCount int64
 }
@@ -72,16 +67,16 @@ type eventStats struct {
 func NewRetriever(
 	ctx context.Context,
 	session Session,
-	candidateFinder CandidateFinder,
+	candidateSource types.CandidateSource,
 	protocolRetrievers map[multicodec.Code]types.CandidateRetriever,
 ) (*Retriever, error) {
-	return NewRetrieverWithClock(ctx, session, candidateFinder, protocolRetrievers, clock.New())
+	return NewRetrieverWithClock(ctx, session, candidateSource, protocolRetrievers, clock.New())
 }
 
 func NewRetrieverWithClock(
 	ctx context.Context,
 	session Session,
-	candidateFinder CandidateFinder,
+	candidateSource types.CandidateSource,
 	protocolRetrievers map[multicodec.Code]types.CandidateRetriever,
 	clock clock.Clock,
 ) (*Retriever, error) {
@@ -95,7 +90,7 @@ func NewRetrieverWithClock(
 		retriever.protocols = append(retriever.protocols, protocol)
 	}
 	retriever.executor = combinators.RetrieverWithCandidateFinder{
-		CandidateFinder: NewAssignableCandidateFinderWithClock(candidateFinder, session.FilterIndexerCandidate, clock),
+		CandidateFinder: NewAssignableCandidateFinderWithClock(candidateSource, session.FilterIndexerCandidate, clock),
 		CandidateRetriever: combinators.SplitRetriever[multicodec.Code]{
 			AsyncCandidateSplitter: combinators.NewAsyncCandidateSplitter(retriever.protocols, NewProtocolSplitter),
 			CandidateRetrievers:    protocolRetrievers,
@@ -125,7 +120,7 @@ func (retriever *Retriever) RegisterSubscriber(subscriber types.RetrievalEventSu
 }
 
 // Retrieve attempts to retrieve the given CID using the configured
-// CandidateFinder to find storage providers that should have the CID.
+// CandidateSource to find storage providers that should have the CID.
 func (retriever *Retriever) Retrieve(
 	ctx context.Context,
 	request types.RetrievalRequest,

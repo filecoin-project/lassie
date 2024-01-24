@@ -15,17 +15,17 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
-var _ CandidateFinder = &DirectCandidateFinder{}
+var _ types.CandidateSource = &DirectCandidateSource{}
 
-// DirectCandidateFinder finds candidate protocols from a fixed set of peers
-type DirectCandidateFinder struct {
+// DirectCandidateSource finds candidate protocols from a fixed set of peers
+type DirectCandidateSource struct {
 	h         host.Host
 	providers []peer.AddrInfo
 }
 
-// NewDirectCandidateFinder returns a new DirectCandidateFinder for the given providers
-func NewDirectCandidateFinder(h host.Host, providers []peer.AddrInfo) *DirectCandidateFinder {
-	return &DirectCandidateFinder{
+// NewDirectCandidateSource returns a new DirectCandidateFinder for the given providers
+func NewDirectCandidateSource(h host.Host, providers []peer.AddrInfo) *DirectCandidateSource {
+	return &DirectCandidateSource{
 		h:         h,
 		providers: providers,
 	}
@@ -61,9 +61,9 @@ func (cs candidateSender) sendError(err error) error {
 	}
 }
 
-// FindCandidatesAsync finds supported protocols for each peer
+// FindCandidates finds supported protocols for each peer
 // TODO: Cache the results?
-func (d *DirectCandidateFinder) FindCandidatesAsync(ctx context.Context, c cid.Cid, cb func(types.RetrievalCandidate)) error {
+func (d *DirectCandidateSource) FindCandidates(ctx context.Context, c cid.Cid, cb func(types.RetrievalCandidate)) error {
 	candidateResults := make(chan types.FindCandidatesResult)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -127,7 +127,7 @@ func (d *DirectCandidateFinder) FindCandidatesAsync(ctx context.Context, c cid.C
 	}
 }
 
-func (d *DirectCandidateFinder) retrievalCandidatesFromProtocolProbing(ctx context.Context, provider peer.AddrInfo, cs candidateSender) {
+func (d *DirectCandidateSource) retrievalCandidatesFromProtocolProbing(ctx context.Context, provider peer.AddrInfo, cs candidateSender) {
 	var protocols []metadata.Protocol
 	s, err := d.h.NewStream(ctx, provider.ID,
 		bsnet.ProtocolBitswap,
@@ -153,7 +153,7 @@ func (d *DirectCandidateFinder) retrievalCandidatesFromProtocolProbing(ctx conte
 	_ = cs.sendCandidate(provider, protocols...)
 }
 
-func (d *DirectCandidateFinder) retrievalCandidatesFromTransportsProtocol(ctx context.Context, qr *lp2ptransports.QueryResponse, provider peer.AddrInfo, cs candidateSender) {
+func (d *DirectCandidateSource) retrievalCandidatesFromTransportsProtocol(ctx context.Context, qr *lp2ptransports.QueryResponse, provider peer.AddrInfo, cs candidateSender) {
 	for _, protocol := range qr.Protocols {
 		// try to parse addr infos directly
 		addrs, err := peer.AddrInfosFromP2pAddrs(protocol.Addresses...)
@@ -186,15 +186,4 @@ func (d *DirectCandidateFinder) retrievalCandidatesFromTransportsProtocol(ctx co
 		default:
 		}
 	}
-}
-
-func (d *DirectCandidateFinder) FindCandidates(ctx context.Context, c cid.Cid) ([]types.RetrievalCandidate, error) {
-	var candidates []types.RetrievalCandidate
-	err := d.FindCandidatesAsync(ctx, c, func(nextCandidate types.RetrievalCandidate) {
-		candidates = append(candidates, nextCandidate)
-	})
-	if err != nil {
-		return nil, err
-	}
-	return candidates, nil
 }

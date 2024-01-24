@@ -155,7 +155,7 @@ func TestAssignableCandidateFinder(t *testing.T) {
 				}
 				allFixedPeers[c] = fixedPeers
 			}
-			candidateFinder := testutil.NewMockCandidateFinder(testCase.candidateError, allCandidateResults)
+			candidateSource := testutil.NewMockCandidateSource(testCase.candidateError, allCandidateResults)
 			isAcceptableStorageProvider := func(candidate types.RetrievalCandidate) (bool, types.RetrievalCandidate) {
 				for _, filteredPeer := range testCase.filteredPeers {
 					if candidate.MinerPeer.ID == peer.ID(filteredPeer) {
@@ -176,7 +176,7 @@ func TestAssignableCandidateFinder(t *testing.T) {
 			retrievalCollector := func(evt types.RetrievalEvent) {
 				receivedEvents[evt.RootCid()] = append(receivedEvents[evt.RootCid()], evt)
 			}
-			retrievalCandidateFinder := retriever.NewAssignableCandidateFinder(candidateFinder, isAcceptableStorageProvider)
+			retrievalCandidateFinder := retriever.NewAssignableCandidateFinder(candidateSource, isAcceptableStorageProvider)
 			rid1, err := types.NewRetrievalID()
 			req.NoError(err)
 			receivedErrors := make(map[cid.Cid]error)

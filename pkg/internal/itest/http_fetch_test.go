@@ -433,7 +433,7 @@ func TestHttpFetch(t *testing.T) {
 		},
 		{
 			// A very contrived example - we spread the content generated for this test across 4 peers,
-			// then we also make sure the root is in all of them, so the CandidateFinder will return them
+			// then we also make sure the root is in all of them, so the CandidateSource will return them
 			// all. The retriever should then form a swarm of 4 peers and fetch the content from across
 			// the set.
 			name:           "bitswap, nested large sharded directory, spread across multiple peers, with path, dag-scope entity",
@@ -585,7 +585,7 @@ func TestHttpFetch(t *testing.T) {
 				return []unixfs.DirEntry{fileEntry}
 			},
 			lassieOpts: func(t *testing.T, mrn *mocknet.MockRetrievalNet) []lassie.LassieOption {
-				return []lassie.LassieOption{lassie.WithFinder(retriever.NewDirectCandidateFinder(mrn.Self, []peer.AddrInfo{*mrn.Remotes[0].AddrInfo()}))}
+				return []lassie.LassieOption{lassie.WithCandidateSource(retriever.NewDirectCandidateSource(mrn.Self, []peer.AddrInfo{*mrn.Remotes[0].AddrInfo()}))}
 			},
 		},
 		{
@@ -616,7 +616,7 @@ func TestHttpFetch(t *testing.T) {
 				return []unixfs.DirEntry{fileEntry}
 			},
 			lassieOpts: func(t *testing.T, mrn *mocknet.MockRetrievalNet) []lassie.LassieOption {
-				return []lassie.LassieOption{lassie.WithFinder(retriever.NewDirectCandidateFinder(mrn.Self, []peer.AddrInfo{*mrn.Remotes[0].AddrInfo()}))}
+				return []lassie.LassieOption{lassie.WithCandidateSource(retriever.NewDirectCandidateSource(mrn.Self, []peer.AddrInfo{*mrn.Remotes[0].AddrInfo()}))}
 			},
 		},
 		{
@@ -899,7 +899,7 @@ func TestHttpFetch(t *testing.T) {
 			opts := append([]lassie.LassieOption{
 				lassie.WithProviderTimeout(20 * time.Second),
 				lassie.WithHost(mrn.Self),
-				lassie.WithFinder(mrn.Finder),
+				lassie.WithCandidateSource(mrn.Source),
 			}, customOpts...)
 			if testCase.disableGraphsync {
 				opts = append(opts, lassie.WithProtocols([]multicodec.Code{multicodec.TransportBitswap, multicodec.TransportIpfsGatewayHttp}))

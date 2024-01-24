@@ -15,21 +15,21 @@ type DiscoveredCandidate struct {
 	Candidate types.RetrievalCandidate
 }
 
-type MockCandidateFinder struct {
+type MockCandidateSource struct {
 	err                  error
 	candidates           map[cid.Cid][]types.RetrievalCandidate
 	discoveredCandidates chan DiscoveredCandidate
 }
 
-func NewMockCandidateFinder(err error, candidates map[cid.Cid][]types.RetrievalCandidate) *MockCandidateFinder {
-	return &MockCandidateFinder{
+func NewMockCandidateSource(err error, candidates map[cid.Cid][]types.RetrievalCandidate) *MockCandidateSource {
+	return &MockCandidateSource{
 		err:                  err,
 		candidates:           candidates,
 		discoveredCandidates: make(chan DiscoveredCandidate, 16),
 	}
 }
 
-func (me *MockCandidateFinder) VerifyCandidatesDiscovered(ctx context.Context, t *testing.T, afterStart time.Duration, expectedCandidatesDiscovered []DiscoveredCandidate) {
+func (me *MockCandidateSource) VerifyCandidatesDiscovered(ctx context.Context, t *testing.T, afterStart time.Duration, expectedCandidatesDiscovered []DiscoveredCandidate) {
 	candidatesDiscovered := make([]DiscoveredCandidate, 0, len(expectedCandidatesDiscovered))
 	for i := 0; i < len(expectedCandidatesDiscovered); i++ {
 		select {
@@ -42,8 +42,8 @@ func (me *MockCandidateFinder) VerifyCandidatesDiscovered(ctx context.Context, t
 	require.ElementsMatch(t, expectedCandidatesDiscovered, candidatesDiscovered)
 }
 
-func (me *MockCandidateFinder) FindCandidatesAsync(ctx context.Context, c cid.Cid, cb func(types.RetrievalCandidate)) error {
-	rs, err := me.FindCandidates(ctx, c)
+func (me *MockCandidateSource) FindCandidates(ctx context.Context, c cid.Cid, cb func(types.RetrievalCandidate)) error {
+	rs, err := me.findCandidates(ctx, c)
 	if err != nil {
 		return err
 	}
@@ -63,7 +63,7 @@ func (me *MockCandidateFinder) FindCandidatesAsync(ctx context.Context, c cid.Ci
 	return nil
 }
 
-func (me *MockCandidateFinder) FindCandidates(ctx context.Context, cid cid.Cid) ([]types.RetrievalCandidate, error) {
+func (me *MockCandidateSource) findCandidates(ctx context.Context, cid cid.Cid) ([]types.RetrievalCandidate, error) {
 	if me.err != nil {
 		return nil, me.err
 	}
