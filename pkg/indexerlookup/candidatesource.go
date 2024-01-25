@@ -37,30 +37,6 @@ func NewCandidateSource(o ...Option) (*IndexerCandidateSource, error) {
 	}, nil
 }
 
-func (idxf *IndexerCandidateSource) sendJsonRequest(req *http.Request) (*model.FindResponse, error) {
-	req.Header.Set("Accept", "application/json")
-	logger.Debugw("sending outgoing request", "url", req.URL, "accept", req.Header.Get("Accept"))
-	resp, err := idxf.httpClient.Do(req)
-	if err != nil {
-		logger.Debugw("Failed to perform json lookup", "err", err)
-		return nil, err
-	}
-	switch resp.StatusCode {
-	case http.StatusOK:
-		defer resp.Body.Close()
-		b, err := io.ReadAll(resp.Body)
-		if err != nil {
-			logger.Debugw("Failed to read response JSON response body", "err", err)
-			return nil, err
-		}
-		return model.UnmarshalFindResponse(b)
-	case http.StatusNotFound:
-		return &model.FindResponse{}, nil
-	default:
-		return nil, fmt.Errorf("batch find query failed: %s", http.StatusText(resp.StatusCode))
-	}
-}
-
 func decodeMetadata(pr model.ProviderResult) (metadata.Metadata, error) {
 	if len(pr.Metadata) == 0 {
 		return metadata.Metadata{}, errors.New("no metadata")
