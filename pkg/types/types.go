@@ -44,6 +44,11 @@ func NewFetchConfig(opts ...FetchOption) FetchConfig {
 	return cfg
 }
 
+type Provider struct {
+	Peer      peer.AddrInfo
+	Protocols []metadata.Protocol
+}
+
 // RetrievalCandidate describes a peer and CID combination that can be used to
 // retrieve data from the peer. The RootCid describes the head of an IPLD graph
 // that is being retrieved. The MinerPeer is the peer that is (apparently)

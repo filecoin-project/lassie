@@ -90,8 +90,8 @@ func buildLassieConfigFromCLIContext(cctx *cli.Context, lassieOpts []lassie.Lass
 	}
 	lassieOpts = append(lassieOpts, lassie.WithHost(host))
 
-	if len(fetchProviderAddrInfos) > 0 {
-		finderOpt := lassie.WithCandidateSource(retriever.NewDirectCandidateSource(host, fetchProviderAddrInfos))
+	if len(fetchProviders) > 0 {
+		finderOpt := lassie.WithCandidateSource(retriever.NewDirectCandidateSource(fetchProviders, retriever.WithLibp2pCandidateDiscovery(host)))
 		if cctx.IsSet("ipni-endpoint") {
 			logger.Warn("Ignoring ipni-endpoint flag since direct provider is specified")
 		}

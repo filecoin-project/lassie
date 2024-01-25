@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCandidateFinder(t *testing.T) {
+func TestCandidateSource(t *testing.T) {
 	cids := make([]cid.Cid, 0, 10)
 	candidates := make(map[cid.Cid][]types.RetrievalCandidate, 10)
 	binaryMetadata := make(map[cid.Cid][][]byte, 10)

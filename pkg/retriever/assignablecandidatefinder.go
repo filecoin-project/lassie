@@ -63,11 +63,12 @@ func (acf AssignableCandidateFinder) FindCandidates(ctx context.Context, request
 		onCandidates(acceptableCandidates)
 	}, acf.clock)
 
+	candidateSource := acf.candidateSource
+	if len(request.Providers) > 0 {
+		candidateSource = NewDirectCandidateSource(request.Providers)
+	}
 	err := candidateBuffer.BufferStream(ctx, func(ctx context.Context, onNextCandidate candidatebuffer.OnNextCandidate) error {
-		if len(request.FixedPeers) > 0 {
-			return sendFixedPeers(request.Root, request.FixedPeers, onNextCandidate)
-		}
-		return acf.candidateSource.FindCandidates(ctx, request.Root, onNextCandidate)
+		return candidateSource.FindCandidates(ctx, request.Root, onNextCandidate)
 	}, BufferWindow)
 
 	if err != nil {

@@ -117,7 +117,7 @@ var FlagExcludeProviders = &cli.StringFlag{
 	},
 }
 
-var fetchProviderAddrInfos []peer.AddrInfo
+var fetchProviders []types.Provider
 
 var FlagAllowProviders = &cli.StringFlag{
 	Name:        "providers",
@@ -143,7 +143,7 @@ var FlagAllowProviders = &cli.StringFlag{
 		if err != nil {
 			return err
 		}
-		fetchProviderAddrInfos, err = types.ParseProviderStrings(strings.Join(trans, ","))
+		fetchProviders, err = types.ParseProviderStrings(strings.Join(trans, ","))
 		return err
 	},
 }
@@ -214,7 +214,7 @@ var FlagIPNIEndpoint = &cli.StringFlag{
 func ResetGlobalFlags() {
 	// Reset global variables here so that they are not used
 	// in subsequent calls to commands during testing.
-	fetchProviderAddrInfos = make([]peer.AddrInfo, 0)
+	fetchProviders = make([]types.Provider, 0)
 	protocols = make([]multicodec.Code, 0)
 	providerBlockList = make(map[peer.ID]bool)
 }

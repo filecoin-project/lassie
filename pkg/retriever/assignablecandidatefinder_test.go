@@ -13,6 +13,7 @@ import (
 	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	trustlessutils "github.com/ipld/go-trustless-utils"
+	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/require"
 )
@@ -147,13 +148,16 @@ func TestAssignableCandidateFinder(t *testing.T) {
 			if testCase.fixedPeers == nil {
 				testCase.fixedPeers = make(map[cid.Cid][]string)
 			}
-			allFixedPeers := make(map[cid.Cid][]peer.AddrInfo, len(testCase.fixedPeers))
+			allProviders := make(map[cid.Cid][]types.Provider, len(testCase.fixedPeers))
 			for c, stringResults := range testCase.fixedPeers {
-				fixedPeers := make([]peer.AddrInfo, 0, len(stringResults))
+				providers := make([]types.Provider, 0, len(stringResults))
 				for _, stringResult := range stringResults {
-					fixedPeers = append(fixedPeers, peer.AddrInfo{ID: peer.ID(stringResult)})
+					providers = append(providers, types.Provider{
+						Peer:      peer.AddrInfo{ID: peer.ID(stringResult)},
+						Protocols: []metadata.Protocol{&metadata.GraphsyncFilecoinV1{}, &metadata.Bitswap{}, &metadata.IpfsGatewayHttp{}},
+					})
 				}
-				allFixedPeers[c] = fixedPeers
+				allProviders[c] = providers
 			}
 			candidateSource := testutil.NewMockCandidateSource(testCase.candidateError, allCandidateResults)
 			isAcceptableStorageProvider := func(candidate types.RetrievalCandidate) (bool, types.RetrievalCandidate) {
@@ -189,7 +193,7 @@ func TestAssignableCandidateFinder(t *testing.T) {
 				RetrievalID: rid1,
 				Request:     trustlessutils.Request{Root: cid1},
 				LinkSystem:  cidlink.DefaultLinkSystem(),
-				FixedPeers:  allFixedPeers[cid1],
+				Providers:   allProviders[cid1],
 			}, retrievalCollector, candidateCollector)
 			if err != nil {
 				receivedErrors[cid1] = err
@@ -203,7 +207,7 @@ func TestAssignableCandidateFinder(t *testing.T) {
 				RetrievalID: rid2,
 				Request:     trustlessutils.Request{Root: cid2},
 				LinkSystem:  cidlink.DefaultLinkSystem(),
-				FixedPeers:  allFixedPeers[cid2],
+				Providers:   allProviders[cid2],
 			}, retrievalCollector, candidateCollector)
 			if err != nil {
 				receivedErrors[cid2] = err

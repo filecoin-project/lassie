@@ -252,7 +252,7 @@ func (pp *progressPrinter) subscriber(event types.RetrievalEvent) {
 	case events.CandidatesFoundEvent:
 		pp.candidatesFound = len(ret.Candidates())
 	case events.CandidatesFilteredEvent:
-		if len(fetchProviderAddrInfos) == 0 {
+		if len(fetchProviders) == 0 {
 			fmt.Fprintf(pp.writer, "Found %d storage provider candidate(s) in the indexer:\n", pp.candidatesFound)
 		} else {
 			fmt.Fprintf(pp.writer, "Using the specified storage provider(s):\n")
@@ -327,7 +327,7 @@ func defaultFetchRun(
 	if printPath != "" {
 		printPath = "/" + printPath
 	}
-	if len(fetchProviderAddrInfos) == 0 {
+	if len(fetchProviders) == 0 {
 		fmt.Fprintf(msgWriter, "Fetching %s", rootCid.String()+printPath)
 	} else {
 		fmt.Fprintf(msgWriter, "Fetching %s from specified provider(s)", rootCid.String()+printPath)

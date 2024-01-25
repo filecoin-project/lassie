@@ -99,8 +99,8 @@ func TestRequestStringRepresentations(t *testing.T) {
 		{
 			name: "fixed peer",
 			request: RetrievalRequest{
-				Request:    trustlessutils.Request{Root: testCidV1},
-				FixedPeers: must(ParseProviderStrings("/ip4/127.0.0.1/tcp/5000/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4")),
+				Request:   trustlessutils.Request{Root: testCidV1},
+				Providers: must(ParseProviderStrings("/ip4/127.0.0.1/tcp/5000/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4")),
 			},
 			expectedUrlPath:    "?dag-scope=all",
 			expectedDescriptor: "/ipfs/bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi?dag-scope=all&dups=n&providers=/ip4/127.0.0.1/tcp/5000/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4",
@@ -108,8 +108,8 @@ func TestRequestStringRepresentations(t *testing.T) {
 		{
 			name: "fixed peers",
 			request: RetrievalRequest{
-				Request:    trustlessutils.Request{Root: testCidV1},
-				FixedPeers: must(ParseProviderStrings("/dns/beep.boop.com/tcp/3747/p2p/12D3KooWDXAVxjSTKbHKpNk8mFVQzHdBDvR4kybu582Xd4Zrvagg,/ip4/127.0.0.1/tcp/5000/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4")),
+				Request:   trustlessutils.Request{Root: testCidV1},
+				Providers: must(ParseProviderStrings("/dns/beep.boop.com/tcp/3747/p2p/12D3KooWDXAVxjSTKbHKpNk8mFVQzHdBDvR4kybu582Xd4Zrvagg,/ip4/127.0.0.1/tcp/5000/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4")),
 			},
 			expectedUrlPath:    "?dag-scope=all",
 			expectedDescriptor: "/ipfs/bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi?dag-scope=all&dups=n&providers=/dns/beep.boop.com/tcp/3747/p2p/12D3KooWDXAVxjSTKbHKpNk8mFVQzHdBDvR4kybu582Xd4Zrvagg,/ip4/127.0.0.1/tcp/5000/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4",
@@ -146,9 +146,9 @@ func TestRequestStringRepresentations(t *testing.T) {
 					Duplicates: true,
 					Bytes:      &trustlessutils.ByteRange{From: 100, To: ptr(-200)},
 				},
-				MaxBlocks:  222,
-				Protocols:  []multicodec.Code{multicodec.TransportBitswap, multicodec.TransportIpfsGatewayHttp},
-				FixedPeers: must(ParseProviderStrings("/dns/beep.boop.com/tcp/3747/p2p/12D3KooWDXAVxjSTKbHKpNk8mFVQzHdBDvR4kybu582Xd4Zrvagg,/ip4/127.0.0.1/tcp/5000/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4")),
+				MaxBlocks: 222,
+				Protocols: []multicodec.Code{multicodec.TransportBitswap, multicodec.TransportIpfsGatewayHttp},
+				Providers: must(ParseProviderStrings("/dns/beep.boop.com/tcp/3747/p2p/12D3KooWDXAVxjSTKbHKpNk8mFVQzHdBDvR4kybu582Xd4Zrvagg,/ip4/127.0.0.1/tcp/5000/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4")),
 			},
 			expectedUrlPath:    "/some/path/to/thing?dag-scope=entity&entity-bytes=100:-200",
 			expectedDescriptor: "/ipfs/QmVXsSVjwxMsCwKRCUxEkGb4f4B98gXVy3ih3v4otvcURK/some/path/to/thing?dag-scope=entity&entity-bytes=100:-200&dups=y&blockLimit=222&protocols=transport-bitswap,transport-ipfs-gateway-http&providers=/dns/beep.boop.com/tcp/3747/p2p/12D3KooWDXAVxjSTKbHKpNk8mFVQzHdBDvR4kybu582Xd4Zrvagg,/ip4/127.0.0.1/tcp/5000/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4",
@@ -170,8 +170,8 @@ func TestRequestStringRepresentations(t *testing.T) {
 		pps, err := ParseProviderStrings("/ip4/127.0.0.1/tcp/5000/http")
 		require.NoError(t, err)
 		request := RetrievalRequest{
-			Request:    trustlessutils.Request{Root: testCidV1},
-			FixedPeers: pps,
+			Request:   trustlessutils.Request{Root: testCidV1},
+			Providers: pps,
 		}
 		ds, err := request.GetDescriptorString()
 		require.NoError(t, err)
@@ -185,8 +185,8 @@ func TestRequestStringRepresentations(t *testing.T) {
 				pps, err := ParseProviderStrings("http://127.0.0.1:5000" + p)
 				require.NoError(t, err)
 				request := RetrievalRequest{
-					Request:    trustlessutils.Request{Root: testCidV1},
-					FixedPeers: pps,
+					Request:   trustlessutils.Request{Root: testCidV1},
+					Providers: pps,
 				}
 				ds, err := request.GetDescriptorString()
 				require.NoError(t, err)
