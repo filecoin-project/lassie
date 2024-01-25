@@ -24,6 +24,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/lassie"
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	httpserver "github.com/filecoin-project/lassie/pkg/server/http"
+	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	unixfs "github.com/ipfs/go-unixfsnode/testutil"
@@ -585,7 +586,7 @@ func TestHttpFetch(t *testing.T) {
 				return []unixfs.DirEntry{fileEntry}
 			},
 			lassieOpts: func(t *testing.T, mrn *mocknet.MockRetrievalNet) []lassie.LassieOption {
-				return []lassie.LassieOption{lassie.WithCandidateSource(retriever.NewDirectCandidateSource(mrn.Self, []peer.AddrInfo{*mrn.Remotes[0].AddrInfo()}))}
+				return []lassie.LassieOption{lassie.WithCandidateSource(retriever.NewDirectCandidateSource([]types.Provider{{Peer: *mrn.Remotes[0].AddrInfo(), Protocols: nil}}, retriever.WithLibp2pCandidateDiscovery(mrn.Self)))}
 			},
 		},
 		{
@@ -616,7 +617,7 @@ func TestHttpFetch(t *testing.T) {
 				return []unixfs.DirEntry{fileEntry}
 			},
 			lassieOpts: func(t *testing.T, mrn *mocknet.MockRetrievalNet) []lassie.LassieOption {
-				return []lassie.LassieOption{lassie.WithCandidateSource(retriever.NewDirectCandidateSource(mrn.Self, []peer.AddrInfo{*mrn.Remotes[0].AddrInfo()}))}
+				return []lassie.LassieOption{lassie.WithCandidateSource(retriever.NewDirectCandidateSource([]types.Provider{{Peer: *mrn.Remotes[0].AddrInfo(), Protocols: nil}}, retriever.WithLibp2pCandidateDiscovery(mrn.Self)))}
 			},
 		},
 		{

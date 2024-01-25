@@ -20,15 +20,26 @@ var _ types.CandidateSource = &DirectCandidateSource{}
 // DirectCandidateSource finds candidate protocols from a fixed set of peers
 type DirectCandidateSource struct {
 	h         host.Host
-	providers []peer.AddrInfo
+	providers []types.Provider
+}
+
+type Option func(*DirectCandidateSource)
+
+func WithLibp2pCandidateDiscovery(h host.Host) Option {
+	return func(d *DirectCandidateSource) {
+		d.h = h
+	}
 }
 
 // NewDirectCandidateSource returns a new DirectCandidateFinder for the given providers
-func NewDirectCandidateSource(h host.Host, providers []peer.AddrInfo) *DirectCandidateSource {
-	return &DirectCandidateSource{
-		h:         h,
+func NewDirectCandidateSource(providers []types.Provider, opts ...Option) *DirectCandidateSource {
+	d := &DirectCandidateSource{
 		providers: providers,
 	}
+	for _, opt := range opts {
+		opt(d)
+	}
+	return d
 }
 
 type candidateSender struct {
@@ -75,18 +86,30 @@ func (d *DirectCandidateSource) FindCandidates(ctx context.Context, c cid.Cid, c
 		go func() {
 			defer wg.Done()
 
+			// if protocols are specified, just use those
+			if len(provider.Protocols) > 0 {
+				cs.sendCandidate(provider.Peer, provider.Protocols...)
+				return
+			}
+
 			// if it's http, it'll be in the multiaddr and we can't probe it
-			if len(provider.Addrs) == 1 {
-				for _, proto := range provider.Addrs[0].Protocols() {
+			if len(provider.Peer.Addrs) == 1 {
+				for _, proto := range provider.Peer.Addrs[0].Protocols() {
 					if proto.Name == "http" || proto.Name == "https" {
-						cs.sendCandidate(provider, metadata.IpfsGatewayHttp{})
+						cs.sendCandidate(provider.Peer, metadata.IpfsGatewayHttp{})
 						return
 					}
 				}
 			}
 
+			// if we have no libp2p host, just assume all protocols are available
+			if d.h == nil {
+				cs.sendCandidate(provider.Peer, metadata.IpfsGatewayHttp{}, metadata.Bitswap{}, &metadata.GraphsyncFilecoinV1{})
+				return
+			}
+
 			// probe it
-			err := d.h.Connect(ctx, provider)
+			err := d.h.Connect(ctx, provider.Peer)
 			// don't add peers that we can't connect to
 			if err != nil {
 				_ = cs.sendError(err)
@@ -94,16 +117,16 @@ func (d *DirectCandidateSource) FindCandidates(ctx context.Context, c cid.Cid, c
 			}
 			// check for support for Boost libp2p transports protocol
 			transportsClient := lp2ptransports.NewTransportsClient(d.h)
-			qr, err := transportsClient.SendQuery(ctx, provider.ID)
+			qr, err := transportsClient.SendQuery(ctx, provider.Peer.ID)
 			if err == nil {
-				logger.Debugw("retrieving metadata from transports protocol", "peer", provider.ID)
+				logger.Debugw("retrieving metadata from transports protocol", "peer", provider.Peer.ID)
 				// if present, construct metadata from Boost libp2p transports response
-				d.retrievalCandidatesFromTransportsProtocol(ctx, qr, provider, cs)
+				d.retrievalCandidatesFromTransportsProtocol(ctx, qr, provider.Peer, cs)
 			} else {
-				logger.Debugw("retrieving metadata from libp2p protocol list", "peer", provider.ID)
+				logger.Debugw("retrieving metadata from libp2p protocol list", "peer", provider.Peer.ID)
 				// if not present, just make guesses based on list of supported libp2p
 				// protocols catalogued via identify protocol
-				d.retrievalCandidatesFromProtocolProbing(ctx, provider, cs)
+				d.retrievalCandidatesFromProtocolProbing(ctx, provider.Peer, cs)
 			}
 		}()
 	}

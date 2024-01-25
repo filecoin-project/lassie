@@ -912,13 +912,13 @@ func TestLinkSystemPerRequest(t *testing.T) {
 		}, Delay: time.Millisecond * 5},
 	}
 
-	candidateFinder := testutil.NewMockCandidateSource(nil, map[cid.Cid][]types.RetrievalCandidate{cid1: candidates})
+	candidateSource := testutil.NewMockCandidateSource(nil, map[cid.Cid][]types.RetrievalCandidate{cid1: candidates})
 	client := testutil.NewMockClient(returnsConnected, returnsRetrievals, clock)
 	session := session.NewSession(nil, true)
 	gsretriever := NewGraphsyncRetrieverWithConfig(session, client, clock, initialPause, true)
 
 	// --- create ---
-	ret, err := NewRetrieverWithClock(context.Background(), session, candidateFinder, map[multicodec.Code]types.CandidateRetriever{
+	ret, err := NewRetrieverWithClock(context.Background(), session, candidateSource, map[multicodec.Code]types.CandidateRetriever{
 		multicodec.TransportGraphsyncFilecoinv1: gsretriever,
 	}, clock)
 	require.NoError(t, err)
@@ -981,7 +981,7 @@ func TestLinkSystemPerRequest(t *testing.T) {
 				},
 			},
 		},
-	}.RunWithVerification(ctx, t, clock, client, candidateFinder, nil, nil, 0, []testutil.RunRetrieval{
+	}.RunWithVerification(ctx, t, clock, client, candidateSource, nil, nil, 0, []testutil.RunRetrieval{
 		func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
 			return ret.Retrieve(context.Background(), types.RetrievalRequest{
 				LinkSystem:  lsA,
@@ -1049,7 +1049,7 @@ func TestLinkSystemPerRequest(t *testing.T) {
 				},
 			},
 		},
-	}.RunWithVerification(ctx, t, clock, client, candidateFinder, nil, nil, 0, []testutil.RunRetrieval{
+	}.RunWithVerification(ctx, t, clock, client, candidateSource, nil, nil, 0, []testutil.RunRetrieval{
 		func(cb func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
 			return ret.Retrieve(context.Background(), types.RetrievalRequest{
 				LinkSystem:  lsB,

@@ -53,7 +53,7 @@ func (rv RetrievalVerifier) RunWithVerification(
 	t *testing.T,
 	clock *clock.Mock,
 	client VerifierClient,
-	mockCandidateFinder *MockCandidateSource,
+	mockCandidateSource *MockCandidateSource,
 	mockSession *MockSession,
 	cancelFunc context.CancelFunc,
 	cancelAfter time.Duration,
@@ -83,8 +83,8 @@ func (rv RetrievalVerifier) RunWithVerification(
 		if mockSession != nil {
 			mockSession.VerifyMetricsAt(ctx, t, expectedActionsAtTime.AfterStart, expectedActionsAtTime.ExpectedMetrics)
 		}
-		if mockCandidateFinder != nil {
-			mockCandidateFinder.VerifyCandidatesDiscovered(ctx, t, expectedActionsAtTime.AfterStart, expectedActionsAtTime.CandidatesDiscovered)
+		if mockCandidateSource != nil {
+			mockCandidateSource.VerifyCandidatesDiscovered(ctx, t, expectedActionsAtTime.AfterStart, expectedActionsAtTime.CandidatesDiscovered)
 		}
 		if client != nil {
 			client.VerifyConnectionsReceived(ctx, t, expectedActionsAtTime.AfterStart, expectedActionsAtTime.ReceivedConnections)

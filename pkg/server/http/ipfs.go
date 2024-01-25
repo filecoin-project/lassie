@@ -19,7 +19,6 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	trustlessutils "github.com/ipld/go-trustless-utils"
 	trustlesshttp "github.com/ipld/go-trustless-utils/http"
-	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
 )
 
@@ -218,7 +217,7 @@ func decodeRetrievalRequest(cfg HttpServerConfig, res http.ResponseWriter, req *
 		return false, types.RetrievalRequest{}
 	}
 
-	fixedPeers, err := parseProviders(req)
+	providers, err := parseProviders(req)
 	if err != nil {
 		errorResponse(res, statusLogger, http.StatusBadRequest, err)
 		return false, types.RetrievalRequest{}
@@ -251,7 +250,7 @@ func decodeRetrievalRequest(cfg HttpServerConfig, res http.ResponseWriter, req *
 		RetrievalID: retrievalId,
 		LinkSystem:  linkSystem,
 		Protocols:   protocols,
-		FixedPeers:  fixedPeers,
+		Providers:   providers,
 		MaxBlocks:   maxBlocks,
 	}
 }
@@ -291,7 +290,7 @@ func parseProtocols(req *http.Request) ([]multicodec.Code, error) {
 	return nil, nil
 }
 
-func parseProviders(req *http.Request) ([]peer.AddrInfo, error) {
+func parseProviders(req *http.Request) ([]types.Provider, error) {
 	if req.URL.Query().Has("providers") {
 		// in case we have been given filecoin actor addresses we can look them up
 		// with heyfil and translate to full multiaddrs, otherwise this is a
@@ -300,11 +299,11 @@ func parseProviders(req *http.Request) ([]peer.AddrInfo, error) {
 		if err != nil {
 			return nil, err
 		}
-		fixedPeers, err := types.ParseProviderStrings(strings.Join(trans, ","))
+		providers, err := types.ParseProviderStrings(strings.Join(trans, ","))
 		if err != nil {
 			return nil, errors.New("invalid providers parameter")
 		}
-		return fixedPeers, nil
+		return providers, nil
 	}
 	return nil, nil
 }

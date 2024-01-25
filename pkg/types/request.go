@@ -16,6 +16,7 @@ import (
 	ipldstorage "github.com/ipld/go-ipld-prime/storage"
 	trustlessutils "github.com/ipld/go-trustless-utils"
 	"github.com/ipni/go-libipni/maurl"
+	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multicodec"
@@ -80,9 +81,9 @@ type RetrievalRequest struct {
 	// If zero, no limit is applied.
 	MaxBlocks uint64
 
-	// FixedPeers optionally specifies a list of peers to use when fetching
+	// Providers optionally specifies a list of peers to use when fetching
 	// blocks. If nil, the default peer discovery mechanism will be used.
-	FixedPeers []peer.AddrInfo
+	Providers []Provider
 }
 
 // NewRequestForPath creates a new RetrievalRequest for the given root CID as
@@ -181,8 +182,8 @@ func (r RetrievalRequest) GetDescriptorString() (string, error) {
 		protocols = sb.String()
 	}
 	var providers string
-	if len(r.FixedPeers) > 0 {
-		ps, err := ToProviderString(r.FixedPeers)
+	if len(r.Providers) > 0 {
+		ps, err := ToProviderString(r.Providers)
 		if err != nil {
 			return "", err
 		}
@@ -236,12 +237,12 @@ func ParseProtocolsString(v string) ([]multicodec.Code, error) {
 	return protocols, nil
 }
 
-func ParseProviderStrings(v string) ([]peer.AddrInfo, error) {
+func ParseProviderStrings(v string) ([]Provider, error) {
 	vs := strings.Split(v, ",")
-	providerAddrInfos := make([]peer.AddrInfo, 0, len(vs))
+	providers := make([]Provider, 0, len(vs))
 	for _, v := range vs {
 		var maddr ma.Multiaddr
-
+		var protocols []metadata.Protocol
 		// http:// style provider has been specified, parse it as a URL and
 		// transform into a multiaddr with made-up peer ID
 		if strings.HasPrefix(v, "http://") || strings.HasPrefix(v, "https://") {
@@ -257,9 +258,26 @@ func ParseProviderStrings(v string) ([]peer.AddrInfo, error) {
 			if err != nil {
 				return nil, err
 			}
+			protocols = append(protocols, &metadata.IpfsGatewayHttp{})
 		} else {
+			parts := strings.Split(v, "+")
+			addrString := parts[0]
+			if len(parts) > 1 {
+				for _, part := range parts[1:] {
+					switch part {
+					case "bitswap":
+						protocols = append(protocols, &metadata.Bitswap{})
+					case "graphsync":
+						protocols = append(protocols, &metadata.GraphsyncFilecoinV1{})
+					case "http":
+						protocols = append(protocols, &metadata.IpfsGatewayHttp{})
+					default:
+						return nil, fmt.Errorf("unrecognized protocol: %s", v)
+					}
+				}
+			}
 			var err error
-			maddr, err = ma.NewMultiaddr(v)
+			maddr, err = ma.NewMultiaddr(addrString)
 			if err != nil {
 				return nil, err
 			}
@@ -280,9 +298,9 @@ func ParseProviderStrings(v string) ([]peer.AddrInfo, error) {
 			}
 		}
 		providerAddrInfo := &peer.AddrInfo{ID: id, Addrs: []ma.Multiaddr{transport}}
-		providerAddrInfos = append(providerAddrInfos, *providerAddrInfo)
+		providers = append(providers, Provider{*providerAddrInfo, protocols})
 	}
-	return providerAddrInfos, nil
+	return providers, nil
 }
 
 // Make a new random, but valid peer ID for a provider we don't have an ID for
@@ -307,17 +325,27 @@ func IsUnknownPeerID(p peer.ID) bool {
 	return p[0:len(unknownPeerID)] == unknownPeerID
 }
 
-func ToProviderString(ai []peer.AddrInfo) (string, error) {
+func ToProviderString(ai []Provider) (string, error) {
 	var sb strings.Builder
 	for i, v := range ai {
 		if i > 0 {
 			sb.WriteString(",")
 		}
-		ma, err := peer.AddrInfoToP2pAddrs(&v)
+		ma, err := peer.AddrInfoToP2pAddrs(&v.Peer)
 		if err != nil {
 			return "", err
 		}
 		sb.WriteString(ma[0].String())
+		for _, protocol := range v.Protocols {
+			switch protocol.(type) {
+			case metadata.Bitswap, *metadata.Bitswap:
+				sb.WriteString("+bitswap")
+			case metadata.IpfsGatewayHttp, *metadata.IpfsGatewayHttp:
+				sb.WriteString("+http")
+			case *metadata.GraphsyncFilecoinV1:
+				sb.WriteString("+graphsync")
+			}
+		}
 	}
 	return sb.String(), nil
 }
