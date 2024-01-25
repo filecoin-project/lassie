@@ -112,13 +112,13 @@ func GenerateRetrievalCandidatesForCID(t *testing.T, n int, c cid.Cid, protocols
 		protocols = []metadata.Protocol{&metadata.Bitswap{}}
 	}
 	for i := 0; i < n; i++ {
-		addrs := []multiaddr.Multiaddr{GenerateMultiaddr()}
+		addrs := []multiaddr.Multiaddr{GenerateHTTPMultiAddr()}
 		candidates = append(candidates, types.NewRetrievalCandidate(peers[i], addrs, c, protocols...))
 	}
 	return candidates
 }
 
-func GenerateMultiaddr() multiaddr.Multiaddr {
+func GenerateMultiAddr() multiaddr.Multiaddr {
 	// generate a random ipv4 address
 	addr := &net.TCPAddr{IP: net.IPv4(byte(rand.Intn(255)), byte(rand.Intn(255)), byte(rand.Intn(255)), byte(rand.Intn(255))), Port: rand.Intn(65535)}
 	maddr, err := manet.FromIP(addr.IP)
@@ -129,7 +129,11 @@ func GenerateMultiaddr() multiaddr.Multiaddr {
 	if err != nil {
 		panic(err)
 	}
-	maddr = multiaddr.Join(maddr, port)
+	return multiaddr.Join(maddr, port)
+}
+
+func GenerateHTTPMultiAddr() multiaddr.Multiaddr {
+	maddr := GenerateMultiAddr()
 	scheme, err := multiaddr.NewComponent("http", "")
 	if err != nil {
 		panic(err)

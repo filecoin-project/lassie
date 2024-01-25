@@ -5,6 +5,7 @@ import (
 
 	"github.com/ipfs/go-cid"
 	trustlessutils "github.com/ipld/go-trustless-utils"
+	"github.com/ipni/go-libipni/metadata"
 	"github.com/multiformats/go-multicodec"
 	"github.com/stretchr/testify/require"
 )
@@ -200,6 +201,21 @@ func TestRequestStringRepresentations(t *testing.T) {
 		_, err := ParseProviderStrings("http://127.0.0.1:5000/nope")
 		require.ErrorContains(t, err, "paths not supported")
 	})
+
+	t.Run("fixed peer, protocol included", func(t *testing.T) {
+		pps, err := ParseProviderStrings("/ip4/127.0.0.1/tcp/5000/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4+bitswap")
+		require.NoError(t, err)
+		require.Equal(t, pps[0].Protocols, []metadata.Protocol{metadata.Bitswap{}})
+		request := RetrievalRequest{
+			Request:   trustlessutils.Request{Root: testCidV1},
+			Providers: pps,
+		}
+		ds, err := request.GetDescriptorString()
+		require.NoError(t, err)
+		expectedStart := "/ipfs/bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi?dag-scope=all&dups=n&providers=/ip4/127.0.0.1/tcp/5000/p2p/12D3KooWBSTEYMLSu5FnQjshEVah9LFGEZoQt26eacCEVYfedWA4+bitswap"
+		require.Equal(t, expectedStart, ds[0:len(expectedStart)])
+	})
+
 }
 
 func TestProviderStrings(t *testing.T) {
