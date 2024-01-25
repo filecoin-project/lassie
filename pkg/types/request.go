@@ -258,7 +258,6 @@ func ParseProviderStrings(v string) ([]Provider, error) {
 			if err != nil {
 				return nil, err
 			}
-			protocols = append(protocols, &metadata.IpfsGatewayHttp{})
 		} else {
 			parts := strings.Split(v, "+")
 			addrString := parts[0]
@@ -266,11 +265,11 @@ func ParseProviderStrings(v string) ([]Provider, error) {
 				for _, part := range parts[1:] {
 					switch part {
 					case "bitswap":
-						protocols = append(protocols, &metadata.Bitswap{})
+						protocols = append(protocols, metadata.Bitswap{})
 					case "graphsync":
 						protocols = append(protocols, &metadata.GraphsyncFilecoinV1{})
 					case "http":
-						protocols = append(protocols, &metadata.IpfsGatewayHttp{})
+						protocols = append(protocols, metadata.IpfsGatewayHttp{})
 					default:
 						return nil, fmt.Errorf("unrecognized protocol: %s", v)
 					}

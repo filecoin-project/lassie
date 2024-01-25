@@ -22,7 +22,6 @@ import (
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	trustlessutils "github.com/ipld/go-trustless-utils"
-	"github.com/ipni/go-libipni/metadata"
 	host "github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -39,11 +38,9 @@ const (
 
 func TestDirectFetch(t *testing.T) {
 	testCases := []struct {
-		name           string
-		directPeer     int
-		fixedProtocols []metadata.Protocol
+		name       string
+		directPeer int
 	}{
-		{},
 		{
 			name:       "direct bitswap peer",
 			directPeer: bitswapDirect,
