@@ -25,6 +25,9 @@ type DirectCandidateSource struct {
 
 type Option func(*DirectCandidateSource)
 
+// WithLibp2pCandidateDiscovery sets a libp2p Host for the DirectCandidateFinder.
+// If a Host is set, the providers will be queried to discover available protocols, otherwise
+// all protocols will be assumed by default.
 func WithLibp2pCandidateDiscovery(h host.Host) Option {
 	return func(d *DirectCandidateSource) {
 		d.h = h
