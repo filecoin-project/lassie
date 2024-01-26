@@ -262,16 +262,25 @@ func ParseProviderStrings(v string) ([]Provider, error) {
 			parts := strings.Split(v, "+")
 			addrString := parts[0]
 			if len(parts) > 1 {
+				var foundProtocol bool
 				for _, part := range parts[1:] {
 					switch part {
 					case "bitswap":
+						foundProtocol = true
 						protocols = append(protocols, metadata.Bitswap{})
 					case "graphsync":
+						foundProtocol = true
 						protocols = append(protocols, &metadata.GraphsyncFilecoinV1{})
 					case "http":
+						foundProtocol = true
 						protocols = append(protocols, metadata.IpfsGatewayHttp{})
 					default:
-						return nil, fmt.Errorf("unrecognized protocol: %s", v)
+						// if we haven't encountered a prootocol string yet, assume this + was in the multiaddr for some reason
+						// if we have, something is malconstructed
+						if foundProtocol {
+							return nil, fmt.Errorf("unrecognized protocol: %s", v)
+						}
+						addrString += part
 					}
 				}
 			}
