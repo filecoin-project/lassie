@@ -55,7 +55,7 @@ func TestTrustlessGatewayE2E(t *testing.T) {
 
 	// install the indexer to announce to
 	indexer := filepath.Join(tr.Dir, "storetheindex")
-	tr.Run("go", "install", "github.com/ipni/storetheindex@HEAD") // TODO: use @latest when we have a release
+	tr.Run("go", "install", "github.com/ipni/storetheindex@latest")
 	// install the ipni cli to inspect the indexer
 	ipni := filepath.Join(tr.Dir, "ipni")
 	tr.Run("go", "install", "github.com/ipni/ipni-cli/cmd/ipni@latest")
