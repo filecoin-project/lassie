@@ -10,7 +10,7 @@ require (
 	github.com/filecoin-project/go-state-types v0.10.0
 	github.com/google/uuid v1.5.0
 	github.com/hannahhoward/go-pubsub v1.0.0
-	github.com/ipfs/boxo v0.17.0
+	github.com/ipfs/boxo v0.15.1-0.20240125013539-09ff20c5abb6
 	github.com/ipfs/go-block-format v0.2.0
 	github.com/ipfs/go-cid v0.4.1
 	github.com/ipfs/go-datastore v0.6.0
@@ -29,7 +29,7 @@ require (
 	github.com/ipld/go-trustless-utils v0.4.1
 	github.com/ipld/ipld/specs v0.0.0-20231012031213-54d3b21deda4
 	github.com/ipni/go-libipni v0.6.2
-	github.com/ipni/storetheindex v0.8.22
+	github.com/ipni/storetheindex v0.8.14
 	github.com/libp2p/go-libp2p v0.33.0
 	github.com/libp2p/go-libp2p-routing-helpers v0.7.3
 	github.com/libp2p/go-libp2p-testing v0.12.0
