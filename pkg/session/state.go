@@ -216,12 +216,13 @@ func (spt *SessionState) RecordFailure(retrievalId types.RetrievalID, storagePro
 	spt.lk.Lock()
 	defer spt.lk.Unlock()
 
+	spt.recordSuccessMetric(storageProviderId, 0)
+
 	// remove from this retrieval to free up the SP to be tried again for a future retrieval
 	if err := spt.removeFromRetrieval(retrievalId, storageProviderId); err != nil {
 		return err
 	}
 
-	spt.recordSuccessMetric(storageProviderId, 0)
 	return nil
 }
 
@@ -329,6 +330,14 @@ func (spt *SessionState) ChooseNextProvider(peers []peer.ID, mda []metadata.Prot
 
 	// choose a random peer, weighted by score
 	r := tot * spt.config.roll()
+	/*
+		sb := strings.Builder{}
+		for _, pi := range ind {
+			sb.WriteString(fmt.Sprintf("%s(#%d): %f, ", string(peers[pi]), pi, scores[pi]))
+		}
+		sb.WriteString(fmt.Sprintf("with roll of %f", r))
+		fmt.Println(sb.String())
+	*/
 	for _, pi := range ind {
 		s := scores[pi]
 		if r <= s {
@@ -339,7 +348,7 @@ func (spt *SessionState) ChooseNextProvider(peers []peer.ID, mda []metadata.Prot
 	sb := strings.Builder{}
 	sb.WriteString("internal error - failed to choose a provider from: ")
 	for _, pi := range ind {
-		sb.WriteString(fmt.Sprintf("%s: %f, ", peers[pi], scores[pi]))
+		sb.WriteString(fmt.Sprintf("%s: %f, ", peers[pi].String(), scores[pi]))
 	}
 	sb.WriteString(fmt.Sprintf("with roll of %f", r))
 	panic(sb.String())
