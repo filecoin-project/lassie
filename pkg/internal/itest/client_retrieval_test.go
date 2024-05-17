@@ -12,12 +12,12 @@ import (
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/internal/itest/mocknet"
 	"github.com/filecoin-project/lassie/pkg/net/client"
+	"github.com/ipfs/boxo/blockstore"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/namespace"
 	dss "github.com/ipfs/go-datastore/sync"
 	"github.com/ipfs/go-graphsync/storeutil"
-	bstore "github.com/ipfs/go-ipfs-blockstore"
 	"github.com/ipfs/go-unixfsnode"
 	unixfs "github.com/ipfs/go-unixfsnode/testutil"
 	"github.com/ipld/go-ipld-prime/linking"
@@ -89,7 +89,7 @@ func runRetrieval(t *testing.T, ctx context.Context, mrn *mocknet.MockRetrievalN
 	// Setup local datastore and blockstore
 	dsLocal := dss.MutexWrap(datastore.NewMapDatastore())
 	dtDsLocal := namespace.Wrap(dsLocal, datastore.NewKey("datatransfer"))
-	bsLocal := bstore.NewBlockstore(namespace.Wrap(dsLocal, datastore.NewKey("blockstore")))
+	bsLocal := blockstore.NewBlockstore(namespace.Wrap(dsLocal, datastore.NewKey("blockstore")))
 	linkSystemLocal := storeutil.LinkSystemForBlockstore(bsLocal)
 
 	// New client
