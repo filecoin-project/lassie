@@ -23,7 +23,7 @@ jobs:
       - name: Get Ref from releaser
         id: releaser
         if: github.event_name == 'workflow_run'
-        uses: pl-strflt/uci/.github/actions/inspect-releaser@v0.0
+        uses: ipdxco/unified-github-workflows/.github/actions/inspect-releaser@v1.0
         with:
           artifacts-url: ${{ github.event.workflow_run.artifacts_url }}
   build:
