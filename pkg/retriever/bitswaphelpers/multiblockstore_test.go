@@ -7,11 +7,11 @@ import (
 	"github.com/filecoin-project/lassie/pkg/internal/testutil"
 	"github.com/filecoin-project/lassie/pkg/retriever/bitswaphelpers"
 	"github.com/filecoin-project/lassie/pkg/types"
+	"github.com/ipfs/boxo/blockstore"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
 	"github.com/ipfs/go-graphsync/storeutil"
-	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	format "github.com/ipfs/go-ipld-format"
 	"github.com/stretchr/testify/require"
 )
