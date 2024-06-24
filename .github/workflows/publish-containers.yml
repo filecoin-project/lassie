@@ -55,7 +55,7 @@ jobs:
             type=semver,pattern={{version}}
             type=ref,event=branch
       - name: Publish
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           cache-from: type=gha
