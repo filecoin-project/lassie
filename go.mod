@@ -1,6 +1,6 @@
 module github.com/filecoin-project/lassie
 
-go 1.21
+go 1.22
 
 require (
 	github.com/benbjohnson/clock v1.3.5
