@@ -150,7 +150,7 @@ func (r RetrievalRequest) GetSelector() ipld.Node {
 // be returned.
 func (r RetrievalRequest) GetDescriptorString() (string, error) {
 	if r.Selector != nil {
-		return "", errors.New("RetrievalRequest uses an explicit selector, can't generate a descriptor path for it")
+		return fmt.Sprintf("/ipfs/%s?selector=true", r.Root.String()), nil
 	}
 	scope := r.Scope
 	if r.Scope == "" {
