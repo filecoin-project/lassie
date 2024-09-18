@@ -2,7 +2,6 @@ package types
 
 import (
 	"crypto/rand"
-	"errors"
 	"fmt"
 	"net/url"
 	"strings"
