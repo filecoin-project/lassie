@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -24,13 +25,18 @@ import (
 
 func IpfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
-		statusLogger := newStatusLogger(req.Method, req.URL.Path)
+		unescapedPath, err := url.PathUnescape(req.URL.Path)
+		if err != nil {
+			logger.Warnf("error unescaping path: %s", err)
+			unescapedPath = req.URL.Path
+		}
+		statusLogger := newStatusLogger(req.Method, unescapedPath)
 
 		if !checkGet(req, res, statusLogger) {
 			return
 		}
 
-		ok, request := decodeRetrievalRequest(cfg, res, req, statusLogger)
+		ok, request := decodeRetrievalRequest(cfg, res, req, unescapedPath, statusLogger)
 		if !ok {
 			return
 		}
@@ -87,7 +93,7 @@ func IpfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.Response
 			res.Header().Set("Content-Type", trustlesshttp.DefaultContentType().WithDuplicates(request.Duplicates).String())
 			res.Header().Set("Etag", request.Etag())
 			res.Header().Set("X-Content-Type-Options", "nosniff")
-			res.Header().Set("X-Ipfs-Path", trustlessutils.PathEscape(req.URL.Path))
+			res.Header().Set("X-Ipfs-Path", trustlessutils.PathEscape(unescapedPath))
 			res.Header().Set("X-Trace-Id", requestId)
 			statusLogger.logStatus(200, "OK")
 			close(bytesWritten)
@@ -152,8 +158,8 @@ func checkGet(req *http.Request, res http.ResponseWriter, statusLogger *statusLo
 	return false
 }
 
-func decodeRequest(res http.ResponseWriter, req *http.Request, statusLogger *statusLogger) (bool, trustlessutils.Request) {
-	rootCid, path, err := trustlesshttp.ParseUrlPath(req.URL.Path)
+func decodeRequest(res http.ResponseWriter, req *http.Request, unescapedPath string, statusLogger *statusLogger) (bool, trustlessutils.Request) {
+	rootCid, path, err := trustlesshttp.ParseUrlPath(unescapedPath)
 	if err != nil {
 		if errors.Is(err, trustlesshttp.ErrPathNotFound) {
 			errorResponse(res, statusLogger, http.StatusNotFound, err)
@@ -205,8 +211,8 @@ func decodeRequest(res http.ResponseWriter, req *http.Request, statusLogger *sta
 	}
 }
 
-func decodeRetrievalRequest(cfg HttpServerConfig, res http.ResponseWriter, req *http.Request, statusLogger *statusLogger) (bool, types.RetrievalRequest) {
-	ok, request := decodeRequest(res, req, statusLogger)
+func decodeRetrievalRequest(cfg HttpServerConfig, res http.ResponseWriter, req *http.Request, unescapedPath string, statusLogger *statusLogger) (bool, types.RetrievalRequest) {
+	ok, request := decodeRequest(res, req, unescapedPath, statusLogger)
 	if !ok {
 		return false, types.RetrievalRequest{}
 	}
