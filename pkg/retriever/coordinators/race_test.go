@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/benbjohnson/clock"
+	"github.com/filecoin-project/go-clock"
 	"github.com/filecoin-project/lassie/pkg/retriever/coordinators"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/libp2p/go-libp2p/core/peer"

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/benbjohnson/clock"
+	"github.com/filecoin-project/go-clock"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/v2"

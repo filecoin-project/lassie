@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/benbjohnson/clock"
+	"github.com/filecoin-project/go-clock"
 )
 
 // PriorityWaitQueue is a blocking queue for coordinating goroutines, providing

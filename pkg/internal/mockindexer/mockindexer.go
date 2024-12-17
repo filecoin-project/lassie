@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/benbjohnson/clock"
+	"github.com/filecoin-project/go-clock"
 	"github.com/ipfs/go-cid"
 	"github.com/ipni/go-libipni/find/model"
 	"github.com/multiformats/go-multihash"

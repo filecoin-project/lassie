@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/benbjohnson/clock"
+	"github.com/filecoin-project/go-clock"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/retriever/prioritywaitqueue"
 	"github.com/filecoin-project/lassie/pkg/types"
