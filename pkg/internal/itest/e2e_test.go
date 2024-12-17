@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -54,11 +55,14 @@ func TestTrustlessGatewayE2E(t *testing.T) {
 	req.NoError(err)
 
 	// install the indexer to announce to
+	t.Log("Installing indexer")
 	indexer := filepath.Join(tr.Dir, "storetheindex")
-	tr.Run("go", "install", "github.com/ipni/storetheindex@latest")
+	tr.Run("go", "install", "github.com/ipni/storetheindex@v0.8.14")
 	// install the ipni cli to inspect the indexer
+	t.Log("Installing ipni")
 	ipni := filepath.Join(tr.Dir, "ipni")
-	tr.Run("go", "install", "github.com/ipni/ipni-cli/cmd/ipni@latest")
+	tr.Run("go", "install", "github.com/ipni/ipni-cli/cmd/ipni@v0.1.8")
+	t.Log("Installing frisbii")
 	// install frisbii to serve the content
 	frisbii := filepath.Join(tr.Dir, "frisbii")
 	tr.Run("go", "install", "github.com/ipld/frisbii/cmd/frisbii@latest")
@@ -67,7 +71,10 @@ func TestTrustlessGatewayE2E(t *testing.T) {
 	req.NoError(err)
 
 	// initialise and start the indexer and adjust the config
+	t.Log("Initialising indexer")
 	tr.Run(indexer, "init", "--store", "pebble", "--pubsub-topic", "/indexer/ingest/mainnet", "--no-bootstrap")
+
+	t.Log("Starting indexer")
 	indexerReady := test.NewStdoutWatcher(test.IndexerReadyMatch)
 	cmdIndexer := tr.Start(test.NewExecution(indexer, "daemon").WithWatcher(indexerReady))
 	select {
@@ -82,6 +89,7 @@ func TestTrustlessGatewayE2E(t *testing.T) {
 	carPath := trustlesspathing.Unixfs20mVarietyCARPath()
 
 	// start frisbii with the fixture CAR
+	t.Logf("Starting frisbii with CAR [%s] and root [%s]", carPath, root)
 	frisbiiReady := test.NewStdoutWatcher("Announce() complete")
 	cmdFrisbii := tr.Start(test.NewExecution(frisbii,
 		"--listen", "localhost:37471",
@@ -101,8 +109,6 @@ func TestTrustlessGatewayE2E(t *testing.T) {
 	req.Eventually(func() bool {
 		mh := root.Hash().B58String()
 		findOutput := tr.Run(ipni, "find", "--no-priv", "-i", "http://localhost:3000", "-mh", mh)
-		t.Logf("import output:\n%s\n", findOutput)
-
 		if bytes.Contains(findOutput, []byte("not found")) {
 			return false
 		}
@@ -110,8 +116,6 @@ func TestTrustlessGatewayE2E(t *testing.T) {
 			t.Logf("mh %s: unexpected error: %s", mh, findOutput)
 			return false
 		}
-
-		t.Logf("mh %s: found", mh)
 		return true
 	}, 10*time.Second, time.Second)
 
@@ -172,6 +176,7 @@ func TestTrustlessGatewayE2E(t *testing.T) {
 				if testCase.Path != "" {
 					args[len(args)-1] = args[len(args)-1] + "/" + testCase.Path
 				}
+				t.Logf("Running lassie %s", strings.Join(args, " "))
 				tr.Run(lassie, args...)
 
 				_, err = os.Stat(expectedCarPath)
@@ -187,6 +192,8 @@ func TestTrustlessGatewayE2E(t *testing.T) {
 
 				reqUrl, err := url.Parse("http://localhost:30000/" + testCase.AsQuery())
 				req.NoError(err)
+
+				t.Logf("Fetching %s", reqUrl.String())
 
 				// download and read all body from URL along with Accept:application/vnd.ipld.car header
 				reqReq, err := http.NewRequestWithContext(ctx, http.MethodGet, reqUrl.String(), nil)
