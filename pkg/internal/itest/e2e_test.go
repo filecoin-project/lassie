@@ -72,7 +72,6 @@ func TestTrustlessGatewayE2E(t *testing.T) {
 
 	// initialise and start the indexer and adjust the config
 	t.Log("Initialising indexer")
-	t.Log(indexer + "init --store pebble --pubsub-topic /indexer/ingest/mainnet --no-bootstrap")
 	tr.Run(indexer, "init", "--store", "pebble", "--pubsub-topic", "/indexer/ingest/mainnet", "--no-bootstrap")
 
 	t.Log("Starting indexer")
