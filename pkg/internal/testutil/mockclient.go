@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/benbjohnson/clock"
+	"github.com/filecoin-project/go-clock"
 	datatransfer "github.com/filecoin-project/go-data-transfer/v2"
 	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
 	"github.com/filecoin-project/lassie/pkg/types"

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/benbjohnson/clock"
 	"github.com/dustin/go-humanize"
+	"github.com/filecoin-project/go-clock"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/retriever/combinators"
 	"github.com/filecoin-project/lassie/pkg/types"

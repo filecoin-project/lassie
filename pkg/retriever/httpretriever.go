@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/benbjohnson/clock"
+	"github.com/filecoin-project/go-clock"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/build"
 	"github.com/filecoin-project/lassie/pkg/events"
