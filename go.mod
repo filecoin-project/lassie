@@ -1,6 +1,6 @@
 module github.com/filecoin-project/lassie
 
-go 1.22.0
+go 1.23
 
 require (
 	github.com/dustin/go-humanize v1.0.1
