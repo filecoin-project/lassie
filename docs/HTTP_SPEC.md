@@ -178,9 +178,9 @@ _OPTIONAL_. `dag-scope=<block|entity|all>`. Defaults to `all`.
 
 Describes the shape of the DAG fetched at the terminus of the specified path whose blocks are included in the returned CAR file after the blocks required to traverse path segments. Unspecified values will respond with a 400 status code.
 
-- `block`: Only the root block at the end of the path is returned after blocks required to verify the specified path segments.
+- `block`: Only the root block at the end of the path is returned after blocks are required to verify the specified path segments.
 
-- `entity`: Returns only the content at the termination of the `{cid}[/path]` specifier, as well as all blocks from the `cid` to the `path` terminus where a `path` is provided. If the content is found to be UnixFS data, the entire UnixFS entity will be included. i.e. if `{cid}[/path]` terminates at a sharded UnixFS file, the blocks required to reconsititute the entire file will be included. If the termination is a UnixFS sharded directory, only the full directory structure itself will be included, not the full DAG of the directory's contents.
+- `entity`: Returns only the content at the termination of the `{cid}[/path]` specifier, as well as all blocks from the `cid` to the `path` terminus where a `path` is provided. If the content is found to be UnixFS data, the entire UnixFS entity will be included. i.e. if `{cid}[/path]` terminates at a sharded UnixFS file, the blocks required to reconstitute the entire file will be included. If the termination is a UnixFS sharded directory, only the full directory structure itself will be included, not the full DAG of the directory's contents.
 
 - `all`: Transmit the entire contiguous DAG that begins at the end of the path query, after blocks required to verify path segments.
 

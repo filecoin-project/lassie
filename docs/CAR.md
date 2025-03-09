@@ -58,7 +58,7 @@ Identity CIDs will not be present as separate blocks within a CAR returned by La
 
 All traversals will include the content at the termination of the `path` specifier, as well as all blocks from the root CID to the `path` terminus where a `path` is provided. At the termination of a provided `path`, or from the root CID where no `path` is provided, the depth of the DAG returned may vary depending on the request or available data.
 
-A "shallow" (e.g. when using `depthType=shallow` with the (HTTP)[HTTP_SPEC.md] server) traversal will include the entire UnixFS entity if the content is found to be UnixFS data. i.e. if the terminus is a sharded UnixFS file, or a sharded UnixFS directory, the blocks required to reconsititute the entire file, or directory will be included. If the termination is a UnixFS sharded directory, only the full directory will be included, not the full DAG of the directory's contents.
+A "shallow" (e.g. when using `depthType=shallow` with the (HTTP)[HTTP_SPEC.md] server) traversal will include the entire UnixFS entity if the content is found to be UnixFS data. i.e. if the terminus is a sharded UnixFS file, or a sharded UnixFS directory, the blocks required to reconstitute the entire file, or directory will be included. If the termination is a UnixFS sharded directory, only the full directory will be included, not the full DAG of the directory's contents.
 
 A "full" (e.g. when using `depthType=full` with the (HTTP)[HTTP_SPEC.md] server) traversal will include the entire DAG from the termination of a `path`, or from the root CID where no `path` is provided.
 
