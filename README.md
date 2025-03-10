@@ -185,7 +185,7 @@ The lassie library can then be imported into a project with the following import
 import "github.com/filecoin-project/lassie/pkg/lassie"
 ```
 
-The following code shows a small example for how to use the lassie library to fetch a CID:
+The following code shows a small example of how to use the lassie library to fetch a CID:
 
 ```go
 package main
@@ -282,9 +282,9 @@ The `Fetch` function takes a `context.Context`, a `*types.Request`, and a `*type
 
 ### Roots, pieces and payloads
 
-Lassie uses the term **Root** to refer to the head block of a potential graph (DAG) of IPLD blocks. This is typically the block you request, using its CID, when you perform a _fetch_ with Lassie. Of course a root could also be a sub-root of a larger graph, but when performing a retrieval with Lassie, you are focusing on the graph underneath the block you are fetching, and considerations of larger DAGs are not relevant.
+Lassie uses the term **Root** to refer to the head block of a potential graph (DAG) of IPLD blocks. This is typically the block you request, using its CID, when you perform a _fetch_ with Lassie. Of course, a root could also be a sub-root of a larger graph, but when performing a retrieval with Lassie, you are focusing on the graph underneath the block you are fetching, and considerations of larger DAGs are not relevant.
 
-In the Filecoin ecosystem, there exists terminology related to "pieces" and "payloads" and there may be confusion between the way lassie uses the term "root CID" and some of the language used in Filecoin. A **Piece** is a Filecoin storage deal unit, typically containing user data organized into a CAR; then padded to size to form a portion of a Filecoin sector. Filecoin pieces have their own CIDs, and it is possible to retrieve a whole, raw piece, from Filecoin. This can lead to terminology such as "piece root CID". Lassie currently does not perform whole-piece retrievals, and is not intended to be able to handle piece CIDs. Additionally, in Filecoin the term **Payload** is sometimes used in reference to the IPLD data inside a piece when performing a storage or retrieval deal. This is closer to the way Lassie uses the term **Root** and historical Lassie code contains some references to "payloads" that are actually referring to the root CID of a graph.
+In the Filecoin ecosystem, there exists terminology related to "pieces" and "payloads" and there may be confusion between the way lassie uses the term "root CID" and some of the language used in Filecoin. A **Piece** is a Filecoin storage deal unit, typically containing user data organized into a CAR; then padded to size to form a portion of a Filecoin sector. Filecoin pieces have their own CIDs, and it is possible to retrieve a whole, raw piece, from Filecoin. This can lead to terminology such as "piece root CID". Lassie currently does not perform whole-piece retrievals and is not intended to be able to handle piece CIDs. Additionally, in Filecoin the term **Payload** is sometimes used in reference to the IPLD data inside a piece when performing a storage or retrieval deal. This is closer to the way Lassie uses the term **Root** and historical Lassie code contains some references to "payloads" that are actually referring to the root CID of a graph.
 
 ## Contribute
 
