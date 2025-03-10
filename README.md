@@ -280,7 +280,7 @@ if err != nil {
 
 The `Fetch` function takes a `context.Context`, a `*types.Request`, and a `*types.FetchOptions`. The `context.Context` is used to control the lifecycle of the fetch. The `*types.Request` is the fetch request we made above. The `*types.FetchOptions` is used to control the behavior of the fetch, but it's variadic, so we don't pass anything. The function returns a `*types.FetchStats` and an `error`. The `*types.FetchStats` is the fetch stats. The `error` is used to indicate if there was an error fetching the CID.
 
-### Roots, pieces, and payloads
+### Roots, pieces and payloads
 
 Lassie uses the term **Root** to refer to the head block of a potential graph (DAG) of IPLD blocks. This is typically the block you request, using its CID, when you perform a _fetch_ with Lassie. Of course, a root could also be a sub-root of a larger graph, but when performing a retrieval with Lassie, you are focusing on the graph underneath the block you are fetching, and considerations of larger DAGs are not relevant.
 
