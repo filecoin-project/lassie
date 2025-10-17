@@ -4,6 +4,7 @@ go 1.24.6
 
 require (
 	github.com/dustin/go-humanize v1.0.1
+	github.com/filecoin-project/go-clock v0.1.0
 	github.com/filecoin-project/go-data-transfer/v2 v2.0.0
 	github.com/filecoin-project/go-retrieval-types v1.2.0
 	github.com/filecoin-project/go-state-types v0.10.0
@@ -15,7 +16,6 @@ require (
 	github.com/ipfs/go-datastore v0.9.0
 	github.com/ipfs/go-graphsync v0.18.0
 	github.com/ipfs/go-ipfs-delay v0.0.1
-	github.com/ipfs/go-ipfs-exchange-interface v0.2.0
 	github.com/ipfs/go-ipld-format v0.6.3
 	github.com/ipfs/go-log/v2 v2.8.2
 	github.com/ipfs/go-test v0.2.3
@@ -58,7 +58,6 @@ require (
 	github.com/filecoin-project/go-address v1.1.0 // indirect
 	github.com/filecoin-project/go-amt-ipld/v4 v4.0.0 // indirect
 	github.com/filecoin-project/go-cbor-util v0.0.1 // indirect
-	github.com/filecoin-project/go-clock v0.1.0 // indirect
 	github.com/filecoin-project/go-ds-versioning v0.1.2 // indirect
 	github.com/filecoin-project/go-hamt-ipld/v3 v3.4.0 // indirect
 	github.com/filecoin-project/go-statemachine v1.0.2 // indirect
@@ -105,6 +104,7 @@ require (
 	github.com/miekg/dns v1.1.68 // indirect
 	github.com/mikioh/tcpinfo v0.0.0-20190314235526-30a79bb1804b // indirect
 	github.com/mikioh/tcpopt v0.0.0-20190314235656-172688c1accc // indirect
+	github.com/minio/blake2b-simd v0.0.0-20160723061019-3f5f724cb5b1 // indirect
 	github.com/minio/sha256-simd v1.0.1 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/multiformats/go-base32 v0.1.0 // indirect
