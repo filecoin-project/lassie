@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/filecoin-project/lassie/pkg/internal/testutil"
 	"github.com/filecoin-project/lassie/pkg/retriever/bitswaphelpers"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/boxo/blockstore"
@@ -13,6 +12,7 @@ import (
 	"github.com/ipfs/go-datastore/sync"
 	"github.com/ipfs/go-graphsync/storeutil"
 	format "github.com/ipfs/go-ipld-format"
+	"github.com/ipfs/go-test/random"
 	"github.com/stretchr/testify/require"
 )
 
@@ -36,7 +36,7 @@ func TestMultiblockstore(t *testing.T) {
 	storage2Ctx := types.RegisterRetrievalIDToContext(ctx, id2)
 	mbs.AddLinkSystem(id1, &lsys1)
 	mbs.AddLinkSystem(id2, &lsys2)
-	blks := testutil.GenerateBlocksOfSize(5, 1000)
+	blks := random.BlocksOfSize(5, 1000)
 	cids := make([]cid.Cid, 0, 5)
 	for _, blk := range blks {
 		cids = append(cids, blk.Cid())

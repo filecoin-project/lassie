@@ -3,15 +3,11 @@ package testutil
 import (
 	"fmt"
 	"io"
-	"math/rand"
-	"net"
-	"strconv"
 	"testing"
 
 	"github.com/filecoin-project/lassie/pkg/types"
-	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
-	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
+	"github.com/ipfs/go-test/random"
 	"github.com/ipfs/go-unixfsnode/data"
 	unixfs "github.com/ipfs/go-unixfsnode/testutil"
 	dagpb "github.com/ipld/go-codec-dagpb"
@@ -19,73 +15,12 @@ import (
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	trustlessutils "github.com/ipld/go-trustless-utils"
 	"github.com/ipni/go-libipni/metadata"
-	crypto "github.com/libp2p/go-libp2p/core/crypto"
-	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/multiformats/go-multiaddr"
-	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/stretchr/testify/require"
 )
 
-var blockGenerator = blocksutil.NewBlockGenerator()
-
-// var prioritySeq int
-var seedSeq int64
-
-// RandomBytes returns a byte array of the given size with random values.
-func RandomBytes(n int64) []byte {
-	data := make([]byte, n)
-	src := rand.NewSource(seedSeq)
-	seedSeq++
-	r := rand.New(src)
-	_, _ = r.Read(data)
-	return data
-}
-
-// GenerateBlocksOfSize generates a series of blocks of the given byte size
-func GenerateBlocksOfSize(n int, size int64) []blocks.Block {
-	generatedBlocks := make([]blocks.Block, 0, n)
-	for i := 0; i < n; i++ {
-		b := blocks.NewBlock(RandomBytes(size))
-		generatedBlocks = append(generatedBlocks, b)
-
-	}
-	return generatedBlocks
-}
-
-// GenerateCid produces a content identifier.
-func GenerateCid() cid.Cid {
-	return GenerateCids(1)[0]
-}
-
-// GenerateCids produces n content identifiers.
-func GenerateCids(n int) []cid.Cid {
-	cids := make([]cid.Cid, 0, n)
-	for i := 0; i < n; i++ {
-		c := blockGenerator.Next().Cid()
-		cids = append(cids, c)
-	}
-	return cids
-}
-
-// GeneratePeers creates n peer ids.
-func GeneratePeers(t *testing.T, n int) []peer.ID {
-	src := rand.NewSource(seedSeq)
-	seedSeq++
-	r := rand.New(src)
-	peerIds := make([]peer.ID, 0, n)
-	for i := 0; i < n; i++ {
-		_, publicKey, err := crypto.GenerateEd25519Key(r)
-		require.NoError(t, err)
-		peerID, err := peer.IDFromPublicKey(publicKey)
-		require.NoError(t, err)
-		peerIds = append(peerIds, peerID)
-	}
-	return peerIds
-}
-
 // GenerateRetrievalRequests produces retrieval requests
 func GenerateRetrievalRequests(t *testing.T, n int) []types.RetrievalRequest {
-	cids := GenerateCids(n)
+	cids := random.Cids(n)
 	rids := GenerateRetrievalIDs(t, n)
 	requests := make([]types.RetrievalRequest, 0, n)
 	for i := 0; i < n; i++ {
@@ -100,45 +35,22 @@ func GenerateRetrievalRequests(t *testing.T, n int) []types.RetrievalRequest {
 
 // GenerateRetrievalCandidates produces n retrieval candidates
 func GenerateRetrievalCandidates(t *testing.T, n int, protocols ...metadata.Protocol) []types.RetrievalCandidate {
-	c := GenerateCid()
+	c := random.Cids(1)[0]
 	return GenerateRetrievalCandidatesForCID(t, n, c, protocols...)
 }
 
 // GenerateRetrievalCandidates produces n retrieval candidates
 func GenerateRetrievalCandidatesForCID(t *testing.T, n int, c cid.Cid, protocols ...metadata.Protocol) []types.RetrievalCandidate {
 	candidates := make([]types.RetrievalCandidate, 0, n)
-	peers := GeneratePeers(t, n)
+	peers := random.Peers(n)
 	if len(protocols) == 0 {
 		protocols = []metadata.Protocol{&metadata.Bitswap{}}
 	}
 	for i := 0; i < n; i++ {
-		addrs := []multiaddr.Multiaddr{GenerateHTTPMultiAddr()}
+		addrs := random.HttpMultiaddrs(1)
 		candidates = append(candidates, types.NewRetrievalCandidate(peers[i], addrs, c, protocols...))
 	}
 	return candidates
-}
-
-func GenerateMultiAddr() multiaddr.Multiaddr {
-	// generate a random ipv4 address
-	addr := &net.TCPAddr{IP: net.IPv4(byte(rand.Intn(255)), byte(rand.Intn(255)), byte(rand.Intn(255)), byte(rand.Intn(255))), Port: rand.Intn(65535)}
-	maddr, err := manet.FromIP(addr.IP)
-	if err != nil {
-		panic(err)
-	}
-	port, err := multiaddr.NewComponent(multiaddr.ProtocolWithCode(multiaddr.P_TCP).Name, strconv.Itoa(addr.Port))
-	if err != nil {
-		panic(err)
-	}
-	return multiaddr.Join(maddr, port)
-}
-
-func GenerateHTTPMultiAddr() multiaddr.Multiaddr {
-	maddr := GenerateMultiAddr()
-	scheme, err := multiaddr.NewComponent("http", "")
-	if err != nil {
-		panic(err)
-	}
-	return multiaddr.Join(maddr, scheme)
 }
 
 func GenerateRetrievalIDs(t *testing.T, n int) []types.RetrievalID {

@@ -11,7 +11,7 @@ import (
 	retrievaltypes "github.com/filecoin-project/go-retrieval-types"
 	"github.com/filecoin-project/lassie/pkg/internal/itest/testpeer"
 	"github.com/filecoin-project/lassie/pkg/types"
-	bsnet "github.com/ipfs/boxo/bitswap/network"
+	bsnet "github.com/ipfs/boxo/bitswap/network/bsnet"
 	bssrv "github.com/ipfs/boxo/bitswap/server"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"

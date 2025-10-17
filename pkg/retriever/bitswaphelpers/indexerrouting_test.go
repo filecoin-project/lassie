@@ -9,6 +9,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/retriever/bitswaphelpers"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
+	"github.com/ipfs/go-test/random"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/require"
 )
@@ -29,7 +30,7 @@ func TestIndexerRouting(t *testing.T) {
 	req.NoError(err)
 	id3, err := types.NewRetrievalID()
 	req.NoError(err)
-	cids := testutil.GenerateCids(4)
+	cids := random.Cids(4)
 	cidToRetrievalIDs[cids[0]] = []types.RetrievalID{id1}
 	cidToRetrievalIDs[cids[1]] = []types.RetrievalID{id2}
 	cidToRetrievalIDs[cids[2]] = []types.RetrievalID{id3}

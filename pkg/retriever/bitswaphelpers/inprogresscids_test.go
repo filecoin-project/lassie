@@ -6,12 +6,13 @@ import (
 	"github.com/filecoin-project/lassie/pkg/internal/testutil"
 	"github.com/filecoin-project/lassie/pkg/retriever/bitswaphelpers"
 	"github.com/filecoin-project/lassie/pkg/types"
+	"github.com/ipfs/go-test/random"
 	"github.com/stretchr/testify/require"
 )
 
 func TestInProgressCids(t *testing.T) {
 	req := require.New(t)
-	cids := testutil.GenerateCids(3)
+	cids := random.Cids(3)
 	retrievalIDs := testutil.GenerateRetrievalIDs(t, 3)
 
 	inProgressCids := bitswaphelpers.NewInProgressCids()

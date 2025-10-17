@@ -15,7 +15,8 @@ import (
 	dtnet "github.com/filecoin-project/go-data-transfer/v2/network"
 	gstransport "github.com/filecoin-project/go-data-transfer/v2/transport/graphsync"
 	"github.com/filecoin-project/lassie/pkg/internal/itest/linksystemutil"
-	bsnet "github.com/ipfs/boxo/bitswap/network"
+	bsnetwork "github.com/ipfs/boxo/bitswap/network"
+	bsnet "github.com/ipfs/boxo/bitswap/network/bsnet"
 	"github.com/ipfs/boxo/bitswap/server"
 	"github.com/ipfs/boxo/blockstore"
 	"github.com/ipfs/go-cid"
@@ -30,7 +31,6 @@ import (
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	routinghelpers "github.com/libp2p/go-libp2p-routing-helpers"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	p2ptestutil "github.com/libp2p/go-libp2p-testing/netutil"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -153,7 +153,7 @@ func ConnectPeers(instances []TestPeer) {
 type TestPeer struct {
 	ID                 peer.ID
 	BitswapServer      *server.Server
-	BitswapNetwork     bsnet.BitSwapNetwork
+	BitswapNetwork     bsnetwork.BitSwapNetwork
 	DatatransferServer datatransfer.Manager
 	HttpServer         *TestPeerHttpServer
 	blockstore         blockstore.Blockstore
@@ -199,7 +199,7 @@ func NewTestBitswapPeer(
 	if err != nil {
 		return TestPeer{}, err
 	}
-	bsNet := bsnet.NewFromIpfsHost(peer.Host, routinghelpers.Null{}, netOptions...)
+	bsNet := bsnet.NewFromIpfsHost(peer.Host, netOptions...)
 	bs := server.New(ctx, bsNet, peer.blockstore, bsOptions...)
 	bsNet.Start(bs)
 	go func() {

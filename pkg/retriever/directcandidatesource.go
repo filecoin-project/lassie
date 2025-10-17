@@ -7,7 +7,7 @@ import (
 	datatransfer "github.com/filecoin-project/go-data-transfer/v2"
 	"github.com/filecoin-project/lassie/pkg/internal/lp2ptransports"
 	"github.com/filecoin-project/lassie/pkg/types"
-	bsnet "github.com/ipfs/boxo/bitswap/network"
+	bsnet "github.com/ipfs/boxo/bitswap/network/bsnet"
 	"github.com/ipfs/go-cid"
 	gsnet "github.com/ipfs/go-graphsync/network"
 	"github.com/ipni/go-libipni/metadata"

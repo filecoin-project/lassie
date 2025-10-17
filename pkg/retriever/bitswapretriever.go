@@ -16,7 +16,7 @@ import (
 	"github.com/filecoin-project/lassie/pkg/retriever/bitswaphelpers/groupworkpool"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/boxo/bitswap/client"
-	"github.com/ipfs/boxo/bitswap/network"
+	"github.com/ipfs/boxo/bitswap/network/bsnet"
 	"github.com/ipfs/boxo/blockservice"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime/datamodel"
@@ -83,13 +83,13 @@ func NewBitswapRetrieverFromHost(
 	bstore := bitswaphelpers.NewMultiblockstore()
 	inProgressCids := bitswaphelpers.NewInProgressCids()
 	routing := bitswaphelpers.NewIndexerRouting(inProgressCids.Get)
-	bsnet := network.NewFromIpfsHost(host, routing)
-	bitswap := client.New(ctx, bsnet, bstore, client.ProviderSearchDelay(shortenedDelay))
-	bsnet.Start(bitswap)
+	bsNet := bsnet.NewFromIpfsHost(host)
+	bitswap := client.New(ctx, bsNet, routing, bstore, client.ProviderSearchDelay(shortenedDelay))
+	bsNet.Start(bitswap)
 	bsrv := blockservice.New(bstore, bitswap)
 	go func() {
 		<-ctx.Done()
-		bsnet.Stop()
+		bsNet.Stop()
 	}()
 	return NewBitswapRetrieverFromDeps(ctx, bsrv, routing, inProgressCids, bstore, cfg, clock.New(), nil)
 }

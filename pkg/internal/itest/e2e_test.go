@@ -16,11 +16,17 @@ import (
 	"time"
 
 	"github.com/ipfs/go-cid"
+	"github.com/ipfs/go-test/cmd"
 	"github.com/ipld/go-car/v2"
 	trustlessutils "github.com/ipld/go-trustless-utils"
 	trustlesspathing "github.com/ipld/ipld/specs/pkg-go/trustless-pathing"
-	"github.com/ipni/storetheindex/test"
 	"github.com/stretchr/testify/require"
+)
+
+const (
+	frisbiiReadyMatch      = "Announce() complete"
+	indexerReadyMatch      = "Indexer is ready"
+	lassieDaemonReadyMatch = "Lassie daemon listening on address"
 )
 
 func TestTrustlessGatewayE2E(t *testing.T) {
@@ -40,14 +46,14 @@ func TestTrustlessGatewayE2E(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	tr := test.NewTestIpniRunner(t, ctx, t.TempDir())
+	tr := cmd.NewRunner(t, t.TempDir())
 
 	t.Log("Running in test directory:", tr.Dir)
 
 	// install the lassie cmd, when done in tr.Run() will use the GOPATH/GOBIN
 	// in the test directory, so we get a localised `lassie` executable
 	lassie := filepath.Join(tr.Dir, "lassie")
-	tr.Run("go", "install", "../../../cmd/lassie/")
+	tr.Run(ctx, "go", "install", "../../../cmd/lassie/")
 
 	cwd, err := os.Getwd()
 	req.NoError(err)
@@ -57,28 +63,27 @@ func TestTrustlessGatewayE2E(t *testing.T) {
 	// install the indexer to announce to
 	t.Log("Installing indexer")
 	indexer := filepath.Join(tr.Dir, "storetheindex")
-	tr.Run("go", "install", "github.com/ipni/storetheindex@v0.8.14")
+	tr.Run(ctx, "go", "install", "github.com/ipni/storetheindex@latest")
 	// install the ipni cli to inspect the indexer
 	t.Log("Installing ipni")
 	ipni := filepath.Join(tr.Dir, "ipni")
-	tr.Run("go", "install", "github.com/ipni/ipni-cli/cmd/ipni@v0.1.8")
-	t.Log("Installing frisbii")
+	tr.Run(ctx, "go", "install", "github.com/ipni/ipni-cli/cmd/ipni@latest")
 	// install frisbii to serve the content
+	t.Log("Installing frisbii")
 	frisbii := filepath.Join(tr.Dir, "frisbii")
-	tr.Run("go", "install", "github.com/ipld/frisbii/cmd/frisbii@latest")
+	tr.Run(ctx, "go", "install", "github.com/ipld/frisbii/cmd/frisbii@latest")
 
 	err = os.Chdir(cwd)
 	req.NoError(err)
 
 	// initialise and start the indexer and adjust the config
 	t.Log("Initialising indexer")
-	tr.Run(indexer, "init", "--store", "pebble", "--pubsub-topic", "/indexer/ingest/mainnet", "--no-bootstrap")
-
+	tr.Run(ctx, indexer, "init", "--store", "pebble", "--pubsub-topic", "/indexer/ingest/mainnet", "--no-bootstrap")
 	t.Log("Starting indexer")
-	indexerReady := test.NewStdoutWatcher(test.IndexerReadyMatch)
-	cmdIndexer := tr.Start(test.NewExecution(indexer, "daemon").WithWatcher(indexerReady))
+	indexerReady := cmd.NewStdoutWatcher(indexerReadyMatch)
+	cmdIndexer := tr.Start(ctx, cmd.Args(indexer, "daemon"), indexerReady)
 	select {
-	case <-indexerReady.Signal:
+	case <-indexerReady.Signal():
 	case <-ctx.Done():
 		t.Fatal("timed out waiting for indexer to start")
 	}
@@ -90,17 +95,17 @@ func TestTrustlessGatewayE2E(t *testing.T) {
 
 	// start frisbii with the fixture CAR
 	t.Logf("Starting frisbii with CAR [%s] and root [%s]", carPath, root)
-	frisbiiReady := test.NewStdoutWatcher("Announce() complete")
-	cmdFrisbii := tr.Start(test.NewExecution(frisbii,
+	frisbiiReady := cmd.NewStdoutWatcher(frisbiiReadyMatch)
+	cmdFrisbii := tr.Start(ctx, cmd.Args(frisbii,
 		"--listen", "localhost:37471",
 		"--announce", "roots",
 		"--announce-url", "http://localhost:3001/announce",
 		"--verbose",
 		"--car", carPath,
-	).WithWatcher(frisbiiReady))
+	), frisbiiReady)
 
 	select {
-	case <-frisbiiReady.Signal:
+	case <-frisbiiReady.Signal():
 	case <-ctx.Done():
 		t.Fatal("timed out waiting for frisbii to announce")
 	}
@@ -108,7 +113,9 @@ func TestTrustlessGatewayE2E(t *testing.T) {
 	// wait for the CARs to be indexed
 	req.Eventually(func() bool {
 		mh := root.Hash().B58String()
-		findOutput := tr.Run(ipni, "find", "--no-priv", "-i", "http://localhost:3000", "-mh", mh)
+		findOutput := tr.Run(ctx, ipni, "find", "--no-priv", "-i", "http://localhost:3000", "-mh", mh)
+		t.Logf("import output:\n%s\n", findOutput)
+
 		if bytes.Contains(findOutput, []byte("not found")) {
 			return false
 		}
@@ -125,7 +132,7 @@ func TestTrustlessGatewayE2E(t *testing.T) {
 		req := require.New(t)
 
 		// fetch the entire CAR
-		tr.Run(lassie,
+		tr.Run(ctx, lassie,
 			"fetch",
 			"-vv",
 			"--ipni-endpoint", "http://localhost:3000",
@@ -142,15 +149,15 @@ func TestTrustlessGatewayE2E(t *testing.T) {
 	})
 
 	// start lassie daemon
-	lassieDaemonReady := test.NewStdoutWatcher("Lassie daemon listening on address")
-	cmdLassieDaemon := tr.Start(test.NewExecution(lassie, "daemon",
+	lassieDaemonReady := cmd.NewStdoutWatcher(lassieDaemonReadyMatch)
+	cmdLassieDaemon := tr.Start(ctx, cmd.Args(lassie, "daemon",
 		"-vv",
 		"--port", "30000",
 		"--ipni-endpoint", "http://localhost:3000",
-	).WithWatcher(lassieDaemonReady))
+	), lassieDaemonReady)
 
 	select {
-	case <-lassieDaemonReady.Signal:
+	case <-lassieDaemonReady.Signal():
 	case <-ctx.Done():
 		t.Fatal("timed out waiting for lassie daemon to start")
 	}
@@ -177,7 +184,7 @@ func TestTrustlessGatewayE2E(t *testing.T) {
 					args[len(args)-1] = args[len(args)-1] + "/" + testCase.Path
 				}
 				t.Logf("Running lassie %s", strings.Join(args, " "))
-				tr.Run(lassie, args...)
+				tr.Run(ctx, lassie, args...)
 
 				_, err = os.Stat(expectedCarPath)
 				req.NoError(err)

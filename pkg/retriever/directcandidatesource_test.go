@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/filecoin-project/lassie/pkg/internal/testutil"
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/types"
+	"github.com/ipfs/go-test/random"
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
@@ -15,10 +15,10 @@ import (
 )
 
 func TestDirectCandidateSourceNoLibp2p(t *testing.T) {
-	rootCid := testutil.GenerateCid()
-	p := testutil.GeneratePeers(t, 1)[0]
-	rawMultiaddr := testutil.GenerateMultiAddr()
-	httpMultiaddr := testutil.GenerateHTTPMultiAddr()
+	rootCid := random.Cids(1)[0]
+	p := random.Peers(1)[0]
+	rawMultiaddr := random.Multiaddrs(1)[0]
+	httpMultiaddr := random.HttpMultiaddrs(1)[0]
 	ctx := context.Background()
 	testCases := []struct {
 		name              string

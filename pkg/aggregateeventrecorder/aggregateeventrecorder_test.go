@@ -1,19 +1,19 @@
 package aggregateeventrecorder_test
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
-	"context"
-
 	"github.com/filecoin-project/go-clock"
 	"github.com/filecoin-project/lassie/pkg/aggregateeventrecorder"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/internal/testutil"
 	"github.com/filecoin-project/lassie/pkg/types"
+	"github.com/ipfs/go-test/random"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/codec/dagjson"
 	"github.com/ipld/go-ipld-prime/datamodel"
@@ -43,7 +43,7 @@ func TestAggregateEventRecorder(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	testCid1 := testutil.GenerateCid()
+	testCid1 := random.Cids(1)[0]
 	bitswapCandidates := testutil.GenerateRetrievalCandidatesForCID(t, 3, testCid1, &metadata.Bitswap{})
 	graphsyncCandidates := testutil.GenerateRetrievalCandidatesForCID(t, 3, testCid1, &metadata.GraphsyncFilecoinV1{})
 

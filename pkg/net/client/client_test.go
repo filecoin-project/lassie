@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"testing"
 	"time"
@@ -171,19 +172,26 @@ func (f fakeStream) CloseWrite() error                 { return nil }
 func (f fakeStream) CloseRead() error                  { return nil }
 func (f fakeStream) Close() error                      { return nil }
 func (f fakeStream) Reset() error                      { return nil }
-func (f fakeStream) SetDeadline(time.Time) error       { return nil }
-func (f fakeStream) SetReadDeadline(time.Time) error   { return nil }
-func (f fakeStream) SetWriteDeadline(time.Time) error  { return nil }
-func (f fakeStream) ID() string                        { return "" }
-func (f fakeStream) Protocol() protocol.ID             { return "" }
-func (f fakeStream) SetProtocol(id protocol.ID) error  { return nil }
-func (f fakeStream) Stat() network.Stats               { return network.Stats{} }
-func (f fakeStream) Conn() network.Conn                { return fakeConn{} }
-func (f fakeStream) Scope() network.StreamScope        { return nil }
+func (f fakeStream) ResetWithError(ec network.StreamErrorCode) error {
+	return fmt.Errorf("stream error %d", ec)
+}
+func (f fakeStream) SetDeadline(time.Time) error      { return nil }
+func (f fakeStream) SetReadDeadline(time.Time) error  { return nil }
+func (f fakeStream) SetWriteDeadline(time.Time) error { return nil }
+func (f fakeStream) ID() string                       { return "" }
+func (f fakeStream) Protocol() protocol.ID            { return "" }
+func (f fakeStream) SetProtocol(id protocol.ID) error { return nil }
+func (f fakeStream) Stat() network.Stats              { return network.Stats{} }
+func (f fakeStream) Conn() network.Conn               { return fakeConn{} }
+func (f fakeStream) Scope() network.StreamScope       { return nil }
 
 type fakeConn struct{}
 
-func (f fakeConn) Close() error                                      { return nil }
+func (f fakeConn) As(any) bool  { return false }
+func (f fakeConn) Close() error { return nil }
+func (f fakeConn) CloseWithError(ec network.ConnErrorCode) error {
+	return fmt.Errorf("conn error %d", ec)
+}
 func (f fakeConn) LocalPeer() peer.ID                                { return peer.ID("") }
 func (f fakeConn) RemotePeer() peer.ID                               { return peer.ID("") }
 func (f fakeConn) RemotePublicKey() ic.PubKey                        { return nil }
