@@ -2,13 +2,13 @@ package coordinators
 
 import (
 	"context"
+	"errors"
 
 	"github.com/filecoin-project/lassie/pkg/types"
-	"go.uber.org/multierr"
 )
 
 func Sequence(ctx context.Context, queueOperationsFn types.QueueRetrievalsFn) (*types.RetrievalStats, error) {
-	var totalErr error
+	var totalErr []error
 	var finalStats *types.RetrievalStats
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -18,7 +18,7 @@ func Sequence(ctx context.Context, queueOperationsFn types.QueueRetrievalsFn) (*
 		}
 		stats, err := retrieval.Run()
 		if err != nil {
-			totalErr = multierr.Append(totalErr, err)
+			totalErr = append(totalErr, err)
 		}
 		if stats != nil {
 			finalStats = stats
@@ -26,7 +26,7 @@ func Sequence(ctx context.Context, queueOperationsFn types.QueueRetrievalsFn) (*
 		}
 	})
 	if finalStats == nil {
-		return nil, totalErr
+		return nil, errors.Join(totalErr...)
 	}
 	return finalStats, nil
 }

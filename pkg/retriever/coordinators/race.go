@@ -2,10 +2,10 @@ package coordinators
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/filecoin-project/lassie/pkg/types"
-	"go.uber.org/multierr"
 )
 
 func Race(ctx context.Context, queueOperations types.QueueRetrievalsFn) (*types.RetrievalStats, error) {
@@ -32,15 +32,15 @@ func Race(ctx context.Context, queueOperations types.QueueRetrievalsFn) (*types.
 		waitGroup.Wait()
 		close(resultChan)
 	}()
-	var totalErr error
+	var totalErr []error
 	for {
 		select {
 		case result, ok := <-resultChan:
 			if !ok {
-				return nil, totalErr
+				return nil, errors.Join(totalErr...)
 			}
 			if result.Err != nil {
-				totalErr = multierr.Append(totalErr, result.Err)
+				totalErr = append(totalErr, result.Err)
 			}
 			if result.Stats != nil {
 				return result.Stats, nil

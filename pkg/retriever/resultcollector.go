@@ -2,12 +2,12 @@ package retriever
 
 import (
 	"context"
+	"errors"
 
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/retriever/prioritywaitqueue"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"go.uber.org/multierr"
 )
 
 // retrievalShared is the shared state and coordination between the per-SP
@@ -71,7 +71,7 @@ func (shared *retrievalShared) sendEvent(ctx context.Context, event events.Event
 // and retrieval results and aggregating into an appropriate return of either
 // a complete RetrievalStats or an bundled multi-error
 func collectResults(ctx context.Context, shared *retrievalShared, eventsCallback func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
-	var retrievalErrors error
+	var retrievalErrors []error
 	for {
 		select {
 		case result := <-shared.resultChan:
@@ -80,7 +80,7 @@ func collectResults(ctx context.Context, shared *retrievalShared, eventsCallback
 				break
 			}
 			if result.Err != nil {
-				retrievalErrors = multierr.Append(retrievalErrors, result.Err)
+				retrievalErrors = append(retrievalErrors, result.Err)
 			}
 			if result.Stats != nil {
 				return result.Stats, nil
@@ -88,8 +88,8 @@ func collectResults(ctx context.Context, shared *retrievalShared, eventsCallback
 			// have we got all responses but no success?
 			if result.AllFinished {
 				// we failed, and got only retrieval errors
-				retrievalErrors = multierr.Append(retrievalErrors, ErrAllRetrievalsFailed)
-				return nil, retrievalErrors
+				retrievalErrors = append(retrievalErrors, ErrAllRetrievalsFailed)
+				return nil, errors.Join(retrievalErrors...)
 			}
 		case <-ctx.Done():
 			return nil, context.Canceled

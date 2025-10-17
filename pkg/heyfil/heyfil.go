@@ -2,6 +2,7 @@ package heyfil
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -9,7 +10,6 @@ import (
 
 	"github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"go.uber.org/multierr"
 )
 
 const DefaultHeyfilEndpoint = "https://heyfil.prod.cid.contact/"
@@ -55,7 +55,7 @@ func (h Heyfil) endpoint() string {
 // of the strings can be translated, the input slice is returned as-is.
 func (h Heyfil) TranslateAll(ss []string) ([]string, error) {
 	translated := make([]string, len(ss))
-	var merr error
+	var errs []error
 	var translatedLk sync.Mutex
 	var wg sync.WaitGroup
 	for ii, s := range ss {
@@ -69,7 +69,7 @@ func (h Heyfil) TranslateAll(ss []string) ([]string, error) {
 			res, err := h.Translate(s)
 			if err != nil {
 				translatedLk.Lock()
-				multierr.AppendInto(&merr, err)
+				errs = append(errs, err)
 				translatedLk.Unlock()
 				return
 			}
@@ -79,8 +79,8 @@ func (h Heyfil) TranslateAll(ss []string) ([]string, error) {
 		}(ii, s)
 	}
 	wg.Wait()
-	if merr != nil {
-		return nil, merr
+	if errs != nil {
+		return nil, errors.Join(errs...)
 	}
 	return translated, nil
 }

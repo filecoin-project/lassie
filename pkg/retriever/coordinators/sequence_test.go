@@ -10,7 +10,6 @@ import (
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/multierr"
 )
 
 func TestSequence(t *testing.T) {
@@ -49,7 +48,7 @@ func TestSequence(t *testing.T) {
 					Err: errors.New("something else went wrong"),
 				},
 			},
-			expectedErr: multierr.Append(errors.New("something went wrong"), errors.New("something else went wrong")),
+			expectedErr: errors.Join(errors.New("something went wrong"), errors.New("something else went wrong")),
 		},
 		{
 			name: "error then success, returns success",

@@ -7,7 +7,7 @@ require (
 	github.com/filecoin-project/go-clock v0.1.0
 	github.com/filecoin-project/go-data-transfer/v2 v2.0.0
 	github.com/filecoin-project/go-retrieval-types v1.2.0
-	github.com/filecoin-project/go-state-types v0.10.0
+	github.com/filecoin-project/go-state-types v0.17.0
 	github.com/google/uuid v1.6.0
 	github.com/hannahhoward/go-pubsub v1.0.0
 	github.com/ipfs/boxo v0.35.0
@@ -22,10 +22,10 @@ require (
 	github.com/ipfs/go-unixfsnode v1.10.2
 	github.com/ipld/go-car/v2 v2.16.0
 	github.com/ipld/go-codec-dagpb v1.7.0
-	github.com/ipld/go-fixtureplate v0.0.2
+	github.com/ipld/go-fixtureplate v0.1.0
 	github.com/ipld/go-ipld-prime v0.21.0
-	github.com/ipld/go-trustless-utils v0.4.1
-	github.com/ipld/ipld/specs v0.0.0-20231012031213-54d3b21deda4
+	github.com/ipld/go-trustless-utils v0.7.0
+	github.com/ipld/ipld/specs v0.0.0-20251006092830-4c3760533f7b
 	github.com/ipni/go-libipni v0.7.1
 	github.com/libp2p/go-libp2p v0.44.0
 	github.com/libp2p/go-libp2p-routing-helpers v0.7.5
@@ -38,7 +38,6 @@ require (
 	github.com/urfave/cli/v2 v2.27.7
 	go.opentelemetry.io/otel v1.38.0
 	go.opentelemetry.io/otel/trace v1.38.0
-	go.uber.org/multierr v1.11.0
 	golang.org/x/exp v0.0.0-20251009144603-d2f985daa21b
 )
 
@@ -55,11 +54,11 @@ require (
 	github.com/davidlazar/go-crypto v0.0.0-20200604182044-b73af7476f6c // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
-	github.com/filecoin-project/go-address v1.1.0 // indirect
-	github.com/filecoin-project/go-amt-ipld/v4 v4.0.0 // indirect
+	github.com/filecoin-project/go-address v1.2.0 // indirect
+	github.com/filecoin-project/go-amt-ipld/v4 v4.4.0 // indirect
 	github.com/filecoin-project/go-cbor-util v0.0.1 // indirect
 	github.com/filecoin-project/go-ds-versioning v0.1.2 // indirect
-	github.com/filecoin-project/go-hamt-ipld/v3 v3.4.0 // indirect
+	github.com/filecoin-project/go-hamt-ipld/v3 v3.4.1 // indirect
 	github.com/filecoin-project/go-statemachine v1.0.2 // indirect
 	github.com/filecoin-project/go-statestore v0.2.0 // indirect
 	github.com/flynn/noise v1.1.0 // indirect
@@ -70,7 +69,6 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/gddo v0.0.0-20180823221919-9d8ff1c67be5 // indirect
-	github.com/gopherjs/gopherjs v1.17.2 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/hannahhoward/cbor-gen-for v0.0.0-20230214144701-5d17c9d5243c // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
@@ -104,7 +102,6 @@ require (
 	github.com/miekg/dns v1.1.68 // indirect
 	github.com/mikioh/tcpinfo v0.0.0-20190314235526-30a79bb1804b // indirect
 	github.com/mikioh/tcpopt v0.0.0-20190314235656-172688c1accc // indirect
-	github.com/minio/blake2b-simd v0.0.0-20160723061019-3f5f724cb5b1 // indirect
 	github.com/minio/sha256-simd v1.0.1 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/multiformats/go-base32 v0.1.0 // indirect
@@ -160,6 +157,7 @@ require (
 	go.uber.org/dig v1.19.0 // indirect
 	go.uber.org/fx v1.24.0 // indirect
 	go.uber.org/mock v0.5.2 // indirect
+	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	go4.org v0.0.0-20230225012048-214862532bf5 // indirect
