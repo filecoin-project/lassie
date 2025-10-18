@@ -91,7 +91,7 @@ func IpfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.Response
 			res.Header().Set("Accept-Ranges", "none")
 			res.Header().Set("Cache-Control", trustlesshttp.ResponseCacheControlHeader)
 			res.Header().Set("Content-Type", trustlesshttp.DefaultContentType().WithDuplicates(request.Duplicates).String())
-			res.Header().Set("Etag", request.Etag())
+			res.Header().Set("Etag", request.Etag(""))
 			res.Header().Set("X-Content-Type-Options", "nosniff")
 			res.Header().Set("X-Ipfs-Path", trustlessutils.PathEscape(unescapedPath))
 			res.Header().Set("X-Trace-Id", requestId)
@@ -262,7 +262,9 @@ func decodeRetrievalRequest(cfg HttpServerConfig, res http.ResponseWriter, req *
 }
 
 func decodeFilename(res http.ResponseWriter, req *http.Request, statusLogger *statusLogger, root cid.Cid) (bool, string) {
-	fileName, err := trustlesshttp.ParseFilename(req)
+	bothAccepts := []trustlesshttp.ContentType{trustlesshttp.DefaultContentType(), trustlesshttp.DefaultContentType().WithMimeType(trustlesshttp.MimeTypeRaw)}
+
+	fileName, err := trustlesshttp.ParseFilename(req, bothAccepts)
 	if err != nil {
 		errorResponse(res, statusLogger, http.StatusBadRequest, err)
 		return false, ""

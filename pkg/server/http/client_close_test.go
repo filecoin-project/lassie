@@ -88,5 +88,5 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 }
 
 func (rw *responseWriter) WriteHeader(statusCode int) {
-	rw.t.Fatal("unexpected WriteHeader() call")
+	rw.t.Fatalf("unexpected WriteHeader() call, code: %d", statusCode)
 }
