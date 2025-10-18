@@ -116,7 +116,7 @@ func TestTrustlessUnixfsFetch(t *testing.T) {
 				req.Equal("application/vnd.ipld.car;version=1;order=dfs;dups=y", resp.Header.Get("Content-Type"))
 				req.Equal("nosniff", resp.Header.Get("X-Content-Type-Options"))
 				etagStart := fmt.Sprintf(`"%s.car.`, tc.Root.String())
-				etagGot := resp.Header.Get("ETag")
+				etagGot := strings.TrimPrefix(resp.Header.Get("ETag"), "W/")
 				req.True(strings.HasPrefix(etagGot, etagStart), "ETag should start with [%s], got [%s]", etagStart, etagGot)
 				req.Equal(`"`, etagGot[len(etagGot)-1:], "ETag should end with a quote")
 				req.Equal(fmt.Sprintf("/ipfs/%s%s", tc.Root.String(), trustlessutils.PathEscape(tc.Path)), resp.Header.Get("X-Ipfs-Path"))

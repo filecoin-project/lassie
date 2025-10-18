@@ -1107,7 +1107,7 @@ func verifyHeaders(t *testing.T, resp response, root cid.Cid, path string, expec
 	req.Contains(st, "retrieval-")
 	req.Contains(st, "dur=") // at lest one of these
 	etagStart := fmt.Sprintf(`"%s.car.`, root.String())
-	etagGot := resp.Header.Get("ETag")
+	etagGot := strings.TrimPrefix(resp.Header.Get("ETag"), "W/")
 	req.True(strings.HasPrefix(etagGot, etagStart), "ETag should start with [%s], got [%s]", etagStart, etagGot)
 	req.Equal(`"`, etagGot[len(etagGot)-1:], "ETag should end with a quote")
 	req.Equal(fmt.Sprintf("/ipfs/%s%s", root.String(), path), resp.Header.Get("X-Ipfs-Path"))
