@@ -7,7 +7,7 @@ import (
 	datatransfer "github.com/filecoin-project/go-data-transfer/v2"
 	"github.com/filecoin-project/lassie/pkg/internal/lp2ptransports"
 	"github.com/filecoin-project/lassie/pkg/types"
-	bsnet "github.com/ipfs/boxo/bitswap/network"
+	// bsnet "github.com/ipfs/boxo/bitswap/network" // DISABLED: bitswap support removed for boxo v0.35.0 compatibility
 	"github.com/ipfs/go-cid"
 	gsnet "github.com/ipfs/go-graphsync/network"
 	"github.com/ipni/go-libipni/metadata"
@@ -175,18 +175,19 @@ func (d *DirectCandidateSource) trySendHTTPCandidate(provider types.Provider, ro
 }
 func (d *DirectCandidateSource) retrievalCandidatesFromProtocolProbing(ctx context.Context, provider peer.AddrInfo, cs candidateSender) {
 	var protocols []metadata.Protocol
-	s, err := d.h.NewStream(ctx, provider.ID,
-		bsnet.ProtocolBitswap,
-		bsnet.ProtocolBitswapOneOne,
-		bsnet.ProtocolBitswapOneZero,
-		bsnet.ProtocolBitswapNoVers,
-	)
-	if err == nil {
-		s.Close()
-		protocols = append(protocols, &metadata.Bitswap{})
-	}
+	// DISABLED: bitswap protocol probing removed for boxo v0.35.0 compatibility
+	// s, err := d.h.NewStream(ctx, provider.ID,
+	// 	bsnet.ProtocolBitswap,
+	// 	bsnet.ProtocolBitswapOneOne,
+	// 	bsnet.ProtocolBitswapOneZero,
+	// 	bsnet.ProtocolBitswapNoVers,
+	// )
+	// if err == nil {
+	// 	s.Close()
+	// 	protocols = append(protocols, &metadata.Bitswap{})
+	// }
 	// must support both graphsync & data transfer to do graphsync filecoin v1 retrieval
-	s, err = d.h.NewStream(ctx, provider.ID,
+	s, err := d.h.NewStream(ctx, provider.ID,
 		gsnet.ProtocolGraphsync_2_0_0)
 	if err == nil {
 		s.Close()
@@ -217,12 +218,13 @@ func (d *DirectCandidateSource) retrievalCandidatesFromTransportsProtocol(ctx co
 					return
 				}
 			}
-		case "bitswap":
-			for _, addr := range addrs {
-				if err := cs.sendCandidate(addr, &metadata.Bitswap{}); err != nil {
-					return
-				}
-			}
+		// DISABLED: bitswap support removed for boxo v0.35.0 compatibility
+		// case "bitswap":
+		// 	for _, addr := range addrs {
+		// 		if err := cs.sendCandidate(addr, &metadata.Bitswap{}); err != nil {
+		// 			return
+		// 		}
+		// 	}
 		case "http":
 			for _, addr := range addrs {
 				if err := cs.sendCandidate(addr, &metadata.IpfsGatewayHttp{}); err != nil {
