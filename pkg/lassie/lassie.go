@@ -119,12 +119,13 @@ func NewLassieWithConfig(ctx context.Context, cfg *LassieConfig) (*Lassie, error
 				return nil, err
 			}
 			protocolRetrievers[protocol] = retriever.NewGraphsyncRetriever(session, retrievalClient)
-		case multicodec.TransportBitswap:
-			protocolRetrievers[protocol] = retriever.NewBitswapRetrieverFromHost(ctx, cfg.Host, retriever.BitswapConfig{
-				BlockTimeout:            cfg.ProviderTimeout,
-				Concurrency:             cfg.BitswapConcurrency,
-				ConcurrencyPerRetrieval: cfg.BitswapConcurrencyPerRetrieval,
-			})
+		// DISABLED: bitswap support removed for boxo v0.35.0 compatibility
+		// case multicodec.TransportBitswap:
+		// 	protocolRetrievers[protocol] = retriever.NewBitswapRetrieverFromHost(ctx, cfg.Host, retriever.BitswapConfig{
+		// 		BlockTimeout:            cfg.ProviderTimeout,
+		// 		Concurrency:             cfg.BitswapConcurrency,
+		// 		ConcurrencyPerRetrieval: cfg.BitswapConcurrencyPerRetrieval,
+		// 	})
 		case multicodec.TransportIpfsGatewayHttp:
 			protocolRetrievers[protocol] = retriever.NewHttpRetriever(session, http.DefaultClient)
 		}
