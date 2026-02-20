@@ -1,0 +1,87 @@
+name: Gateway Conformance (optional)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+    paths-ignore:
+      - '**/*.md'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gateway-conformance-optional:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Kubo
+        uses: ipfs/download-ipfs-distribution-action@v1
+      - name: Start Kubo
+        uses: ipfs/start-ipfs-daemon-action@v1
+      - name: Download gateway-conformance fixtures
+        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@v0.8
+        with:
+          output: fixtures
+          merged: true
+      - name: Import fixtures into Kubo
+        run: |
+          find fixtures -name '*.car' -exec ipfs dag import --pin-roots=false {} \;
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          path: lassie
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: lassie/go.mod
+          cache-dependency-path: lassie/go.sum
+      - name: Build lassie
+        run: go build -o lassie ./cmd/lassie
+        working-directory: lassie
+
+      - name: Start lassie daemon
+        run: |
+          ./lassie/lassie daemon \
+            --port 8888 \
+            --address 127.0.0.1 \
+            --providers "http://127.0.0.1:8080" &
+
+          for i in $(seq 1 30); do
+            if curl -s -o /dev/null http://127.0.0.1:8888; then
+              echo "lassie is ready"
+              break
+            fi
+            echo "waiting for lassie (attempt $i/30)..."
+            sleep 1
+          done
+
+      - name: Run gateway-conformance tests
+        uses: ipfs/gateway-conformance/.github/actions/test@v0.8
+        with:
+          gateway-url: http://127.0.0.1:8888
+          specs: +trustless-car-gateway-optional
+          accept-test-failure: true
+          json: output.json
+          xml: output.xml
+          html: output.html
+          markdown: output.md
+
+      - name: Upload summary
+        if: failure() || success()
+        run: cat output.md >> $GITHUB_STEP_SUMMARY
+      - name: Upload HTML report
+        if: failure() || success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gateway-conformance-optional.html
+          path: output.html
+      - name: Upload JSON report
+        if: failure() || success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gateway-conformance-optional.json
+          path: output.json
