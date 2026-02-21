@@ -2,6 +2,7 @@ package mockindexer
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -10,8 +11,11 @@ import (
 	"time"
 
 	"github.com/filecoin-project/go-clock"
+	"github.com/filecoin-project/lassie/pkg/indexerlookup"
 	"github.com/ipfs/go-cid"
 	"github.com/ipni/go-libipni/find/model"
+	"github.com/ipni/go-libipni/metadata"
+	"github.com/multiformats/go-multicodec"
 	"github.com/multiformats/go-multihash"
 )
 
@@ -66,6 +70,7 @@ func NewMockIndexer(
 
 	// Routes
 	mux.HandleFunc("/multihash/", httpServer.handleMultihash)
+	mux.HandleFunc("/routing/v1/providers/", httpServer.handleDelegatedRouting)
 
 	return httpServer, nil
 }
@@ -154,5 +159,106 @@ func (s *MockIndexer) handleMultihash(res http.ResponseWriter, req *http.Request
 			return
 		}
 		s.clock.Sleep(1 * time.Second)
+	}
+}
+
+func (s *MockIndexer) handleDelegatedRouting(res http.ResponseWriter, req *http.Request) {
+	if s.connectCh != nil {
+		s.connectCh <- req.URL.String()
+	}
+
+	// Parse path: /routing/v1/providers/{cid}
+	urlPath := strings.Split(req.URL.Path, "/")
+
+	// Expected: ["", "routing", "v1", "providers", "{cid}"]
+	if len(urlPath) < 5 {
+		res.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	// Extract CID from path
+	cidStr := urlPath[4]
+	c, err := cid.Decode(cidStr)
+	if err != nil {
+		http.Error(res, "Failed to parse CID parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Look up providers by multihash
+	returnResults := s.returnedValues[string(c.Hash())]
+	if len(returnResults) == 0 {
+		http.NotFound(res, req)
+		return
+	}
+
+	// Convert to delegated routing format
+	var providers []indexerlookup.DelegatedProvider
+	for _, result := range returnResults {
+		// Decode metadata to get protocols
+		md := metadata.Default.New()
+		if err := md.UnmarshalBinary(result.Metadata); err != nil {
+			continue // Skip providers with bad metadata
+		}
+
+		// Build provider record
+		provider := indexerlookup.DelegatedProvider{
+			Schema:    "peer",
+			ID:        result.Provider.ID.String(),
+			Addrs:     make([]string, 0, len(result.Provider.Addrs)),
+			Protocols: make([]string, 0),
+			Metadata:  make(map[string]interface{}),
+		}
+
+		// Convert multiaddrs to strings
+		for _, addr := range result.Provider.Addrs {
+			provider.Addrs = append(provider.Addrs, addr.String())
+		}
+
+		// Convert protocols
+		for _, protoCode := range md.Protocols() {
+			var protoName string
+			switch protoCode {
+			case multicodec.TransportGraphsyncFilecoinv1:
+				protoName = "transport-graphsync-filecoinv1"
+				// Get the protocol-specific metadata
+				if proto := md.Get(protoCode); proto != nil {
+					if gs, ok := proto.(*metadata.GraphsyncFilecoinV1); ok {
+						// Encode as base64 for testing compatibility
+						if metadataBytes, err := proto.MarshalBinary(); err == nil {
+							// Remove the varint protocol ID prefix for the base64 encoding
+							// The metadata field should just contain the CBOR payload
+							provider.Metadata[protoName] = base64.StdEncoding.EncodeToString(metadataBytes)
+						} else {
+							// Fallback: provide as JSON object
+							provider.Metadata[protoName] = map[string]interface{}{
+								"PieceCID":      gs.PieceCID.String(),
+								"VerifiedDeal":  gs.VerifiedDeal,
+								"FastRetrieval": gs.FastRetrieval,
+							}
+						}
+					}
+				}
+			case multicodec.TransportIpfsGatewayHttp:
+				protoName = "transport-ipfs-gateway-http"
+				provider.Metadata[protoName] = "" // No additional metadata
+			default:
+				continue // Skip unknown protocols
+			}
+			provider.Protocols = append(provider.Protocols, protoName)
+		}
+
+		providers = append(providers, provider)
+	}
+
+	// Build response
+	response := indexerlookup.DelegatedRoutingResponse{
+		Providers: providers,
+	}
+
+	// Send JSON response
+	res.Header().Set("Content-Type", "application/json")
+	encoder := json.NewEncoder(res)
+	if err := encoder.Encode(response); err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
 	}
 }

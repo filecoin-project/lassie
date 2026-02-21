@@ -10,7 +10,7 @@ import (
 
 var (
 	_ types.RetrievalEvent  = FailedRetrievalEvent{}
-	_ EventWithProviderID   = FailedRetrievalEvent{}
+	_ EventWithEndpoint     = FailedRetrievalEvent{}
 	_ EventWithErrorMessage = FailedRetrievalEvent{}
 )
 
@@ -28,5 +28,5 @@ func (e FailedRetrievalEvent) String() string {
 }
 
 func FailedRetrieval(at time.Time, retrievalId types.RetrievalID, candidate types.RetrievalCandidate, protocol multicodec.Code, errorMessage string) FailedRetrievalEvent {
-	return FailedRetrievalEvent{providerRetrievalEvent{retrievalEvent{at, retrievalId, candidate.RootCid}, candidate.MinerPeer.ID}, protocol, errorMessage}
+	return FailedRetrievalEvent{providerRetrievalEvent{retrievalEvent{at, retrievalId, candidate.RootCid}, candidate.Endpoint()}, protocol, errorMessage}
 }

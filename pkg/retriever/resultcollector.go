@@ -3,7 +3,6 @@ package retriever
 import (
 	"context"
 
-	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/retriever/prioritywaitqueue"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -62,21 +61,20 @@ func (shared *retrievalShared) sendAllFinished(ctx context.Context) {
 	}
 }
 
-func (shared *retrievalShared) sendEvent(ctx context.Context, event events.EventWithProviderID) {
-	retrievalEvent := event.(types.RetrievalEvent)
-	shared.sendResult(ctx, retrievalResult{PeerID: event.ProviderId(), Event: &retrievalEvent})
+func (shared *retrievalShared) sendEvent(ctx context.Context, peerID peer.ID, event types.RetrievalEvent) {
+	shared.sendResult(ctx, retrievalResult{PeerID: peerID, Event: &event})
 }
 
 // collectResults is responsible for receiving query errors, retrieval errors
 // and retrieval results and aggregating into an appropriate return of either
 // a complete RetrievalStats or an bundled multi-error
-func collectResults(ctx context.Context, shared *retrievalShared, eventsCallback func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
+func collectResults(ctx context.Context, shared *retrievalShared, eventsCallback func(peer.ID, types.RetrievalEvent)) (*types.RetrievalStats, error) {
 	var retrievalErrors error
 	for {
 		select {
 		case result := <-shared.resultChan:
 			if result.Event != nil {
-				eventsCallback(*result.Event)
+				eventsCallback(result.PeerID, *result.Event)
 				break
 			}
 			if result.Err != nil {

@@ -10,7 +10,7 @@ import (
 
 var (
 	_ types.RetrievalEvent = StartedRetrievalEvent{}
-	_ EventWithProviderID  = StartedRetrievalEvent{}
+	_ EventWithEndpoint    = StartedRetrievalEvent{}
 	_ EventWithProtocol    = StartedRetrievalEvent{}
 )
 
@@ -23,9 +23,9 @@ type StartedRetrievalEvent struct {
 func (e StartedRetrievalEvent) Code() types.EventCode     { return types.StartedRetrievalCode }
 func (e StartedRetrievalEvent) Protocol() multicodec.Code { return e.protocol }
 func (e StartedRetrievalEvent) String() string {
-	return fmt.Sprintf("StartedRetrievalEvent<%s, %s, %s, %s, %s>", e.eventTime, e.retrievalId, e.rootCid, e.providerId, e.protocol)
+	return fmt.Sprintf("StartedRetrievalEvent<%s, %s, %s, %s, %s>", e.eventTime, e.retrievalId, e.rootCid, e.endpoint, e.protocol)
 }
 
 func StartedRetrieval(at time.Time, retrievalId types.RetrievalID, candidate types.RetrievalCandidate, protocol multicodec.Code) StartedRetrievalEvent {
-	return StartedRetrievalEvent{providerRetrievalEvent{retrievalEvent{at, retrievalId, candidate.RootCid}, candidate.MinerPeer.ID}, protocol}
+	return StartedRetrievalEvent{providerRetrievalEvent{retrievalEvent{at, retrievalId, candidate.RootCid}, candidate.Endpoint()}, protocol}
 }

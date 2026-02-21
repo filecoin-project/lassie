@@ -10,7 +10,7 @@ import (
 
 var (
 	_ types.RetrievalEvent = FirstByteEvent{}
-	_ EventWithProviderID  = FirstByteEvent{}
+	_ EventWithEndpoint    = FirstByteEvent{}
 	_ EventWithProtocol    = FirstByteEvent{}
 )
 
@@ -24,9 +24,9 @@ func (e FirstByteEvent) Code() types.EventCode     { return types.FirstByteCode 
 func (e FirstByteEvent) Duration() time.Duration   { return e.duration }
 func (e FirstByteEvent) Protocol() multicodec.Code { return e.protocol }
 func (e FirstByteEvent) String() string {
-	return fmt.Sprintf("FirstByteEvent<%s, %s, %s, %s, %s, %s>", e.eventTime, e.retrievalId, e.rootCid, e.providerId, e.duration.String(), e.protocol.String())
+	return fmt.Sprintf("FirstByteEvent<%s, %s, %s, %s, %s, %s>", e.eventTime, e.retrievalId, e.rootCid, e.endpoint, e.duration.String(), e.protocol.String())
 }
 
 func FirstByte(at time.Time, retrievalId types.RetrievalID, candidate types.RetrievalCandidate, duration time.Duration, protocol multicodec.Code) FirstByteEvent {
-	return FirstByteEvent{providerRetrievalEvent{retrievalEvent{at, retrievalId, candidate.RootCid}, candidate.MinerPeer.ID}, duration, protocol}
+	return FirstByteEvent{providerRetrievalEvent{retrievalEvent{at, retrievalId, candidate.RootCid}, candidate.Endpoint()}, duration, protocol}
 }

@@ -120,7 +120,6 @@ func TestEventManager(t *testing.T) {
 		require.Equal(t, id, event.RetrievalId())
 		require.Equal(t, cid, event.RootCid())
 		require.Equal(t, types.StartedRetrievalCode, event.Code())
-		require.Equal(t, peerB, event.(events.StartedRetrievalEvent).ProviderId())
 	}
 	verifyEvent(gotEvents1, types.StartedRetrievalCode, verifyRetrievalStarted)
 	verifyEvent(gotEvents2, types.StartedRetrievalCode, verifyRetrievalStarted)
@@ -131,7 +130,6 @@ func TestEventManager(t *testing.T) {
 		require.Equal(t, cid, event.RootCid())
 
 		successEvent := event.(events.SucceededEvent)
-		require.Equal(t, peerB, successEvent.ProviderId())
 		require.Equal(t, uint64(100), successEvent.ReceivedBytesSize())
 		require.Equal(t, uint64(200), successEvent.ReceivedCidsCount())
 	}
@@ -144,7 +142,6 @@ func TestEventManager(t *testing.T) {
 		require.Equal(t, cid, event.RootCid())
 
 		failedEvent := event.(events.FailedRetrievalEvent)
-		require.Equal(t, peerB, failedEvent.ProviderId())
 		require.Equal(t, "error @ retrieval failure", failedEvent.ErrorMessage())
 	}
 	verifyEvent(gotEvents1, types.FailedRetrievalCode, verifyRetrievalFailure)

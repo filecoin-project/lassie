@@ -65,4 +65,3 @@ A "full" (e.g. when using `depthType=full` with the (HTTP)[HTTP_SPEC.md] server)
 Under certain conditions, a complete DAG may not be returned.
 
  * When a Filecoin storage provider chosen to retrieve from does not have the full DAG, only the portion that they do have will be included.
- * When a Bitswap session is unable to exhaustively discover all blocks in a DAG, only the portion that was discovered will be included.

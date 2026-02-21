@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
+	"runtime/pprof"
 	"strings"
+	"sync/atomic"
 
 	"github.com/dustin/go-humanize"
 	"github.com/filecoin-project/lassie/pkg/aggregateeventrecorder"
 	"github.com/filecoin-project/lassie/pkg/events"
+	"github.com/filecoin-project/lassie/pkg/extractor"
 	"github.com/filecoin-project/lassie/pkg/lassie"
 	"github.com/filecoin-project/lassie/pkg/storage"
 	"github.com/filecoin-project/lassie/pkg/types"
@@ -17,7 +21,6 @@ import (
 	"github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/storage/deferred"
 	"github.com/ipld/go-ipld-prime/datamodel"
-	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	trustlessutils "github.com/ipld/go-trustless-utils"
 	trustlesshttp "github.com/ipld/go-trustless-utils/http"
 	"github.com/urfave/cli/v2"
@@ -36,7 +39,12 @@ var fetchFlags = []cli.Flag{
 	&cli.BoolFlag{
 		Name:    "progress",
 		Aliases: []string{"p"},
-		Usage:   "print progress output",
+		Usage:   "print verbose progress including provider events",
+	},
+	&cli.BoolFlag{
+		Name:    "quiet",
+		Aliases: []string{"q"},
+		Usage:   "suppress progress output",
 	},
 	&cli.StringFlag{
 		Name: "dag-scope",
@@ -72,24 +80,35 @@ var fetchFlags = []cli.Flag{
 		},
 	},
 	&cli.BoolFlag{
-		Name: "duplicates",
-		Usage: "allow duplicate blocks to be written to the output CAR, which " +
-			"may be useful for streaming.",
-		Aliases: []string{"dups"},
+		Name:    "stream",
+		Usage:   "stream blocks directly to output; disable to use temp files for deduplication",
+		Value:   true,
+		Aliases: []string{"s"},
 	},
-	FlagIPNIEndpoint,
+	FlagDelegatedRoutingEndpoint,
 	FlagEventRecorderAuth,
 	FlagEventRecorderInstanceId,
 	FlagEventRecorderUrl,
 	FlagVerbose,
 	FlagVeryVerbose,
-	FlagProtocols,
 	FlagAllowProviders,
 	FlagExcludeProviders,
 	FlagTempDir,
-	FlagBitswapConcurrency,
 	FlagGlobalTimeout,
-	FlagProviderTimeout,
+	FlagSkipBlockVerification,
+	&cli.StringFlag{
+		Name:  "cpuprofile",
+		Usage: "write cpu profile to file",
+	},
+	&cli.BoolFlag{
+		Name:  "extract",
+		Usage: "extract UnixFS content to files instead of CAR output",
+	},
+	&cli.StringFlag{
+		Name:  "extract-to",
+		Usage: "directory to extract files to (default: current directory)",
+		Value: ".",
+	},
 }
 
 var fetchCmd = &cli.Command{
@@ -109,10 +128,22 @@ func fetchAction(cctx *cli.Context) error {
 		return nil
 	}
 
+	if cpuprofile := cctx.String("cpuprofile"); cpuprofile != "" {
+		f, err := os.Create(cpuprofile)
+		if err != nil {
+			return fmt.Errorf("could not create CPU profile: %w", err)
+		}
+		defer f.Close()
+		if err := pprof.StartCPUProfile(f); err != nil {
+			return fmt.Errorf("could not start CPU profile: %w", err)
+		}
+		defer pprof.StopCPUProfile()
+	}
+
 	msgWriter := cctx.App.ErrWriter
 	dataWriter := cctx.App.Writer
 
-	root, path, scope, byteRange, duplicates, err := parseCidPath(cctx.Args().Get(0))
+	root, path, scope, byteRange, stream, err := parseCidPath(cctx.Args().Get(0))
 	if err != nil {
 		return err
 	}
@@ -133,12 +164,13 @@ func fetchAction(cctx *cli.Context) error {
 		}
 	}
 
-	if cctx.IsSet("duplicates") {
-		duplicates = cctx.Bool("duplicates")
+	if cctx.IsSet("stream") {
+		stream = cctx.Bool("stream")
 	}
 
 	tempDir := cctx.String("tempdir")
 	progress := cctx.Bool("progress")
+	quiet := cctx.Bool("quiet")
 
 	output := cctx.String("output")
 	outfile := fmt.Sprintf("%s.car", root.String())
@@ -146,7 +178,15 @@ func fetchAction(cctx *cli.Context) error {
 		outfile = output
 	}
 
-	lassieCfg, err := buildLassieConfigFromCLIContext(cctx, nil, nil)
+	extractMode := cctx.Bool("extract")
+	extractTo := cctx.String("extract-to")
+
+	// validate flags
+	if extractMode && cctx.IsSet("output") {
+		return fmt.Errorf("--extract and --output are mutually exclusive")
+	}
+
+	lassieCfg, err := buildLassieConfigFromCLIContext(cctx, nil)
 	if err != nil {
 		return err
 	}
@@ -156,21 +196,38 @@ func fetchAction(cctx *cli.Context) error {
 	instanceID := cctx.String("event-recorder-instance-id")
 	eventRecorderCfg := getEventRecorderConfig(eventRecorderURL, authToken, instanceID)
 
-	err = fetchRun(
-		cctx.Context,
-		lassieCfg,
-		eventRecorderCfg,
-		msgWriter,
-		dataWriter,
-		root,
-		path,
-		scope,
-		byteRange,
-		duplicates,
-		tempDir,
-		progress,
-		outfile,
-	)
+	if extractMode {
+		err = extractRun(
+			cctx.Context,
+			lassieCfg,
+			eventRecorderCfg,
+			msgWriter,
+			root,
+			path,
+			scope,
+			byteRange,
+			progress,
+			quiet,
+			extractTo,
+		)
+	} else {
+		err = fetchRun(
+			cctx.Context,
+			lassieCfg,
+			eventRecorderCfg,
+			msgWriter,
+			dataWriter,
+			root,
+			path,
+			scope,
+			byteRange,
+			stream,
+			tempDir,
+			progress,
+			quiet,
+			outfile,
+		)
+	}
 	if err != nil {
 		return cli.Exit(err, 1)
 	}
@@ -183,24 +240,25 @@ func parseCidPath(spec string) (
 	path datamodel.Path,
 	scope trustlessutils.DagScope,
 	byteRange *trustlessutils.ByteRange,
-	duplicates bool,
+	stream bool,
 	err error,
 ) {
 	scope = trustlessutils.DagScopeAll // default
+	stream = true                      // default to streaming mode
 
 	if !strings.HasPrefix(spec, "/ipfs/") {
 		cstr := strings.Split(spec, "/")[0]
 		path = datamodel.ParsePath(strings.TrimPrefix(spec, cstr))
 		if root, err = cid.Parse(cstr); err != nil {
-			return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, false, err
+			return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, true, err
 		}
-		return root, path, scope, byteRange, duplicates, err
+		return root, path, scope, byteRange, stream, err
 	} else {
 		specParts := strings.Split(spec, "?")
 		spec = specParts[0]
 
 		if root, path, err = trustlesshttp.ParseUrlPath(spec); err != nil {
-			return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, false, err
+			return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, true, err
 		}
 
 		switch len(specParts) {
@@ -208,25 +266,27 @@ func parseCidPath(spec string) (
 		case 2:
 			query, err := url.ParseQuery(specParts[1])
 			if err != nil {
-				return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, false, err
+				return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, true, err
 			}
 			scope, err = trustlessutils.ParseDagScope(query.Get("dag-scope"))
 			if err != nil {
-				return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, false, err
+				return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, true, err
 			}
 			if query.Get("entity-bytes") != "" {
 				br, err := trustlessutils.ParseByteRange(query.Get("entity-bytes"))
 				if err != nil {
-					return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, false, err
+					return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, true, err
 				}
 				byteRange = &br
 			}
-			duplicates = query.Get("dups") == "y"
+			if query.Has("dups") {
+				stream = query.Get("dups") == "y"
+			}
 		default:
-			return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, false, fmt.Errorf("invalid query: %s", spec)
+			return cid.Undef, datamodel.Path{}, trustlessutils.DagScopeAll, nil, true, fmt.Errorf("invalid query: %s", spec)
 		}
 
-		return root, path, scope, byteRange, duplicates, nil
+		return root, path, scope, byteRange, stream, nil
 	}
 }
 
@@ -243,22 +303,18 @@ func (pp *progressPrinter) subscriber(event types.RetrievalEvent) {
 		fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", events.Identifier(ret), ret.Code())
 	case events.ConnectedToProviderEvent:
 		fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", events.Identifier(ret), ret.Code())
-	case events.GraphsyncProposedEvent:
-		fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", events.Identifier(ret), ret.Code())
-	case events.GraphsyncAcceptedEvent:
-		fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", events.Identifier(ret), ret.Code())
 	case events.FirstByteEvent:
 		fmt.Fprintf(pp.writer, "\rRetrieving from [%s] (%s)...\n", events.Identifier(ret), ret.Code())
 	case events.CandidatesFoundEvent:
 		pp.candidatesFound = len(ret.Candidates())
 	case events.CandidatesFilteredEvent:
 		if len(fetchProviders) == 0 {
-			fmt.Fprintf(pp.writer, "Found %d storage provider candidate(s) in the indexer:\n", pp.candidatesFound)
+			fmt.Fprintf(pp.writer, "Found %d provider candidate(s) in the indexer:\n", pp.candidatesFound)
 		} else {
-			fmt.Fprintf(pp.writer, "Using the specified storage provider(s):\n")
+			fmt.Fprintf(pp.writer, "Using the specified provider(s):\n")
 		}
 		for _, candidate := range ret.Candidates() {
-			fmt.Fprintf(pp.writer, "\r\t%s, Protocols: %v\n", candidate.MinerPeer.ID, candidate.Metadata.Protocols())
+			fmt.Fprintf(pp.writer, "\r\t%s\n", candidate.Endpoint())
 		}
 	case events.FailedEvent:
 		fmt.Fprintf(pp.writer, "\rRetrieval failure from indexer: %s\n", ret.ErrorMessage())
@@ -266,6 +322,10 @@ func (pp *progressPrinter) subscriber(event types.RetrievalEvent) {
 		fmt.Fprintf(pp.writer, "\rRetrieval failure for [%s]: %s\n", events.Identifier(ret), ret.ErrorMessage())
 	case events.SucceededEvent:
 		// noop, handled at return from Retrieve()
+	case events.ExtractionStartedEvent:
+		fmt.Fprintf(pp.writer, "Streaming from [%s]...\n", ret.Endpoint())
+	case events.ExtractionSucceededEvent:
+		// noop, handled at return from Extract()
 	}
 }
 
@@ -287,9 +347,10 @@ type fetchRunFunc func(
 	path datamodel.Path,
 	dagScope trustlessutils.DagScope,
 	entityBytes *trustlessutils.ByteRange,
-	duplicates bool,
+	stream bool,
 	tempDir string,
 	progress bool,
+	quiet bool,
 	outfile string,
 ) error
 
@@ -308,19 +369,20 @@ func defaultFetchRun(
 	path datamodel.Path,
 	dagScope trustlessutils.DagScope,
 	entityBytes *trustlessutils.ByteRange,
-	duplicates bool,
+	stream bool,
 	tempDir string,
 	progress bool,
+	quiet bool,
 	outfile string,
 ) error {
-	lassie, err := lassie.NewLassieWithConfig(ctx, lassieCfg)
+	s, err := lassie.NewLassieWithConfig(ctx, lassieCfg)
 	if err != nil {
 		return err
 	}
 
 	// create and subscribe an event recorder API if an endpoint URL is set
 	if eventRecorderCfg.EndpointURL != "" {
-		setupLassieEventRecorder(ctx, eventRecorderCfg, lassie)
+		setupLassieEventRecorder(ctx, eventRecorderCfg, s)
 	}
 
 	printPath := path.String()
@@ -328,55 +390,61 @@ func defaultFetchRun(
 		printPath = "/" + printPath
 	}
 	if len(fetchProviders) == 0 {
-		fmt.Fprintf(msgWriter, "Fetching %s", rootCid.String()+printPath)
+		fmt.Fprintf(msgWriter, "Fetching %s\n", rootCid.String()+printPath)
 	} else {
-		fmt.Fprintf(msgWriter, "Fetching %s from specified provider(s)", rootCid.String()+printPath)
+		fmt.Fprintf(msgWriter, "Fetching %s from specified provider(s)\n", rootCid.String()+printPath)
 	}
 	if progress {
-		fmt.Fprintln(msgWriter)
 		pp := &progressPrinter{writer: msgWriter}
-		lassie.RegisterSubscriber(pp.subscriber)
+		s.RegisterSubscriber(pp.subscriber)
 	}
 
-	var carWriter storage.DeferredWriter
 	carOpts := []car.Option{
 		car.WriteAsCarV1(true),
 		car.StoreIdentityCIDs(false),
 		car.UseWholeCIDs(false),
 	}
 
-	tempStore := storage.NewDeferredStorageCar(tempDir, rootCid)
+	var carStore types.ReadableWritableStorage
+	var carWriter storage.DeferredWriter
 
-	if outfile == stdoutFileString {
-		// we need the onlyWriter because stdout is presented as an os.File, and
-		// therefore pretend to support seeks, so feature-checking in go-car
-		// will make bad assumptions about capabilities unless we hide it
-		w := &onlyWriter{dataWriter}
-		if duplicates {
-			carWriter = storage.NewDuplicateAdderCarForStream(ctx, w, rootCid, path.String(), dagScope, entityBytes, tempStore)
-		} else {
-			carWriter = deferred.NewDeferredCarWriterForStream(w, []cid.Cid{rootCid}, carOpts...)
+	if stream {
+		var deferredWriter *deferred.DeferredCarWriter
+		streamOpts := []car.Option{
+			car.WriteAsCarV1(true),
+			car.AllowDuplicatePuts(true),
+			car.StoreIdentityCIDs(false),
+			car.UseWholeCIDs(true),
 		}
+		if outfile == stdoutFileString {
+			deferredWriter = deferred.NewDeferredCarWriterForStream(&onlyWriter{dataWriter}, []cid.Cid{rootCid}, streamOpts...)
+		} else {
+			deferredWriter = deferred.NewDeferredCarWriterForPath(outfile, []cid.Cid{rootCid}, streamOpts...)
+		}
+		carWriter = deferredWriter
+		carStore = storage.NewStreamingStore(deferredWriter.BlockWriteOpener())
 	} else {
-		if duplicates {
-			carWriter = storage.NewDuplicateAdderCarForPath(ctx, outfile, rootCid, path.String(), dagScope, entityBytes, tempStore)
+		tempStore := storage.NewDeferredStorageCar(tempDir, rootCid)
+		if outfile == stdoutFileString {
+			carWriter = deferred.NewDeferredCarWriterForStream(&onlyWriter{dataWriter}, []cid.Cid{rootCid}, carOpts...)
 		} else {
 			carWriter = deferred.NewDeferredCarWriterForPath(outfile, []cid.Cid{rootCid}, carOpts...)
 		}
+		carStore = storage.NewCachingTempStore(carWriter.BlockWriteOpener(), tempStore)
 	}
 	defer carWriter.Close()
-
-	carStore := storage.NewCachingTempStore(carWriter.BlockWriteOpener(), tempStore)
-	defer carStore.Close()
+	defer func() {
+		if closer, ok := carStore.(interface{ Close() error }); ok {
+			closer.Close()
+		}
+	}()
 
 	var blockCount int
 	var byteLength uint64
 	carWriter.OnPut(func(putBytes int) {
 		blockCount++
 		byteLength += uint64(putBytes)
-		if !progress {
-			fmt.Fprint(msgWriter, ".")
-		} else {
+		if !quiet && !progress {
 			fmt.Fprintf(msgWriter, "\rReceived %d blocks / %s...", blockCount, humanize.IBytes(byteLength))
 		}
 	}, false)
@@ -385,33 +453,128 @@ func defaultFetchRun(
 	if err != nil {
 		return err
 	}
-	// setup preload storage for bitswap, the temporary CAR store can set up a
-	// separate preload space in its storage
-	request.PreloadLinkSystem = cidlink.DefaultLinkSystem()
-	preloadStore := carStore.PreloadStore()
-	request.PreloadLinkSystem.SetReadStorage(preloadStore)
-	request.PreloadLinkSystem.SetWriteStorage(preloadStore)
-	request.PreloadLinkSystem.TrustedStorage = true
-	request.Duplicates = duplicates
+	request.Duplicates = stream
 
-	stats, err := lassie.Fetch(ctx, request)
+	stats, err := s.Fetch(ctx, request)
 	if err != nil {
 		fmt.Fprintln(msgWriter)
 		return err
 	}
-	spid := stats.StorageProviderId.String()
-	if spid == "" {
-		spid = types.BitswapIndentifier
+	providers := stats.Providers
+	if len(providers) == 0 && stats.StorageProviderId.String() != "" {
+		providers = []string{stats.StorageProviderId.String()}
+	}
+	providerStr := "Unknown"
+	if len(providers) > 0 {
+		providerStr = strings.Join(providers, ", ")
 	}
 	fmt.Fprintf(msgWriter, "\nFetched [%s] from [%s]:\n"+
 		"\tDuration: %s\n"+
 		"\t  Blocks: %d\n"+
 		"\t   Bytes: %s\n",
 		rootCid,
-		spid,
+		providerStr,
 		stats.Duration,
 		blockCount,
 		humanize.IBytes(stats.Size),
+	)
+
+	return nil
+}
+
+// extractRun handles extraction mode - extracting UnixFS content to files
+func extractRun(
+	ctx context.Context,
+	lassieCfg *lassie.LassieConfig,
+	eventRecorderCfg *aggregateeventrecorder.EventRecorderConfig,
+	msgWriter io.Writer,
+	rootCid cid.Cid,
+	path datamodel.Path,
+	dagScope trustlessutils.DagScope,
+	entityBytes *trustlessutils.ByteRange,
+	progress bool,
+	quiet bool,
+	extractTo string,
+) error {
+	// path and scope/byteRange not yet supported in streaming extraction
+	if path.Len() > 0 {
+		return fmt.Errorf("path traversal not yet supported in streaming extraction")
+	}
+	if dagScope != trustlessutils.DagScopeAll {
+		return fmt.Errorf("dag-scope other than 'all' not yet supported in streaming extraction")
+	}
+	if entityBytes != nil {
+		return fmt.Errorf("entity-bytes not yet supported in streaming extraction")
+	}
+
+	s, err := lassie.NewLassieWithConfig(ctx, lassieCfg)
+	if err != nil {
+		return err
+	}
+
+	if eventRecorderCfg.EndpointURL != "" {
+		setupLassieEventRecorder(ctx, eventRecorderCfg, s)
+	}
+
+	// create extractor
+	ext, err := extractor.New(extractTo)
+	if err != nil {
+		return fmt.Errorf("failed to create extractor: %w", err)
+	}
+	defer ext.Close()
+
+	// set root path context
+	ext.SetRootPath(rootCid, rootCid.String())
+
+	printPath := path.String()
+	if printPath != "" {
+		printPath = "/" + printPath
+	}
+	if len(fetchProviders) == 0 {
+		fmt.Fprintf(msgWriter, "Extracting %s to %s\n", rootCid.String()+printPath, extractTo)
+	} else {
+		fmt.Fprintf(msgWriter, "Extracting %s to %s from specified provider(s)\n", rootCid.String()+printPath, extractTo)
+	}
+	if progress {
+		pp := &progressPrinter{writer: msgWriter}
+		s.RegisterSubscriber(pp.subscriber)
+	}
+
+	var blockCount int64
+	var byteLength uint64
+	onBlock := func(putBytes int) {
+		bc := atomic.AddInt64(&blockCount, 1)
+		bl := atomic.AddUint64(&byteLength, uint64(putBytes))
+		if !quiet && !progress {
+			fmt.Fprintf(msgWriter, "\rReceived %d blocks / %s...", bc, humanize.IBytes(bl))
+		}
+	}
+
+	stats, err := s.Extract(ctx, rootCid, ext, nil, onBlock)
+	if err != nil {
+		fmt.Fprintln(msgWriter)
+		return err
+	}
+
+	providers := stats.Providers
+	if len(providers) == 0 && stats.StorageProviderId.String() != "" {
+		providers = []string{stats.StorageProviderId.String()}
+	}
+	providerStr := "Unknown"
+	if len(providers) > 0 {
+		providerStr = strings.Join(providers, ", ")
+	}
+	fmt.Fprintf(msgWriter, "\nExtracted [%s] from [%s]:\n"+
+		"\tDuration: %s\n"+
+		"\t  Blocks: %d\n"+
+		"\t   Bytes: %s\n"+
+		"\t      To: %s\n",
+		rootCid,
+		providerStr,
+		stats.Duration,
+		atomic.LoadInt64(&blockCount),
+		humanize.IBytes(atomic.LoadUint64(&byteLength)),
+		extractTo,
 	)
 
 	return nil

@@ -102,7 +102,7 @@ func servertimingsSubscriber(req *http.Request, bytesWritten chan struct{}) type
 		case events.FinishedEvent:
 
 		default:
-			if event, ok := re.(events.EventWithProviderID); ok {
+			if event, ok := re.(events.EventWithEndpoint); ok {
 				name := fmt.Sprintf("retrieval-%s", events.Identifier(event))
 				if retrievalMetric, ok := retrievalMetricMap[name]; ok {
 					retrievalMetric.Extra[string(re.Code())] = fmt.Sprintf("%d", re.Time().Sub(retrievalTimingMap[name]))

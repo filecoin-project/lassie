@@ -11,15 +11,15 @@ import (
 	"github.com/filecoin-project/lassie/pkg/internal/mockindexer"
 	"github.com/filecoin-project/lassie/pkg/internal/testutil"
 	"github.com/filecoin-project/lassie/pkg/types"
-	"github.com/ipfs/go-cid"
+	goipfscid "github.com/ipfs/go-cid"
 	"github.com/ipni/go-libipni/find/model"
 	"github.com/stretchr/testify/require"
 )
 
 func TestCandidateSource(t *testing.T) {
-	cids := make([]cid.Cid, 0, 10)
-	candidates := make(map[cid.Cid][]types.RetrievalCandidate, 10)
-	binaryMetadata := make(map[cid.Cid][][]byte, 10)
+	cids := make([]goipfscid.Cid, 0, 10)
+	candidates := make(map[goipfscid.Cid][]types.RetrievalCandidate, 10)
+	binaryMetadata := make(map[goipfscid.Cid][][]byte, 10)
 	for i := 0; i < 10; i++ {
 		next := testutil.GenerateRetrievalCandidates(t, 2)
 		cids = append(cids, next[0].RootCid)
@@ -32,13 +32,13 @@ func TestCandidateSource(t *testing.T) {
 	}
 	testCases := []struct {
 		name            string
-		cidReturns      map[cid.Cid][]model.ProviderResult
-		expectedReturns map[cid.Cid][]types.RetrievalCandidate
+		cidReturns      map[goipfscid.Cid][]model.ProviderResult
+		expectedReturns map[goipfscid.Cid][]types.RetrievalCandidate
 		async           bool
 	}{
 		{
 			name: "basic fetch",
-			cidReturns: map[cid.Cid][]model.ProviderResult{
+			cidReturns: map[goipfscid.Cid][]model.ProviderResult{
 				cids[0]: {
 					{
 						Metadata:  binaryMetadata[cids[0]][0],
@@ -64,15 +64,15 @@ func TestCandidateSource(t *testing.T) {
 					},
 				},
 			},
-			expectedReturns: map[cid.Cid][]types.RetrievalCandidate{
+			expectedReturns: map[goipfscid.Cid][]types.RetrievalCandidate{
 				cids[0]: candidates[cids[0]],
 				cids[1]: candidates[cids[1]],
 			},
 		},
 		{
 			name:       "not found",
-			cidReturns: map[cid.Cid][]model.ProviderResult{},
-			expectedReturns: map[cid.Cid][]types.RetrievalCandidate{
+			cidReturns: map[goipfscid.Cid][]model.ProviderResult{},
+			expectedReturns: map[goipfscid.Cid][]types.RetrievalCandidate{
 				cids[0]: {},
 				cids[1]: {},
 			},
@@ -109,7 +109,11 @@ func TestCandidateSource(t *testing.T) {
 				case <-ctx.Done():
 					req.FailNow("cancelled")
 				case recv := <-connectCh:
-					req.Regexp("^/multihash/"+cid.Hash().B58String(), recv)
+					// Expect delegated routing endpoint with CIDv1 base32
+					cidV1 := goipfscid.NewCidV1(cid.Type(), cid.Hash())
+					req.Regexp("^/routing/v1/providers/", recv)
+					// The CID will be in base32 format
+					req.Contains(recv, cidV1.String())
 				}
 				for range expectedReturns {
 					clock.Add(5 * time.Second)

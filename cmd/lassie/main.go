@@ -11,11 +11,9 @@ import (
 	"github.com/filecoin-project/lassie/pkg/aggregateeventrecorder"
 	"github.com/filecoin-project/lassie/pkg/indexerlookup"
 	"github.com/filecoin-project/lassie/pkg/lassie"
-	"github.com/filecoin-project/lassie/pkg/net/host"
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-log/v2"
-	"github.com/libp2p/go-libp2p/config"
 	"github.com/urfave/cli/v2"
 )
 
@@ -45,7 +43,7 @@ func main() {
 
 	app := &cli.App{
 		Name:    "lassie",
-		Usage:   "Utility for retrieving content from the Filecoin network",
+		Usage:   "Lassie - Utility for retrieving content from the Filecoin network",
 		Suggest: true,
 		Flags: []cli.Flag{
 			FlagVerbose,
@@ -68,62 +66,42 @@ func after(cctx *cli.Context) error {
 	return nil
 }
 
-func buildLassieConfigFromCLIContext(cctx *cli.Context, lassieOpts []lassie.LassieOption, libp2pOpts []config.Option) (*lassie.LassieConfig, error) {
-	providerTimeout := cctx.Duration("provider-timeout")
+func buildLassieConfigFromCLIContext(cctx *cli.Context, lassieOpts []lassie.LassieOption) (*lassie.LassieConfig, error) {
 	globalTimeout := cctx.Duration("global-timeout")
-	bitswapConcurrency := cctx.Int("bitswap-concurrency")
-	bitswapConcurrencyPerRetrieval := cctx.Int("bitswap-concurrency-per-retrieval")
-
-	lassieOpts = append(lassieOpts, lassie.WithProviderTimeout(providerTimeout))
 
 	if globalTimeout > 0 {
 		lassieOpts = append(lassieOpts, lassie.WithGlobalTimeout(globalTimeout))
 	}
 
-	if len(protocols) > 0 {
-		lassieOpts = append(lassieOpts, lassie.WithProtocols(protocols))
-	}
-
-	host, err := host.InitHost(cctx.Context, libp2pOpts)
-	if err != nil {
-		return nil, err
-	}
-	lassieOpts = append(lassieOpts, lassie.WithHost(host))
-
 	if len(fetchProviders) > 0 {
-		finderOpt := lassie.WithCandidateSource(retriever.NewDirectCandidateSource(fetchProviders, retriever.WithLibp2pCandidateDiscovery(host)))
-		if cctx.IsSet("ipni-endpoint") {
-			logger.Warn("Ignoring ipni-endpoint flag since direct provider is specified")
+		finderOpt := lassie.WithCandidateSource(retriever.NewDirectCandidateSource(fetchProviders))
+		if cctx.IsSet("delegated-routing-endpoint") {
+			logger.Warn("Ignoring delegated-routing-endpoint flag since direct provider is specified")
 		}
 		lassieOpts = append(lassieOpts, finderOpt)
-	} else if cctx.IsSet("ipni-endpoint") {
-		endpoint := cctx.String("ipni-endpoint")
+	} else if cctx.IsSet("delegated-routing-endpoint") {
+		endpoint := cctx.String("delegated-routing-endpoint")
 		endpointUrl, err := url.ParseRequestURI(endpoint)
 		if err != nil {
-			logger.Errorw("Failed to parse IPNI endpoint as URL", "err", err)
-			return nil, fmt.Errorf("cannot parse given IPNI endpoint %s as valid URL: %w", endpoint, err)
+			logger.Errorw("Failed to parse delegated routing endpoint as URL", "err", err)
+			return nil, fmt.Errorf("cannot parse given delegated routing endpoint %s as valid URL: %w", endpoint, err)
 		}
 		finder, err := indexerlookup.NewCandidateSource(indexerlookup.WithHttpEndpoint(endpointUrl))
 		if err != nil {
-			logger.Errorw("Failed to instantiate IPNI candidate finder", "err", err)
+			logger.Errorw("Failed to instantiate delegated routing candidate finder", "err", err)
 			return nil, err
 		}
 		lassieOpts = append(lassieOpts, lassie.WithCandidateSource(finder))
-		logger.Debug("Using explicit IPNI endpoint to find candidates", "endpoint", endpoint)
+		logger.Debug("Using explicit delegated routing endpoint to find candidates", "endpoint", endpoint)
 	}
 
 	if len(providerBlockList) > 0 {
 		lassieOpts = append(lassieOpts, lassie.WithProviderBlockList(providerBlockList))
 	}
 
-	if bitswapConcurrency > 0 {
-		lassieOpts = append(lassieOpts, lassie.WithBitswapConcurrency(bitswapConcurrency))
-	}
-
-	if bitswapConcurrencyPerRetrieval > 0 {
-		lassieOpts = append(lassieOpts, lassie.WithBitswapConcurrencyPerRetrieval(bitswapConcurrencyPerRetrieval))
-	} else if bitswapConcurrency > 0 {
-		lassieOpts = append(lassieOpts, lassie.WithBitswapConcurrencyPerRetrieval(bitswapConcurrency))
+	if cctx.Bool("skip-block-verification") {
+		logger.Warn("DANGER: block verification disabled - malicious gateways can serve arbitrary data!")
+		lassieOpts = append(lassieOpts, lassie.WithSkipBlockVerification(true))
 	}
 
 	return lassie.NewLassieConfig(lassieOpts...), nil
@@ -141,7 +119,7 @@ func getEventRecorderConfig(endpointURL string, authToken string, instanceID str
 func setupLassieEventRecorder(
 	ctx context.Context,
 	cfg *aggregateeventrecorder.EventRecorderConfig,
-	lassie *lassie.Lassie,
+	s *lassie.Lassie,
 ) {
 	if cfg.EndpointURL != "" {
 		if cfg.InstanceID == "" {
@@ -153,7 +131,7 @@ func setupLassieEventRecorder(
 		}
 
 		eventRecorder := aggregateeventrecorder.NewAggregateEventRecorder(ctx, *cfg)
-		lassie.RegisterSubscriber(eventRecorder.RetrievalEventSubscriber())
+		s.RegisterSubscriber(eventRecorder.RetrievalEventSubscriber())
 		logger.Infow("Reporting retrieval events to event recorder API", "url", cfg.EndpointURL, "instance_id", cfg.InstanceID)
 	}
 }
