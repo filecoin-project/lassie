@@ -16,6 +16,7 @@ concurrency:
 jobs:
   gateway-conformance-optional:
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - name: Download Kubo
         uses: ipfs/download-ipfs-distribution-action@v1
@@ -64,7 +65,6 @@ jobs:
         with:
           gateway-url: http://127.0.0.1:8888
           specs: +trustless-car-gateway-optional
-          accept-test-failure: true
           json: output.json
           xml: output.xml
           html: output.html
