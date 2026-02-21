@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches: ["main"]
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
@@ -16,5 +17,14 @@ concurrency:
 jobs:
   go-test:
     uses: ipdxco/unified-github-workflows/.github/workflows/go-test.yml@v1.0
+    with:
+      os-versions: '["ubuntu", "macos"]'
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+  go-test-windows:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    uses: ipdxco/unified-github-workflows/.github/workflows/go-test.yml@v1.0
+    with:
+      os-versions: '["windows"]'
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
