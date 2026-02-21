@@ -4,11 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/filecoin-project/lassie/pkg/build"
+	"github.com/filecoin-project/lassie/pkg/extractor"
 	"github.com/filecoin-project/lassie/pkg/retriever"
 	"github.com/filecoin-project/lassie/pkg/storage"
 	"github.com/filecoin-project/lassie/pkg/types"
@@ -21,6 +26,19 @@ import (
 	"github.com/multiformats/go-multicodec"
 )
 
+type extractFetcher interface {
+	types.Fetcher
+	Extract(ctx context.Context, rootCid cid.Cid, ext *extractor.Extractor,
+		eventsCallback func(types.RetrievalEvent), onBlock func(int)) (*types.RetrievalStats, error)
+}
+
+func isCarRequest(req *http.Request) bool {
+	if req.URL.Query().Get("format") == "car" {
+		return true
+	}
+	return strings.Contains(req.Header.Get("Accept"), "application/vnd.ipld.car")
+}
+
 func IpfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
 		unescapedPath, err := url.PathUnescape(req.URL.Path)
@@ -31,6 +49,28 @@ func IpfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.Response
 		statusLogger := newStatusLogger(req.Method, unescapedPath)
 
 		if !checkGet(req, res, statusLogger) {
+			return
+		}
+
+		if !isCarRequest(req) {
+			ef, ok := fetcher.(extractFetcher)
+			if !ok {
+				errorResponse(res, statusLogger, http.StatusNotAcceptable,
+					errors.New("this endpoint only supports CAR responses; set Accept: application/vnd.ipld.car"))
+				return
+			}
+			rootCid, _, err := trustlesshttp.ParseUrlPath(unescapedPath)
+			if err != nil {
+				if errors.Is(err, trustlesshttp.ErrPathNotFound) {
+					errorResponse(res, statusLogger, http.StatusNotFound, err)
+				} else if errors.Is(err, trustlesshttp.ErrBadCid) {
+					errorResponse(res, statusLogger, http.StatusBadRequest, err)
+				} else {
+					errorResponse(res, statusLogger, http.StatusInternalServerError, err)
+				}
+				return
+			}
+			handleDeserialized(ef, cfg, res, req, rootCid, unescapedPath, statusLogger)
 			return
 		}
 
@@ -136,6 +176,69 @@ func IpfsHandler(fetcher types.Fetcher, cfg HttpServerConfig) func(http.Response
 			"bytes", stats.Size,
 		)
 	}
+}
+
+func handleDeserialized(ef extractFetcher, cfg HttpServerConfig, res http.ResponseWriter, req *http.Request, rootCid cid.Cid, unescapedPath string, sl *statusLogger) {
+	tempDir, err := os.MkdirTemp(cfg.TempDir, "lassie-extract-*")
+	if err != nil {
+		errorResponse(res, sl, http.StatusInternalServerError, fmt.Errorf("failed to create temp dir: %w", err))
+		return
+	}
+	defer os.RemoveAll(tempDir)
+
+	ext, err := extractor.New(tempDir)
+	if err != nil {
+		errorResponse(res, sl, http.StatusInternalServerError, fmt.Errorf("failed to create extractor: %w", err))
+		return
+	}
+	defer ext.Close()
+
+	ext.SetRootPath(rootCid, rootCid.String())
+
+	_, err = ef.Extract(req.Context(), rootCid, ext, nil, nil)
+	if err != nil {
+		if errors.Is(err, retriever.ErrNoCandidates) {
+			errorResponse(res, sl, http.StatusBadGateway, errors.New("no candidates found"))
+		} else if req.Context().Err() != nil {
+			errorResponse(res, sl, http.StatusGatewayTimeout, fmt.Errorf("retrieval timed out: %w", err))
+		} else {
+			errorResponse(res, sl, http.StatusInternalServerError, fmt.Errorf("retrieval failed: %w", err))
+		}
+		return
+	}
+
+	outputPath := filepath.Join(tempDir, rootCid.String())
+	info, err := os.Stat(outputPath)
+	if err != nil {
+		errorResponse(res, sl, http.StatusInternalServerError, fmt.Errorf("extracted output not found: %w", err))
+		return
+	}
+	if info.IsDir() {
+		errorResponse(res, sl, http.StatusNotImplemented, errors.New("directory listing not supported"))
+		return
+	}
+
+	f, err := os.Open(outputPath)
+	if err != nil {
+		errorResponse(res, sl, http.StatusInternalServerError, fmt.Errorf("failed to open extracted file: %w", err))
+		return
+	}
+	defer f.Close()
+
+	// sniff content type
+	buf := make([]byte, 512)
+	n, _ := f.Read(buf)
+	contentType := http.DetectContentType(buf[:n])
+	f.Seek(0, io.SeekStart)
+
+	res.Header().Set("Server", build.UserAgent)
+	res.Header().Set("Content-Type", contentType)
+	res.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+	res.Header().Set("X-Content-Type-Options", "nosniff")
+	res.Header().Set("X-Ipfs-Path", trustlessutils.PathEscape(unescapedPath))
+	res.Header().Set("Etag", fmt.Sprintf(`"%s"`, rootCid.String()))
+	sl.logStatus(200, "OK")
+	io.Copy(res, f)
 }
 
 func checkGet(req *http.Request, res http.ResponseWriter, statusLogger *statusLogger) bool {
