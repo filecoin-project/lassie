@@ -1,6 +1,7 @@
 package types
 
 import (
+	"context"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -26,6 +27,12 @@ type ReadableWritableStorage interface {
 	ipldstorage.ReadableStorage
 	ipldstorage.WritableStorage
 	ipldstorage.StreamingReadableStorage
+}
+
+// HasChecker is an optional interface for checking if a block exists in storage
+// without reading it. Used to avoid redundant fetches in per-block mode.
+type HasChecker interface {
+	Has(ctx context.Context, key string) (bool, error)
 }
 
 type RetrievalID uuid.UUID
@@ -71,11 +78,6 @@ type RetrievalRequest struct {
 	// Protocols is an optional list of protocols to use when fetching the DAG.
 	// If nil, the default protocols will be used.
 	Protocols []multicodec.Code
-
-	// PreloadLinkSystem must be setup to enable Bitswap preload behavior. This
-	// LinkSystem must be thread-safe as multiple goroutines may be using it to
-	// store and retrieve blocks concurrently.
-	PreloadLinkSystem ipld.LinkSystem
 
 	// MaxBlocks optionally specifies the maximum number of blocks to fetch.
 	// If zero, no limit is applied.
@@ -213,20 +215,12 @@ func (r RetrievalRequest) GetSupportedProtocols(allSupportedProtocols []multicod
 	return supportedProtocols
 }
 
-func (r RetrievalRequest) HasPreloadLinkSystem() bool {
-	return r.PreloadLinkSystem.StorageReadOpener != nil && r.PreloadLinkSystem.StorageWriteOpener != nil
-}
-
 func ParseProtocolsString(v string) ([]multicodec.Code, error) {
 	vs := strings.Split(v, ",")
 	protocols := make([]multicodec.Code, 0, len(vs))
 	for _, v := range vs {
 		var protocol multicodec.Code
 		switch v {
-		case "bitswap":
-			protocol = multicodec.TransportBitswap
-		case "graphsync":
-			protocol = multicodec.TransportGraphsyncFilecoinv1
 		case "http":
 			protocol = multicodec.TransportIpfsGatewayHttp
 		default:
@@ -265,17 +259,11 @@ func ParseProviderStrings(v string) ([]Provider, error) {
 				var foundProtocol bool
 				for _, part := range parts[1:] {
 					switch part {
-					case "bitswap":
-						foundProtocol = true
-						protocols = append(protocols, metadata.Bitswap{})
-					case "graphsync":
-						foundProtocol = true
-						protocols = append(protocols, &metadata.GraphsyncFilecoinV1{})
 					case "http":
 						foundProtocol = true
 						protocols = append(protocols, metadata.IpfsGatewayHttp{})
 					default:
-						// if we haven't encountered a prootocol string yet, assume this + was in the multiaddr for some reason
+						// if we haven't encountered a protocol string yet, assume this + was in the multiaddr for some reason
 						// if we have, something is malconstructed
 						if foundProtocol {
 							return nil, fmt.Errorf("unrecognized protocol: %s", v)
@@ -330,6 +318,9 @@ func nextUnknownPeerID() peer.ID {
 }
 
 func IsUnknownPeerID(p peer.ID) bool {
+	if len(p) < len(unknownPeerID) {
+		return false
+	}
 	return p[0:len(unknownPeerID)] == unknownPeerID
 }
 
@@ -346,12 +337,8 @@ func ToProviderString(ai []Provider) (string, error) {
 		sb.WriteString(ma[0].String())
 		for _, protocol := range v.Protocols {
 			switch protocol.(type) {
-			case metadata.Bitswap, *metadata.Bitswap:
-				sb.WriteString("+bitswap")
 			case metadata.IpfsGatewayHttp, *metadata.IpfsGatewayHttp:
 				sb.WriteString("+http")
-			case *metadata.GraphsyncFilecoinV1:
-				sb.WriteString("+graphsync")
 			}
 		}
 	}

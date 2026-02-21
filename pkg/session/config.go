@@ -1,8 +1,7 @@
 package session
 
 import (
-	"math/rand"
-	"time"
+	"math/rand/v2"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 )
@@ -10,7 +9,6 @@ import (
 type Random interface{ Float64() float64 }
 
 type ProviderConfig struct {
-	RetrievalTimeout        time.Duration
 	MaxConcurrentRetrievals uint
 }
 
@@ -73,14 +71,6 @@ type Config struct {
 	// recent success metric.
 	SuccessAlpha float64
 
-	// GraphsyncVerifiedDealWeight is the scoring weight applied when a
-	// graphsync candidate has a VerifiedDeal metadata. The weight is a
-	// multiplier of the base value of `1.0` when VerifiedDeal is found.
-	GraphsyncVerifiedDealWeight float64
-	// GraphsyncFastRetrievalWeight is the scoring weight applied when a
-	// graphsync candidate has a FastRetrieval metadata. The weight is a
-	// multiplier of the base value of `1.0` when FastRetrieval is found.
-	GraphsyncFastRetrievalWeight float64
 	// ConnectTimeWeight is the scoring weight applied to the connect time
 	// exponential moving average for the candidate at time of scoring. The
 	// weight is a multiplier the base value, which should be a normalised
@@ -107,19 +97,17 @@ type Config struct {
 // DefaultConfig returns a default config with usable alpha and weight values.
 func DefaultConfig() *Config {
 	return &Config{
-		ConnectTimeAlpha:             0.5,
-		OverallConnectTimeAlpha:      0.8,
-		FirstByteTimeAlpha:           0.5,
-		OverallFirstByteTimeAlpha:    0.8,
-		BandwidthAlpha:               0.5,
-		OverallBandwidthAlpha:        0.8,
-		SuccessAlpha:                 0.5,
-		GraphsyncVerifiedDealWeight:  3.0,
-		GraphsyncFastRetrievalWeight: 2.0,
-		ConnectTimeWeight:            1.0,
-		FirstByteTimeWeight:          1.0,
-		BandwidthWeight:              0.5,
-		SuccessWeight:                1.0,
+		ConnectTimeAlpha:          0.5,
+		OverallConnectTimeAlpha:   0.8,
+		FirstByteTimeAlpha:        0.5,
+		OverallFirstByteTimeAlpha: 0.8,
+		BandwidthAlpha:            0.5,
+		OverallBandwidthAlpha:     0.8,
+		SuccessAlpha:              0.5,
+		ConnectTimeWeight:         1.0,
+		FirstByteTimeWeight:       1.0,
+		BandwidthWeight:           0.5,
+		SuccessWeight:             1.0,
 	}
 }
 
@@ -184,18 +172,6 @@ func (cfg Config) WithoutRandomness() *Config {
 	return &cfg
 }
 
-// WithGraphsyncVerifiedDealWeight sets the verified deal weight.
-func (cfg Config) WithGraphsyncVerifiedDealWeight(weight float64) *Config {
-	cfg.GraphsyncVerifiedDealWeight = weight
-	return &cfg
-}
-
-// WithGraphsyncFastRetrievalWeight sets the fast retrieval weight.
-func (cfg Config) WithGraphsyncFastRetrievalWeight(weight float64) *Config {
-	cfg.GraphsyncFastRetrievalWeight = weight
-	return &cfg
-}
-
 // WithConnectTimeWeight sets the connect time weight.
 func (cfg Config) WithConnectTimeWeight(weight float64) *Config {
 	cfg.ConnectTimeWeight = weight
@@ -229,9 +205,6 @@ func (cfg *Config) getProviderConfig(peer peer.ID) ProviderConfig {
 	if individual, ok := cfg.ProviderConfigs[peer]; ok {
 		if individual.MaxConcurrentRetrievals != 0 {
 			minerCfg.MaxConcurrentRetrievals = individual.MaxConcurrentRetrievals
-		}
-		if individual.RetrievalTimeout != 0 {
-			minerCfg.RetrievalTimeout = individual.RetrievalTimeout
 		}
 	}
 	return minerCfg

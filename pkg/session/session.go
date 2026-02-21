@@ -1,8 +1,6 @@
 package session
 
 import (
-	"time"
-
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipni/go-libipni/metadata"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -37,12 +35,6 @@ func NewSession(config *Config, withState bool) *Session {
 		config = &Config{}
 	}
 	return &Session{state, config}
-}
-
-// GetStorageProviderTimeout returns the per-retrieval timeout from the
-// RetrievalTimeout configuration option.
-func (session *Session) GetStorageProviderTimeout(storageProviderId peer.ID) time.Duration {
-	return session.config.getProviderConfig(storageProviderId).RetrievalTimeout
 }
 
 // FilterIndexerCandidate filters out protocols that are not acceptable for
@@ -90,10 +82,6 @@ func (session *Session) isAcceptableCandidate(storageProviderId peer.ID) bool {
 }
 
 func (session *Session) isAcceptableCandidateForProtocol(storageProviderId peer.ID, protocol multicodec.Code) bool {
-	if protocol == multicodec.TransportBitswap {
-		return true
-	}
-
 	// check if we are currently retrieving from the candidate with its maximum
 	// concurrency
 	minerConfig := session.config.getProviderConfig(storageProviderId)

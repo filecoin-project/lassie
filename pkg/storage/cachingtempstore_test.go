@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"sync"
 	"testing"
 	"time"
@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var rng = rand.New(rand.NewSource(3333))
+var rng = rand.NewChaCha8([32]byte{33, 33, 33, 33})
 var rngLk sync.Mutex
 
 func TestDeferredCarWriterWritesCARv1(t *testing.T) {
