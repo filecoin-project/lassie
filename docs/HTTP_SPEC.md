@@ -14,7 +14,7 @@
 - [Kyle Huntsman](https://github.com/kylehuntsman)
 - [Rod Vagg](https://github.com/rvagg)
 
-The Lassie HTTP specification is an HTTP interface for retrieving IPLD data from IPFS and Filecoin peers. It fetches content over the GraphSync, Bitswap, and HTTP protocols and provides the resulting data in CAR format.
+The Lassie HTTP specification is an HTTP interface for retrieving IPLD data from IPFS and Filecoin peers. It fetches content over the HTTP protocol and provides the resulting data in CAR format.
 
 An implementation of the [Trustless Gateway](https://specs.ipfs.tech/http-gateways/trustless-gateway) specification with a subset of the [Path Gateway](https://specs.ipfs.tech/http-gateways/path-gateway/) specification that focuses on returning verifiable CAR formatted data.
 
@@ -191,15 +191,14 @@ Examples:
 
 ### `protocols` (request query parameter)
 
-_OPTIONAL_. `protocols=<bitswap,graphsync,http>`. Defaults to all of the specified protocols returned by [IPNI](https://github.com/ipni/specs/blob/main/IPNI.md).
+_OPTIONAL_. `protocols=<http>`. Defaults to HTTP.
 
-Used to specify any of the retrieval protocols to use via a comma delimited list. Unrecognized protocols will respond with a 400 status code.
+Used to specify the retrieval protocol to use. Unrecognized protocols will respond with a 400 status code.
 
 The `protocols` query parameter is a Lassie specific query parameter and is not part of the [Path Gateway](https://specs.ipfs.tech/http-gateways/path-gateway/) specification.
 
 Examples:
-- `protocols=bitswap` will only attempt retrievals with the bitswap protocol
-- `protocols=graphsync,http` will attempt retrievals with both the graphsync and http protocols
+- `protocols=http` will attempt retrievals with the HTTP protocol
 
 ### `providers` (request query parameter)
 

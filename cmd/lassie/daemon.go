@@ -7,9 +7,6 @@ import (
 	"github.com/filecoin-project/lassie/pkg/aggregateeventrecorder"
 	"github.com/filecoin-project/lassie/pkg/lassie"
 	httpserver "github.com/filecoin-project/lassie/pkg/server/http"
-	"github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p/config"
-	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
 	"github.com/urfave/cli/v2"
 )
 
@@ -38,44 +35,16 @@ var daemonFlags = []cli.Flag{
 		DefaultText: "no limit",
 		EnvVars:     []string{"LASSIE_MAX_BLOCKS_PER_REQUEST"},
 	},
-	&cli.IntFlag{
-		Name:        "libp2p-conns-lowwater",
-		Aliases:     []string{"lw"},
-		Usage:       "lower limit of libp2p connections",
-		Value:       0,
-		DefaultText: "libp2p default",
-		EnvVars:     []string{"LASSIE_LIBP2P_CONNECTIONS_LOWWATER"},
-	},
-	&cli.IntFlag{
-		Name:        "libp2p-conns-highwater",
-		Aliases:     []string{"hw"},
-		Usage:       "upper limit of libp2p connections",
-		Value:       0,
-		DefaultText: "libp2p default",
-		EnvVars:     []string{"LASSIE_LIBP2P_CONNECTIONS_HIGHWATER"},
-	},
-	&cli.UintFlag{
-		Name:        "concurrent-sp-retrievals",
-		Aliases:     []string{"cr"},
-		Usage:       "max number of simultaneous SP retrievals",
-		Value:       0,
-		DefaultText: "no limit",
-		EnvVars:     []string{"LASSIE_CONCURRENT_SP_RETRIEVALS"},
-	},
-	FlagIPNIEndpoint,
+	FlagDelegatedRoutingEndpoint,
 	FlagEventRecorderAuth,
 	FlagEventRecorderInstanceId,
 	FlagEventRecorderUrl,
 	FlagVerbose,
 	FlagVeryVerbose,
-	FlagProtocols,
 	FlagAllowProviders,
 	FlagExcludeProviders,
 	FlagTempDir,
-	FlagBitswapConcurrency,
-	FlagBitswapConcurrencyPerRetrieval,
 	FlagGlobalTimeout,
-	FlagProviderTimeout,
 	&cli.StringFlag{
 		Name:  "access-token",
 		Usage: "require HTTP clients to authorize using Bearer scheme and given access token",
@@ -96,26 +65,9 @@ var daemonCmd = &cli.Command{
 // the cli context into the appropriate config objects and then calls the
 // daemonRun function.
 func daemonAction(cctx *cli.Context) error {
-	// lassie config
-	libp2pLowWater := cctx.Int("libp2p-conns-lowwater")
-	libp2pHighWater := cctx.Int("libp2p-conns-highwater")
-	concurrentSPRetrievals := cctx.Uint("concurrent-sp-retrievals")
 	lassieOpts := []lassie.LassieOption{}
 
-	if concurrentSPRetrievals > 0 {
-		lassieOpts = append(lassieOpts, lassie.WithConcurrentSPRetrievals(concurrentSPRetrievals))
-	}
-
-	libp2pOpts := []config.Option{}
-	if libp2pHighWater != 0 || libp2pLowWater != 0 {
-		connManager, err := connmgr.NewConnManager(libp2pLowWater, libp2pHighWater)
-		if err != nil {
-			return cli.Exit(err, 1)
-		}
-		libp2pOpts = append(libp2pOpts, libp2p.ConnectionManager(connManager))
-	}
-
-	lassieCfg, err := buildLassieConfigFromCLIContext(cctx, lassieOpts, libp2pOpts)
+	lassieCfg, err := buildLassieConfigFromCLIContext(cctx, lassieOpts)
 	if err != nil {
 		return err
 	}
@@ -167,17 +119,17 @@ func defaultDaemonRun(
 	httpServerCfg httpserver.HttpServerConfig,
 	eventRecorderCfg *aggregateeventrecorder.EventRecorderConfig,
 ) error {
-	lassie, err := lassie.NewLassieWithConfig(ctx, lassieCfg)
+	s, err := lassie.NewLassieWithConfig(ctx, lassieCfg)
 	if err != nil {
-		return nil
+		return err
 	}
 
 	// create and subscribe an event recorder API if an endpoint URL is set
 	if eventRecorderCfg.EndpointURL != "" {
-		setupLassieEventRecorder(ctx, eventRecorderCfg, lassie)
+		setupLassieEventRecorder(ctx, eventRecorderCfg, s)
 	}
 
-	httpServer, err := httpserver.NewHttpServer(ctx, lassie, httpServerCfg)
+	httpServer, err := httpserver.NewHttpServer(ctx, s, httpServerCfg)
 	if err != nil {
 		logger.Errorw("failed to create http server", "err", err)
 		return err

@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/ipfs/go-cid"
 	"github.com/ipni/go-libipni/maurl"
 	"github.com/ipni/go-libipni/metadata"
@@ -73,6 +72,15 @@ func NewRetrievalCandidate(pid peer.ID, addrs []multiaddr.Multiaddr, rootCid cid
 	}
 }
 
+// Endpoint returns a string representation of the provider's address for logging.
+// Prefers multiaddr format (e.g. /ip4/1.2.3.4/tcp/443/https) over peer ID.
+func (rc RetrievalCandidate) Endpoint() string {
+	if len(rc.MinerPeer.Addrs) > 0 {
+		return rc.MinerPeer.Addrs[0].String()
+	}
+	return rc.MinerPeer.ID.String()
+}
+
 // ToURL generates a valid HTTP URL from the candidate if possible
 func (rc RetrievalCandidate) ToURL() (*url.URL, error) {
 	var err error
@@ -91,11 +99,6 @@ func (rc RetrievalCandidate) ToURL() (*url.URL, error) {
 		return nil, errors.New("no valid HTTP multiaddrs")
 	}
 	return url, err
-}
-
-// retrieval task is any task that can be run to produce a result
-type RetrievalTask interface {
-	Run() (*RetrievalStats, error)
 }
 
 type Retriever interface {
@@ -151,22 +154,6 @@ type CandidateRetriever interface {
 	Retrieve(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) CandidateRetrieval
 }
 
-type RetrievalSplitter[T comparable] interface {
-	SplitCandidates([]RetrievalCandidate) (map[T][]RetrievalCandidate, error)
-}
-
-type CandidateSplitter[T comparable] interface {
-	SplitRetrievalRequest(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) RetrievalSplitter[T]
-}
-
-type AsyncRetrievalSplitter[T comparable] interface {
-	SplitAsyncCandidates(asyncCandidates InboundAsyncCandidates) (map[T]InboundAsyncCandidates, <-chan error)
-}
-
-type AsyncCandidateSplitter[T comparable] interface {
-	SplitRetrievalRequest(ctx context.Context, request RetrievalRequest, events func(RetrievalEvent)) AsyncRetrievalSplitter[T]
-}
-
 type RetrievalStats struct {
 	StorageProviderId peer.ID
 	RootCid           cid.Cid
@@ -174,59 +161,16 @@ type RetrievalStats struct {
 	Blocks            uint64
 	Duration          time.Duration
 	AverageSpeed      uint64
-	TotalPayment      abi.TokenAmount
-	NumPayments       int
-	AskPrice          abi.TokenAmount
 	TimeToFirstByte   time.Duration
 	Selector          string
+	// Providers lists HTTP endpoints that served blocks during retrieval
+	Providers []string
 }
 
 type RetrievalResult struct {
 	Stats *RetrievalStats
 	Err   error
 }
-
-var _ RetrievalTask = AsyncRetrievalTask{}
-
-// AsyncRetrievalTask runs an asynchronous retrieval and returns a result
-type AsyncRetrievalTask struct {
-	Candidates              InboundAsyncCandidates
-	AsyncCandidateRetrieval CandidateRetrieval
-}
-
-// Run executes the asynchronous retrieval task
-func (art AsyncRetrievalTask) Run() (*RetrievalStats, error) {
-	return art.AsyncCandidateRetrieval.RetrieveFromAsyncCandidates(art.Candidates)
-}
-
-var _ RetrievalTask = DeferredErrorTask{}
-
-// DeferredErrorTask simply reads from an error channel and returns the result as an error
-type DeferredErrorTask struct {
-	Ctx     context.Context
-	ErrChan <-chan error
-}
-
-// Run reads the error channel and returns a result
-func (det DeferredErrorTask) Run() (*RetrievalStats, error) {
-	select {
-	case <-det.Ctx.Done():
-		return nil, det.Ctx.Err()
-	case err := <-det.ErrChan:
-		return nil, err
-	}
-}
-
-type QueueRetrievalsFn func(ctx context.Context, nextRetrievalCall func(RetrievalTask))
-
-type RetrievalCoordinator func(context.Context, QueueRetrievalsFn) (*RetrievalStats, error)
-
-type CoordinationKind string
-
-const (
-	RaceCoordination       = "race"
-	SequentialCoordination = "sequential"
-)
 
 type EventCode string
 
@@ -262,8 +206,6 @@ type RetrievalEvent interface {
 	// RootCid returns the CID being requested
 	RootCid() cid.Cid
 }
-
-const BitswapIndentifier = "Bitswap"
 
 // RetrievalEventSubscriber is a function that receives a stream of retrieval
 // events from all retrievals that are in progress. Various different types

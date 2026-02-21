@@ -81,12 +81,12 @@ func VerifyContainsCollectedEvent(t *testing.T, afterStart time.Duration, expect
 		if actual.Code() == expected.Code() &&
 			actual.RetrievalId() == expected.RetrievalId() {
 
-			actualSpEvent, aspOk := actual.(events.EventWithProviderID)
-			expectedSpEvent, espOk := expected.(events.EventWithProviderID)
-			haveMatchingSpIDs := aspOk && espOk && expectedSpEvent.ProviderId() == actualSpEvent.ProviderId()
-			haveNoSpIDs := !aspOk && !espOk
+			actualEpEvent, aepOk := actual.(events.EventWithEndpoint)
+			expectedEpEvent, eepOk := expected.(events.EventWithEndpoint)
+			haveMatchingEndpoints := aepOk && eepOk && expectedEpEvent.Endpoint() == actualEpEvent.Endpoint()
+			haveNoEndpoints := !aepOk && !eepOk
 
-			if haveMatchingSpIDs || haveNoSpIDs {
+			if haveMatchingEndpoints || haveNoEndpoints {
 				VerifyCollectedEvent(t, actual, expected)
 				return actual.Code()
 			}
@@ -102,12 +102,12 @@ func VerifyCollectedEvent(t *testing.T, actual types.RetrievalEvent, expected ty
 	require.Equal(t, expected.RootCid(), actual.RootCid(), fmt.Sprintf("cid for %s", expected.Code()))
 	require.Equal(t, expected.Time(), actual.Time(), fmt.Sprintf("time for %s", expected.Code()))
 
-	if asp, ok := actual.(events.EventWithProviderID); ok {
-		esp, ok := expected.(events.EventWithProviderID)
+	if aep, ok := actual.(events.EventWithEndpoint); ok {
+		eep, ok := expected.(events.EventWithEndpoint)
 		if !ok {
-			require.Fail(t, fmt.Sprintf("expected event %s should be EventWithSPID", expected.Code()))
+			require.Fail(t, fmt.Sprintf("expected event %s should be EventWithEndpoint", expected.Code()))
 		}
-		require.Equal(t, esp.ProviderId().String(), asp.ProviderId().String(), fmt.Sprintf("storage provider id for %s", expected.Code()))
+		require.Equal(t, eep.Endpoint(), aep.Endpoint(), fmt.Sprintf("endpoint for %s", expected.Code()))
 	}
 	if ec, ok := expected.(events.EventWithCandidates); ok {
 		if ac, ok := actual.(events.EventWithCandidates); ok {

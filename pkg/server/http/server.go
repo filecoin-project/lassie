@@ -16,10 +16,12 @@ var logger = log.Logger("lassie/httpserver")
 
 // HttpServer is a Lassie server for fetching data from the network via HTTP
 type HttpServer struct {
-	cancel   context.CancelFunc
-	ctx      context.Context
-	listener net.Listener
-	server   *http.Server
+	cancel        context.CancelFunc
+	ctx           context.Context
+	listener      net.Listener
+	server        *http.Server
+	pprofListener net.Listener
+	pprofServer   *http.Server
 }
 
 type HttpServerConfig struct {
@@ -41,7 +43,7 @@ func saveConnInCTX(ctx context.Context, c net.Conn) context.Context {
 }
 
 // NewHttpServer creates a new HttpServer
-func NewHttpServer(ctx context.Context, lassie *lassie.Lassie, cfg HttpServerConfig) (*HttpServer, error) {
+func NewHttpServer(ctx context.Context, s *lassie.Lassie, cfg HttpServerConfig) (*HttpServer, error) {
 	addr := fmt.Sprintf("%s:%d", cfg.Address, cfg.Port)
 	listener, err := net.Listen("tcp", addr) // assigns a port if port is 0
 	if err != nil {
@@ -73,14 +75,22 @@ func NewHttpServer(ctx context.Context, lassie *lassie.Lassie, cfg HttpServerCon
 	}
 
 	// Routes
-	mux.HandleFunc("/ipfs/", IpfsHandler(lassie, cfg))
+	mux.HandleFunc("/ipfs/", IpfsHandler(s, cfg))
 
-	// Handle pprof endpoints
-	mux.HandleFunc("/debug/pprof/", pprof.Index)
-	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	// Setup pprof on localhost-only listener for security
+	pprofListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		listener.Close()
+		return nil, fmt.Errorf("failed to create pprof listener: %w", err)
+	}
+	pprofMux := http.NewServeMux()
+	pprofMux.HandleFunc("/debug/pprof/", pprof.Index)
+	pprofMux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	pprofMux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	pprofMux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	pprofMux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	httpServer.pprofListener = pprofListener
+	httpServer.pprofServer = &http.Server{Handler: pprofMux}
 
 	return httpServer, nil
 }
@@ -93,6 +103,15 @@ func (s HttpServer) Addr() string {
 // Start starts the http server, returning an error if the server failed to start
 func (s *HttpServer) Start() error {
 	logger.Infow("starting http server", "listen_addr", s.listener.Addr())
+	logger.Infow("pprof available at", "pprof_addr", s.pprofListener.Addr())
+
+	// Start pprof server in background
+	go func() {
+		if err := s.pprofServer.Serve(s.pprofListener); err != nil && err != http.ErrServerClosed {
+			logger.Errorw("pprof server error", "err", err)
+		}
+	}()
+
 	err := s.server.Serve(s.listener)
 	if err != http.ErrServerClosed {
 		logger.Errorw("failed to start http server", "err", err)
@@ -105,6 +124,7 @@ func (s *HttpServer) Start() error {
 func (s *HttpServer) Close() error {
 	logger.Info("closing http server")
 	s.cancel()
+	s.pprofServer.Shutdown(context.Background())
 	return s.server.Shutdown(context.Background())
 }
 

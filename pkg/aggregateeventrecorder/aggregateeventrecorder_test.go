@@ -18,7 +18,6 @@ import (
 	"github.com/ipld/go-ipld-prime/codec/dagjson"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipni/go-libipni/metadata"
-	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multicodec"
 	"github.com/stretchr/testify/require"
 )
@@ -44,7 +43,7 @@ func TestAggregateEventRecorder(t *testing.T) {
 	defer ts.Close()
 
 	testCid1 := testutil.GenerateCid()
-	bitswapCandidates := testutil.GenerateRetrievalCandidatesForCID(t, 3, testCid1, &metadata.Bitswap{})
+	httpCandidates := testutil.GenerateRetrievalCandidatesForCID(t, 3, testCid1, &metadata.IpfsGatewayHttp{})
 	graphsyncCandidates := testutil.GenerateRetrievalCandidatesForCID(t, 3, testCid1, &metadata.GraphsyncFilecoinV1{})
 
 	tests := []struct {
@@ -56,7 +55,7 @@ func TestAggregateEventRecorder(t *testing.T) {
 			exec: func(t *testing.T, ctx context.Context, subscriber types.RetrievalEventSubscriber, id types.RetrievalID) {
 				clock := clock.NewMock()
 				fetchStartTime := clock.Now()
-				subscriber(events.StartedFetch(clock.Now(), id, testCid1, "/applesauce", multicodec.TransportGraphsyncFilecoinv1, multicodec.TransportBitswap))
+				subscriber(events.StartedFetch(clock.Now(), id, testCid1, "/applesauce", multicodec.TransportGraphsyncFilecoinv1, multicodec.TransportIpfsGatewayHttp))
 				clock.Add(10 * time.Millisecond)
 				subscriber(events.StartedFindingCandidates(clock.Now(), id, testCid1))
 				subscriber(events.CandidatesFound(clock.Now(), id, testCid1, graphsyncCandidates))
@@ -64,14 +63,14 @@ func TestAggregateEventRecorder(t *testing.T) {
 				subscriber(events.StartedRetrieval(clock.Now(), id, graphsyncCandidates[0], multicodec.TransportGraphsyncFilecoinv1))
 				subscriber(events.StartedRetrieval(clock.Now(), id, graphsyncCandidates[1], multicodec.TransportGraphsyncFilecoinv1))
 				clock.Add(10 * time.Millisecond)
-				subscriber(events.CandidatesFound(clock.Now(), id, testCid1, bitswapCandidates))
-				subscriber(events.CandidatesFiltered(clock.Now(), id, testCid1, bitswapCandidates[:2]))
-				bitswapPeer := types.NewRetrievalCandidate(peer.ID(""), nil, testCid1, &metadata.Bitswap{})
-				subscriber(events.StartedRetrieval(clock.Now(), id, bitswapPeer, multicodec.TransportBitswap))
+				subscriber(events.CandidatesFound(clock.Now(), id, testCid1, httpCandidates))
+				subscriber(events.CandidatesFiltered(clock.Now(), id, testCid1, httpCandidates[:2]))
+				httpPeer := httpCandidates[0]
+				subscriber(events.StartedRetrieval(clock.Now(), id, httpPeer, multicodec.TransportIpfsGatewayHttp))
 				clock.Add(20 * time.Millisecond)
-				subscriber(events.FirstByte(clock.Now(), id, bitswapPeer, 20*time.Millisecond, multicodec.TransportBitswap))
-				subscriber(events.BlockReceived(clock.Now(), id, bitswapCandidates[0], multicodec.TransportBitswap, 3000))
-				subscriber(events.BlockReceived(clock.Now(), id, bitswapCandidates[0], multicodec.TransportBitswap, 2000))
+				subscriber(events.FirstByte(clock.Now(), id, httpPeer, 20*time.Millisecond, multicodec.TransportIpfsGatewayHttp))
+				subscriber(events.BlockReceived(clock.Now(), id, httpCandidates[0], multicodec.TransportIpfsGatewayHttp, 3000))
+				subscriber(events.BlockReceived(clock.Now(), id, httpCandidates[0], multicodec.TransportIpfsGatewayHttp, 2000))
 				subscriber(events.FailedRetrieval(clock.Now(), id, graphsyncCandidates[0], multicodec.TransportGraphsyncFilecoinv1, "failed to dial"))
 				clock.Add(20 * time.Millisecond)
 				subscriber(events.FirstByte(clock.Now(), id, graphsyncCandidates[1], 50*time.Millisecond, multicodec.TransportGraphsyncFilecoinv1))
@@ -79,9 +78,9 @@ func TestAggregateEventRecorder(t *testing.T) {
 				subscriber(events.BlockReceived(clock.Now(), id, graphsyncCandidates[1], multicodec.TransportGraphsyncFilecoinv1, 3000))
 				subscriber(events.BlockReceived(clock.Now(), id, graphsyncCandidates[1], multicodec.TransportGraphsyncFilecoinv1, 2000))
 
-				subscriber(events.BlockReceived(clock.Now(), id, bitswapCandidates[1], multicodec.TransportBitswap, 5000))
-				subscriber(events.Success(clock.Now(), id, bitswapPeer, uint64(10000), 3030, 4*time.Second, multicodec.TransportBitswap))
-				subscriber(events.Finished(clock.Now(), id, bitswapPeer))
+				subscriber(events.BlockReceived(clock.Now(), id, httpCandidates[1], multicodec.TransportIpfsGatewayHttp, 5000))
+				subscriber(events.Success(clock.Now(), id, httpPeer, uint64(10000), 3030, 4*time.Second, multicodec.TransportIpfsGatewayHttp))
+				subscriber(events.Finished(clock.Now(), id, httpPeer))
 
 				var req gotReq
 				select {
@@ -100,7 +99,7 @@ func TestAggregateEventRecorder(t *testing.T) {
 				verifyStringNode(t, event, "retrievalId", id.String())
 				verifyStringNode(t, event, "rootCid", testCid1.String())
 				verifyStringNode(t, event, "urlPath", "/applesauce")
-				verifyStringNode(t, event, "storageProviderId", types.BitswapIndentifier)
+				verifyStringNode(t, event, "storageProviderId", httpPeer.Endpoint())
 				verifyStringNode(t, event, "timeToFirstByte", "40ms")
 				verifyStringNode(t, event, "timeToFirstIndexerResult", "10ms")
 				verifyIntNode(t, event, "bandwidth", 200000)
@@ -111,40 +110,35 @@ func TestAggregateEventRecorder(t *testing.T) {
 				verifyIntNode(t, event, "indexerCandidatesReceived", 6)
 				verifyIntNode(t, event, "indexerCandidatesFiltered", 4)
 				protocolsAllowed := verifyListNode(t, event, "protocolsAllowed", 2)
-				verifyStringListElementsMatch(t, protocolsAllowed, []string{"transport-graphsync-filecoinv1", "transport-bitswap"})
+				verifyStringListElementsMatch(t, protocolsAllowed, []string{"transport-graphsync-filecoinv1", "transport-ipfs-gateway-http"})
 				protocolsAttempted := verifyListNode(t, event, "protocolsAttempted", 2)
-				verifyStringListElementsMatch(t, protocolsAttempted, []string{"transport-graphsync-filecoinv1", "transport-bitswap"})
-				verifyStringNode(t, event, "protocolSucceeded", "transport-bitswap")
+				verifyStringListElementsMatch(t, protocolsAttempted, []string{"transport-graphsync-filecoinv1", "transport-ipfs-gateway-http"})
+				verifyStringNode(t, event, "protocolSucceeded", "transport-ipfs-gateway-http")
 				retrievalAttempts, err := event.LookupByString("retrievalAttempts")
 				require.NoError(t, err)
-				require.Equal(t, int64(5), retrievalAttempts.Length())
-				sp1Attempt, err := retrievalAttempts.LookupByString(graphsyncCandidates[0].MinerPeer.ID.String())
+				require.Equal(t, int64(4), retrievalAttempts.Length())
+				sp1Attempt, err := retrievalAttempts.LookupByString(graphsyncCandidates[0].Endpoint())
 				require.NoError(t, err)
 				require.Equal(t, int64(2), sp1Attempt.Length())
 				verifyStringNode(t, sp1Attempt, "protocol", multicodec.TransportGraphsyncFilecoinv1.String())
 				verifyStringNode(t, sp1Attempt, "error", "failed to dial")
-				sp2Attempt, err := retrievalAttempts.LookupByString(graphsyncCandidates[1].MinerPeer.ID.String())
+				sp2Attempt, err := retrievalAttempts.LookupByString(graphsyncCandidates[1].Endpoint())
 				require.NoError(t, err)
 				require.Equal(t, int64(3), sp2Attempt.Length())
 				verifyStringNode(t, sp2Attempt, "protocol", multicodec.TransportGraphsyncFilecoinv1.String())
 				verifyStringNode(t, sp2Attempt, "timeToFirstByte", "50ms")
 				verifyIntNode(t, sp2Attempt, "bytesTransferred", 5000)
-				bitswapAttempt, err := retrievalAttempts.LookupByString(types.BitswapIndentifier)
+				httpPeer1Attempt, err := retrievalAttempts.LookupByString(httpCandidates[0].Endpoint())
 				require.NoError(t, err)
-				require.Equal(t, int64(3), bitswapAttempt.Length())
-				verifyStringNode(t, bitswapAttempt, "timeToFirstByte", "20ms")
-				verifyStringNode(t, bitswapAttempt, "protocol", multicodec.TransportBitswap.String())
-				verifyIntNode(t, bitswapAttempt, "bytesTransferred", 10000)
-				bitswapPeer1Attempt, err := retrievalAttempts.LookupByString(bitswapCandidates[0].MinerPeer.ID.String())
+				require.Equal(t, int64(3), httpPeer1Attempt.Length())
+				verifyStringNode(t, httpPeer1Attempt, "timeToFirstByte", "20ms")
+				verifyStringNode(t, httpPeer1Attempt, "protocol", multicodec.TransportIpfsGatewayHttp.String())
+				verifyIntNode(t, httpPeer1Attempt, "bytesTransferred", 5000)
+				httpPeer2Attempt, err := retrievalAttempts.LookupByString(httpCandidates[1].Endpoint())
 				require.NoError(t, err)
-				require.Equal(t, int64(2), bitswapPeer1Attempt.Length())
-				verifyIntNode(t, bitswapPeer1Attempt, "bytesTransferred", 5000)
-				verifyStringNode(t, bitswapPeer1Attempt, "protocol", multicodec.TransportBitswap.String())
-				bitswapPeer2Attempt, err := retrievalAttempts.LookupByString(bitswapCandidates[1].MinerPeer.ID.String())
-				require.NoError(t, err)
-				require.Equal(t, int64(2), bitswapPeer2Attempt.Length())
-				verifyIntNode(t, bitswapPeer2Attempt, "bytesTransferred", 5000)
-				verifyStringNode(t, bitswapPeer2Attempt, "protocol", multicodec.TransportBitswap.String())
+				require.Equal(t, int64(2), httpPeer2Attempt.Length())
+				verifyIntNode(t, httpPeer2Attempt, "bytesTransferred", 5000)
+				verifyStringNode(t, httpPeer2Attempt, "protocol", multicodec.TransportIpfsGatewayHttp.String())
 			},
 		},
 		{

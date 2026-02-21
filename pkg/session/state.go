@@ -318,8 +318,7 @@ func (spt *SessionState) ChooseNextProvider(peers []peer.ID, mda []metadata.Prot
 	ind := make([]int, len(peers)) // index into peers that we can sort without changing peers
 	for ii, p := range peers {
 		ind[ii] = ii
-		gsmd, _ := mda[ii].(*metadata.GraphsyncFilecoinV1)
-		scores[ii] = spt.scoreProvider(p, gsmd)
+		scores[ii] = spt.scoreProvider(p)
 		tot += scores[ii]
 	}
 	// sort so that the non-random selection choose the first (best)
@@ -347,21 +346,9 @@ func (spt *SessionState) ChooseNextProvider(peers []peer.ID, mda []metadata.Prot
 
 // scoreProvider returns a score for a given provider, higher is better.
 // This method assumes the caller holds lock.
-func (spt *SessionState) scoreProvider(id peer.ID, md *metadata.GraphsyncFilecoinV1) float64 {
+// HTTP-only: scoring based on collected metrics (connect time, bandwidth, success rate)
+func (spt *SessionState) scoreProvider(id peer.ID) float64 {
 	var score float64
-	// var v, f bool
-
-	// graphsync metadata weighting
-	if md != nil {
-		if md.VerifiedDeal {
-			score += spt.config.GraphsyncVerifiedDealWeight
-			// v = true
-		}
-		if md.FastRetrieval {
-			score += spt.config.GraphsyncFastRetrievalWeight
-			// f = true
-		}
-	}
 
 	// collected metrics scoring
 	sp := spt.spm[id]

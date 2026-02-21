@@ -10,7 +10,7 @@ import (
 
 var (
 	_ types.RetrievalEvent = ConnectedToProviderEvent{}
-	_ EventWithProviderID  = ConnectedToProviderEvent{}
+	_ EventWithEndpoint    = ConnectedToProviderEvent{}
 )
 
 type ConnectedToProviderEvent struct {
@@ -21,9 +21,9 @@ type ConnectedToProviderEvent struct {
 func (e ConnectedToProviderEvent) Code() types.EventCode     { return types.ConnectedToProviderCode }
 func (e ConnectedToProviderEvent) Protocol() multicodec.Code { return e.protocol }
 func (e ConnectedToProviderEvent) String() string {
-	return fmt.Sprintf("ConnectedToProviderEvent<%s, %s, %s, %s>", e.eventTime, e.retrievalId, e.rootCid, e.providerId)
+	return fmt.Sprintf("ConnectedToProviderEvent<%s, %s, %s, %s>", e.eventTime, e.retrievalId, e.rootCid, e.endpoint)
 }
 
 func ConnectedToProvider(at time.Time, retrievalId types.RetrievalID, candidate types.RetrievalCandidate, protocol multicodec.Code) ConnectedToProviderEvent {
-	return ConnectedToProviderEvent{providerRetrievalEvent{retrievalEvent{at, retrievalId, candidate.RootCid}, candidate.MinerPeer.ID}, protocol}
+	return ConnectedToProviderEvent{providerRetrievalEvent{retrievalEvent{at, retrievalId, candidate.RootCid}, candidate.Endpoint()}, protocol}
 }

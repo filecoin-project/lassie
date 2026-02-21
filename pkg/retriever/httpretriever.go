@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/filecoin-project/go-clock"
-	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lassie/pkg/build"
 	"github.com/filecoin-project/lassie/pkg/events"
 	"github.com/filecoin-project/lassie/pkg/types"
@@ -97,7 +96,6 @@ func (ph *ProtocolHttp) Retrieve(
 	ctx context.Context,
 	retrieval *retrieval,
 	shared *retrievalShared,
-	timeout time.Duration,
 	candidate types.RetrievalCandidate,
 ) (*types.RetrievalStats, error) {
 	// Connect and read body in one flow, we can move ph.beginRequest() to Connect()
@@ -126,7 +124,7 @@ func (ph *ProtocolHttp) Retrieve(
 	var ttfb time.Duration
 	rdr := newTimeToFirstByteReader(resp.Body, func() {
 		ttfb = retrieval.Clock.Since(retrievalStart)
-		shared.sendEvent(ctx, events.FirstByte(retrieval.Clock.Now(), retrieval.request.RetrievalID, candidate, ttfb, multicodec.TransportIpfsGatewayHttp))
+		shared.sendEvent(ctx, candidate.MinerPeer.ID, events.FirstByte(retrieval.Clock.Now(), retrieval.request.RetrievalID, candidate, ttfb, multicodec.TransportIpfsGatewayHttp))
 	})
 	cfg := traversal.Config{
 		Root:               retrieval.request.Root,
@@ -138,7 +136,7 @@ func (ph *ProtocolHttp) Retrieve(
 		WriteDuplicatesOut: expectDuplicates,
 		MaxBlocks:          retrieval.request.MaxBlocks,
 		OnBlockIn: func(read uint64) {
-			shared.sendEvent(ctx, events.BlockReceived(retrieval.Clock.Now(), retrieval.request.RetrievalID, candidate, multicodec.TransportIpfsGatewayHttp, read))
+			shared.sendEvent(ctx, candidate.MinerPeer.ID, events.BlockReceived(retrieval.Clock.Now(), retrieval.request.RetrievalID, candidate, multicodec.TransportIpfsGatewayHttp, read))
 		},
 	}
 
@@ -157,10 +155,8 @@ func (ph *ProtocolHttp) Retrieve(
 		Blocks:            traversalResult.BlocksIn,
 		Duration:          duration,
 		AverageSpeed:      speed,
-		TotalPayment:      big.Zero(),
-		NumPayments:       0,
-		AskPrice:          big.Zero(),
 		TimeToFirstByte:   ttfb,
+		Providers:         []string{candidate.Endpoint()},
 	}, nil
 }
 
@@ -177,7 +173,7 @@ func (ph *ProtocolHttp) beginRequest(ctx context.Context, request types.Retrieva
 func makeRequest(ctx context.Context, request types.RetrievalRequest, candidate types.RetrievalCandidate) (*http.Request, error) {
 	candidateURL, err := candidate.ToURL()
 	if err != nil {
-		logger.Warnf("Couldn't construct a url for miner %s: %v", candidate.MinerPeer.ID, err)
+		logger.Warnf("Couldn't construct a url for provider %s: %v", candidate.Endpoint(), err)
 		return nil, fmt.Errorf("%w: %v", ErrNoHttpForPeer, err)
 	}
 
@@ -190,8 +186,8 @@ func makeRequest(ctx context.Context, request types.RetrievalRequest, candidate 
 	reqURL := fmt.Sprintf("%s/ipfs/%s%s", candidateURL, request.Root, path)
 	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
-		logger.Warnf("Couldn't construct a http request %s: %v", candidate.MinerPeer.ID, err)
-		return nil, fmt.Errorf("%w for peer %s: %v", ErrBadPathForRequest, candidate.MinerPeer.ID, err)
+		logger.Warnf("Couldn't construct http request for %s: %v", candidateURL, err)
+		return nil, fmt.Errorf("%w for %s: %v", ErrBadPathForRequest, candidateURL, err)
 	}
 	req.Header.Add("Accept", trustlesshttp.DefaultContentType().String()) // prefer duplicates
 	req.Header.Add("X-Request-Id", request.RetrievalID.String())

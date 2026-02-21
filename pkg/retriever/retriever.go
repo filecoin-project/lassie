@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
 	"github.com/dustin/go-humanize"
 	"github.com/filecoin-project/go-clock"
 	"github.com/filecoin-project/lassie/pkg/events"
-	"github.com/filecoin-project/lassie/pkg/retriever/combinators"
+	"github.com/filecoin-project/lassie/pkg/extractor"
 	"github.com/filecoin-project/lassie/pkg/types"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime/datamodel"
@@ -36,7 +37,6 @@ var (
 )
 
 type Session interface {
-	GetStorageProviderTimeout(storageProviderId peer.ID) time.Duration
 	FilterIndexerCandidate(candidate types.RetrievalCandidate) (bool, types.RetrievalCandidate)
 
 	RegisterRetrieval(retrievalId types.RetrievalID, cid cid.Cid, selector datamodel.Node) bool
@@ -53,11 +53,13 @@ type Session interface {
 
 type Retriever struct {
 	// Assumed immutable during operation
-	executor     types.Retriever
-	eventManager *events.EventManager
-	session      Session
-	clock        clock.Clock
-	protocols    []multicodec.Code
+	executor           types.Retriever
+	eventManager       *events.EventManager
+	session            Session
+	clock              clock.Clock
+	protocols          []multicodec.Code
+	candidateFinder    types.CandidateFinder
+	candidateRetriever types.CandidateRetriever
 }
 
 type eventStats struct {
@@ -68,37 +70,43 @@ func NewRetriever(
 	ctx context.Context,
 	session Session,
 	candidateSource types.CandidateSource,
-	protocolRetrievers map[multicodec.Code]types.CandidateRetriever,
+	candidateRetriever types.CandidateRetriever,
+	protocol multicodec.Code,
 ) (*Retriever, error) {
-	return NewRetrieverWithClock(ctx, session, candidateSource, protocolRetrievers, clock.New())
+	return NewRetrieverWithClock(ctx, session, candidateSource, candidateRetriever, protocol, clock.New())
 }
 
 func NewRetrieverWithClock(
 	ctx context.Context,
 	session Session,
 	candidateSource types.CandidateSource,
-	protocolRetrievers map[multicodec.Code]types.CandidateRetriever,
+	candidateRetriever types.CandidateRetriever,
+	protocol multicodec.Code,
 	clock clock.Clock,
 ) (*Retriever, error) {
 	retriever := &Retriever{
-		eventManager: events.NewEventManager(ctx),
-		session:      session,
-		clock:        clock,
-	}
-	retriever.protocols = []multicodec.Code{}
-	for protocol := range protocolRetrievers {
-		retriever.protocols = append(retriever.protocols, protocol)
-	}
-	retriever.executor = combinators.RetrieverWithCandidateFinder{
-		CandidateFinder: NewAssignableCandidateFinderWithClock(candidateSource, session.FilterIndexerCandidate, clock),
-		CandidateRetriever: combinators.SplitRetriever[multicodec.Code]{
-			AsyncCandidateSplitter: combinators.NewAsyncCandidateSplitter(retriever.protocols, NewProtocolSplitter),
-			CandidateRetrievers:    protocolRetrievers,
-			CoordinationKind:       types.RaceCoordination,
-		},
+		eventManager:       events.NewEventManager(ctx),
+		session:            session,
+		clock:              clock,
+		protocols:          []multicodec.Code{protocol},
+		candidateFinder:    NewAssignableCandidateFinderWithClock(candidateSource, session.FilterIndexerCandidate, clock),
+		candidateRetriever: candidateRetriever,
 	}
 
 	return retriever, nil
+}
+
+func (retriever *Retriever) WrapWithHybrid(candidateSource types.CandidateSource, httpClient *http.Client, skipBlockVerification bool) {
+	base := &baseRetriever{retriever: retriever}
+	retriever.executor = NewHybridRetriever(base, candidateSource, httpClient, skipBlockVerification)
+}
+
+type baseRetriever struct {
+	retriever *Retriever
+}
+
+func (br *baseRetriever) Retrieve(ctx context.Context, request types.RetrievalRequest, events func(types.RetrievalEvent)) (*types.RetrievalStats, error) {
+	return br.retriever.retrieveWithCandidates(ctx, request, events)
 }
 
 // Start will start the retriever events system
@@ -163,11 +171,14 @@ func (retriever *Retriever) Retrieve(
 	// (retrievalStats!=nil) _and_ also an error return because there may be
 	// multiple failures along the way, if we got a retrieval then we'll pretend
 	// to our caller that there was no error
-	retrievalStats, err := retriever.executor.Retrieve(
-		ctx,
-		request,
-		onRetrievalEvent,
-	)
+	var retrievalStats *types.RetrievalStats
+	if retriever.executor != nil {
+		// Use wrapped executor (e.g., HybridRetriever)
+		retrievalStats, err = retriever.executor.Retrieve(ctx, request, onRetrievalEvent)
+	} else {
+		// Direct retrieval using candidate finder and retriever
+		retrievalStats, err = retriever.retrieveWithCandidates(ctx, request, onRetrievalEvent)
+	}
 
 	// Emit a Finished event denoting that the entire fetch has finished
 	onRetrievalEvent(events.Finished(retriever.clock.Now(), request.RetrievalID, types.RetrievalCandidate{RootCid: request.Root}))
@@ -177,19 +188,69 @@ func (retriever *Retriever) Retrieve(
 	}
 
 	// success
+	provider := retrievalStats.StorageProviderId.String()
+	if len(retrievalStats.Providers) > 0 {
+		provider = strings.Join(retrievalStats.Providers, ", ")
+	}
 	logger.Infof(
-		"Successfully retrieved from miner %s for %s\n"+
+		"Successfully retrieved from %s for %s\n"+
 			"\tDuration: %s\n"+
-			"\tBytes Received: %s\n"+
-			"\tTotal Payment: %s",
-		retrievalStats.StorageProviderId,
+			"\tBytes Received: %s",
+		provider,
 		request.Root,
 		retrievalStats.Duration,
 		humanize.IBytes(retrievalStats.Size),
-		types.FIL(retrievalStats.TotalPayment),
 	)
 
 	return retrievalStats, nil
+}
+
+// retrieveWithCandidates performs retrieval by finding candidates and passing them
+// to the candidate retriever. This is the simplified direct retrieval path.
+func (retriever *Retriever) retrieveWithCandidates(
+	ctx context.Context,
+	request types.RetrievalRequest,
+	events func(types.RetrievalEvent),
+) (*types.RetrievalStats, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	asyncCandidateRetrieval := retriever.candidateRetriever.Retrieve(ctx, request, events)
+
+	asyncCandidates := make(chan []types.RetrievalCandidate)
+	outbound := types.OutboundAsyncCandidates(asyncCandidates)
+	inbound := types.InboundAsyncCandidates(asyncCandidates)
+
+	findErr := make(chan error, 1)
+	resultChan := make(chan types.RetrievalResult, 1)
+
+	go func(findErr chan<- error) {
+		defer close(findErr)
+		defer close(outbound)
+		err := retriever.candidateFinder.FindCandidates(ctx, request, events, func(candidates []types.RetrievalCandidate) {
+			_ = outbound.SendNext(ctx, candidates)
+		})
+		findErr <- err
+	}(findErr)
+
+	go func() {
+		stats, err := asyncCandidateRetrieval.RetrieveFromAsyncCandidates(inbound)
+		resultChan <- types.RetrievalResult{Stats: stats, Err: err}
+	}()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case err := <-findErr:
+			if err != nil {
+				return nil, err
+			}
+			findErr = nil
+		case result := <-resultChan:
+			return result.Stats, result.Err
+		}
+	}
 }
 
 // Implement RetrievalSubscriber
@@ -230,8 +291,8 @@ func handleFailureEvent(
 ) {
 	eventStats.failedCount++
 	logger.Warnf(
-		"Failed to retrieve from miner %s for %s: %s",
-		event.ProviderId(),
+		"Failed to retrieve from %s for %s: %s",
+		event.Endpoint(),
 		event.RootCid(),
 		event.ErrorMessage(),
 	)
@@ -252,6 +313,35 @@ func handleCandidatesFilteredEvent(
 			logger.Errorf("failed to add storage providers to tracked retrieval for %s: %s", retrievalCid, err.Error())
 		}
 	}
+}
+
+// RetrieveAndExtract extracts content directly to disk using streaming extraction.
+// Requires the retriever to be wrapped with HybridRetriever.
+func (retriever *Retriever) RetrieveAndExtract(
+	ctx context.Context,
+	rootCid cid.Cid,
+	ext *extractor.Extractor,
+	eventsCallback func(types.RetrievalEvent),
+	onBlock func(int),
+) (*types.RetrievalStats, error) {
+	if !retriever.eventManager.IsStarted() {
+		return nil, ErrRetrieverNotStarted
+	}
+
+	hr, ok := retriever.executor.(*HybridRetriever)
+	if !ok {
+		return nil, errors.New("streaming extraction requires HybridRetriever")
+	}
+
+	// wrap callback to also dispatch to subscribers
+	wrappedCallback := func(event types.RetrievalEvent) {
+		retriever.eventManager.DispatchEvent(event)
+		if eventsCallback != nil {
+			eventsCallback(event)
+		}
+	}
+
+	return hr.RetrieveAndExtract(ctx, rootCid, ext, wrappedCallback, onBlock)
 }
 
 func logEvent(event types.RetrievalEvent) {
@@ -275,7 +365,7 @@ func logEvent(event types.RetrievalEvent) {
 	case events.EventWithCandidates:
 		var cands = strings.Builder{}
 		for i, c := range tevent.Candidates() {
-			cands.WriteString(c.MinerPeer.ID.String())
+			cands.WriteString(c.Endpoint())
 			if i < len(tevent.Candidates())-1 {
 				cands.WriteString(", ")
 			}
