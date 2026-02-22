@@ -7,6 +7,7 @@ import (
 	datatransfer "github.com/filecoin-project/go-data-transfer/v2"
 	"github.com/filecoin-project/lassie/pkg/internal/lp2ptransports"
 	"github.com/filecoin-project/lassie/pkg/types"
+
 	// bsnet "github.com/ipfs/boxo/bitswap/network" // DISABLED: bitswap support removed for boxo v0.35.0 compatibility
 	"github.com/ipfs/go-cid"
 	gsnet "github.com/ipfs/go-graphsync/network"
