@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download Kubo
-        uses: ipfs/download-ipfs-distribution-action@v1
+        uses: ipfs/download-ipfs-distribution-action@v2
       - name: Start Kubo
         uses: ipfs/start-ipfs-daemon-action@v1
       - name: Download gateway-conformance fixtures
